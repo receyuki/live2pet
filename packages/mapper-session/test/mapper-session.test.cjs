@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const { createProject } = require('../../project/src/index.cjs');
-const { MapperSessionError, startMapperSession } = require('../src/index.cjs');
+const { MapperSessionError, createMapperSessionClient, startMapperSession } = require('../src/index.cjs');
 
 function project() {
   return createProject({
@@ -73,4 +73,24 @@ test('supports CORS preflight and expires after idle timeout', async () => {
     () => startMapperSession({ project: project(), host: '0.0.0.0' }),
     (error) => error instanceof MapperSessionError && error.code === 'NON_LOOPBACK_BINDING',
   );
+});
+
+test('provides a token-authenticated client without exposing the bearer token', async () => {
+  const session = await startMapperSession({ project: project(), idleTimeoutMs: 1000 });
+  try {
+    const client = createMapperSessionClient({ origin: session.origin, token: session.token });
+    assert.equal(Object.hasOwn(client, 'token'), false);
+    assert.equal((await client.getSession()).sessionId, session.sessionId);
+    assert.equal((await client.getProject()).project.projectId, 'session-fixture');
+    const next = { ...(await client.getProject()).project, name: 'Client update' };
+    assert.equal((await client.updateProject(next)).project.name, 'Client update');
+    assert.equal((await client.close()).ok, true);
+    assert.equal(session.closed, true);
+  } finally {
+    await session.close();
+  }
+});
+
+test('rejects non-loopback client origins before making a request', () => {
+  assert.throws(() => createMapperSessionClient({ origin: 'http://localhost:1234', token: 'x'.repeat(40) }), (error) => error instanceof MapperSessionError && error.code === 'SESSION_ORIGIN_INVALID');
 });

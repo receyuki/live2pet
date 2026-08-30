@@ -17,6 +17,43 @@ class MapperSessionError extends Error {
   }
 }
 
+function createMapperSessionClient({ origin, token, fetchImpl = globalThis.fetch } = {}) {
+  if (typeof origin !== 'string' || !origin.trim()) throw new MapperSessionError('SESSION_ORIGIN_REQUIRED', 'Mapper Session origin is required.');
+  let parsed;
+  try { parsed = new URL(origin); } catch { throw new MapperSessionError('SESSION_ORIGIN_INVALID', 'Mapper Session origin must be a valid URL.'); }
+  if (parsed.protocol !== 'http:' || parsed.hostname !== LOOPBACK_HOST) throw new MapperSessionError('SESSION_ORIGIN_INVALID', 'Mapper Session client accepts only a loopback http origin.');
+  if (typeof token !== 'string' || token.length < 40) throw new MapperSessionError('SESSION_TOKEN_REQUIRED', 'Mapper Session token is required.');
+  if (typeof fetchImpl !== 'function') throw new MapperSessionError('SESSION_FETCH_UNAVAILABLE', 'A fetch implementation is required for Mapper Session access.');
+
+  async function request(pathname, options = {}) {
+    let response;
+    try {
+      response = await fetchImpl(`${origin}${pathname}`, {
+        ...options,
+        headers: { Origin: origin, Authorization: `Bearer ${token}`, ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) },
+      });
+    } catch (error) {
+      throw new MapperSessionError('SESSION_REQUEST_FAILED', 'Mapper Session request failed.', { cause: error && error.message ? error.message : String(error) });
+    }
+    let body = null;
+    try { body = await response.json(); } catch {
+      throw new MapperSessionError('SESSION_RESPONSE_INVALID', 'Mapper Session returned invalid JSON.', { status: response.status });
+    }
+    if (!response.ok || body?.ok === false) {
+      const detail = body?.error || {};
+      throw new MapperSessionError(detail.code || 'SESSION_REQUEST_REJECTED', detail.message || 'Mapper Session request was rejected.', detail.details || {});
+    }
+    return body;
+  }
+
+  return Object.freeze({
+    getSession: () => request('/session'),
+    getProject: () => request('/project'),
+    updateProject: (project) => request('/project', { method: 'PUT', body: JSON.stringify(project) }),
+    close: () => request('/close', { method: 'POST' }),
+  });
+}
+
 function fail(code, message, details = {}) {
   throw new MapperSessionError(code, message, details);
 }
@@ -217,5 +254,6 @@ module.exports = {
   MapperSessionError,
   MAX_BODY_BYTES,
   PROTOCOL_VERSION,
+  createMapperSessionClient,
   startMapperSession,
 };

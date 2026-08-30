@@ -37,6 +37,8 @@ The Package Build input is the transient schema in [`package-build-cli-input.md`
 
 Visual Motion Mapping is not performed by the headless client. The host starts an authenticated, short-lived Mapper Session for one Live2Pet Project and opens it in the Codex browser. The session is loopback-only, token-authenticated, Origin-checked, and has no general filesystem or command API. If a browser surface is unavailable, the host falls back to the Electron App and resumes through the saved project.
 
+`@live2pet/mapper-session` exposes the host-side client for `getSession`, `getProject`, `updateProject`, and `close`. The client accepts only a `127.0.0.1` HTTP origin, sends the bearer token internally, and does not expose the token as a property that a UI or status serializer can accidentally display.
+
 ## Installation and licensing
 
 Build and export never imply installation. The skill must explain the intended Target Profile and target root, receive explicit authorization in the current request, and then pass the CLI confirmation flag. It must not bundle or download Cubism Core, legacy runtimes, imported models, textures, or example themes. Those remain user-provided and separately licensed.
