@@ -19,6 +19,7 @@ const CLAWD_STAGES = Object.freeze(['validate', 'encode', 'manifest', 'package']
 const MAX_ENCODE_FRAMES = 4096;
 const PACKAGE_FILES = Object.freeze(['pet.json', 'spritesheet.webp']);
 const CLAWD_PACKAGE_LIMIT = 83_886_080;
+const BUILD_REPORT_SCHEMA_VERSION = 1;
 const TARGET_RENDER_PRESETS = Object.freeze({
   clawd: Object.freeze({
     compact: Object.freeze({ width: 512, height: 512, fps: 18, quality: 76, alphaQuality: 100 }),
@@ -61,6 +62,34 @@ function buildProvenance(target, targetContractVersion, render = {}) {
     render: selection.settings,
     encoder: { name: 'sharp', format: 'webp' },
   };
+}
+
+function createBuildReport({ build, projectId, source } = {}) {
+  if (!build || typeof build !== 'object' || typeof build.target !== 'string') fail('INVALID_BUILD_REPORT', 'A Package Build result with a target is required.');
+  const report = {
+    schemaVersion: BUILD_REPORT_SCHEMA_VERSION,
+    buildContractVersion: build.buildContractVersion || BUILD_CONTRACT_VERSION,
+    target: build.target,
+    targetContractVersion: build.targetContractVersion || build.provenance?.targetContractVersion || null,
+    renderPreset: build.provenance?.renderPreset || null,
+    validation: build.validation ? {
+      ok: build.validation.ok === true,
+      errorCount: Array.isArray(build.validation.errors) ? build.validation.errors.length : 0,
+      warningCount: Array.isArray(build.validation.warnings) ? build.validation.warnings.length : 0,
+    } : null,
+    output: {
+      encoding: build.encoding ? { ...build.encoding } : null,
+      package: build.package ? { format: build.package.format, byteLength: build.package.byteLength, files: [...(build.package.files || [])] } : null,
+    },
+    preview: build.preview ? { target: build.preview.target, source: build.preview.source, ready: build.preview.ready === true } : null,
+    warnings: Array.isArray(build.warnings) ? build.warnings.map((warning) => ({ ...warning })) : [],
+  };
+  if (typeof projectId === 'string' && projectId.trim()) report.projectId = projectId.trim();
+  if (source && typeof source === 'object') {
+    if (typeof source.kind === 'string' && source.kind.trim()) report.sourceKind = source.kind.trim();
+    if (typeof source.fingerprint === 'string' && /^[a-f0-9]{64}$/i.test(source.fingerprint.trim())) report.sourceFingerprint = source.fingerprint.trim().toLowerCase();
+  }
+  return report;
 }
 
 function fail(code, message, details = {}) {
@@ -468,6 +497,7 @@ async function buildClawdTheme(input = {}, options = {}) {
     package: packaged,
   };
   result.preview = createClawdPreview({ manifest, assets: assetReports });
+  result.report = createBuildReport({ build: result });
   return result;
 }
 
@@ -556,6 +586,7 @@ async function buildCodexPet(input = {}, options = {}) {
     package: packaged,
   };
   result.preview = createCodexPreview({ manifest, selections: selection.selections });
+  result.report = createBuildReport({ build: result });
   return result;
 }
 
@@ -607,6 +638,7 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
         metadata: metadataByTarget[targetId] || renderedInput.metadata,
       }, targetOptions);
     }
+    result.report = createBuildReport({ build: result, projectId: normalizedProject.projectId, source: normalizedProject.source });
     builds[targetId] = result;
     warnings.push(...(result.warnings || []).map((warning) => ({ target: targetId, ...warning })));
   }
@@ -615,6 +647,7 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
 
 module.exports = {
   BUILD_CONTRACT_VERSION,
+  BUILD_REPORT_SCHEMA_VERSION,
   CLAWD_PACKAGE_LIMIT,
   CacheError,
   CacheStore,
@@ -632,6 +665,7 @@ module.exports = {
   buildCodexPet,
   buildProjectTargets,
   buildProvenance,
+  createBuildReport,
   createCodexPetZip,
   createClawdThemeZip,
   createClawdPreview,

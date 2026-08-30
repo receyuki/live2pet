@@ -11,6 +11,7 @@ const {
   buildCodexPet,
   buildProjectTargets,
   buildProvenance,
+  createBuildReport,
   createClawdThemeZip,
   createClawdPreview,
   createCodexPreview,
@@ -107,6 +108,8 @@ test('builds a guide-shaped Clawd theme package from captured Motion frames', as
   assert.equal(result.preview.source, 'generated-assets');
   assert.equal(result.preview.ready, true);
   assert.deepEqual(result.preview.states.sleeping.files, ['assets/demo-theme-idle.webp']);
+  assert.deepEqual(result.report.validation, { ok: true, errorCount: 0, warningCount: 0 });
+  assert.equal(result.report.output.package.byteLength, result.package.byteLength);
   assert.deepEqual(events.map(({ stage, status }) => `${stage}:${status}`), ['validate:started', 'validate:completed', 'encode:started', 'encode:completed', 'manifest:started', 'manifest:completed', 'package:started', 'package:completed']);
   const zip = require('@zip.js/zip.js');
   const reader = new zip.ZipReader(new zip.Uint8ArrayReader(result.package.buffer));
@@ -167,6 +170,7 @@ test('builds a deterministic Codex atlas handoff with progress stages', async ()
   assert.equal(first.preview.source, 'generated-assets');
   assert.equal(first.preview.spritesheet.cellWidth, 192);
   assert.equal(first.preview.rows.find((row) => row.id === 'running-right').frames[0].cell.x, 0);
+  assert.equal(first.report.output.package, null);
   assert.deepEqual(first.manifest, second.manifest);
   assert.equal(crypto.createHash('sha256').update(first.atlas.rgba).digest('hex'), crypto.createHash('sha256').update(second.atlas.rgba).digest('hex'));
 });
@@ -285,6 +289,9 @@ test('buildProjectTargets drives both target builders from one validated project
   assert.equal(result.builds['codex-pet'].target, 'codex-pet');
   assert.equal(result.builds.clawd.provenance.renderPreset, 'balanced');
   assert.equal(result.builds['codex-pet'].provenance.renderPreset, 'balanced');
+  assert.equal(result.builds.clawd.report.projectId, 'multi-target');
+  assert.equal(result.builds.clawd.report.sourceKind, 'standard-directory');
+  assert.equal(JSON.stringify(result.builds.clawd.report).includes('/private/'), false);
   assert.ok(events.includes('clawd:validate:completed'));
   assert.ok(events.includes('codex-pet:compose:completed'));
 });
@@ -394,6 +401,16 @@ test('target previews reject malformed generated output and dispatch by target',
   const clawd = { target: 'clawd', manifest: { states: { idle: ['idle.webp'], thinking: ['idle.webp'], working: ['idle.webp'], sleeping: { fallbackTo: 'idle' } }, reactions: {} }, assets: [{ file: 'idle.webp', frameCount: 2 }] };
   assert.deepEqual(createTargetPreview(clawd).states.sleeping.chain, ['sleeping', 'idle']);
   assert.equal(createClawdPreview({ manifest: clawd.manifest, assets: clawd.assets }).ready, true);
+});
+
+test('build reports stay concise and never include RGBA buffers or source paths', async () => {
+  const build = { target: 'codex-pet', buildContractVersion: 1, targetContractVersion: 1, provenance: { renderPreset: 'balanced' }, encoding: { status: 'pending' }, package: null, preview: { target: 'codex-pet', source: 'generated-assets', ready: true }, warnings: [], validation: { ok: true, errors: [], warnings: [] }, atlas: { rgba: new Uint8Array([1, 2, 3]) } };
+  const report = createBuildReport({ build, projectId: 'demo', source: { kind: 'standard-directory', path: '/private/model', fingerprint: 'not-a-hash' } });
+  assert.equal(report.projectId, 'demo');
+  assert.equal(report.sourceKind, 'standard-directory');
+  assert.equal(Object.hasOwn(report, 'sourceFingerprint'), false);
+  assert.equal(JSON.stringify(report).includes('rgba'), false);
+  assert.equal(JSON.stringify(report).includes('/private/'), false);
 });
 
 test('project target Render Presets flow into capture and provenance', async () => {
