@@ -312,4 +312,5 @@ module.exports = {
   assertRenderer,
   sampleMotionCandidates,
   ...require('./pixi-live2d-adapter.cjs'),
+  ...require('./host.cjs'),
 };

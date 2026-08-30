@@ -3,10 +3,16 @@ const test = require('node:test');
 
 const {
   CONTRACT_METHODS,
+  RENDERER_IPC_CHANNEL,
   RendererContractError,
   PixiLive2dAdapter,
   SyntheticRenderer,
   assertRenderer,
+  createRendererCsp,
+  createRendererCspMeta,
+  createRendererIpcRouter,
+  createRendererPreloadApi,
+  createRendererWindowOptions,
   normalizePixiSource,
   pixiSourceFromManifest,
   sampleMotionCandidates,
@@ -200,4 +206,35 @@ test('Pixi Live2D adapter bridges the shared contract without bundling a runtime
   assert.equal(renderer.getState().loaded, false);
   assert.ok(page.calls.some((call) => call.name === 'pageLoad'));
   assert.ok(page.calls.some((call) => call.name === 'pageCapture'));
+});
+
+test('renderer host helpers enforce sandbox defaults, CSP, and a narrow IPC surface', async () => {
+  const options = createRendererWindowOptions({ preload: '/app/renderer-preload.cjs', width: 320, height: 240 });
+  assert.equal(options.webPreferences.nodeIntegration, false);
+  assert.equal(options.webPreferences.contextIsolation, true);
+  assert.equal(options.webPreferences.sandbox, true);
+  assert.match(createRendererCsp({ scriptNonce: 'nonce_123' }), /default-src 'none'/);
+  assert.match(createRendererCsp({ scriptNonce: 'nonce_123' }), /script-src 'self' 'nonce-nonce_123'/);
+  assert.match(createRendererCspMeta(), /^<meta http-equiv="Content-Security-Policy"/);
+  assert.throws(
+    () => createRendererWindowOptions({ preload: '/app/preload.cjs', width: 0 }),
+    (error) => error instanceof RendererContractError && error.code === 'INVALID_RENDERER_WINDOW',
+  );
+  assert.throws(
+    () => createRendererCsp({ scriptNonce: 'not safe!' }),
+    (error) => error instanceof RendererContractError && error.code === 'INVALID_RENDERER_CSP',
+  );
+
+  const renderer = new SyntheticRenderer();
+  const route = createRendererIpcRouter({ renderer });
+  const success = await route({ protocolVersion: 1, method: 'load', args: [source()] });
+  assert.equal(success.ok, true);
+  const failure = await route({ protocolVersion: 1, method: 'unknown', args: [] });
+  assert.equal(failure.ok, false);
+  assert.equal(failure.error.code, 'UNKNOWN_RENDERER_METHOD');
+  const ipcCalls = [];
+  const api = createRendererPreloadApi({ ipcRenderer: { invoke: async (...args) => (ipcCalls.push(args), { ok: true }) } });
+  await api.playMotion('Base:idle');
+  assert.equal(ipcCalls[0][0], RENDERER_IPC_CHANNEL);
+  assert.deepEqual(ipcCalls[0][1], { protocolVersion: 1, method: 'playMotion', args: ['Base:idle'] });
 });
