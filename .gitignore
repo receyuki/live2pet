@@ -9,6 +9,7 @@ node_modules/
 /artifacts/
 /apps/desktop/out/
 /apps/desktop/make/
+/apps/desktop/mapper-dist/
 
 # User-provided and derived character examples stay local for copyright safety.
 /examples/

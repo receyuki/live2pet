@@ -9,16 +9,22 @@ const {
 } = require('../../packages/app-host/src/index.cjs');
 const { startMapperSessionHost } = require('../../packages/mapper-session/src/index.cjs');
 
-const MAPPER_PATH = path.resolve(__dirname, '../mapper/index.html');
+const DEVELOPMENT_MAPPER_PATH = path.resolve(__dirname, '../mapper/index.html');
+const PACKAGED_MAPPER_PATH = path.join(process.resourcesPath, 'mapper-dist', 'index.html');
 let mainWindow = null;
 let route = null;
 
+function mapperPath() {
+  return app.isPackaged ? PACKAGED_MAPPER_PATH : DEVELOPMENT_MAPPER_PATH;
+}
+
 function mapperHostFactory(options = {}) {
   if (!options || typeof options !== 'object' || Array.isArray(options)) throw new TypeError('Mapper Session options must be an object.');
+  const documentPath = mapperPath();
   return startMapperSessionHost({
     project: options.project,
-    mapperPath: MAPPER_PATH,
-    mapperUrl: pathToFileURL(MAPPER_PATH).href,
+    mapperPath: documentPath,
+    mapperUrl: pathToFileURL(documentPath).href,
     idleTimeoutMs: options.idleTimeoutMs,
   });
 }
@@ -37,9 +43,10 @@ async function closeActiveSession() {
 
 async function createMainWindow() {
   const preload = path.join(__dirname, 'preload.cjs');
+  const documentPath = mapperPath();
   mainWindow = new BrowserWindow(createAppWindowOptions({ preload, width: 1540, height: 960, show: false }));
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  const mapperUrl = pathToFileURL(MAPPER_PATH).href;
+  const mapperUrl = pathToFileURL(documentPath).href;
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (url !== mapperUrl) event.preventDefault();
   });
@@ -47,7 +54,7 @@ async function createMainWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
   const showWindow = () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show(); };
   mainWindow.once('ready-to-show', showWindow);
-  await mainWindow.loadFile(MAPPER_PATH);
+  await mainWindow.loadFile(documentPath);
   // `ready-to-show` may fire before loadFile() resolves. Keep an explicit
   // fallback so a renderer that has no first paint still cannot leave the
   // development shell permanently hidden.

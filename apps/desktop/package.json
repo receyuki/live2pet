@@ -5,8 +5,9 @@
   "description": "Local-first Live2Pet desktop shell",
   "main": "main.cjs",
   "scripts": {
+    "prepare:mapper": "node scripts/stage-mapper-assets.cjs",
     "start": "electron .",
-    "typecheck": "node --check main.cjs preload.cjs forge.config.cjs"
+    "typecheck": "node --check main.cjs preload.cjs forge.config.cjs scripts/*.cjs"
   },
   "dependencies": {
     "@live2pet/app-host": "workspace:*"
