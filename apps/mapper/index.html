@@ -312,6 +312,9 @@
           <label class="field">Sleep sequence
             <select id="sleepMode"><option value="direct">direct</option><option value="full">full</option></select>
           </label>
+          <label class="field">Clawd Render Preset
+            <select id="clawdRenderPreset"><option value="compact">compact · 512px · 18fps</option><option value="balanced">balanced · 768px · 24fps</option><option value="high">high · 1024px · 30fps</option></select>
+          </label>
           <label class="field">Output file prefix
             <input id="outputPrefix" type="text" value="live2pet">
           </label>
@@ -322,6 +325,9 @@
         <details class="target-section">
           <summary>Codex Pet mapping</summary>
           <p class="target-copy">Codex uses its own nine-row atlas contract. Select a source Motion in the left library, then assign it directly to each row.</p>
+          <label class="field">Codex Render Preset
+            <select id="codexRenderPreset"><option value="compact">compact · 32 samples/s</option><option value="balanced">balanced · 64 samples/s</option><option value="high">high · 96 samples/s</option></select>
+          </label>
           <div id="codexMapping" class="codex-map"></div>
         </details>
       </section>
@@ -407,7 +413,7 @@
       const fallbackAllowed = new Set(["error","attention","notification","sweeping","carrying","sleeping","roam"]);
 
       function initial() {
-        return { model: null, motions: [], expressions: [], inspection: null, inspectionError: null, selectedMotionId: null, selectedExpressionId: null, mappings: {}, reactionMappings: {}, codexMappings: {}, sleepMode: "direct", outputPrefix: "live2pet", projectName: "Untitled Live2Pet Project", lastChange: "Waiting for a Source Package", scenario: null, scenarioStep: 0 };
+        return { model: null, motions: [], expressions: [], inspection: null, inspectionError: null, selectedMotionId: null, selectedExpressionId: null, mappings: {}, reactionMappings: {}, codexMappings: {}, sleepMode: "direct", clawdRenderPreset: "balanced", codexRenderPreset: "balanced", outputPrefix: "live2pet", projectName: "Untitled Live2Pet Project", lastChange: "Waiting for a Source Package", scenario: null, scenarioStep: 0 };
       }
       function reducer(state, action) {
         if (action.type === "LOAD_MODEL") return { ...state, model: action.model, motions: action.motions, expressions: action.expressions, inspection: action.inspection || null, inspectionError: null, selectedMotionId: action.motions[0]?.id || null, selectedExpressionId: null, projectName: state.projectName === "Untitled Live2Pet Project" ? action.model.name : state.projectName, lastChange: `Loaded ${action.motions.length} Motions and ${action.expressions.length} Expressions` };
@@ -416,8 +422,9 @@
           const target = action.project.targets?.clawd || {};
           const codexTarget = action.project.targets?.["codex-pet"] || {};
           const options = target.options || {};
+          const validPreset = value => ["compact", "balanced", "high"].includes(String(value || "").toLowerCase()) ? String(value).toLowerCase() : "balanced";
           const selected = Object.values(target.mappings || {}).find(value => value?.startsWith("motion:"))?.slice(7);
-          return { ...state, projectName: action.project.name, mappings: { ...(target.mappings || {}) }, reactionMappings: { ...(target.reactions || {}) }, codexMappings: { ...(codexTarget.mappings || {}) }, sleepMode: options.sleepMode === "full" ? "full" : "direct", outputPrefix: typeof options.outputPrefix === "string" && options.outputPrefix.trim() ? options.outputPrefix : "live2pet", selectedMotionId: selected && MotionMapping.motion(state, selected) ? selected : state.selectedMotionId, lastChange: `Opened ${action.project.name}` };
+          return { ...state, projectName: action.project.name, mappings: { ...(target.mappings || {}) }, reactionMappings: { ...(target.reactions || {}) }, codexMappings: { ...(codexTarget.mappings || {}) }, sleepMode: options.sleepMode === "full" ? "full" : "direct", clawdRenderPreset: validPreset(target.renderPreset || options.renderPreset), codexRenderPreset: validPreset(codexTarget.renderPreset || codexTarget.options?.renderPreset), outputPrefix: typeof options.outputPrefix === "string" && options.outputPrefix.trim() ? options.outputPrefix : "live2pet", selectedMotionId: selected && MotionMapping.motion(state, selected) ? selected : state.selectedMotionId, lastChange: `Opened ${action.project.name}` };
         }
         if (action.type === "SELECT_MOTION") return { ...state, selectedMotionId: action.id, lastChange: `Playing ${action.id}` };
         if (action.type === "SELECT_EXPRESSION") return { ...state, selectedExpressionId: action.id, lastChange: action.id === null ? "Expression reset" : `Previewing Expression ${action.id}` };
@@ -425,6 +432,7 @@
         if (action.type === "MAP_REACTION") return { ...state, reactionMappings: { ...state.reactionMappings, [action.key]: action.value }, lastChange: `${action.key} → ${action.value || "Unmapped"}` };
         if (action.type === "MAP_CODEX") return { ...state, codexMappings: { ...state.codexMappings, [action.key]: action.value }, lastChange: `Codex ${action.key} → ${action.value || "Unmapped"}` };
         if (action.type === "SET_SLEEP") return { ...state, sleepMode: action.value, lastChange: `sleepSequence.mode → ${action.value}` };
+        if (action.type === "SET_RENDER_PRESET") return { ...state, [`${action.target}RenderPreset`]: action.value, lastChange: `${action.target} Render Preset → ${action.value}` };
         if (action.type === "SET_PREFIX") return { ...state, outputPrefix: action.value, lastChange: `Output prefix → ${action.value}` };
         if (action.type === "CLEAR") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, lastChange: "Mappings cleared" };
         if (action.type === "START_SCENARIO") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, sleepMode: "direct", scenario: action.id, scenarioStep: 0, lastChange: `Started scenario ${action.id}` };
@@ -477,7 +485,7 @@
           _comment: "Live2D motion selection for a Clawd theme; generated by a local prototype",
           guide: "https://github.com/rullerzhou-afk/clawd-on-desk/blob/main/docs/guides/guide-theme-creation.md",
           model: state.model ? { file: state.model.file, name: state.model.name, cubism: state.model.cubism, source: state.model.source } : null,
-          render: { width: 768, height: 768, fps: 20, format: "animated-webp" },
+          render: { preset: state.clawdRenderPreset, width: state.clawdRenderPreset === "compact" ? 512 : state.clawdRenderPreset === "high" ? 1024 : 768, height: state.clawdRenderPreset === "compact" ? 512 : state.clawdRenderPreset === "high" ? 1024 : 768, fps: state.clawdRenderPreset === "compact" ? 18 : state.clawdRenderPreset === "high" ? 30 : 24, quality: state.clawdRenderPreset === "compact" ? 76 : state.clawdRenderPreset === "high" ? 88 : 82, format: "animated-webp" },
           sleepSequence: { mode: state.sleepMode },
           states,
           reactions: reactionOut
@@ -530,9 +538,10 @@
             profile: "clawd",
             mappings: { ...state.mappings },
             reactions: { ...state.reactionMappings },
+            renderPreset: state.clawdRenderPreset,
             options: { sleepMode: state.sleepMode, outputPrefix: state.outputPrefix },
           },
-          "codex-pet": { profile: "codex-pet", mappings: { ...state.codexMappings }, reactions: {}, options: {} },
+          "codex-pet": { profile: "codex-pet", mappings: { ...state.codexMappings }, reactions: {}, renderPreset: state.codexRenderPreset, options: {} },
         },
       };
     }
@@ -546,6 +555,10 @@
       if (!project.source || typeof project.source !== "object" || !project.source.kind || !project.source.name || !project.source.fingerprint) throw projectError("INVALID_PROJECT_SOURCE", "The project does not contain a complete Source Package reference.");
       const target = project.targets?.clawd;
       if (!target || typeof target !== "object") throw projectError("INVALID_PROJECT_TARGET", "The project does not contain a Clawd Target Profile.");
+      for (const [label, targetValue] of [["Clawd", target], ["Codex", project.targets?.["codex-pet"]]]) {
+        const preset = targetValue?.renderPreset || targetValue?.options?.renderPreset;
+        if (preset != null && !["compact", "balanced", "high"].includes(String(preset).toLowerCase())) throw projectError("INVALID_RENDER_PRESET", `${label} Render Preset must be compact, balanced, or high.`);
+      }
       if (project.recipes != null && !Array.isArray(project.recipes)) throw projectError("INVALID_PROJECT_RECIPES", "Project recipes must be an array.");
       for (const [label, mappings] of [["mappings", target.mappings], ["reactions", target.reactions]]) {
         if (mappings == null) continue;
@@ -813,12 +826,14 @@
     function render() {
       renderInspection(); renderMetrics(); renderMotions(); renderExpressions(); renderMappings(); renderScenario();
       $("sleepMode").value = state.sleepMode;
+      $("clawdRenderPreset").value = state.clawdRenderPreset;
+      $("codexRenderPreset").value = state.codexRenderPreset;
       $("outputPrefix").value = state.outputPrefix;
       $("saveProject").disabled = !state.model || !state.inspection;
       $("validation").innerHTML = MotionMapping.validate(state).map(x=>`<div class="${x.level}">${escapeHtml(x.text)}</div>`).join("");
       $("jsonOutput").textContent = JSON.stringify(MotionMapping.output(state),null,2);
       const readiness = codexBuildReadiness();
-      $("buildCodex").disabled = codexBuildBusy;
+      $("buildCodex").disabled = codexBuildBusy || !readiness.ready;
       $("buildCodex").textContent = codexBuildBusy ? "Building Codex Pet ZIP…" : "Build Codex Pet ZIP";
       $("buildCodex").title = readiness.message;
       $("buildReadiness").className = `build-readiness ${readiness.level}`;
@@ -1333,8 +1348,10 @@
           manifestRows.push({ id: row.id, row: rowIndex, frameCount: frames.length, frames: frames.map((_, index) => ({ motionId: motion.id, sourceIndex: motion.index, time: index / Math.max(1, frames.length - 1) })) });
         }
         setBuildStatus("Encoding transparent WebP atlas…", "busy");
-        const spritesheet = await canvasToBlob(atlas, "image/webp", 0.82);
-        const manifest = { schemaVersion: 1, target: "codex-pet", contractVersion: 1, packageFiles: ["pet.json", "spritesheet.webp"], atlas: { ...CODEX_ATLAS }, mappings: { ...state.codexMappings }, rows: manifestRows, assets: { spritesheet: { path: "spritesheet.webp", format: "webp", width: CODEX_ATLAS.width, height: CODEX_ATLAS.height, frameCount: 1 } } };
+        const renderPreset = state.codexRenderPreset;
+        const quality = renderPreset === "compact" ? 0.76 : renderPreset === "high" ? 0.88 : 0.82;
+        const spritesheet = await canvasToBlob(atlas, "image/webp", quality);
+        const manifest = { schemaVersion: 1, target: "codex-pet", contractVersion: 1, packageFiles: ["pet.json", "spritesheet.webp"], renderPreset, atlas: { ...CODEX_ATLAS }, mappings: { ...state.codexMappings }, rows: manifestRows, assets: { spritesheet: { path: "spritesheet.webp", format: "webp", width: CODEX_ATLAS.width, height: CODEX_ATLAS.height, frameCount: 1 } } };
         setBuildStatus("Creating ZIP package…", "busy");
         if (typeof zipApi.configure === "function") zipApi.configure({ useWebWorkers: false });
         const writer = new zipApi.ZipWriter(new zipApi.BlobWriter("application/zip"));
@@ -1440,6 +1457,8 @@
     $("resetExpression").addEventListener("click",resetExpression);
     $("assignCurrent").addEventListener("click",()=>dispatch({type:"MAP",key:$("quickState").value,value:state.selectedMotionId?`motion:${state.selectedMotionId}`:""}));
     $("sleepMode").addEventListener("change",e=>dispatch({type:"SET_SLEEP",value:e.target.value}));
+    $("clawdRenderPreset").addEventListener("change",e=>dispatch({type:"SET_RENDER_PRESET",target:"clawd",value:e.target.value}));
+    $("codexRenderPreset").addEventListener("change",e=>dispatch({type:"SET_RENDER_PRESET",target:"codex",value:e.target.value}));
     $("outputPrefix").addEventListener("change",e=>dispatch({type:"SET_PREFIX",value:e.target.value.trim()||"live2pet"}));
     $("downloadJson").addEventListener("click",downloadJson);
     $("buildCodex").addEventListener("click", async () => { try { await buildCodexPackage(); } catch (error) { setBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad"); } });
