@@ -19,5 +19,6 @@ This directory contains English research and decision material for Live2Pet.
 - Runtime adapter comparison
 - Codex lifecycle and approval integration
 - Licensing and redistribution boundaries
+- [Live2D runtime availability](live2d-runtime-availability.md)
 
 Earlier Chinese research drafts are retained locally under the ignored `archive/research-zh/` directory. They must be translated and reviewed before any material from them is published here.
