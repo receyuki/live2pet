@@ -156,6 +156,11 @@
     .build-readiness { min-height: 22px; margin-top: 8px; color: var(--muted); font-size: 12px; }
     .build-readiness.good { color: var(--good); }
     .build-readiness.bad { color: var(--bad); }
+    .target-preview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(192px, 260px); gap: 12px; margin-top: 14px; }
+    .target-preview figure { margin: 0; padding: 10px; background: #0b1628; border: 1px solid var(--line); border-radius: 10px; }
+    .target-preview figcaption { margin-bottom: 8px; color: var(--muted); font-size: 12px; }
+    .target-preview img, .target-preview canvas { width: 100%; height: auto; display: block; image-rendering: auto; background-color: #dae5f3; background-image: linear-gradient(45deg,#c6d2e3 25%,transparent 25%),linear-gradient(-45deg,#c6d2e3 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#c6d2e3 75%),linear-gradient(-45deg,transparent 75%,#c6d2e3 75%); background-size: 16px 16px; background-position: 0 0,0 8px,8px -8px,-8px 0; border-radius: 7px; }
+    .target-preview .cell-preview { max-width: 192px; margin: 0 auto; }
     pre { max-height: 430px; overflow: auto; padding: 13px; margin: 10px 0 0; background: #06101c; border: 1px solid var(--line); border-radius: 10px; color: #cfe1ff; font: 12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
     .inspection-panel { margin-bottom: 18px; }
     .inspection-status { min-height: 28px; max-width: 60ch; color: var(--muted); }
@@ -357,6 +362,10 @@
       </div>
       <div id="buildReadiness" class="build-readiness" role="status" aria-live="polite">Load a Source Package and map all nine Codex rows to enable building.</div>
       <div id="buildStatus" class="build-status" role="status" aria-live="polite">No Codex package has been built yet.</div>
+      <div id="codexTargetPreview" class="target-preview hidden" aria-live="polite">
+        <figure><figcaption>Generated atlas · package preview</figcaption><img id="codexAtlasPreview" alt="Generated Codex Pet atlas preview"></figure>
+        <figure><figcaption>First cell · 192 × 208 final size</figcaption><img id="codexCellPreview" class="cell-preview" alt="Generated Codex Pet first cell preview"></figure>
+      </div>
     </section>
 
     <footer>Clawd state semantics follow the <a href="https://github.com/rullerzhou-afk/clawd-on-desk/blob/main/docs/guides/guide-theme-creation.md">Clawd Theme Creation Guide</a>. Source assets stay local; refreshing clears unsaved session state.</footer>
@@ -840,6 +849,16 @@
       $("buildReadiness").textContent = readiness.message;
       $("downloadCodex").disabled = codexBuildBusy || !codexArtifact;
       $("downloadCodex").title = codexArtifact ? `Download ${codexArtifact.filename}` : "Build a Codex Pet ZIP first.";
+      const targetPreview = $("codexTargetPreview");
+      const hasTargetPreview = Boolean(codexArtifact?.previewUrl && codexArtifact?.cellPreviewUrl);
+      targetPreview.classList.toggle("hidden", !hasTargetPreview);
+      if (hasTargetPreview) {
+        $("codexAtlasPreview").src = codexArtifact.previewUrl;
+        $("codexCellPreview").src = codexArtifact.cellPreviewUrl;
+      } else {
+        $("codexAtlasPreview").removeAttribute("src");
+        $("codexCellPreview").removeAttribute("src");
+      }
     }
 
     function cubism2MotionDuration(text) {
@@ -1312,6 +1331,11 @@
       return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(projectError("WEBP_ENCODER_FAILED", "This browser could not encode the transparent atlas as WebP.")), type, quality));
     }
 
+    function releaseCodexPreview() {
+      if (!codexArtifact) return;
+      for (const key of ["previewUrl", "cellPreviewUrl"]) if (codexArtifact[key]) URL.revokeObjectURL(codexArtifact[key]);
+    }
+
     async function buildCodexPackage() {
       if (codexBuildBusy) return;
       if (!liveModel || !state.inspection) throw projectError("SOURCE_REQUIRED", "Load and preview a Source Package before building.");
@@ -1320,8 +1344,10 @@
       const zipApi = window.zip;
       if (!zipApi || typeof zipApi.ZipWriter !== "function") throw projectError("ZIP_BUILDER_UNAVAILABLE", "The browser ZIP library did not load. Check network access, then refresh the Mapper.");
       codexBuildBusy = true;
+      releaseCodexPreview();
       codexArtifact = null;
       render();
+      const previewUrls = [];
       try {
         const captures = new Map();
         for (const row of MotionMapping.codexRows) {
@@ -1347,6 +1373,14 @@
           frames.forEach((frame, column) => context.putImageData(frame, column * CODEX_ATLAS.cellWidth, rowIndex * CODEX_ATLAS.cellHeight));
           manifestRows.push({ id: row.id, row: rowIndex, frameCount: frames.length, frames: frames.map((_, index) => ({ motionId: motion.id, sourceIndex: motion.index, time: index / Math.max(1, frames.length - 1) })) });
         }
+        const atlasPreviewUrl = URL.createObjectURL(await canvasToBlob(atlas, "image/png"));
+        previewUrls.push(atlasPreviewUrl);
+        const cell = document.createElement("canvas");
+        cell.width = CODEX_ATLAS.cellWidth;
+        cell.height = CODEX_ATLAS.cellHeight;
+        cell.getContext("2d").drawImage(atlas, 0, 0, CODEX_ATLAS.cellWidth, CODEX_ATLAS.cellHeight, 0, 0, CODEX_ATLAS.cellWidth, CODEX_ATLAS.cellHeight);
+        const cellPreviewUrl = URL.createObjectURL(await canvasToBlob(cell, "image/png"));
+        previewUrls.push(cellPreviewUrl);
         setBuildStatus("Encoding transparent WebP atlas…", "busy");
         const renderPreset = state.codexRenderPreset;
         const quality = renderPreset === "compact" ? 0.76 : renderPreset === "high" ? 0.88 : 0.82;
@@ -1359,9 +1393,11 @@
         await writer.add("spritesheet.webp", new zipApi.BlobReader(spritesheet));
         const blob = await writer.close();
         const filename = `${projectId(state.projectName || "live2pet-codex")}-codex-pet.zip`;
-        codexArtifact = { blob, filename, manifest };
+        codexArtifact = { blob, filename, manifest, previewUrl: atlasPreviewUrl, cellPreviewUrl };
+        previewUrls.length = 0;
         setBuildStatus(`Built ${filename} · ${Math.round(blob.size / 1024)} KiB · ${manifestRows.reduce((sum, row) => sum + row.frameCount, 0)} occupied cells.`, "good");
       } catch (error) {
+        previewUrls.forEach(url => URL.revokeObjectURL(url));
         setBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad");
       } finally {
         codexBuildBusy = false;
