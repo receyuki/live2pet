@@ -10,6 +10,7 @@ const { assertProjectBuildable, validateProject } = require('../../project/src/i
 const { sampleMotionCandidates } = require('../../renderer/src/index.cjs');
 const { CacheError, CacheStore, DEFAULT_CACHE_LIMIT, createCacheKey } = require('./cache.cjs');
 const { createClawdPreview, createCodexPreview, createTargetPreview, PREVIEW_CONTRACT_VERSION, TargetPreviewError } = require('./preview.cjs');
+const { decodeFrameSet, encodeFrameSet, FRAME_CACHE_SCHEMA_VERSION, FrameCacheError } = require('./frame-cache.cjs');
 
 const BUILD_CONTRACT_VERSION = 1;
 const STAGES = Object.freeze(['select', 'layout', 'compose', 'encode', 'manifest', 'package']);
@@ -96,7 +97,7 @@ function rendererMotionDescriptor(renderer, motionId) {
   return null;
 }
 
-async function renderMappedMotions({ renderer, motionIds, render = {}, signal, onProgress, target } = {}) {
+async function renderMappedMotions({ renderer, motionIds, render = {}, signal, onProgress, target, cache, cacheContext } = {}) {
   if (!renderer || typeof renderer.captureRgba !== 'function') fail('RENDERER_REQUIRED', 'A renderer implementing captureRgba is required when build inputs do not include captured frames.');
   if (!Array.isArray(motionIds) || !motionIds.length) fail('MOTION_MAPPING_REQUIRED', `No ${target || 'target'} Motion mappings are available for renderer capture.`);
   const { name: presetName, settings: preset } = resolveTargetRenderPreset(target, render);
@@ -104,6 +105,9 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
   const height = Number.isInteger(render.height) ? render.height : preset.height;
   const configuredSamples = Number.isInteger(render.samples) ? render.samples : null;
   const framesByMotion = {};
+  const cacheEnabled = cache && typeof cache.get === 'function' && typeof cache.put === 'function' && cacheContext && typeof cacheContext === 'object'
+    && typeof cacheContext.sourceFingerprint === 'string' && typeof cacheContext.runtimeVersion === 'string'
+    && typeof cacheContext.rendererVersion === 'string' && typeof cacheContext.targetVersion === 'string';
   for (const motionId of motionIds) {
     checkCancelled(signal);
     const descriptor = rendererMotionDescriptor(renderer, motionId);
@@ -115,6 +119,35 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
     const samples = configuredSamples || (target === 'codex-pet'
       ? Math.max(2, Math.ceil(duration * preset.samplesPerSecond))
       : Math.max(2, Math.ceil(duration * preset.fps)));
+    const cacheKey = cacheEnabled ? createCacheKey({
+      sourceFingerprint: cacheContext.sourceFingerprint,
+      runtimeVersion: cacheContext.runtimeVersion,
+      rendererVersion: cacheContext.rendererVersion,
+      recipe: {
+        motionId,
+        expressionId: cacheContext.expressionId || null,
+        render: { width, height, samples, duration, fps: Number.isFinite(render.fps) ? render.fps : null },
+      },
+      targetProfile: target,
+      targetVersion: cacheContext.targetVersion,
+      renderPreset: presetName,
+      artifact: 'render-candidates',
+    }) : null;
+    if (cacheKey) {
+      const cached = cache.get(cacheKey);
+      if (cached) {
+        try {
+          const decoded = decodeFrameSet(cached.data);
+          if (decoded.motionId === motionId && decoded.frames.length > 0) {
+            framesByMotion[motionId] = decoded;
+            progress(onProgress, 'render', 'completed', { target, motionId, samples: decoded.frames.length, cache: 'hit' });
+            continue;
+          }
+        } catch (error) {
+          if (error instanceof FrameCacheError && typeof cache.removeFiles === 'function') cache.removeFiles(cacheKey.digest);
+        }
+      }
+    }
     progress(onProgress, 'render', 'started', { target, motionId, width, height, samples, duration });
     const result = await sampleMotionCandidates(renderer, { motionId, duration, samples, width, height });
     checkCancelled(signal);
@@ -122,6 +155,7 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
       frames: result.candidates,
       fps: Number.isFinite(render.fps) ? render.fps : (render.preset ? (preset.fps || (duration > 0 ? samples / duration : 10)) : (duration > 0 ? samples / duration : 10)),
     };
+    if (cacheKey) cache.put(cacheKey, encodeFrameSet({ motionId, ...framesByMotion[motionId] }), { projectId: cacheContext.projectId, sourceFingerprint: cacheContext.sourceFingerprint, artifact: 'render-candidates' });
     progress(onProgress, 'render', 'completed', { target, motionId, samples: result.candidates.length });
   }
   return framesByMotion;
@@ -532,11 +566,11 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
     if (renderer) {
       if (targetId === 'clawd' && !targetInput.framesByMotion && !targetInput.frames) {
         const ids = mappedMotionIds({ ...targetProject.mappings, ...targetProject.reactions });
-        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId });
+        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext || { sourceFingerprint: normalizedProject.source.fingerprint, runtimeVersion: targetOptions.runtimeVersion, rendererVersion: targetOptions.rendererVersion, targetVersion: targetOptions.targetVersion || '1', projectId: normalizedProject.projectId } });
         renderedInput = { ...targetInput, framesByMotion };
       } else if (targetId === 'codex-pet' && !targetInput.candidatesByRow && !targetInput.candidates) {
         const ids = mappedMotionIds(targetProject.mappings);
-        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId });
+        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext || { sourceFingerprint: normalizedProject.source.fingerprint, runtimeVersion: targetOptions.runtimeVersion, rendererVersion: targetOptions.rendererVersion, targetVersion: targetOptions.targetVersion || '1', projectId: normalizedProject.projectId } });
         const candidatesByRow = Object.fromEntries(Object.entries(targetProject.mappings).map(([row, value]) => [row, framesByMotion[value.slice(7)]?.frames || []]));
         renderedInput = { ...targetInput, candidatesByRow };
       }
@@ -572,6 +606,8 @@ module.exports = {
   MAX_ENCODE_FRAMES,
   PackageBuildError,
   PREVIEW_CONTRACT_VERSION,
+  FRAME_CACHE_SCHEMA_VERSION,
+  FrameCacheError,
   STAGES,
   TargetPreviewError,
   TARGET_RENDER_PRESETS,
@@ -588,5 +624,7 @@ module.exports = {
   encodeAnimatedWebp,
   renderMappedMotions,
   resolveTargetRenderPreset,
+  decodeFrameSet,
+  encodeFrameSet,
   normalizeCodexMetadata,
 };

@@ -4,6 +4,7 @@ const test = require('node:test');
 
 const {
   CLAWD_PACKAGE_LIMIT,
+  CacheStore,
   PackageBuildError,
   TARGET_RENDER_PRESETS,
   buildClawdTheme,
@@ -16,6 +17,8 @@ const {
   createTargetPreview,
   createCodexPetZip,
   encodeAnimatedWebp,
+  decodeFrameSet,
+  encodeFrameSet,
   renderMappedMotions,
   resolveTargetRenderPreset,
 } = require('../src/index.cjs');
@@ -324,6 +327,35 @@ test('renderer capture uses named target Render Presets', async () => {
     () => renderMappedMotions({ renderer, motionIds: ['idle'], render: { preset: 'unknown' }, target: 'codex-pet' }),
     (error) => error instanceof PackageBuildError && error.code === 'INVALID_RENDER_PRESET',
   );
+});
+
+test('reuses verified render candidates only with a complete cache identity', async () => {
+  const renderer = new SyntheticRenderer();
+  await renderer.load({ motions: [{ id: 'idle', duration: 0.1 }] });
+  let captureCount = 0;
+  const capture = renderer.captureRgba.bind(renderer);
+  renderer.captureRgba = (options) => {
+    captureCount += 1;
+    return capture(options);
+  };
+  const cache = new CacheStore({ rootDir: require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'live2pet-render-cache-')) });
+  const cacheContext = { projectId: 'cache-project', sourceFingerprint: 'source-sha256', runtimeVersion: 'core-5', rendererVersion: 'renderer-1', targetVersion: '1' };
+  const first = await renderMappedMotions({ renderer, motionIds: ['idle'], target: 'codex-pet', render: { preset: 'compact' }, cache, cacheContext });
+  const firstCaptureCount = captureCount;
+  const second = await renderMappedMotions({ renderer, motionIds: ['idle'], target: 'codex-pet', render: { preset: 'compact' }, cache, cacheContext });
+  assert.equal(captureCount, firstCaptureCount);
+  assert.deepEqual(second.idle.frames.map((frame) => frame.id), first.idle.frames.map((frame) => frame.id));
+  assert.equal(cache.status({ projectId: 'cache-project' }).entryCount, 1);
+  await renderMappedMotions({ renderer, motionIds: ['idle'], target: 'codex-pet', render: { preset: 'high' }, cache, cacheContext });
+  assert.ok(captureCount > firstCaptureCount);
+  assert.equal(cache.status({ projectId: 'cache-project' }).entryCount, 2);
+  const changedSizeCount = captureCount;
+  await renderMappedMotions({ renderer, motionIds: ['idle'], target: 'codex-pet', render: { preset: 'compact', width: 128, height: 128 }, cache, cacheContext });
+  assert.ok(captureCount > changedSizeCount);
+  assert.equal(cache.status({ projectId: 'cache-project' }).entryCount, 3);
+  const encoded = encodeFrameSet({ motionId: 'idle', ...first.idle });
+  const decoded = decodeFrameSet(encoded);
+  assert.equal(decoded.frames[0].rgba.byteLength, first.idle.frames[0].rgba.byteLength);
 });
 
 test('target Render Preset controls Clawd WebP quality and provenance stays path-free', async () => {
