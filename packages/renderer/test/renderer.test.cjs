@@ -4,8 +4,11 @@ const test = require('node:test');
 const {
   CONTRACT_METHODS,
   RendererContractError,
+  PixiLive2dAdapter,
   SyntheticRenderer,
   assertRenderer,
+  normalizePixiSource,
+  pixiSourceFromManifest,
   sampleMotionCandidates,
 } = require('../src/index.cjs');
 
@@ -15,8 +18,51 @@ function source() {
       { id: 'Base:idle', name: 'Idle', duration: 2 },
       { id: 'Base:wave', name: 'Wave', duration: 1.25 },
     ],
-    expressions: [{ id: 'smile', name: 'Smile' }],
+    expressions: [{ id: 'smile', name: 'Smile', runtimeId: 'smile_runtime' }],
   };
+}
+
+function pixiSource() {
+  return {
+    modelUrl: '/source/saint-louis.model3.json',
+    cubismVersion: 4,
+    motions: [
+      { id: 'Base:idle', name: 'Idle', group: 'Base', index: 0, duration: 2 },
+      { id: 'Base:wave', name: 'Wave', group: 'Base', index: 1, duration: 1.25 },
+    ],
+    expressions: [{ id: 'smile', name: 'Smile', runtimeId: 'smile_runtime' }],
+  };
+}
+
+class FakePixiPage {
+  constructor() {
+    this.calls = [];
+  }
+
+  async evaluate(fn, ...args) {
+    this.calls.push({ name: fn.name, args });
+    const state = {
+      contractVersion: 1,
+      loaded: true,
+      motionId: 'Base:idle',
+      expressionId: null,
+      time: 0,
+      playing: false,
+      loop: true,
+      speed: 1,
+    };
+    if (fn.name === 'pageLoad') return { state, width: 512, height: 512 };
+    if (fn.name === 'pagePlayMotion') return { ...state, motionId: args[0], time: args[3], playing: true, loop: args[1], speed: args[2] };
+    if (fn.name === 'pagePause') return { ...state, playing: false };
+    if (fn.name === 'pageResume') return { ...state, playing: true };
+    if (fn.name === 'pageRestart') return { ...state, playing: true };
+    if (fn.name === 'pageSetPlayback') return { ...state, loop: args[0] === undefined ? state.loop : args[0], speed: args[1] === undefined ? state.speed : args[1] };
+    if (fn.name === 'pageSetExpression') return args[0];
+    if (fn.name === 'pageStep') return { ...state, motionId: 'Base:wave', time: args[0], playing: true };
+    if (fn.name === 'pageBounds') return { motionId: args[0], samples: 1, x: 0.1, y: 0.05, width: 0.8, height: 0.9, normalized: true };
+    if (fn.name === 'pageCapture') return { width: args[2], height: args[3], motionId: args[0], time: args[1], rgba: new Array(args[2] * args[3] * 4).fill(255) };
+    return { loaded: false };
+  }
 }
 
 test('synthetic renderer implements the shared playback contract', async () => {
@@ -107,4 +153,51 @@ test('rejects invalid motion sampling inputs', async () => {
     () => sampleMotionCandidates(renderer, { motionId: 'missing', duration: 1, samples: 1 }),
     (error) => error instanceof RendererContractError && error.code === 'MOTION_NOT_FOUND',
   );
+});
+
+test('normalizes and validates the browser-facing Pixi source shape', () => {
+  const normalized = normalizePixiSource(pixiSource());
+  assert.equal(normalized.modelUrl, '/source/saint-louis.model3.json');
+  assert.equal(normalized.motions[1].group, 'Base');
+  assert.throws(
+    () => normalizePixiSource({ ...pixiSource(), motions: [{ ...pixiSource().motions[0], id: pixiSource().motions[0].id }, { ...pixiSource().motions[1], id: pixiSource().motions[0].id }] }),
+    (error) => error instanceof RendererContractError && error.code === 'INVALID_RENDER_SOURCE',
+  );
+});
+
+test('converts a normalized inspection manifest into a browser source descriptor', () => {
+  const source = pixiSourceFromManifest({
+    source: { modelConfig: 'characters/Saint Louis.model3.json' },
+    model: { cubism: 4 },
+    motions: [{ id: 'Base:idle', name: 'Idle', group: 'Base', index: 0, duration: null }],
+    expressions: [{ id: '0', name: 'Smile' }],
+  }, { baseUrl: 'http://127.0.0.1:4171/source' });
+  assert.equal(source.modelUrl, 'http://127.0.0.1:4171/source/characters/Saint%20Louis.model3.json');
+  assert.equal(source.motions[0].duration, 0);
+  assert.equal(source.expressions[0].name, 'Smile');
+  assert.equal(source.expressions[0].runtimeId, 'Smile');
+});
+
+test('Pixi Live2D adapter bridges the shared contract without bundling a runtime', async () => {
+  const page = new FakePixiPage();
+  const renderer = new PixiLive2dAdapter({ page, width: 320, height: 240, padding: 12 });
+  assert.throws(
+    () => new PixiLive2dAdapter(),
+    (error) => error instanceof RendererContractError && error.code === 'INVALID_RENDERER_HOST',
+  );
+  const loaded = await renderer.load(pixiSource());
+  assert.deepEqual(loaded, { contractVersion: 1, motionCount: 2, expressionCount: 1 });
+  await renderer.playMotion('Base:wave', { loop: false, speed: 2, start: 0.25 });
+  await renderer.setExpression('smile');
+  assert.equal(page.calls.find((call) => call.name === 'pageSetExpression').args[0], 'smile_runtime');
+  const capture = await renderer.captureRgba({ width: 8, height: 4, motionId: 'Base:wave', time: 0.5 });
+  assert.ok(capture.rgba instanceof Uint8Array);
+  assert.equal(capture.rgba.length, 8 * 4 * 4);
+  assert.equal((await renderer.getBounds({ motionId: 'Base:wave' })).normalized, true);
+  await renderer.pause();
+  assert.equal(renderer.getState().playing, false);
+  await renderer.unload();
+  assert.equal(renderer.getState().loaded, false);
+  assert.ok(page.calls.some((call) => call.name === 'pageLoad'));
+  assert.ok(page.calls.some((call) => call.name === 'pageCapture'));
 });

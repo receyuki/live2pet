@@ -1,3 +1,5 @@
+const { RendererContractError } = require('./errors.cjs');
+
 const CONTRACT_VERSION = 1;
 const CONTRACT_METHODS = [
   'load',
@@ -14,15 +16,6 @@ const CONTRACT_METHODS = [
   'getBounds',
   'captureRgba',
 ];
-
-class RendererContractError extends Error {
-  constructor(code, message, details = {}) {
-    super(message);
-    this.name = 'RendererContractError';
-    this.code = code;
-    this.details = details;
-  }
-}
 
 function fail(code, message, details = {}) {
   throw new RendererContractError(code, message, details);
@@ -318,4 +311,5 @@ module.exports = {
   alphaBounds,
   assertRenderer,
   sampleMotionCandidates,
+  ...require('./pixi-live2d-adapter.cjs'),
 };
