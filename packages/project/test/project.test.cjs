@@ -89,6 +89,23 @@ test('rejects future schema versions, duplicate recipes, and malformed mappings'
     () => serializeProject(malformed),
     (error) => error instanceof ProjectValidationError && error.code === 'INVALID_MAPPING',
   );
+  const invalidPreset = fixture();
+  invalidPreset.targets.clawd.renderPreset = 'ultra';
+  assert.throws(
+    () => serializeProject(invalidPreset),
+    (error) => error instanceof ProjectValidationError && error.code === 'INVALID_RENDER_PRESET',
+  );
+});
+
+test('normalizes a target Render Preset without retaining a duplicate option', () => {
+  const project = createProject({
+    projectId: 'preset',
+    name: 'Preset',
+    source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'fingerprint' },
+    targets: { clawd: { options: { renderPreset: 'HIGH', sleepMode: 'direct' } } },
+  });
+  assert.equal(project.targets.clawd.renderPreset, 'high');
+  assert.deepEqual(project.targets.clawd.options, { sleepMode: 'direct' });
 });
 
 test('saves atomically and reloads the same project', () => {

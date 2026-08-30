@@ -9,10 +9,12 @@ const {
   buildClawdTheme,
   buildCodexPet,
   buildProjectTargets,
+  buildProvenance,
   createClawdThemeZip,
   createCodexPetZip,
   encodeAnimatedWebp,
   renderMappedMotions,
+  resolveTargetRenderPreset,
 } = require('../src/index.cjs');
 const { validateClawdThemePackage } = require('../../clawd-target/src/index.cjs');
 const { validateCodexPetPackage } = require('../../codex-target/src/index.cjs');
@@ -76,7 +78,7 @@ function clawdSharpFactory() {
       assert.equal(options.animated, true);
       assert.deepEqual(options.raw, { width: 2, height: 4, channels: 4, pageHeight: 2 });
       assert.equal(input.length, 32);
-      assert.deepEqual(webpOptions, { quality: 80, alphaQuality: 100, lossless: false, loop: 0, delay: [100, 100] });
+      assert.deepEqual(webpOptions, { quality: 82, alphaQuality: 100, lossless: false, loop: 0, delay: [100, 100] });
       count += 1;
       return { toBuffer: async () => ({ data: Buffer.from(`RIFF-clawd-${count}`), info: { width: 2, height: 2, pages: 2 } }) };
     },
@@ -93,6 +95,8 @@ test('builds a guide-shaped Clawd theme package from captured Motion frames', as
   assert.deepEqual(result.manifest.reactions.drag, { file: 'demo-theme-error.webp' });
   assert.equal(result.assets.length, 5);
   assert.equal(result.encoding.assetCount, 5);
+  assert.equal(result.provenance.renderPreset, 'balanced');
+  assert.deepEqual(result.provenance.render, { width: 768, height: 768, fps: 24, quality: 82, alphaQuality: 100 });
   assert.deepEqual(events.map(({ stage, status }) => `${stage}:${status}`), ['validate:started', 'validate:completed', 'encode:started', 'encode:completed', 'manifest:started', 'manifest:completed', 'package:started', 'package:completed']);
   const zip = require('@zip.js/zip.js');
   const reader = new zip.ZipReader(new zip.Uint8ArrayReader(result.package.buffer));
@@ -148,6 +152,7 @@ test('builds a deterministic Codex atlas handoff with progress stages', async ()
   assert.equal(first.atlas.occupiedCells, 57);
   assert.equal(first.atlas.transparentCells, 15);
   assert.equal(first.encoding.status, 'pending');
+  assert.equal(first.provenance.renderPreset, 'balanced');
   assert.deepEqual(first.manifest, second.manifest);
   assert.equal(crypto.createHash('sha256').update(first.atlas.rgba).digest('hex'), crypto.createHash('sha256').update(second.atlas.rgba).digest('hex'));
 });
@@ -264,6 +269,8 @@ test('buildProjectTargets drives both target builders from one validated project
   assert.deepEqual(result.targets, ['clawd', 'codex-pet']);
   assert.equal(result.builds.clawd.target, 'clawd');
   assert.equal(result.builds['codex-pet'].target, 'codex-pet');
+  assert.equal(result.builds.clawd.provenance.renderPreset, 'balanced');
+  assert.equal(result.builds['codex-pet'].provenance.renderPreset, 'balanced');
   assert.ok(events.includes('clawd:validate:completed'));
   assert.ok(events.includes('codex-pet:compose:completed'));
 });
@@ -308,6 +315,52 @@ test('renderer capture uses named target Render Presets', async () => {
     () => renderMappedMotions({ renderer, motionIds: ['idle'], render: { preset: 'unknown' }, target: 'codex-pet' }),
     (error) => error instanceof PackageBuildError && error.code === 'INVALID_RENDER_PRESET',
   );
+});
+
+test('target Render Preset controls Clawd WebP quality and provenance stays path-free', async () => {
+  const calls = [];
+  const sharpFactory = (input, options) => ({
+    webp(webpOptions) {
+      calls.push({ input, options, webpOptions });
+      return { toBuffer: async () => ({ data: Buffer.from('RIFF-compact'), info: { width: 2, height: 2, pages: 2 } }) };
+    },
+  });
+  const result = await buildClawdTheme({ mapping: clawdMapping(), framesByMotion: clawdFrames() }, { renderPreset: 'compact', sharpFactory });
+  assert.equal(calls.length, 5);
+  assert.equal(calls[0].webpOptions.quality, 76);
+  assert.equal(calls[0].webpOptions.alphaQuality, 100);
+  assert.deepEqual(result.provenance, {
+    schemaVersion: 1,
+    buildContractVersion: 1,
+    targetProfile: 'clawd',
+    targetContractVersion: 1,
+    renderPreset: 'compact',
+    render: { width: 512, height: 512, fps: 18, quality: 76, alphaQuality: 100 },
+    encoder: { name: 'sharp', format: 'webp' },
+  });
+  assert.equal(JSON.stringify(result.provenance).includes('/'), false);
+  assert.deepEqual(resolveTargetRenderPreset('codex-pet', { preset: 'HIGH' }), { name: 'high', settings: { width: 192, height: 208, samplesPerSecond: 96 } });
+  assert.deepEqual(buildProvenance('codex-pet', 1, { preset: 'compact' }).render, { width: 192, height: 208, samplesPerSecond: 32 });
+});
+
+test('project target Render Presets flow into capture and provenance', async () => {
+  const renderer = new SyntheticRenderer();
+  const motionIds = [...new Set(['idle', 'thinking', 'working', 'error', 'attention', ...Object.values(mapping()).map((value) => value.slice(7))])];
+  await renderer.load({ motions: motionIds.map((id) => ({ id, duration: 0.1 })) });
+  const project = createProject({
+    projectId: 'preset-project',
+    name: 'Preset project',
+    source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'sha256:fixture' },
+    targets: {
+      clawd: { profile: 'clawd', renderPreset: 'compact', mappings: clawdMapping().states, reactions: clawdMapping().reactions, options: { sleepMode: 'direct' } },
+      'codex-pet': { profile: 'codex-pet', renderPreset: 'high', mappings: mapping(), reactions: {}, options: {} },
+    },
+  });
+  const result = await buildProjectTargets({ project, inputsByTarget: { clawd: { renderer }, 'codex-pet': { renderer } } });
+  assert.equal(project.targets.clawd.renderPreset, 'compact');
+  assert.equal(project.targets['codex-pet'].renderPreset, 'high');
+  assert.equal(result.builds.clawd.provenance.renderPreset, 'compact');
+  assert.equal(result.builds['codex-pet'].provenance.renderPreset, 'high');
 });
 
 test('buildProjectTargets refuses a project with an unreviewed source change', async () => {

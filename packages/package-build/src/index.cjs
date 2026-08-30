@@ -18,9 +18,9 @@ const PACKAGE_FILES = Object.freeze(['pet.json', 'spritesheet.webp']);
 const CLAWD_PACKAGE_LIMIT = 83_886_080;
 const TARGET_RENDER_PRESETS = Object.freeze({
   clawd: Object.freeze({
-    compact: Object.freeze({ width: 512, height: 512, fps: 18, quality: 76 }),
-    balanced: Object.freeze({ width: 768, height: 768, fps: 24, quality: 82 }),
-    high: Object.freeze({ width: 1024, height: 1024, fps: 30, quality: 88 }),
+    compact: Object.freeze({ width: 512, height: 512, fps: 18, quality: 76, alphaQuality: 100 }),
+    balanced: Object.freeze({ width: 768, height: 768, fps: 24, quality: 82, alphaQuality: 100 }),
+    high: Object.freeze({ width: 1024, height: 1024, fps: 30, quality: 88, alphaQuality: 100 }),
   }),
   'codex-pet': Object.freeze({
     compact: Object.freeze({ width: 192, height: 208, samplesPerSecond: 32 }),
@@ -36,6 +36,28 @@ class PackageBuildError extends Error {
     this.code = code;
     this.details = details;
   }
+}
+
+function resolveTargetRenderPreset(target, render = {}) {
+  const presetName = typeof render.preset === 'string' && render.preset.trim()
+    ? render.preset.trim().toLowerCase()
+    : 'balanced';
+  const preset = TARGET_RENDER_PRESETS[target] && TARGET_RENDER_PRESETS[target][presetName];
+  if (!preset) fail('INVALID_RENDER_PRESET', `Unknown ${target || 'target'} Render Preset: ${presetName}.`, { target, preset: presetName, available: Object.keys(TARGET_RENDER_PRESETS[target] || {}) });
+  return { name: presetName, settings: { ...preset } };
+}
+
+function buildProvenance(target, targetContractVersion, render = {}) {
+  const selection = resolveTargetRenderPreset(target, render);
+  return {
+    schemaVersion: 1,
+    buildContractVersion: BUILD_CONTRACT_VERSION,
+    targetProfile: target,
+    targetContractVersion,
+    renderPreset: selection.name,
+    render: selection.settings,
+    encoder: { name: 'sharp', format: 'webp' },
+  };
 }
 
 function fail(code, message, details = {}) {
@@ -76,9 +98,7 @@ function rendererMotionDescriptor(renderer, motionId) {
 async function renderMappedMotions({ renderer, motionIds, render = {}, signal, onProgress, target } = {}) {
   if (!renderer || typeof renderer.captureRgba !== 'function') fail('RENDERER_REQUIRED', 'A renderer implementing captureRgba is required when build inputs do not include captured frames.');
   if (!Array.isArray(motionIds) || !motionIds.length) fail('MOTION_MAPPING_REQUIRED', `No ${target || 'target'} Motion mappings are available for renderer capture.`);
-  const presetName = typeof render.preset === 'string' && render.preset.trim() ? render.preset.trim().toLowerCase() : 'balanced';
-  const preset = TARGET_RENDER_PRESETS[target] && TARGET_RENDER_PRESETS[target][presetName];
-  if (!preset) fail('INVALID_RENDER_PRESET', `Unknown ${target || 'target'} Render Preset: ${presetName}.`, { target, preset: presetName, available: Object.keys(TARGET_RENDER_PRESETS[target] || {}) });
+  const { name: presetName, settings: preset } = resolveTargetRenderPreset(target, render);
   const width = Number.isInteger(render.width) ? render.width : preset.width;
   const height = Number.isInteger(render.height) ? render.height : preset.height;
   const configuredSamples = Number.isInteger(render.samples) ? render.samples : null;
@@ -261,12 +281,12 @@ function collectClawdMotionIds(target) {
   return ids;
 }
 
-function normalizeClawdFrameSet(value, motionId) {
+function normalizeClawdFrameSet(value, motionId, defaults = {}) {
   const frames = Array.isArray(value) ? value : value && Array.isArray(value.frames) ? value.frames : null;
   if (!frames || !frames.length) fail('INVALID_CLAWD_FRAME_SET', `${motionId} must provide at least one RGBA frame.`);
   const options = Array.isArray(value) ? {} : value;
   const delay = options.delay ?? (Number.isFinite(options.fps) && options.fps > 0 ? Math.round(1000 / options.fps) : 100);
-  return { frames, delay, loop: options.loop ?? 0, quality: options.quality ?? 80, alphaQuality: options.alphaQuality ?? 100, lossless: options.lossless ?? false };
+  return { frames, delay, loop: options.loop ?? 0, quality: options.quality ?? defaults.quality ?? 80, alphaQuality: options.alphaQuality ?? defaults.alphaQuality ?? 100, lossless: options.lossless ?? false };
 }
 
 function clawdAssetSlug(motionId, used) {
@@ -348,6 +368,8 @@ async function buildClawdTheme(input = {}, options = {}) {
   const framesByMotion = input.framesByMotion || input.frames;
   const signal = options.signal || input.signal;
   const onProgress = options.onProgress || input.onProgress;
+  const render = options.render || (options.renderPreset ? { preset: options.renderPreset } : {});
+  const renderSelection = resolveTargetRenderPreset('clawd', render);
   checkCancelled(signal);
   progress(onProgress, CLAWD_STAGES[0], 'started');
   const target = createClawdTarget(mapping);
@@ -365,7 +387,7 @@ async function buildClawdTheme(input = {}, options = {}) {
   const usedSlugs = new Set();
   for (const motionId of motionIds) {
     checkCancelled(signal);
-    const frameSet = normalizeClawdFrameSet(framesByMotion[motionId], motionId);
+    const frameSet = normalizeClawdFrameSet(framesByMotion[motionId], motionId, renderSelection.settings);
     const firstFrame = frameSet.frames[0];
     const encoded = await encodeAnimatedWebp({ ...frameSet, width: firstFrame && firstFrame.width, height: firstFrame && firstFrame.height }, { sharpFactory: options.sharpFactory });
     const assetName = `${themeId}-${clawdAssetSlug(motionId, usedSlugs)}.webp`;
@@ -398,6 +420,7 @@ async function buildClawdTheme(input = {}, options = {}) {
     assets: assetReports,
     warnings: target.warnings || [],
     encoding: { required: 'webp', status: 'completed', assetCount: assetReports.length },
+    provenance: buildProvenance('clawd', target.contractVersion, render),
     package: packaged,
   };
 }
@@ -407,6 +430,8 @@ async function buildCodexPet(input = {}, options = {}) {
   const candidatesByRow = input.candidatesByRow || input.candidates;
   const signal = options.signal || input.signal;
   const onProgress = options.onProgress || input.onProgress;
+  const render = options.render || (options.renderPreset ? { preset: options.renderPreset } : {});
+  const renderSelection = resolveTargetRenderPreset('codex-pet', render);
   checkCancelled(signal);
 
   progress(onProgress, STAGES[0], 'started');
@@ -472,6 +497,7 @@ async function buildCodexPet(input = {}, options = {}) {
     selections: selection.selections,
     warnings: [],
     encoding: encoded ? { required: 'webp', status: 'completed', format: encoded.format, frameCount: encoded.frameCount, width: encoded.width, height: encoded.height, byteLength: encoded.buffer.length } : { required: 'webp', status: 'pending', reason: 'Set encode:true or package:true to convert atlas.rgba to spritesheet.webp.' },
+    provenance: buildProvenance('codex-pet', target.contractVersion, render),
     spritesheet: encoded ? encoded.buffer : null,
     package: packaged,
   };
@@ -490,6 +516,12 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
     const targetProject = normalizedProject.targets[targetId];
     if (!targetProject || !targetProject.mappings || !Object.keys(targetProject.mappings).length) fail('TARGET_MAPPING_REQUIRED', `${targetId} has no mappings in the Live2Pet Project.`);
     const targetOptions = { ...(optionsByTarget[targetId] || {}), signal, onProgress: (event) => onProgress?.({ target: targetId, ...event }) };
+    const configuredRender = targetInput.render
+      || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : null)
+      || targetOptions.render
+      || (targetProject.renderPreset ? { preset: targetProject.renderPreset } : null)
+      || (targetProject.options && targetProject.options.renderPreset ? { preset: targetProject.options.renderPreset } : {});
+    targetOptions.render = configuredRender;
     const renderer = targetInput.renderer || targetOptions.renderer;
     let renderedInput = targetInput;
     if (renderer) {
@@ -539,10 +571,12 @@ module.exports = {
   buildClawdTheme,
   buildCodexPet,
   buildProjectTargets,
+  buildProvenance,
   createCodexPetZip,
   createClawdThemeZip,
   createCacheKey,
   encodeAnimatedWebp,
   renderMappedMotions,
+  resolveTargetRenderPreset,
   normalizeCodexMetadata,
 };

@@ -7,6 +7,7 @@ const MAX_PROJECT_BYTES = 2 * 1024 * 1024;
 const PROJECT_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,95}$/i;
 const MAPPING_PATTERN = /^(motion|fallback):[^\s:][^\s]{0,255}$/;
 const TARGETS = ['clawd', 'codex-pet'];
+const RENDER_PRESETS = ['compact', 'balanced', 'high'];
 
 class ProjectValidationError extends Error {
   constructor(code, message, details = {}) {
@@ -108,9 +109,17 @@ function normalizeTarget(target, targetId) {
     reactions: normalizeMappings(target.reactions, `targets.${targetId}.reactions`),
     options: {},
   };
+  const renderPreset = target.renderPreset ?? target.options?.renderPreset;
+  if (renderPreset !== undefined) {
+    if (typeof renderPreset !== 'string' || !RENDER_PRESETS.includes(renderPreset.trim().toLowerCase())) {
+      fail('INVALID_RENDER_PRESET', `targets.${targetId}.renderPreset must be compact, balanced, or high.`);
+    }
+    normalized.renderPreset = renderPreset.trim().toLowerCase();
+  }
   if (target.options != null) {
     assertRecord(target.options, `targets.${targetId}.options`);
     normalized.options = JSON.parse(JSON.stringify(target.options));
+    delete normalized.options.renderPreset;
   }
   return normalized;
 }
@@ -293,6 +302,7 @@ module.exports = {
   MAX_PROJECT_BYTES,
   SCHEMA_VERSION,
   TARGETS,
+  RENDER_PRESETS,
   ProjectValidationError,
   createProject,
   acknowledgeSourceReview,
