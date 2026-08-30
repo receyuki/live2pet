@@ -40,8 +40,13 @@ async function createMainWindow() {
   mainWindow = new BrowserWindow(createAppWindowOptions({ preload, width: 1540, height: 960, show: false }));
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.on('closed', () => { mainWindow = null; });
+  const showWindow = () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show(); };
+  mainWindow.once('ready-to-show', showWindow);
   await mainWindow.loadFile(MAPPER_PATH);
-  mainWindow.once('ready-to-show', () => mainWindow?.show());
+  // `ready-to-show` may fire before loadFile() resolves. Keep an explicit
+  // fallback so a renderer that has no first paint still cannot leave the
+  // development shell permanently hidden.
+  if (mainWindow && !mainWindow.isVisible()) showWindow();
   return mainWindow;
 }
 
