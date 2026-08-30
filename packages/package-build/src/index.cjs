@@ -9,6 +9,7 @@ const { createClawdTarget } = require('../../clawd-target/src/index.cjs');
 const { assertProjectBuildable, validateProject } = require('../../project/src/index.cjs');
 const { sampleMotionCandidates } = require('../../renderer/src/index.cjs');
 const { CacheError, CacheStore, DEFAULT_CACHE_LIMIT, createCacheKey } = require('./cache.cjs');
+const { createClawdPreview, createCodexPreview, createTargetPreview, PREVIEW_CONTRACT_VERSION, TargetPreviewError } = require('./preview.cjs');
 
 const BUILD_CONTRACT_VERSION = 1;
 const STAGES = Object.freeze(['select', 'layout', 'compose', 'encode', 'manifest', 'package']);
@@ -411,7 +412,7 @@ async function buildClawdTheme(input = {}, options = {}) {
     checkCancelled(signal);
     progress(onProgress, CLAWD_STAGES[3], 'completed', { byteLength: packaged.byteLength });
   }
-  return {
+  const result = {
     buildContractVersion: BUILD_CONTRACT_VERSION,
     target: target.profile,
     targetContractVersion: target.contractVersion,
@@ -423,6 +424,8 @@ async function buildClawdTheme(input = {}, options = {}) {
     provenance: buildProvenance('clawd', target.contractVersion, render),
     package: packaged,
   };
+  result.preview = createClawdPreview({ manifest, assets: assetReports });
+  return result;
 }
 
 async function buildCodexPet(input = {}, options = {}) {
@@ -489,7 +492,7 @@ async function buildCodexPet(input = {}, options = {}) {
     progress(onProgress, STAGES[5], 'completed', { byteLength: packaged.byteLength });
   }
 
-  return {
+  const result = {
     buildContractVersion: BUILD_CONTRACT_VERSION,
     target: target.profile,
     manifest,
@@ -501,6 +504,8 @@ async function buildCodexPet(input = {}, options = {}) {
     spritesheet: encoded ? encoded.buffer : null,
     package: packaged,
   };
+  result.preview = createCodexPreview({ manifest, selections: selection.selections });
+  return result;
 }
 
 async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['clawd', 'codex-pet'], metadataByTarget = {}, optionsByTarget = {}, signal, onProgress } = {}) {
@@ -566,7 +571,9 @@ module.exports = {
   CLAWD_STAGES,
   MAX_ENCODE_FRAMES,
   PackageBuildError,
+  PREVIEW_CONTRACT_VERSION,
   STAGES,
+  TargetPreviewError,
   TARGET_RENDER_PRESETS,
   buildClawdTheme,
   buildCodexPet,
@@ -574,6 +581,9 @@ module.exports = {
   buildProvenance,
   createCodexPetZip,
   createClawdThemeZip,
+  createClawdPreview,
+  createCodexPreview,
+  createTargetPreview,
   createCacheKey,
   encodeAnimatedWebp,
   renderMappedMotions,

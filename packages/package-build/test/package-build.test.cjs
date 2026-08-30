@@ -11,6 +11,9 @@ const {
   buildProjectTargets,
   buildProvenance,
   createClawdThemeZip,
+  createClawdPreview,
+  createCodexPreview,
+  createTargetPreview,
   createCodexPetZip,
   encodeAnimatedWebp,
   renderMappedMotions,
@@ -97,6 +100,9 @@ test('builds a guide-shaped Clawd theme package from captured Motion frames', as
   assert.equal(result.encoding.assetCount, 5);
   assert.equal(result.provenance.renderPreset, 'balanced');
   assert.deepEqual(result.provenance.render, { width: 768, height: 768, fps: 24, quality: 82, alphaQuality: 100 });
+  assert.equal(result.preview.source, 'generated-assets');
+  assert.equal(result.preview.ready, true);
+  assert.deepEqual(result.preview.states.sleeping.files, ['assets/demo-theme-idle.webp']);
   assert.deepEqual(events.map(({ stage, status }) => `${stage}:${status}`), ['validate:started', 'validate:completed', 'encode:started', 'encode:completed', 'manifest:started', 'manifest:completed', 'package:started', 'package:completed']);
   const zip = require('@zip.js/zip.js');
   const reader = new zip.ZipReader(new zip.Uint8ArrayReader(result.package.buffer));
@@ -153,6 +159,9 @@ test('builds a deterministic Codex atlas handoff with progress stages', async ()
   assert.equal(first.atlas.transparentCells, 15);
   assert.equal(first.encoding.status, 'pending');
   assert.equal(first.provenance.renderPreset, 'balanced');
+  assert.equal(first.preview.source, 'generated-assets');
+  assert.equal(first.preview.spritesheet.cellWidth, 192);
+  assert.equal(first.preview.rows.find((row) => row.id === 'running-right').frames[0].cell.x, 0);
   assert.deepEqual(first.manifest, second.manifest);
   assert.equal(crypto.createHash('sha256').update(first.atlas.rgba).digest('hex'), crypto.createHash('sha256').update(second.atlas.rgba).digest('hex'));
 });
@@ -341,6 +350,16 @@ test('target Render Preset controls Clawd WebP quality and provenance stays path
   assert.equal(JSON.stringify(result.provenance).includes('/'), false);
   assert.deepEqual(resolveTargetRenderPreset('codex-pet', { preset: 'HIGH' }), { name: 'high', settings: { width: 192, height: 208, samplesPerSecond: 96 } });
   assert.deepEqual(buildProvenance('codex-pet', 1, { preset: 'compact' }).render, { width: 192, height: 208, samplesPerSecond: 32 });
+});
+
+test('target previews reject malformed generated output and dispatch by target', async () => {
+  assert.throws(
+    () => createCodexPreview({ manifest: { atlas: { ...{ ...require('../../codex-target/src/index.cjs').ATLAS, width: 1 } }, rows: [] } }),
+    (error) => error.code === 'INVALID_TARGET_PREVIEW',
+  );
+  const clawd = { target: 'clawd', manifest: { states: { idle: ['idle.webp'], thinking: ['idle.webp'], working: ['idle.webp'], sleeping: { fallbackTo: 'idle' } }, reactions: {} }, assets: [{ file: 'idle.webp', frameCount: 2 }] };
+  assert.deepEqual(createTargetPreview(clawd).states.sleeping.chain, ['sleeping', 'idle']);
+  assert.equal(createClawdPreview({ manifest: clawd.manifest, assets: clawd.assets }).ready, true);
 });
 
 test('project target Render Presets flow into capture and provenance', async () => {
