@@ -5,7 +5,7 @@ const path = require('node:path');
 const { inspectSourcePackage, SourceInspectionError } = require('../../source-inspector/src/index.cjs');
 const { inspectRuntime, RuntimeValidationError } = require('../../runtime/src/index.cjs');
 const { loadProjectFile, ProjectValidationError, recoverAutosaveFile } = require('../../project/src/index.cjs');
-const { CacheError, CacheStore } = require('../../package-build/src/index.cjs');
+const { CacheError, CacheStore, PackageBuildError, buildProjectTargets } = require('../../package-build/src/index.cjs');
 const { InstallationError, exportPackage, installPackage } = require('../../installation/src/index.cjs');
 const { validateClawdThemePackage } = require('../../clawd-target/src/index.cjs');
 const { validateCodexPetPackage } = require('../../codex-target/src/index.cjs');
@@ -15,7 +15,8 @@ const PROTOCOL_VERSION = 1;
 const CLI_VERSION = '0.1.0';
 const MAX_PACKAGE_BYTES = 256 * 1024 * 1024;
 const MAX_PACKAGE_ENTRY_BYTES = 128 * 1024 * 1024;
-const OPERATIONS = Object.freeze(['version', 'inspect', 'runtime-diagnose', 'project-validate', 'project-recover', 'package-validate', 'export', 'install', 'cache-status', 'cache-clear']);
+const MAX_BUILD_SPEC_BYTES = 128 * 1024 * 1024;
+const OPERATIONS = Object.freeze(['version', 'inspect', 'runtime-diagnose', 'project-validate', 'project-recover', 'package-build', 'package-validate', 'export', 'install', 'cache-status', 'cache-clear']);
 
 class CliError extends Error {
   constructor(code, message, details = {}) {
@@ -55,6 +56,18 @@ function parseArgs(argv = []) {
       const sourceFingerprint = argv[++index];
       if (!sourceFingerprint) fail('INVALID_ARGUMENT', '--source-fingerprint requires a value.');
       options.sourceFingerprint = sourceFingerprint;
+    } else if (argument === '--runtime-version') {
+      const runtimeVersion = argv[++index];
+      if (!runtimeVersion) fail('INVALID_ARGUMENT', '--runtime-version requires a value.');
+      options.runtimeVersion = runtimeVersion;
+    } else if (argument === '--renderer-version') {
+      const rendererVersion = argv[++index];
+      if (!rendererVersion) fail('INVALID_ARGUMENT', '--renderer-version requires a value.');
+      options.rendererVersion = rendererVersion;
+    } else if (argument === '--encoder-version') {
+      const encoderVersion = argv[++index];
+      if (!encoderVersion) fail('INVALID_ARGUMENT', '--encoder-version requires a value.');
+      options.encoderVersion = encoderVersion;
     } else if (argument === '--target') {
       const target = argv[++index];
       if (!target) fail('INVALID_ARGUMENT', '--target requires a value.');
@@ -102,12 +115,13 @@ function operationSpec(operation) {
   if (operation === 'runtime-diagnose') return { usage: 'live2pet runtime-diagnose --input <core-file-or-sdk-directory> [--pretty]' };
   if (operation === 'project-validate') return { usage: 'live2pet project-validate --input <project.live2pet> [--pretty]' };
   if (operation === 'project-recover') return { usage: 'live2pet project-recover --input <project.live2pet> [--pretty]' };
+  if (operation === 'package-build') return { usage: 'live2pet package-build --input <build-spec.json> [--target clawd|codex-pet] [--output <directory>] [--cache-dir <cache-directory>] [--runtime-version <id> --renderer-version <id> --encoder-version <id>] [--overwrite] [--pretty]' };
   if (operation === 'package-validate') return { usage: 'live2pet package-validate --input <package.zip> [--target clawd|codex-pet] [--pretty]' };
   if (operation === 'export') return { usage: 'live2pet export --input <package.zip> --output <path.zip> [--overwrite] [--pretty]' };
   if (operation === 'install') return { usage: 'live2pet install --input <package.zip> --target clawd|codex-pet --target-root <directory> --confirm-install [--conflict cancel|upgrade|side-by-side] [--pretty]' };
   if (operation === 'cache-status') return { usage: 'live2pet cache-status --cache-dir <cache-directory> [--pretty]' };
   if (operation === 'cache-clear') return { usage: 'live2pet cache-clear --cache-dir <cache-directory> (--all | --project-id <id> | --source-fingerprint <sha256>) [--pretty]' };
-  return { usage: 'live2pet <version|inspect|runtime-diagnose|project-validate|project-recover|package-validate|export|install|cache-status|cache-clear> [options]' };
+  return { usage: 'live2pet <version|inspect|runtime-diagnose|project-validate|project-recover|package-build|package-validate|export|install|cache-status|cache-clear> [options]' };
 }
 
 function sanitizeProject(project) {
@@ -129,7 +143,7 @@ function redactAbsolutePaths(value) {
 }
 
 function normalizeError(error) {
-  if (error instanceof CliError || error instanceof SourceInspectionError || error instanceof RuntimeValidationError || error instanceof ProjectValidationError || error instanceof CacheError || error instanceof InstallationError) {
+  if (error instanceof CliError || error instanceof SourceInspectionError || error instanceof RuntimeValidationError || error instanceof ProjectValidationError || error instanceof CacheError || error instanceof PackageBuildError || error instanceof InstallationError) {
     return { code: error.code, message: error.message, details: redactAbsolutePaths(error.details || {}) };
   }
   return { code: 'CLI_OPERATION_FAILED', message: error && error.message ? error.message : String(error), details: {} };
@@ -209,6 +223,126 @@ async function validatePackageArchive(inputPath, targetHint) {
   }
 }
 
+function readBuildSpec(inputPath) {
+  if (typeof inputPath !== 'string' || !inputPath.trim()) fail('INPUT_REQUIRED', operationSpec('package-build').usage);
+  const absolute = path.resolve(inputPath);
+  let stat;
+  try { stat = fs.statSync(absolute); } catch (error) {
+    fail(error && error.code === 'ENOENT' ? 'BUILD_SPEC_NOT_FOUND' : 'BUILD_SPEC_READ_FAILED', error && error.code === 'ENOENT' ? 'The Package Build spec does not exist.' : 'The Package Build spec could not be read.', { cause: error && error.code ? error.code : 'UNKNOWN' });
+  }
+  if (!stat.isFile()) fail('UNSUPPORTED_BUILD_SPEC', 'Package Build requires a JSON spec file.');
+  if (stat.size > MAX_BUILD_SPEC_BYTES) fail('BUILD_SPEC_TOO_LARGE', `The Package Build spec exceeds the ${MAX_BUILD_SPEC_BYTES}-byte limit.`);
+  let parsed;
+  try { parsed = JSON.parse(fs.readFileSync(absolute, 'utf8')); } catch (error) {
+    fail('INVALID_BUILD_SPEC', 'The Package Build spec is not valid JSON.', { cause: String(error && error.message ? error.message : error) });
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || parsed.schemaVersion !== 1 || !parsed.project || typeof parsed.project !== 'object' || Array.isArray(parsed.project)) {
+    fail('INVALID_BUILD_SPEC', 'Package Build specs require schemaVersion 1 and an inline Live2Pet Project object.');
+  }
+  if (!parsed.inputsByTarget || typeof parsed.inputsByTarget !== 'object' || Array.isArray(parsed.inputsByTarget)) fail('INVALID_BUILD_SPEC', 'Package Build specs require inputsByTarget keyed by Target Profile.');
+  return parsed;
+}
+
+function decodeBuildSpecValue(value, label = 'build spec', depth = 0) {
+  if (depth > 32) fail('INVALID_BUILD_SPEC', `${label} is nested too deeply.`);
+  if (Buffer.isBuffer(value) || value instanceof Uint8Array || ArrayBuffer.isView(value)) return value;
+  if (Array.isArray(value)) return value.map((item, index) => decodeBuildSpecValue(item, `${label}[${index}]`, depth + 1));
+  if (!value || typeof value !== 'object') return value;
+  if (Object.hasOwn(value, 'rgbaBase64')) {
+    if (typeof value.rgbaBase64 !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value.rgbaBase64) || !value.rgbaBase64.length) fail('INVALID_BUILD_SPEC', `${label}.rgbaBase64 must be standard base64.`);
+    const rgba = Buffer.from(value.rgbaBase64, 'base64');
+    if (!rgba.length || rgba.length > MAX_PACKAGE_ENTRY_BYTES) fail('INVALID_BUILD_SPEC', `${label}.rgbaBase64 exceeds the byte limit.`);
+    const decoded = { ...value, rgba };
+    delete decoded.rgbaBase64;
+    return Object.fromEntries(Object.entries(decoded).map(([key, item]) => [key, decodeBuildSpecValue(item, `${label}.${key}`, depth + 1)]));
+  }
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, decodeBuildSpecValue(item, `${label}.${key}`, depth + 1)]));
+}
+
+function buildOptionSubset(source = {}) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+  const allowed = ['render', 'renderPreset', 'quality', 'alphaQuality', 'lossless', 'selection', 'maxBytes'];
+  return Object.fromEntries(allowed.filter((key) => source[key] !== undefined).map((key) => [key, source[key]]));
+}
+
+function summarizeBuild(build) {
+  const packageResult = build.package ? {
+    format: build.package.format,
+    byteLength: build.package.byteLength,
+    files: [...(build.package.files || [])],
+    ...(build.package.artifactName ? { artifactName: build.package.artifactName } : {}),
+  } : null;
+  return {
+    target: build.target,
+    ...(build.targetContractVersion !== undefined ? { targetContractVersion: build.targetContractVersion } : {}),
+    ...(build.themeId ? { themeId: build.themeId } : {}),
+    ...(build.artifactName ? { artifactName: build.artifactName } : {}),
+    manifest: build.manifest,
+    assets: build.assets || [],
+    validation: build.validation || null,
+    encoding: build.encoding || null,
+    provenance: build.provenance || null,
+    preview: build.preview || null,
+    cache: build.cache || null,
+    report: build.report || null,
+    package: packageResult,
+  };
+}
+
+async function executePackageBuild(options, operationId) {
+  const spec = readBuildSpec(options.input);
+  const project = spec.project;
+  const targets = options.target ? [options.target] : (Array.isArray(spec.targets) ? spec.targets : Object.keys(spec.inputsByTarget));
+  if (!targets.length || targets.some((target) => !['clawd', 'codex-pet'].includes(target))) fail('INVALID_BUILD_TARGETS', 'Package Build targets must be clawd and/or codex-pet.');
+  const inputsByTarget = Object.fromEntries(targets.map((target) => [target, decodeBuildSpecValue(spec.inputsByTarget[target] || {}, `inputsByTarget.${target}`)]));
+  const cache = options.cacheDir ? new CacheStore({ rootDir: options.cacheDir }) : null;
+  const sourceFingerprint = project.source && project.source.fingerprint;
+  const cacheContext = {
+    projectId: project.projectId,
+    sourceFingerprint,
+    runtimeVersion: options.runtimeVersion || spec.runtimeVersion,
+    rendererVersion: options.rendererVersion || spec.rendererVersion,
+    encoderVersion: options.encoderVersion || spec.encoderVersion,
+  };
+  const optionsByTarget = Object.fromEntries(targets.map((target) => [target, {
+    ...buildOptionSubset(spec.optionsByTarget && spec.optionsByTarget[target]),
+    package: true,
+    ...(cache ? { cache, cacheContext } : {}),
+  }]));
+  const progressEvents = [];
+  const built = await buildProjectTargets({
+    project,
+    targets,
+    inputsByTarget,
+    metadataByTarget: spec.metadataByTarget || {},
+    optionsByTarget,
+    onProgress: (event) => progressEvents.push(event),
+  });
+  const exported = [];
+  if (options.output) {
+    const outputRoot = path.resolve(options.output);
+    fs.mkdirSync(outputRoot, { recursive: true, mode: 0o700 });
+    for (const target of built.targets) {
+      const build = built.builds[target];
+      if (!build.package || !build.package.buffer) fail('PACKAGE_OUTPUT_MISSING', `${target} did not produce a package archive.`);
+      const artifactName = build.package.artifactName || build.artifactName;
+      const result = await exportPackage({ packageBytes: build.package.buffer, outputPath: path.join(outputRoot, artifactName), overwrite: options.overwrite === true });
+      exported.push({ target, artifactName, byteLength: result.byteLength, sha256: result.sha256, overwritten: result.overwritten, path: '<selected-output>' });
+    }
+  }
+  return envelope('package-build', operationId, {
+    ok: true,
+    progress: progressEvents,
+    warnings: built.warnings || [],
+    result: redactAbsolutePaths({
+      projectId: built.projectId,
+      targets: built.targets,
+      builds: Object.fromEntries(built.targets.map((target) => [target, summarizeBuild(built.builds[target])])),
+      exports: exported,
+    }),
+  });
+}
+
 async function execute(options = {}) {
   const operation = options.operation;
   const operationId = crypto.randomUUID();
@@ -248,6 +382,8 @@ async function execute(options = {}) {
     const result = cache.clear(options.all ? {} : { projectId: options.projectId, sourceFingerprint: options.sourceFingerprint });
     return envelope(operation, operationId, { ok: true, progress: [{ stage: 'cache-clear', status: 'completed' }], warnings: [], result });
   }
+
+  if (operation === 'package-build') return executePackageBuild(options, operationId);
 
   if (operation === 'package-validate') {
     const validation = await validatePackageArchive(options.input, options.target);

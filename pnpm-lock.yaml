@@ -15,6 +15,9 @@ importers:
       '@live2pet/installation':
         specifier: workspace:*
         version: link:../installation
+      '@live2pet/package-build':
+        specifier: workspace:*
+        version: link:../package-build
       '@zip.js/zip.js':
         specifier: 2.7.57
         version: 2.7.57

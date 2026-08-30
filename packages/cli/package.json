@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@zip.js/zip.js": "2.7.57",
-    "@live2pet/installation": "workspace:*"
+    "@live2pet/installation": "workspace:*",
+    "@live2pet/package-build": "workspace:*"
   }
 }

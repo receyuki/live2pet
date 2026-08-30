@@ -34,6 +34,23 @@ function modernFixture() {
   return root;
 }
 
+function clawdBuildSpec(root) {
+  const rgba = Buffer.from([0, 0, 0, 255, 10, 0, 0, 255, 0, 10, 0, 255, 10, 10, 0, 255]).toString('base64');
+  const frames = { frames: [{ width: 2, height: 2, rgbaBase64: rgba }, { width: 2, height: 2, rgbaBase64: rgba }], fps: 10 };
+  return {
+    schemaVersion: 1,
+    project: createProject({
+      projectId: 'cli-build',
+      name: 'CLI build fixture',
+      source: { kind: 'standard-directory', name: 'private-model', fingerprint: 'a'.repeat(64), path: path.join(root, 'private-model') },
+      targets: { clawd: { profile: 'clawd', mappings: { idle: 'motion:idle', thinking: 'motion:thinking', working: 'motion:working', sleeping: 'fallback:idle' }, reactions: {}, options: { sleepMode: 'direct' } } },
+    }),
+    targets: ['clawd'],
+    inputsByTarget: { clawd: { framesByMotion: { idle: frames, thinking: frames, working: frames } } },
+    metadataByTarget: { clawd: { id: 'cli-build', name: 'CLI Build', version: '1.0.0' } },
+  };
+}
+
 test('parses positional and option-form operations', () => {
   assert.deepEqual(parseArgs(['inspect', '--input', '/tmp/model']), { pretty: false, operation: 'inspect', input: '/tmp/model' });
   assert.deepEqual(parseArgs(['--operation', 'version', '--pretty']), { pretty: true, operation: 'version' });
@@ -87,6 +104,25 @@ test('project-validate returns a normalized project without echoing its source p
   assert.equal(response.result.sourcePathConfigured, true);
   assert.equal(Object.hasOwn(response.result.source, 'path'), false);
   assert.equal(output.includes(sourcePath), false);
+});
+
+test('package-build invokes the shared builders and exports versioned artifacts without leaking paths', () => {
+  const root = temporaryDirectory();
+  const specPath = path.join(root, 'build-spec.json');
+  const exportDir = path.join(root, 'exports');
+  fs.writeFileSync(specPath, JSON.stringify(clawdBuildSpec(root)));
+  const output = execFileSync(process.execPath, [CLI, 'package-build', '--input', specPath, '--target', 'clawd', '--output', exportDir], { encoding: 'utf8' });
+  const response = JSON.parse(output);
+  assert.equal(response.ok, true);
+  assert.equal(response.result.targets[0], 'clawd');
+  assert.equal(response.result.builds.clawd.artifactName, 'cli-build-clawd-1.0.0.zip');
+  assert.equal(response.result.builds.clawd.package.artifactName, 'cli-build-clawd-1.0.0.zip');
+  assert.equal(response.result.exports[0].path, '<selected-output>');
+  assert.equal(response.result.builds.clawd.report.cache.enabled, false);
+  assert.ok(response.progress.some((event) => event.target === 'clawd' && event.stage === 'preview' && event.status === 'completed'));
+  assert.ok(response.progress.some((event) => event.target === 'clawd' && event.stage === 'report' && event.status === 'completed'));
+  assert.equal(output.includes(root), false);
+  assert.equal(fs.existsSync(path.join(exportDir, 'cli-build-clawd-1.0.0.zip')), true);
 });
 
 test('project-recover reports a newer autosave without exposing local paths', () => {
