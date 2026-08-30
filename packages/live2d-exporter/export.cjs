@@ -9,6 +9,7 @@ const puppeteer = require('puppeteer');
 function parseArgs(argv) {
   const options = {
     motion: 'idle.motion3.json',
+    runtime: null,
     fps: 30,
     width: 1024,
     height: 1024,
@@ -21,6 +22,7 @@ function parseArgs(argv) {
     if (arg === '--model') options.model = value, i += 1;
     else if (arg === '--output') options.output = value, i += 1;
     else if (arg === '--motion') options.motion = value, i += 1;
+    else if (arg === '--runtime') options.runtime = value, i += 1;
     else if (arg === '--fps') options.fps = Number(value), i += 1;
     else if (arg === '--width') options.width = Number(value), i += 1;
     else if (arg === '--height') options.height = Number(value), i += 1;
@@ -29,7 +31,7 @@ function parseArgs(argv) {
   }
 
   if (!options.model || !options.output) {
-    throw new Error('Usage: export.cjs --model /path/model3.json --output /path/frames [--motion idle.motion3.json]');
+    throw new Error('Usage: export.cjs --model /path/model3.json --output /path/frames [--motion idle.motion3.json] [--runtime /path/live2d.min.js]');
   }
   return options;
 }
@@ -69,7 +71,7 @@ function cubism2MotionDuration(text) {
 
 function viewerHtml(options, motionTarget, cubismVersion) {
   const runtimeScripts = cubismVersion === 2
-    ? `<script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
+    ? `<script src="/runtime/${encodeURIComponent(path.basename(options.runtime))}"></script>
   <script src="/pixi/pixi.min.js"></script>
   <script src="/pixi-live2d/cubism2.min.js"></script>`
     : `<script src="/vendor/live2dcubismcore.min.js"></script>
@@ -146,6 +148,11 @@ async function main() {
   const modelRoot = path.dirname(options.model);
   const modelConfig = JSON.parse(fs.readFileSync(options.model, 'utf8'));
   const cubismVersion = modelConfig.FileReferences ? 4 : 2;
+  if (cubismVersion === 2 && !options.runtime) throw new Error('Cubism 2 export requires an explicit local --runtime path; external CDN runtimes are not used.');
+  if (options.runtime) {
+    options.runtime = path.resolve(options.runtime);
+    if (!fs.existsSync(options.runtime) || !fs.statSync(options.runtime).isFile()) throw new Error(`Runtime file does not exist: ${options.runtime}`);
+  }
   const motionGroups = cubismVersion === 4 ? modelConfig.FileReferences?.Motions || {} : modelConfig.motions || {};
   let motionTarget = null;
   for (const [group, entries] of Object.entries(motionGroups)) {
@@ -172,6 +179,7 @@ async function main() {
     '/pixi-live2d/cubism4.min.js': path.join(toolRoot, 'node_modules/pixi-live2d-display/dist/cubism4.min.js'),
     '/vendor/live2dcubismcore.min.js': path.join(toolRoot, 'vendor/live2dcubismcore.min.js'),
   };
+  if (options.runtime) routes[`/runtime/${encodeURIComponent(path.basename(options.runtime))}`] = options.runtime;
 
   const server = http.createServer((request, response) => {
     try {
