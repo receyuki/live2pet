@@ -20,6 +20,7 @@ const MAX_ENCODE_FRAMES = 4096;
 const PACKAGE_FILES = Object.freeze(['pet.json', 'spritesheet.webp']);
 const CLAWD_PACKAGE_LIMIT = 83_886_080;
 const BUILD_REPORT_SCHEMA_VERSION = 1;
+const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const TARGET_RENDER_PRESETS = Object.freeze({
   clawd: Object.freeze({
     compact: Object.freeze({ width: 512, height: 512, fps: 18, quality: 76, alphaQuality: 100 }),
@@ -64,6 +65,16 @@ function buildProvenance(target, targetContractVersion, render = {}) {
   };
 }
 
+function createArtifactFilename({ packageId, target, version = '1.0.0' } = {}) {
+  const id = String(packageId || '').trim();
+  const targetId = String(target || '').trim();
+  const semver = String(version || '').trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/.test(id)) fail('INVALID_ARTIFACT_NAME', 'Artifact package id must be filename-safe.');
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(targetId)) fail('INVALID_ARTIFACT_NAME', 'Artifact target id must be filename-safe.');
+  if (!SEMVER_PATTERN.test(semver)) fail('INVALID_ARTIFACT_NAME', 'Artifact version must be a semantic version such as 1.0.0.');
+  return `${id}-${targetId}-${semver}.zip`;
+}
+
 function createBuildReport({ build, projectId, source } = {}) {
   if (!build || typeof build !== 'object' || typeof build.target !== 'string') fail('INVALID_BUILD_REPORT', 'A Package Build result with a target is required.');
   const report = {
@@ -79,7 +90,7 @@ function createBuildReport({ build, projectId, source } = {}) {
     } : null,
     output: {
       encoding: build.encoding ? { ...build.encoding } : null,
-      package: build.package ? { format: build.package.format, byteLength: build.package.byteLength, files: [...(build.package.files || [])] } : null,
+      package: build.package ? { format: build.package.format, byteLength: build.package.byteLength, files: [...(build.package.files || [])], ...(build.package.artifactName ? { artifactName: build.package.artifactName } : {}) } : null,
     },
     preview: build.preview ? { target: build.preview.target, source: build.preview.source, ready: build.preview.ready === true } : null,
     warnings: Array.isArray(build.warnings) ? build.warnings.map((warning) => ({ ...warning })) : [],
@@ -387,7 +398,9 @@ function normalizeCodexMetadata(input = {}) {
   const description = typeof input.description === 'string' && input.description.trim()
     ? input.description.trim()
     : `A Codex pet generated locally by Live2Pet from ${displayName}.`;
-  return { id, displayName, description, spritesheetPath: 'spritesheet.webp' };
+  const version = typeof input.version === 'string' && input.version.trim() ? input.version.trim() : '1.0.0';
+  if (!SEMVER_PATTERN.test(version)) fail('INVALID_CODEX_METADATA', 'Codex pet version must be a semantic version such as 1.0.0.');
+  return { id, displayName, description, version, spritesheetPath: 'spritesheet.webp' };
 }
 
 async function createClawdThemeZip({ themeId, manifest, assets, readme, zipModule, maxBytes = CLAWD_PACKAGE_LIMIT } = {}) {
@@ -442,6 +455,7 @@ async function buildClawdTheme(input = {}, options = {}) {
   if (!framesByMotion || typeof framesByMotion !== 'object' || Array.isArray(framesByMotion)) fail('INVALID_CLAWD_FRAME_SET', 'framesByMotion must be an object keyed by Motion id.');
   for (const motionId of motionIds) if (!Object.hasOwn(framesByMotion, motionId)) fail('MISSING_CLAWD_FRAME_SET', `${motionId} is mapped but has no captured frames.`);
   const { themeId, metadata } = normalizeClawdMetadata(input.metadata || {});
+  const artifactName = createArtifactFilename({ packageId: themeId, target: 'clawd', version: metadata.version });
   progress(onProgress, CLAWD_STAGES[0], 'completed', { motions: motionIds.length });
   checkCancelled(signal);
 
@@ -485,6 +499,7 @@ async function buildClawdTheme(input = {}, options = {}) {
   if (options.package === true) {
     progress(onProgress, CLAWD_STAGES[4], 'started');
     packaged = await createClawdThemeZip({ themeId, manifest, assets, readme: input.readme, zipModule: options.zipModule, maxBytes: options.maxBytes ?? CLAWD_PACKAGE_LIMIT });
+    packaged.artifactName = artifactName;
     checkCancelled(signal);
     progress(onProgress, CLAWD_STAGES[4], 'completed', { byteLength: packaged.byteLength });
   }
@@ -493,6 +508,7 @@ async function buildClawdTheme(input = {}, options = {}) {
     target: target.profile,
     targetContractVersion: target.contractVersion,
     themeId,
+    artifactName,
     manifest,
     assets: assetReports,
     warnings: target.warnings || [],
@@ -545,6 +561,7 @@ async function buildCodexPet(input = {}, options = {}) {
   progress(onProgress, STAGES[4], 'started');
   const target = createCodexTarget(mapping);
   const metadata = normalizeCodexMetadata(input.metadata || {});
+  const artifactName = createArtifactFilename({ packageId: metadata.id, target: 'codex-pet', version: metadata.version });
   const manifest = {
     ...metadata,
     schemaVersion: BUILD_CONTRACT_VERSION,
@@ -580,6 +597,7 @@ async function buildCodexPet(input = {}, options = {}) {
   if (packageRequested) {
     progress(onProgress, STAGES[6], 'started');
     packaged = await createCodexPetZip({ manifest, spritesheet: encoded.buffer, zipModule: options.zipModule });
+    packaged.artifactName = artifactName;
     checkCancelled(signal);
     progress(onProgress, STAGES[6], 'completed', { byteLength: packaged.byteLength });
   }
@@ -587,6 +605,7 @@ async function buildCodexPet(input = {}, options = {}) {
   const result = {
     buildContractVersion: BUILD_CONTRACT_VERSION,
     target: target.profile,
+    artifactName,
     manifest,
     atlas,
     selections: selection.selections,
@@ -679,6 +698,7 @@ module.exports = {
   buildCodexPet,
   buildProjectTargets,
   buildProvenance,
+  createArtifactFilename,
   createBuildReport,
   createCodexPetZip,
   createClawdThemeZip,

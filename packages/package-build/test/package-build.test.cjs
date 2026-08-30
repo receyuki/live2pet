@@ -11,6 +11,7 @@ const {
   buildCodexPet,
   buildProjectTargets,
   buildProvenance,
+  createArtifactFilename,
   createBuildReport,
   createClawdThemeZip,
   createClawdPreview,
@@ -97,6 +98,7 @@ test('builds a guide-shaped Clawd theme package from captured Motion frames', as
   const result = await buildClawdTheme({ mapping: clawdMapping(), framesByMotion: clawdFrames(), metadata: { id: 'demo-theme', name: 'Demo Theme', author: 'Test' } }, { package: true, sharpFactory: clawdSharpFactory(), onProgress: (event) => events.push(event) });
   assert.equal(result.target, 'clawd');
   assert.equal(result.themeId, 'demo-theme');
+  assert.equal(result.manifest.version, '1.0.0');
   assert.deepEqual(result.manifest.states.idle, ['demo-theme-idle.webp']);
   assert.deepEqual(result.manifest.states.sleeping, { fallbackTo: 'idle' });
   assert.deepEqual(result.manifest.reactions.drag, { file: 'demo-theme-error.webp' });
@@ -107,6 +109,8 @@ test('builds a guide-shaped Clawd theme package from captured Motion frames', as
   assert.deepEqual(result.provenance.render, { width: 768, height: 768, fps: 24, quality: 82, alphaQuality: 100 });
   assert.equal(result.preview.source, 'generated-assets');
   assert.equal(result.preview.ready, true);
+  assert.equal(result.artifactName, 'demo-theme-clawd-1.0.0.zip');
+  assert.equal(result.package.artifactName, result.artifactName);
   assert.deepEqual(result.preview.states.sleeping.files, ['assets/demo-theme-idle.webp']);
   assert.deepEqual(result.report.validation, { ok: true, errorCount: 0, warningCount: 0 });
   assert.equal(result.report.output.package.byteLength, result.package.byteLength);
@@ -160,6 +164,7 @@ test('builds a deterministic Codex atlas handoff with progress stages', async ()
   const second = await buildCodexPet({ mapping: { mappings: mapping() }, candidatesByRow: candidatesByRow() });
   assert.deepEqual(events.map(({ stage, status }) => `${stage}:${status}`), ['select:started', 'select:completed', 'layout:started', 'layout:completed', 'compose:started', 'compose:completed', 'manifest:started', 'manifest:completed', 'preview:started', 'preview:completed', 'report:started', 'report:completed']);
   assert.equal(first.target, 'codex-pet');
+  assert.equal(first.manifest.version, '1.0.0');
   assert.deepEqual({ id: first.manifest.id, displayName: first.manifest.displayName, description: first.manifest.description, spritesheetPath: first.manifest.spritesheetPath }, {
     id: 'live2pet-codex-pet',
     displayName: 'Live2Pet Codex Pet',
@@ -176,6 +181,7 @@ test('builds a deterministic Codex atlas handoff with progress stages', async ()
   assert.equal(first.preview.source, 'generated-assets');
   assert.equal(first.preview.spritesheet.cellWidth, 192);
   assert.equal(first.preview.rows.find((row) => row.id === 'running-right').frames[0].cell.x, 0);
+  assert.equal(first.artifactName, 'live2pet-codex-pet-codex-pet-1.0.0.zip');
   assert.equal(first.report.output.package, null);
   assert.deepEqual(events.find((event) => event.stage === 'preview' && event.status === 'completed'), {
     stage: 'preview', status: 'completed', ready: true, rows: 9,
@@ -235,6 +241,7 @@ test('can encode and package a Codex atlas when explicitly requested', async () 
   const result = await buildCodexPet({ mapping: { mappings: mapping() }, candidatesByRow: candidatesByRow() }, { package: true, sharpFactory: fakeSharp, onProgress: (event) => events.push(event) });
   assert.equal(result.encoding.status, 'completed');
   assert.equal(result.package.files.join(','), 'pet.json,spritesheet.webp');
+  assert.equal(result.package.artifactName, result.artifactName);
   assert.deepEqual(events.map(({ stage, status }) => `${stage}:${status}`), ['select:started', 'select:completed', 'layout:started', 'layout:completed', 'compose:started', 'compose:completed', 'encode:started', 'encode:completed', 'manifest:started', 'manifest:completed', 'preview:started', 'preview:completed', 'package:started', 'package:completed', 'report:started', 'report:completed']);
   assert.deepEqual(result.manifest.assets.spritesheet, { path: 'spritesheet.webp', format: 'webp', width: 1536, height: 1872, frameCount: 1 });
 });
@@ -403,6 +410,12 @@ test('target Render Preset controls Clawd WebP quality and provenance stays path
   assert.equal(JSON.stringify(result.provenance).includes('/'), false);
   assert.deepEqual(resolveTargetRenderPreset('codex-pet', { preset: 'HIGH' }), { name: 'high', settings: { width: 192, height: 208, samplesPerSecond: 96 } });
   assert.deepEqual(buildProvenance('codex-pet', 1, { preset: 'compact' }).render, { width: 192, height: 208, samplesPerSecond: 32 });
+});
+
+test('artifact filenames carry safe package id, target, and semantic version', () => {
+  assert.equal(createArtifactFilename({ packageId: 'Vicious-Khepri', target: 'clawd', version: '1.2.3-beta.1' }), 'Vicious-Khepri-clawd-1.2.3-beta.1.zip');
+  assert.throws(() => createArtifactFilename({ packageId: '../unsafe', target: 'clawd', version: '1.0.0' }), (error) => error instanceof PackageBuildError && error.code === 'INVALID_ARTIFACT_NAME');
+  assert.throws(() => createArtifactFilename({ packageId: 'safe', target: 'clawd', version: 'v1.0.0' }), (error) => error instanceof PackageBuildError && error.code === 'INVALID_ARTIFACT_NAME');
 });
 
 test('target previews reject malformed generated output and dispatch by target', async () => {
