@@ -5,11 +5,14 @@ const {
   selectCodexFrameSets,
 } = require('../../codex-target/src/index.cjs');
 const { composeCodexAtlasRgba } = require('../../codex-target/src/index.cjs');
+const { createClawdTarget } = require('../../clawd-target/src/index.cjs');
 
 const BUILD_CONTRACT_VERSION = 1;
 const STAGES = Object.freeze(['select', 'layout', 'compose', 'encode', 'manifest', 'package']);
+const CLAWD_STAGES = Object.freeze(['validate', 'encode', 'manifest', 'package']);
 const MAX_ENCODE_FRAMES = 4096;
 const PACKAGE_FILES = Object.freeze(['pet.json', 'spritesheet.webp']);
+const CLAWD_PACKAGE_LIMIT = 83_886_080;
 
 class PackageBuildError extends Error {
   constructor(code, message, details = {}) {
@@ -134,6 +137,185 @@ async function createCodexPetZip({ manifest, spritesheet, zipModule } = {}) {
   }
 }
 
+function safeThemeId(value) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 96);
+  if (!normalized) fail('INVALID_CLAWD_METADATA', 'Clawd theme id must contain at least one safe filename character.');
+  return normalized;
+}
+
+function safeAssetBasename(value) {
+  const normalized = String(value || '').trim();
+  if (!normalized || normalized.includes('/') || normalized.includes('\\') || normalized === '.' || normalized === '..' || normalized.includes('..')) fail('INVALID_CLAWD_ASSET', `Clawd asset filename is not a safe basename: ${value}`);
+  return normalized;
+}
+
+function cloneJsonValue(value, label) {
+  try { return JSON.parse(JSON.stringify(value)); } catch (error) { fail('INVALID_CLAWD_METADATA', `${label} must be JSON-serializable.`, { cause: String(error && error.message ? error.message : error) }); }
+}
+
+function normalizeClawdMetadata(input = {}) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) fail('INVALID_CLAWD_METADATA', 'Clawd theme metadata must be an object.');
+  const name = typeof input.name === 'string' && input.name.trim() ? input.name.trim() : 'Live2Pet Theme';
+  const version = typeof input.version === 'string' && input.version.trim() ? input.version.trim() : '1.0.0';
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) fail('INVALID_CLAWD_METADATA', 'Clawd theme version must be a semantic version such as 1.0.0.');
+  const themeId = safeThemeId(input.id || name);
+  const metadata = {
+    schemaVersion: 1,
+    name,
+    ...(typeof input.author === 'string' && input.author.trim() ? { author: input.author.trim() } : {}),
+    version,
+    description: typeof input.description === 'string' && input.description.trim() ? input.description.trim() : `A Live2Pet theme generated from ${name}.`,
+    customization: { petTint: false },
+    viewBox: { x: 0, y: 0, width: 384, height: 384 },
+    eyeTracking: { enabled: false, states: [] },
+    miniMode: { supported: false },
+  };
+  if (typeof input.license === 'string' && input.license.trim()) metadata.license = input.license.trim();
+  for (const key of ['customization', 'viewBox', 'layout', 'updateBubbleAnchorBox', 'eyeTracking', 'miniMode', 'timings', 'hitBoxes', 'roamFlipAssets', 'idleAnimations', 'idleEasterEggs', 'workingTiers', 'jugglingTiers']) {
+    if (input[key] !== undefined) metadata[key] = cloneJsonValue(input[key], `metadata.${key}`);
+  }
+  return { themeId, metadata };
+}
+
+function collectClawdMotionIds(target) {
+  const ids = [];
+  const seen = new Set();
+  const collect = value => {
+    if (typeof value !== 'string' || !value.startsWith('motion:')) return;
+    const id = value.slice(7);
+    if (!seen.has(id)) { seen.add(id); ids.push(id); }
+  };
+  Object.values(target.states || {}).forEach(collect);
+  Object.values(target.reactions || {}).forEach(collect);
+  return ids;
+}
+
+function normalizeClawdFrameSet(value, motionId) {
+  const frames = Array.isArray(value) ? value : value && Array.isArray(value.frames) ? value.frames : null;
+  if (!frames || !frames.length) fail('INVALID_CLAWD_FRAME_SET', `${motionId} must provide at least one RGBA frame.`);
+  const options = Array.isArray(value) ? {} : value;
+  const delay = options.delay ?? (Number.isFinite(options.fps) && options.fps > 0 ? Math.round(1000 / options.fps) : 100);
+  return { frames, delay, loop: options.loop ?? 0, quality: options.quality ?? 80, alphaQuality: options.alphaQuality ?? 100, lossless: options.lossless ?? false };
+}
+
+function clawdAssetSlug(motionId, used) {
+  const base = String(motionId).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'motion';
+  let slug = base;
+  let suffix = 2;
+  while (used.has(slug)) slug = `${base}-${suffix++}`;
+  used.add(slug);
+  return slug;
+}
+
+function clawdThemeBindings(target, assetsByMotion) {
+  const states = {};
+  for (const [slot, value] of Object.entries(target.states || {})) {
+    if (!value) continue;
+    if (value.startsWith('fallback:')) states[slot] = { fallbackTo: value.slice(9) };
+    else if (value.startsWith('motion:')) states[slot] = [assetsByMotion[value.slice(7)]];
+  }
+  const reactions = {};
+  for (const [slot, value] of Object.entries(target.reactions || {})) if (value && value.startsWith('motion:')) reactions[slot] = { file: assetsByMotion[value.slice(7)] };
+  return { states, reactions };
+}
+
+async function createClawdThemeZip({ themeId, manifest, assets, readme, zipModule, maxBytes = CLAWD_PACKAGE_LIMIT } = {}) {
+  const root = safeThemeId(themeId || manifest && manifest.name);
+  const petJson = Buffer.from(normalizeManifestJson(manifest), 'utf8');
+  const readmeText = typeof readme === 'string' && readme.length ? (readme.endsWith('\n') ? readme : `${readme}\n`) : `# ${manifest.name}\n\nGenerated locally by Live2Pet. Source assets remain on the user's computer.\n`;
+  if (Buffer.byteLength(readmeText, 'utf8') > 2 * 1024 * 1024) fail('INVALID_CLAWD_METADATA', 'Clawd README exceeds the 2 MiB limit.');
+  if (!assets || typeof assets !== 'object' || Array.isArray(assets)) fail('INVALID_CLAWD_ASSET', 'Clawd assets must be an object keyed by safe basenames.');
+  const entries = Object.entries(assets).map(([name, bytes]) => ({ name: safeAssetBasename(name), bytes: normalizeZipBytes(bytes, `Clawd asset ${name}`) }));
+  const names = new Set();
+  for (const entry of entries) {
+    if (names.has(entry.name)) fail('DUPLICATE_CLAWD_ASSET', `Clawd asset is declared more than once: ${entry.name}`);
+    names.add(entry.name);
+    if (!entry.name.toLowerCase().endsWith('.webp')) fail('INVALID_CLAWD_ASSET', `Clawd asset must be WebP output: ${entry.name}`);
+    if (!entry.bytes.length) fail('INVALID_CLAWD_ASSET', `Clawd asset cannot be empty: ${entry.name}`);
+  }
+  const zip = resolveZip(zipModule);
+  const required = ['ZipWriter', 'Uint8ArrayWriter', 'Uint8ArrayReader'];
+  if (required.some((name) => typeof zip[name] !== 'function')) fail('ZIP_BUILDER_UNAVAILABLE', 'The zip.js package builder is missing a required writer API.');
+  entries.sort((left, right) => left.name.localeCompare(right.name));
+  try {
+    const writer = new zip.ZipWriter(new zip.Uint8ArrayWriter('application/zip'));
+    const files = [`${root}/theme.json`, `${root}/README.md`, ...entries.map(entry => `${root}/assets/${entry.name}`)];
+    await writer.add(`${root}/theme.json`, new zip.Uint8ArrayReader(petJson));
+    await writer.add(`${root}/README.md`, new zip.Uint8ArrayReader(Buffer.from(readmeText, 'utf8')));
+    for (const entry of entries) await writer.add(`${root}/assets/${entry.name}`, new zip.Uint8ArrayReader(entry.bytes));
+    const data = await writer.close();
+    const buffer = normalizeZipBytes(data, 'ZIP output');
+    if (!buffer.length) fail('ZIP_BUILDER_INVALID_OUTPUT', 'The ZIP builder returned an empty archive.');
+    if (buffer.byteLength > maxBytes) {
+      const largestAssets = entries.slice().sort((left, right) => right.bytes.byteLength - left.bytes.byteLength).slice(0, 5).map(entry => ({ name: entry.name, byteLength: entry.bytes.byteLength }));
+      fail('CLAWD_PACKAGE_TOO_LARGE', `Clawd theme ZIP is ${buffer.byteLength} bytes; the maximum is ${maxBytes}.`, { byteLength: buffer.byteLength, maxBytes, largestAssets });
+    }
+    return { format: 'zip', buffer, files, themeId: root, byteLength: buffer.byteLength };
+  } catch (error) {
+    if (error instanceof PackageBuildError) throw error;
+    fail('ZIP_BUILDER_FAILED', `The zip.js package builder failed: ${error && error.message ? error.message : error}`);
+  }
+}
+
+async function buildClawdTheme(input = {}, options = {}) {
+  const mapping = input.mapping || input;
+  const framesByMotion = input.framesByMotion || input.frames;
+  const signal = options.signal || input.signal;
+  const onProgress = options.onProgress || input.onProgress;
+  checkCancelled(signal);
+  progress(onProgress, CLAWD_STAGES[0], 'started');
+  const target = createClawdTarget(mapping);
+  const motionIds = collectClawdMotionIds(target);
+  if (!framesByMotion || typeof framesByMotion !== 'object' || Array.isArray(framesByMotion)) fail('INVALID_CLAWD_FRAME_SET', 'framesByMotion must be an object keyed by Motion id.');
+  for (const motionId of motionIds) if (!Object.hasOwn(framesByMotion, motionId)) fail('MISSING_CLAWD_FRAME_SET', `${motionId} is mapped but has no captured frames.`);
+  const { themeId, metadata } = normalizeClawdMetadata(input.metadata || {});
+  progress(onProgress, CLAWD_STAGES[0], 'completed', { motions: motionIds.length });
+  checkCancelled(signal);
+
+  progress(onProgress, CLAWD_STAGES[1], 'started', { motions: motionIds.length });
+  const assetsByMotion = {};
+  const assets = {};
+  const assetReports = [];
+  const usedSlugs = new Set();
+  for (const motionId of motionIds) {
+    checkCancelled(signal);
+    const frameSet = normalizeClawdFrameSet(framesByMotion[motionId], motionId);
+    const firstFrame = frameSet.frames[0];
+    const encoded = await encodeAnimatedWebp({ ...frameSet, width: firstFrame && firstFrame.width, height: firstFrame && firstFrame.height }, { sharpFactory: options.sharpFactory });
+    const assetName = `${themeId}-${clawdAssetSlug(motionId, usedSlugs)}.webp`;
+    assetsByMotion[motionId] = assetName;
+    assets[assetName] = encoded.buffer;
+    assetReports.push({ motionId, file: assetName, frameCount: encoded.frameCount, width: encoded.width, height: encoded.height, byteLength: encoded.buffer.byteLength, delays: encoded.delays });
+  }
+  progress(onProgress, CLAWD_STAGES[1], 'completed', { assets: assetReports.length });
+  checkCancelled(signal);
+
+  progress(onProgress, CLAWD_STAGES[2], 'started');
+  const bindings = clawdThemeBindings(target, assetsByMotion);
+  const manifest = { ...metadata, states: bindings.states, sleepSequence: { mode: target.sleepSequence.mode }, reactions: bindings.reactions };
+  progress(onProgress, CLAWD_STAGES[2], 'completed', { states: Object.keys(bindings.states).length, reactions: Object.keys(bindings.reactions).length });
+  checkCancelled(signal);
+
+  let packaged = null;
+  if (options.package === true) {
+    progress(onProgress, CLAWD_STAGES[3], 'started');
+    packaged = await createClawdThemeZip({ themeId, manifest, assets, readme: input.readme, zipModule: options.zipModule, maxBytes: options.maxBytes ?? CLAWD_PACKAGE_LIMIT });
+    checkCancelled(signal);
+    progress(onProgress, CLAWD_STAGES[3], 'completed', { byteLength: packaged.byteLength });
+  }
+  return {
+    buildContractVersion: BUILD_CONTRACT_VERSION,
+    target: target.profile,
+    targetContractVersion: target.contractVersion,
+    themeId,
+    manifest,
+    assets: assetReports,
+    warnings: target.warnings || [],
+    encoding: { required: 'webp', status: 'completed', assetCount: assetReports.length },
+    package: packaged,
+  };
+}
+
 async function buildCodexPet(input = {}, options = {}) {
   const mapping = input.mapping || input;
   const candidatesByRow = input.candidatesByRow || input.candidates;
@@ -209,10 +391,14 @@ async function buildCodexPet(input = {}, options = {}) {
 
 module.exports = {
   BUILD_CONTRACT_VERSION,
+  CLAWD_PACKAGE_LIMIT,
+  CLAWD_STAGES,
   MAX_ENCODE_FRAMES,
   PackageBuildError,
   STAGES,
+  buildClawdTheme,
   buildCodexPet,
   createCodexPetZip,
+  createClawdThemeZip,
   encodeAnimatedWebp,
 };

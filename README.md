@@ -12,7 +12,7 @@ Live2Pet is an early-stage local toolchain for loading Cubism models, previewing
 - `packages/runtime/` — user-provided Cubism runtime discovery, bounded validation, redacted diagnosis, and restart-required settings metadata.
 - `packages/renderer/` — versioned playback/capture contract, deterministic motion candidate sampling, and copyright-safe synthetic renderer for CI.
 - `packages/frame-selection/` — deterministic motion-aware candidate deduplication and ordered frame selection for target atlases.
-- `packages/package-build/` — cancellable Codex Pet build orchestration from candidates through RGBA atlas composition, Sharp WebP encoding, deterministic manifest generation, and zip.js package creation.
+- `packages/package-build/` — cancellable Codex Pet atlas builds and guide-shaped Clawd theme builds, including RGBA composition, Sharp WebP encoding, deterministic manifests, size limits, and zip.js package creation.
 - `packages/clawd-target/` — guide-aligned Clawd Target Profile validation for states, sleep modes, fallbacks, and reactions.
 - `packages/codex-target/` — Codex Pet V1 atlas geometry, nine-row mapping, frame-reference layout planning, RGBA composition, and package-shape validation.
 - `packages/live2d-exporter/` — deterministic transparent-frame exporter and Destiny Child PCK unpacker.
@@ -34,7 +34,7 @@ Live2Pet does not grant rights to any imported model, texture, motion, or derive
 
 ## Development status
 
-The mapper and exporter are functional prototypes. Source inspection now has a versioned normalized-manifest seam shared by the CLI and browser mapper, covering standard Cubism model directories and the tested uncompressed, unencrypted Destiny Child Cubism 2 PCK layout. Runtime setup, deterministic motion-aware frame selection, target validation, and a Codex RGBA → Sharp WebP → zip.js package-build seam are captured as reusable packages; official renderer adapters, sandboxed hosting, target-specific validators, and the distributable App remain subsequent work packages.
+The mapper and exporter are functional prototypes. Source inspection now has a versioned normalized-manifest seam shared by the CLI and browser mapper, covering standard Cubism model directories and the tested uncompressed, unencrypted Destiny Child Cubism 2 PCK layout. Runtime setup, deterministic motion-aware frame selection, target validation, Codex atlas packaging, and guide-shaped Clawd theme packaging are captured as reusable packages; official renderer adapters, sandboxed hosting, target-specific validators, target-preview integration, and the distributable App remain subsequent work packages.
 
 ## Local verification
 

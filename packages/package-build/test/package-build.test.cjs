@@ -3,8 +3,11 @@ const crypto = require('node:crypto');
 const test = require('node:test');
 
 const {
+  CLAWD_PACKAGE_LIMIT,
   PackageBuildError,
+  buildClawdTheme,
   buildCodexPet,
+  createClawdThemeZip,
   createCodexPetZip,
   encodeAnimatedWebp,
 } = require('../src/index.cjs');
@@ -32,6 +35,94 @@ function candidatesByRow() {
     return { id: `${row}-${index}`, index, time: index / 10, visualChange: index ? 0.2 : 0, width: 192, height: 208, rgba };
   })]));
 }
+
+function clawdMapping() {
+  return {
+    sleepMode: 'direct',
+    states: {
+      idle: 'motion:idle',
+      thinking: 'motion:thinking',
+      working: 'motion:working',
+      sleeping: 'fallback:idle',
+      error: 'motion:error',
+      attention: 'motion:attention',
+    },
+    reactions: { drag: 'motion:error' },
+  };
+}
+
+function clawdFrames() {
+  return Object.fromEntries(['idle', 'thinking', 'working', 'error', 'attention'].map((motionId, motionIndex) => [motionId, {
+    frames: [0, 1].map((index) => ({
+      width: 2,
+      height: 2,
+      rgba: Uint8Array.from([motionIndex, index, 0, 255, motionIndex, index, 1, 255, motionIndex, index, 2, 255, motionIndex, index, 3, 255]),
+    })),
+    fps: 10,
+  }]));
+}
+
+function clawdSharpFactory() {
+  let count = 0;
+  return (input, options) => ({
+    webp(webpOptions) {
+      assert.equal(options.animated, true);
+      assert.deepEqual(options.raw, { width: 2, height: 4, channels: 4, pageHeight: 2 });
+      assert.equal(input.length, 32);
+      assert.deepEqual(webpOptions, { quality: 80, alphaQuality: 100, lossless: false, loop: 0, delay: [100, 100] });
+      count += 1;
+      return { toBuffer: async () => ({ data: Buffer.from(`RIFF-clawd-${count}`), info: { width: 2, height: 2, pages: 2 } }) };
+    },
+  });
+}
+
+test('builds a guide-shaped Clawd theme package from captured Motion frames', async () => {
+  const events = [];
+  const result = await buildClawdTheme({ mapping: clawdMapping(), framesByMotion: clawdFrames(), metadata: { id: 'demo-theme', name: 'Demo Theme', author: 'Test' } }, { package: true, sharpFactory: clawdSharpFactory(), onProgress: (event) => events.push(event) });
+  assert.equal(result.target, 'clawd');
+  assert.equal(result.themeId, 'demo-theme');
+  assert.deepEqual(result.manifest.states.idle, ['demo-theme-idle.webp']);
+  assert.deepEqual(result.manifest.states.sleeping, { fallbackTo: 'idle' });
+  assert.deepEqual(result.manifest.reactions.drag, { file: 'demo-theme-error.webp' });
+  assert.equal(result.assets.length, 5);
+  assert.equal(result.encoding.assetCount, 5);
+  assert.deepEqual(events.map(({ stage, status }) => `${stage}:${status}`), ['validate:started', 'validate:completed', 'encode:started', 'encode:completed', 'manifest:started', 'manifest:completed', 'package:started', 'package:completed']);
+  const zip = require('@zip.js/zip.js');
+  const reader = new zip.ZipReader(new zip.Uint8ArrayReader(result.package.buffer));
+  const entries = await reader.getEntries();
+  assert.deepEqual(entries.map((entry) => entry.filename), [
+    'demo-theme/theme.json',
+    'demo-theme/README.md',
+    'demo-theme/assets/demo-theme-attention.webp',
+    'demo-theme/assets/demo-theme-error.webp',
+    'demo-theme/assets/demo-theme-idle.webp',
+    'demo-theme/assets/demo-theme-thinking.webp',
+    'demo-theme/assets/demo-theme-working.webp',
+  ]);
+  await reader.close();
+});
+
+test('rejects missing Clawd captures and oversized theme archives', async () => {
+  const frames = clawdFrames();
+  delete frames.error;
+  await assert.rejects(
+    () => buildClawdTheme({ mapping: clawdMapping(), framesByMotion: frames }, { sharpFactory: clawdSharpFactory() }),
+    (error) => error instanceof PackageBuildError && error.code === 'MISSING_CLAWD_FRAME_SET',
+  );
+  const oversizedZip = {
+    ZipWriter: class {
+      async add() {}
+      async close() { return new Uint8Array(11); }
+    },
+    Uint8ArrayWriter: class {},
+    Uint8ArrayReader: class { constructor(value) { this.value = value; } },
+  };
+  await assert.rejects(
+    () => createClawdThemeZip({ themeId: 'demo-theme', manifest: { name: 'Demo Theme' }, assets: { 'demo.webp': Uint8Array.from([1]) }, zipModule: oversizedZip, maxBytes: 10 }),
+    (error) => error instanceof PackageBuildError && error.code === 'CLAWD_PACKAGE_TOO_LARGE' && error.details.maxBytes === 10,
+  );
+  assert.equal(CLAWD_PACKAGE_LIMIT, 83886080);
+});
 
 test('builds a deterministic Codex atlas handoff with progress stages', async () => {
   const events = [];
