@@ -1,32 +1,41 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Live2Clawd Mapper</title>
+  <title>Live2Pet Mapper</title>
   <style>
     :root {
       color-scheme: dark;
-      --bg: #07111f;
-      --panel: #101d30;
-      --panel2: #0c1829;
-      --line: #294362;
-      --text: #edf5ff;
-      --muted: #9db2cc;
-      --accent: #77aaff;
-      --good: #6fd4ad;
-      --warn: #f0c878;
-      --bad: #ff8f9d;
+      --color-background: #0f172a;
+      --color-primary: #1e293b;
+      --color-secondary: #334155;
+      --color-muted: #272f42;
+      --color-border: #475569;
+      --color-foreground: #f8fafc;
+      --color-accent: #22c55e;
+      --color-destructive: #ef4444;
+      --bg: var(--color-background);
+      --panel: #111c31;
+      --panel2: #17243b;
+      --line: var(--color-border);
+      --text: var(--color-foreground);
+      --muted: #b5c1d3;
+      --accent: #62dc8b;
+      --good: #8ee5ae;
+      --warn: #f6cf75;
+      --bad: #ff9ca8;
     }
     * { box-sizing: border-box; }
-    body { margin: 0; min-width: 1100px; background: var(--bg); color: var(--text); font: 14px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; min-width: 0; background: var(--bg); color: var(--text); font: 14px/1.5 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     button, select, input { font: inherit; }
     button, select, input[type="text"] { color: var(--text); background: #0a1728; border: 1px solid var(--line); border-radius: 9px; }
-    button { cursor: pointer; padding: 8px 12px; }
+    button { cursor: pointer; min-height: 44px; padding: 8px 14px; transition: border-color 200ms ease, background 200ms ease, opacity 200ms ease; }
     button:hover, button.active { border-color: var(--accent); background: #183a64; }
+    button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid rgba(98,220,139,.55); outline-offset: 2px; }
     button.primary { background: #235da9; border-color: #4381d4; }
     button:disabled { opacity: .45; cursor: not-allowed; }
-    select, input[type="text"] { width: 100%; min-height: 36px; padding: 6px 9px; }
+    select, input[type="text"] { width: 100%; min-height: 44px; padding: 8px 10px; }
     a { color: #b8d4ff; }
     code { color: #bdd7ff; }
     .shell { width: min(1540px, calc(100% - 44px)); margin: 0 auto; padding: 30px 0 58px; }
@@ -42,6 +51,11 @@
     .question { margin: 18px 0; padding: 14px 17px; color: var(--muted); }
     .question strong { color: var(--text); }
     .loadbar { display: flex; gap: 10px; align-items: center; margin-bottom: 18px; }
+    .projectbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 18px; align-items: center; margin-bottom: 18px; padding: 14px 17px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+    .project-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+    .project-status { grid-column: 1 / -1; min-height: 22px; color: var(--muted); }
+    .project-status.good { color: var(--good); }
+    .project-status.bad { color: var(--bad); }
     .hidden { display: none !important; }
     .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 18px; }
     .metric { padding: 11px 13px; background: var(--panel2); border: 1px solid var(--line); border-radius: 11px; }
@@ -50,7 +64,10 @@
     .good { color: var(--good); }
     .warn { color: var(--warn); }
     .bad { color: var(--bad); }
-    .workspace { display: grid; grid-template-columns: minmax(440px, .9fr) minmax(620px, 1.25fr); gap: 18px; align-items: start; }
+    .workspace { display: grid; grid-template-columns: minmax(250px, .72fr) minmax(400px, 1.25fr) minmax(360px, 1fr); gap: 18px; align-items: start; }
+    .workspace > .panel { min-width: 0; }
+    .library-panel, .preview-panel, .mapping-panel { min-height: 620px; }
+    .library-panel, .mapping-panel { overflow: hidden; }
     .panel { padding: 17px; }
     .panel-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 12px; }
     .stage {
@@ -70,7 +87,7 @@
     .stage-message { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 40px; color: #344963; background: rgba(245,249,255,.75); }
     .now { margin: 10px 0 13px; padding: 10px 12px; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; }
     .now strong { display: block; font-size: 16px; }
-    .quick-map { display: grid; grid-template-columns: 1fr 160px; gap: 8px; margin-bottom: 13px; }
+    .quick-map { display: grid; grid-template-columns: 1fr 160px; gap: 8px; align-items: end; margin-bottom: 13px; }
     .motion-list, .expression-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; max-height: 430px; overflow: auto; padding-right: 4px; }
     .expression-list { max-height: 210px; margin-top: 7px; }
     .motion, .expression { text-align: left; padding: 9px 10px; }
@@ -79,26 +96,108 @@
     .controls { display: flex; gap: 8px; margin-bottom: 12px; }
     .mapping-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
     label.field { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
-    table { width: 100%; border-collapse: collapse; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     th, td { border-top: 1px solid var(--line); padding: 8px 7px; text-align: left; vertical-align: middle; }
     th { color: var(--muted); font-size: 11px; }
-    td.key { width: 118px; }
-    td.meaning { width: 190px; color: var(--muted); font-size: 12px; }
+    td.key { width: 112px; }
+    .key-meaning { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.35; }
     .required { color: var(--warn); font-size: 10px; margin-left: 4px; }
     .group { margin-top: 17px; }
     .group-title { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+    .mapping-selection { display: grid; gap: 3px; margin-bottom: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #0b1b31; }
+    .mapping-selection.ready { border-color: #4381d4; background: linear-gradient(135deg, #102b4b, #0b1b31); }
+    .mapping-selection .selection-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+    .mapping-selection strong { overflow-wrap: anywhere; font-size: 15px; }
+    .mapping-selection .selection-meta { color: var(--muted); overflow-wrap: anywhere; }
+    .mapping-assignment { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; align-items: start; min-width: 0; }
+    .mapping-current { min-width: 0; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; background: #0b1628; }
+    .mapping-current strong { display: block; overflow-wrap: anywhere; }
+    .mapping-current strong { font-size: 12px; }
+    .mapping-current strong.unmapped { color: var(--muted); font-weight: 500; }
+    .mapping-current span { display: none; }
+    .mapping-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+    .mapping-actions button { min-height: 44px; padding: 7px 8px; font-size: 11px; white-space: nowrap; }
+    .mapping-actions .assign { border-color: #4381d4; background: #173662; }
+    .mapping-actions .clear { background: transparent; }
+    .fallback-field { display: grid; grid-column: 1 / -1; gap: 4px; color: var(--muted); font-size: 11px; }
+    .fallback-field select { min-height: 44px; padding: 7px 8px; }
     .validation { display: grid; gap: 6px; margin-top: 15px; }
     .validation div { padding: 7px 10px; border-left: 3px solid var(--line); background: #091525; color: var(--muted); }
     .validation .error { border-color: var(--bad); color: #ffd2d8; }
     .validation .warning { border-color: var(--warn); color: #f7deb0; }
     .validation .ok { border-color: var(--good); color: #bdf0dc; }
+    .target-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+    .target-section summary { cursor: pointer; color: var(--text); font-weight: 650; }
+    .target-section summary::marker { color: var(--accent); }
+    .target-copy { margin: 8px 0 10px; color: var(--muted); font-size: 12px; }
+    .codex-map { display: grid; gap: 6px; }
+    .codex-row { display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; gap: 7px; align-items: center; padding: 7px 8px; background: #0b1628; border: 1px solid var(--line); border-radius: 8px; }
+    .codex-row code { font-size: 11px; }
+    .codex-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+    .codex-row strong.unmapped { color: var(--muted); font-weight: 500; }
+    .codex-row button { min-height: 34px; padding: 5px 8px; font-size: 11px; }
     .walkthrough { margin-top: 18px; }
     .tabs, .steps { display: flex; flex-wrap: wrap; gap: 7px; }
     .scenario { margin-top: 12px; display: grid; gap: 10px; }
     .step.done { color: var(--good); border-color: #3e735f; }
     .output { margin-top: 18px; }
     .output-actions { display: flex; gap: 8px; }
+    .build-panel { margin-top: 18px; }
+    .build-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .build-status { min-height: 22px; margin-top: 10px; color: var(--muted); }
+    .build-status.good { color: var(--good); }
+    .build-status.bad { color: var(--bad); }
+    .build-status.busy { color: var(--warn); }
     pre { max-height: 430px; overflow: auto; padding: 13px; margin: 10px 0 0; background: #06101c; border: 1px solid var(--line); border-radius: 10px; color: #cfe1ff; font: 12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+    .inspection-panel { margin-bottom: 18px; }
+    .inspection-status { min-height: 28px; max-width: 60ch; color: var(--muted); }
+    .inspection-status.good { color: var(--good); }
+    .inspection-status.bad { color: var(--bad); }
+    .inspection-summary { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 14px 0 16px; }
+    .inspection-card { min-width: 0; padding: 13px; background: var(--panel2); border: 1px solid var(--line); border-radius: 11px; }
+    .inspection-card dt { color: var(--muted); font-size: 12px; }
+    .inspection-card dd { margin: 3px 0 0; font-size: 16px; font-weight: 650; overflow-wrap: anywhere; }
+    .inspection-grid { display: grid; grid-template-columns: minmax(260px, .75fr) minmax(480px, 1.25fr); gap: 14px; }
+    .inspection-subpanel { padding: 14px; background: #0b1628; border: 1px solid var(--line); border-radius: 11px; }
+    .inspection-subpanel h3 { margin-bottom: 10px; }
+    .inspection-details { display: grid; grid-template-columns: max-content 1fr; gap: 7px 14px; margin: 0; }
+    .inspection-details dt { color: var(--muted); }
+    .inspection-details dd { margin: 0; overflow-wrap: anywhere; }
+    .resource-list { display: grid; gap: 7px; max-height: 260px; overflow: auto; padding-right: 4px; }
+    .resource-row { display: grid; grid-template-columns: 84px 1fr auto; gap: 9px; align-items: center; padding: 8px 10px; background: #101e33; border-radius: 8px; }
+    .resource-kind { color: var(--muted); font-size: 12px; }
+    .resource-path { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .resource-state { font-size: 12px; }
+    .resource-state.present { color: var(--good); }
+    .resource-state.missing { color: var(--bad); }
+    .inspection-warnings { display: grid; gap: 7px; margin-top: 12px; }
+    .inspection-warning { padding: 8px 10px; border-left: 3px solid var(--warn); background: #211d12; color: #f8df9e; }
+    .empty-state { padding: 16px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); }
+    @media (max-width: 1100px) {
+      .workspace, .inspection-grid { grid-template-columns: 1fr; }
+      .inspection-summary { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 680px) {
+      .shell { width: min(100% - 24px, 1540px); padding-top: 20px; }
+      .top { display: grid; }
+      h1 { font-size: 25px; }
+      .loadbar { align-items: stretch; flex-direction: column; }
+      .projectbar { grid-template-columns: 1fr; }
+      .project-actions { justify-content: flex-start; }
+      .project-status { grid-column: auto; }
+      .metrics, .inspection-summary { grid-template-columns: repeat(2, 1fr); }
+      .motion-list, .expression-list { grid-template-columns: 1fr; }
+      .resource-row { grid-template-columns: 1fr auto; }
+      .resource-kind { grid-column: 1 / -1; }
+      .quick-map { grid-template-columns: 1fr; align-items: stretch; }
+      .codex-row { grid-template-columns: 1fr auto; }
+      .codex-row strong { grid-column: 1 / -1; }
+      table { table-layout: auto; }
+      td.key { width: auto; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+    }
     footer { margin-top: 16px; color: var(--muted); font-size: 12px; }
   </style>
 </head>
@@ -106,132 +205,212 @@
   <main class="shell">
     <header class="top">
       <div>
-        <div class="eyebrow">Live2Clawd Motion Mapper</div>
-        <h1>直接播放 Live2D，再选择 Clawd 对应关系</h1>
-        <p class="muted">选择模型文件夹或 Destiny Child PCK 后，页面直接加载 Cubism 2/3/4 模型与原始动作；无需先转换 WebP。</p>
+        <div class="eyebrow">Live2Pet Source Inspector</div>
+        <h1>Inspect a Live2D Source Package</h1>
+        <p class="muted">Choose a standard Cubism directory or a supported Destiny Child PCK to inspect its model, Motions, Expressions, and referenced resources locally.</p>
       </div>
-      <div class="badge">PROTOTYPE · 只在内存中运行</div>
+      <div class="badge">ALPHA · LOCAL ONLY</div>
     </header>
 
-    <section class="question"><strong>本原型回答的问题：</strong>先看到 Live2D 原始动作，是否能比看已经命名好的 WebP 更可靠地决定 <code>attention</code>、<code>notification</code>、<code>error</code> 等 Clawd 状态映射？</section>
+    <section class="question"><strong>Current seam:</strong> inspection is complete before preview or mapping. Unsupported or incomplete input is reported with a recovery path instead of being treated as a valid Source Package.</section>
 
     <section class="loadbar">
-      <button id="chooseFolder" class="primary">选择 Live2D 模型文件夹</button>
+      <button id="chooseFolder" class="primary">Choose Source Package directory</button>
       <input id="folderInput" class="hidden" type="file" webkitdirectory multiple>
-      <button id="choosePck">选择 Destiny Child PCK</button>
+      <button id="choosePck">Choose Destiny Child PCK</button>
       <input id="pckInput" class="hidden" type="file" accept=".pck,application/octet-stream">
-      <span id="loadHint" class="muted">支持 <code>.pck</code>、<code>.model3.json</code> 或 Cubism 2 <code>model.json</code></span>
+      <span id="loadHint" class="muted" aria-live="polite">Supports .pck, .model3.json, or Cubism 2 model.json</span>
+    </section>
+
+    <section class="projectbar" aria-labelledby="projectHeading">
+      <div>
+        <div class="eyebrow">Live2Pet Project</div>
+        <h2 id="projectHeading">Save your mapping</h2>
+        <p class="muted">Projects keep source references and Motion Mappings, never model bytes or runtime files.</p>
+      </div>
+      <div class="project-actions">
+        <button id="openProject">Open .live2pet</button>
+        <input id="projectInput" class="hidden" type="file" accept=".live2pet,application/json">
+        <button id="saveProject" class="primary" disabled>Save .live2pet</button>
+      </div>
+      <div id="projectStatus" class="project-status" role="status" aria-live="polite">No project loaded.</div>
+    </section>
+
+    <section class="panel inspection-panel" aria-labelledby="inspectionHeading">
+      <div class="panel-head">
+        <div><div class="eyebrow">Source Package</div><h2 id="inspectionHeading">Inspection summary</h2></div>
+        <div id="inspectionStatus" class="inspection-status" role="status" aria-live="polite">Waiting for a local Source Package.</div>
+      </div>
+      <div id="inspectionEmpty" class="empty-state">Choose a directory or PCK to see the normalized manifest. No model files leave this browser session.</div>
+      <div id="inspectionContent" class="hidden">
+        <dl id="inspectionSummary" class="inspection-summary"></dl>
+        <div class="inspection-grid">
+          <section class="inspection-subpanel" aria-labelledby="modelDetailsHeading">
+            <h3 id="modelDetailsHeading">Model configuration</h3>
+            <dl id="inspectionModel" class="inspection-details"></dl>
+          </section>
+          <section class="inspection-subpanel" aria-labelledby="resourceDetailsHeading">
+            <h3 id="resourceDetailsHeading">Referenced resources</h3>
+            <div id="inspectionResources" class="resource-list"></div>
+          </section>
+        </div>
+        <div id="inspectionWarnings" class="inspection-warnings" aria-live="polite"></div>
+      </div>
     </section>
 
     <section id="metrics" class="metrics"></section>
 
     <div class="workspace">
-      <section class="panel">
-        <div class="panel-head"><div><h2>Live2D 实时播放器</h2><p class="muted">点击动作后由 Cubism 直接播放一次</p></div></div>
-        <div id="stage" class="stage">
-          <canvas id="live2dCanvas"></canvas>
-          <div id="stageMessage" class="stage-message">选择模型文件夹后开始</div>
-        </div>
-        <div id="nowPlaying" class="now"><strong>尚未载入</strong><span class="muted">—</span></div>
-        <div class="controls">
-          <button id="replay" disabled>重播当前动作</button>
-          <button id="playIdle" disabled>回到 idle</button>
-        </div>
-        <div class="quick-map">
-          <select id="quickState"></select>
-          <button id="assignCurrent" disabled>把当前动作分配给它</button>
-        </div>
-        <div class="group-title"><h3>自由播放全部 Motion</h3><span id="motionCount" class="muted">0 个</span></div>
+      <section class="panel library-panel">
+        <div class="panel-head"><div><div class="eyebrow">Source library</div><h2>Motion library</h2><p class="muted">Select a Motion or Expression to preview it in the center.</p></div></div>
+        <div class="group-title"><h3>Browse Motions</h3><span id="motionCount" class="muted">0</span></div>
         <div id="motionList" class="motion-list"></div>
-        <div class="group-title group"><h3>预览 Expressions</h3><span id="expressionCount" class="muted">0 个</span></div>
-        <div class="controls"><button id="resetExpression" disabled>恢复默认表情</button></div>
+        <div class="group-title group"><h3>Browse Expressions</h3><span id="expressionCount" class="muted">0</span></div>
+        <div class="controls"><button id="resetExpression" disabled>Reset Expression</button></div>
         <div id="expressionList" class="expression-list"></div>
       </section>
 
-      <section class="panel">
-        <div class="panel-head"><div><h2>Clawd 映射</h2><p class="muted">只列出 guide-theme-creation 当前定义的状态</p></div></div>
+      <section class="panel preview-panel">
+        <div class="panel-head"><div><div class="eyebrow">Source preview</div><h2>Live2D preview</h2><p class="muted">Preview the selected source Motion before mapping it.</p></div></div>
+        <div id="stage" class="stage">
+          <canvas id="live2dCanvas"></canvas>
+          <div id="stageMessage" class="stage-message">Choose a Source Package to begin.</div>
+        </div>
+        <div id="nowPlaying" class="now"><strong>No Motion selected</strong><span class="muted">—</span></div>
+        <div class="controls">
+          <button id="replay" disabled>Replay selected Motion</button>
+          <button id="playIdle" disabled>Play idle</button>
+        </div>
+        <div class="quick-map">
+          <label class="field">Quick target state
+            <select id="quickState" aria-label="Quick target state"></select>
+          </label>
+          <button id="assignCurrent" disabled>Assign selected Motion</button>
+        </div>
+      </section>
+
+      <section class="panel mapping-panel">
+        <div class="panel-head"><div><div class="eyebrow">Target profile</div><h2>Clawd mapping</h2><p class="muted">Assign the selected Motion to guide-defined behavior slots.</p></div></div>
         <div class="mapping-controls">
-          <label class="field">睡眠序列
+          <label class="field">Sleep sequence
             <select id="sleepMode"><option value="direct">direct</option><option value="full">full</option></select>
           </label>
-          <label class="field">输出文件前缀
-            <input id="outputPrefix" type="text" value="saint-louis">
+          <label class="field">Output file prefix
+            <input id="outputPrefix" type="text" value="live2pet">
           </label>
         </div>
+        <div id="mappingSelection" class="mapping-selection" aria-live="polite"></div>
         <div id="mappingTables"></div>
         <div id="validation" class="validation"></div>
+        <details class="target-section">
+          <summary>Codex Pet mapping</summary>
+          <p class="target-copy">Codex uses its own nine-row atlas contract. Select a source Motion in the left library, then assign it directly to each row.</p>
+          <div id="codexMapping" class="codex-map"></div>
+        </details>
       </section>
     </div>
 
     <section class="panel walkthrough">
-      <div class="panel-head"><div><h2>引导式判断</h2><p class="muted">从空映射开始，边播放边建立对应关系</p></div></div>
+      <div class="panel-head"><div><h2>Guided mapping</h2><p class="muted">Start with an empty mapping and confirm each relationship after preview.</p></div></div>
       <div id="scenarioTabs" class="tabs"></div>
       <div id="scenario" class="scenario"></div>
     </section>
 
     <section class="panel output">
       <div class="panel-head">
-        <div><h2>转换与映射清单</h2><p class="muted">保存后可按该清单批量转换 WebP，并生成对应 theme.json。</p></div>
-        <div class="output-actions"><button id="copyJson">复制 JSON</button><button id="downloadJson" class="primary">下载 motion-map.json</button></div>
+        <div><h2>Mapping manifest</h2><p class="muted">The mapping manifest will drive later Package Builds.</p></div>
+        <div class="output-actions"><button id="copyJson">Copy JSON</button><button id="downloadJson" class="primary">Download motion-map.json</button></div>
       </div>
       <pre id="jsonOutput"></pre>
     </section>
 
-    <footer>状态语义依据 <a href="https://github.com/rullerzhou-afk/clawd-on-desk/blob/main/docs/guides/guide-theme-creation.md">Clawd Theme Creation Guide</a>。页面不会上传或保存模型文件；刷新即清空。</footer>
+    <section class="panel build-panel" aria-labelledby="buildHeading">
+      <div class="panel-head">
+        <div><div class="eyebrow">Codex Pet Package</div><h2 id="buildHeading">Build a local ZIP</h2><p class="muted">Captures the selected Codex mappings into a transparent 1536 × 1872 atlas, then creates <code>pet.json</code> and <code>spritesheet.webp</code>. This prototype validates the atlas and package shape; host-compatibility validation remains a later gate.</p></div>
+      </div>
+      <div class="build-actions">
+        <button id="buildCodex" class="primary" disabled>Build Codex Pet ZIP</button>
+        <button id="downloadCodex" disabled>Download last ZIP</button>
+      </div>
+      <div id="buildStatus" class="build-status" role="status" aria-live="polite">Load a Source Package and map all nine Codex rows to enable building.</div>
+    </section>
+
+    <footer>Clawd state semantics follow the <a href="https://github.com/rullerzhou-afk/clawd-on-desk/blob/main/docs/guides/guide-theme-creation.md">Clawd Theme Creation Guide</a>. Source assets stay local; refreshing clears unsaved session state.</footer>
   </main>
 
   <script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
   <script src="../../packages/live2d-exporter/vendor/live2dcubismcore.min.js"></script>
   <script src="../../packages/live2d-exporter/node_modules/pixi.js/dist/browser/pixi.min.js"></script>
   <script src="../../packages/live2d-exporter/node_modules/pixi-live2d-display/dist/index.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.7.57/dist/zip-no-worker.min.js"></script>
   <script>
     const MotionMapping = (() => {
       const groups = [
-        { label: "核心状态", hint: "validator/runtime 基线", states: [
-          { id: "idle", meaning: "无 Agent 活动", required: true },
-          { id: "thinking", meaning: "用户提交提示词", required: true },
-          { id: "working", meaning: "Agent 使用工具", required: true },
-          { id: "sleeping", meaning: "睡眠序列结束后", required: true, fallback: true }
+        { label: "Core states", hint: "validator/runtime baseline", states: [
+          { id: "idle", meaning: "No Agent activity", required: true },
+          { id: "thinking", meaning: "User prompt submitted", required: true },
+          { id: "working", meaning: "Agent is using a tool", required: true },
+          { id: "sleeping", meaning: "After a sleep sequence", required: true, fallback: true }
         ]},
-        { label: "常用可选状态", hint: "关联后才导出", states: [
-          { id: "error", meaning: "工具执行失败", fallback: true },
-          { id: "attention", meaning: "任务完成", fallback: true },
-          { id: "notification", meaning: "权限请求 / 提醒", fallback: true },
-          { id: "sweeping", meaning: "上下文压缩", fallback: true },
-          { id: "carrying", meaning: "创建 worktree", fallback: true },
-          { id: "juggling", meaning: "Subagent 活跃" },
-          { id: "roam", meaning: "自由漫游（素材朝右）", fallback: true }
+        { label: "Common optional states", hint: "Exported when mapped", states: [
+          { id: "error", meaning: "Tool execution failed", fallback: true },
+          { id: "attention", meaning: "Task complete", fallback: true },
+          { id: "notification", meaning: "Permission request or reminder", fallback: true },
+          { id: "sweeping", meaning: "Context compaction", fallback: true },
+          { id: "carrying", meaning: "Worktree created", fallback: true },
+          { id: "juggling", meaning: "Subagent active" },
+          { id: "roam", meaning: "Free roam (asset faces right)", fallback: true }
         ]},
-        { label: "完整睡眠序列", hint: "full 模式时均需真实 motion", states: [
-          { id: "yawning", meaning: "开始进入睡眠", full: true },
-          { id: "dozing", meaning: "打哈欠之后", full: true },
-          { id: "collapsing", meaning: "正在入睡", full: true },
-          { id: "waking", meaning: "鼠标唤醒", full: true }
+        { label: "Full sleep sequence", hint: "Every slot needs a Motion in full mode", states: [
+          { id: "yawning", meaning: "Starting sleep", full: true },
+          { id: "dozing", meaning: "After yawning", full: true },
+          { id: "collapsing", meaning: "Falling asleep", full: true },
+          { id: "waking", meaning: "Woken by the user", full: true }
         ]}
       ];
       const reactions = [
-        { id: "drag", meaning: "拖拽期间循环" },
-        { id: "clickLeft", meaning: "左侧双击" },
-        { id: "clickRight", meaning: "右侧双击" },
-        { id: "annoyed", meaning: "双击时 50% 替代" },
-        { id: "double", meaning: "快速四连击" }
+        { id: "drag", meaning: "Loop while dragging" },
+        { id: "clickLeft", meaning: "Double-click left side" },
+        { id: "clickRight", meaning: "Double-click right side" },
+        { id: "annoyed", meaning: "50% double-click alternative" },
+        { id: "double", meaning: "Rapid four-click" }
+      ];
+      const codexRows = [
+        { id: "idle", label: "Idle", frames: 6 },
+        { id: "running-right", label: "Running right", frames: 8 },
+        { id: "running-left", label: "Running left", frames: 8 },
+        { id: "waving", label: "Waving", frames: 4 },
+        { id: "jumping", label: "Jumping", frames: 5 },
+        { id: "failed", label: "Failed", frames: 8 },
+        { id: "waiting", label: "Waiting", frames: 6 },
+        { id: "running", label: "Running", frames: 6 },
+        { id: "review", label: "Review", frames: 6 },
       ];
       const allStates = groups.flatMap(group => group.states);
       const fallbackAllowed = new Set(["error","attention","notification","sweeping","carrying","sleeping","roam"]);
 
       function initial() {
-        return { model: null, motions: [], expressions: [], selectedMotionId: null, selectedExpressionId: null, mappings: {}, reactionMappings: {}, sleepMode: "direct", outputPrefix: "saint-louis", lastChange: "等待选择模型文件夹", scenario: null, scenarioStep: 0 };
+        return { model: null, motions: [], expressions: [], inspection: null, inspectionError: null, selectedMotionId: null, selectedExpressionId: null, mappings: {}, reactionMappings: {}, codexMappings: {}, sleepMode: "direct", outputPrefix: "live2pet", projectName: "Untitled Live2Pet Project", lastChange: "Waiting for a Source Package", scenario: null, scenarioStep: 0 };
       }
       function reducer(state, action) {
-        if (action.type === "LOAD_MODEL") return { ...state, model: action.model, motions: action.motions, expressions: action.expressions, selectedMotionId: action.motions[0]?.id || null, selectedExpressionId: null, lastChange: `已载入 ${action.motions.length} 个动作、${action.expressions.length} 个表情` };
-        if (action.type === "SELECT_MOTION") return { ...state, selectedMotionId: action.id, lastChange: `正在播放 ${action.id}` };
-        if (action.type === "SELECT_EXPRESSION") return { ...state, selectedExpressionId: action.id, lastChange: action.id === null ? "已恢复默认表情" : `正在预览表情 ${action.id}` };
-        if (action.type === "MAP") return { ...state, mappings: { ...state.mappings, [action.key]: action.value }, lastChange: `${action.key} → ${action.value || "未关联"}` };
-        if (action.type === "MAP_REACTION") return { ...state, reactionMappings: { ...state.reactionMappings, [action.key]: action.value }, lastChange: `${action.key} → ${action.value || "未关联"}` };
+        if (action.type === "LOAD_MODEL") return { ...state, model: action.model, motions: action.motions, expressions: action.expressions, inspection: action.inspection || null, inspectionError: null, selectedMotionId: action.motions[0]?.id || null, selectedExpressionId: null, projectName: state.projectName === "Untitled Live2Pet Project" ? action.model.name : state.projectName, lastChange: `Loaded ${action.motions.length} Motions and ${action.expressions.length} Expressions` };
+        if (action.type === "INSPECTION_ERROR") return { ...state, inspection: null, inspectionError: action.error, lastChange: action.error.message };
+        if (action.type === "LOAD_PROJECT") {
+          const target = action.project.targets?.clawd || {};
+          const codexTarget = action.project.targets?.["codex-pet"] || {};
+          const options = target.options || {};
+          const selected = Object.values(target.mappings || {}).find(value => value?.startsWith("motion:"))?.slice(7);
+          return { ...state, projectName: action.project.name, mappings: { ...(target.mappings || {}) }, reactionMappings: { ...(target.reactions || {}) }, codexMappings: { ...(codexTarget.mappings || {}) }, sleepMode: options.sleepMode === "full" ? "full" : "direct", outputPrefix: typeof options.outputPrefix === "string" && options.outputPrefix.trim() ? options.outputPrefix : "live2pet", selectedMotionId: selected && MotionMapping.motion(state, selected) ? selected : state.selectedMotionId, lastChange: `Opened ${action.project.name}` };
+        }
+        if (action.type === "SELECT_MOTION") return { ...state, selectedMotionId: action.id, lastChange: `Playing ${action.id}` };
+        if (action.type === "SELECT_EXPRESSION") return { ...state, selectedExpressionId: action.id, lastChange: action.id === null ? "Expression reset" : `Previewing Expression ${action.id}` };
+        if (action.type === "MAP") return { ...state, mappings: { ...state.mappings, [action.key]: action.value }, lastChange: `${action.key} → ${action.value || "Unmapped"}` };
+        if (action.type === "MAP_REACTION") return { ...state, reactionMappings: { ...state.reactionMappings, [action.key]: action.value }, lastChange: `${action.key} → ${action.value || "Unmapped"}` };
+        if (action.type === "MAP_CODEX") return { ...state, codexMappings: { ...state.codexMappings, [action.key]: action.value }, lastChange: `Codex ${action.key} → ${action.value || "Unmapped"}` };
         if (action.type === "SET_SLEEP") return { ...state, sleepMode: action.value, lastChange: `sleepSequence.mode → ${action.value}` };
-        if (action.type === "SET_PREFIX") return { ...state, outputPrefix: action.value, lastChange: `输出前缀 → ${action.value}` };
-        if (action.type === "CLEAR") return { ...state, mappings: {}, reactionMappings: {}, lastChange: "已清空映射" };
-        if (action.type === "START_SCENARIO") return { ...state, mappings: {}, reactionMappings: {}, sleepMode: "direct", scenario: action.id, scenarioStep: 0, lastChange: `开始场景 ${action.id}` };
+        if (action.type === "SET_PREFIX") return { ...state, outputPrefix: action.value, lastChange: `Output prefix → ${action.value}` };
+        if (action.type === "CLEAR") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, lastChange: "Mappings cleared" };
+        if (action.type === "START_SCENARIO") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, sleepMode: "direct", scenario: action.id, scenarioStep: 0, lastChange: `Started scenario ${action.id}` };
         if (action.type === "SCENARIO_STEP") {
           const next = reducer(state, action.inner);
           return { ...next, scenario: state.scenario, scenarioStep: state.scenarioStep + 1 };
@@ -241,16 +420,16 @@
       function motion(state, id) { return state.motions.find(item => item.id === id) || null; }
       function validate(state) {
         const out = [];
-        for (const id of ["idle","thinking","working"]) if (!state.mappings[id]?.startsWith("motion:")) out.push({ level: "error", text: `${id} 必须选择真实 Live2D motion。` });
-        if (!state.mappings.sleeping) out.push({ level: "error", text: "sleeping 必须选择 motion 或 fallbackTo。" });
-        if (state.sleepMode === "full") for (const id of ["yawning","dozing","collapsing","waking"]) if (!state.mappings[id]?.startsWith("motion:")) out.push({ level: "error", text: `full 模式要求 ${id} 选择真实 motion。` });
+        for (const id of ["idle","thinking","working"]) if (!state.mappings[id]?.startsWith("motion:")) out.push({ level: "error", text: `${id} must select a real Live2D Motion.` });
+        if (!state.mappings.sleeping) out.push({ level: "error", text: "sleeping must select a Motion or fallbackTo." });
+        if (state.sleepMode === "full") for (const id of ["yawning","dozing","collapsing","waking"]) if (!state.mappings[id]?.startsWith("motion:")) out.push({ level: "error", text: `full mode requires a real Motion for ${id}.` });
         for (const [id, value] of Object.entries(state.mappings)) {
           if (!value?.startsWith("fallback:")) continue;
-          if (!fallbackAllowed.has(id)) out.push({ level: "error", text: `${id} 不允许 fallbackTo。` });
+          if (!fallbackAllowed.has(id)) out.push({ level: "error", text: `${id} does not allow fallbackTo.` });
           const target = value.slice(9);
-          if (!state.mappings[target]) out.push({ level: "error", text: `${id} 的 fallback 目标 ${target} 尚未映射。` });
+          if (!state.mappings[target]) out.push({ level: "error", text: `${id} fallback target ${target} is not mapped yet.` });
         }
-        if (!out.length) out.push({ level: "ok", text: "核心映射有效，可以保存转换清单。" });
+        if (!out.length) out.push({ level: "ok", text: "Core mapping is valid and ready to save." });
         return out;
       }
       function output(state) {
@@ -287,7 +466,7 @@
           reactions: reactionOut
         };
       }
-      return { groups, reactions, allStates, initial, reducer, motion, validate, output };
+      return { groups, reactions, codexRows, allStates, initial, reducer, motion, validate, output };
     })();
 
     let state = MotionMapping.initial();
@@ -299,26 +478,189 @@
     function dispatch(action) { state = MotionMapping.reducer(state, action); render(); }
     function escapeHtml(value) { return String(value ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"})[c]); }
     function selectedMotion() { return MotionMapping.motion(state, state.selectedMotionId); }
+    function projectError(code, message) { const error = new Error(message); error.code = code; return error; }
+    function projectId(value) {
+      const slug = String(value || "live2pet-project").toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 96);
+      return slug || "live2pet-project";
+    }
+    function projectRecipes() {
+      const motionIds = [...Object.values(state.mappings), ...Object.values(state.reactionMappings)]
+        .filter(value => value?.startsWith("motion:"))
+        .map(value => value.slice(7));
+      const seen = new Set();
+      return motionIds.filter(id => !seen.has(id) && seen.add(id)).map((motionId, index) => ({ id: `recipe-${String(index + 1).padStart(3, "0")}-${projectId(motionId)}`, motionId, expressionId: null }));
+    }
+    function buildProjectDocument() {
+      if (!state.model || !state.inspection) throw projectError("SOURCE_REQUIRED", "Choose and inspect a Source Package before saving a project.");
+      return {
+        schemaVersion: 1,
+        projectId: projectId(state.projectName || state.model.name),
+        appVersion: "0.1.0",
+        name: state.projectName || state.model.name,
+        source: {
+          kind: state.inspection.source.kind,
+          name: state.inspection.source.name,
+          fingerprint: state.inspection.source.fingerprint,
+          modelConfig: state.inspection.source.modelConfig,
+        },
+        recipes: projectRecipes(),
+        targets: {
+          clawd: {
+            profile: "clawd",
+            mappings: { ...state.mappings },
+            reactions: { ...state.reactionMappings },
+            options: { sleepMode: state.sleepMode, outputPrefix: state.outputPrefix },
+          },
+          "codex-pet": { profile: "codex-pet", mappings: { ...state.codexMappings }, reactions: {}, options: {} },
+        },
+      };
+    }
+    function parseProjectDocument(textValue) {
+      if (typeof textValue !== "string" || new TextEncoder().encode(textValue).length > 2 * 1024 * 1024) throw projectError("PROJECT_TOO_LARGE", "The .live2pet file exceeds the 2 MiB limit.");
+      let project;
+      try { project = JSON.parse(textValue); } catch { throw projectError("INVALID_PROJECT_JSON", "The .live2pet file is not valid JSON."); }
+      if (!project || typeof project !== "object" || Array.isArray(project)) throw projectError("INVALID_PROJECT", "The project root must be an object.");
+      if (project.schemaVersion !== 1) throw projectError("UNSUPPORTED_PROJECT_VERSION", "This Mapper supports .live2pet schema version 1 only.");
+      if (typeof project.name !== "string" || !project.name.trim() || typeof project.appVersion !== "string") throw projectError("INVALID_PROJECT_METADATA", "The project is missing a name or App version.");
+      if (!project.source || typeof project.source !== "object" || !project.source.kind || !project.source.name || !project.source.fingerprint) throw projectError("INVALID_PROJECT_SOURCE", "The project does not contain a complete Source Package reference.");
+      const target = project.targets?.clawd;
+      if (!target || typeof target !== "object") throw projectError("INVALID_PROJECT_TARGET", "The project does not contain a Clawd Target Profile.");
+      if (project.recipes != null && !Array.isArray(project.recipes)) throw projectError("INVALID_PROJECT_RECIPES", "Project recipes must be an array.");
+      for (const [label, mappings] of [["mappings", target.mappings], ["reactions", target.reactions]]) {
+        if (mappings == null) continue;
+        if (typeof mappings !== "object" || Array.isArray(mappings)) throw projectError("INVALID_PROJECT_MAPPING", `Clawd ${label} must be an object.`);
+        for (const [key, value] of Object.entries(mappings)) {
+          if (!/^[a-z][a-z0-9-]{0,63}$/i.test(key)) throw projectError("INVALID_PROJECT_MAPPING", `Clawd ${label}.${key} is not a valid slot id.`);
+          if (value !== "" && (typeof value !== "string" || !/^(motion|fallback):[^\s:][^\s]{0,255}$/.test(value))) throw projectError("INVALID_PROJECT_MAPPING", `Clawd ${label}.${key} is not a valid mapping.`);
+        }
+      }
+      const codexTarget = project.targets?.["codex-pet"];
+      if (codexTarget?.mappings != null) {
+        if (typeof codexTarget.mappings !== "object" || Array.isArray(codexTarget.mappings)) throw projectError("INVALID_PROJECT_MAPPING", "Codex mappings must be an object.");
+        for (const [key, value] of Object.entries(codexTarget.mappings)) {
+          if (!MotionMapping.codexRows.some(row => row.id === key)) throw projectError("INVALID_PROJECT_MAPPING", `Codex mapping contains unsupported row: ${key}.`);
+          if (typeof value !== "string" || !/^motion:[^\s:][^\s]{0,255}$/.test(value)) throw projectError("INVALID_PROJECT_MAPPING", `Codex mappings.${key} must point directly to a Motion.`);
+        }
+      }
+      return project;
+    }
+    function setProjectStatus(message, level = "") {
+      $("projectStatus").className = `project-status${level ? ` ${level}` : ""}`;
+      $("projectStatus").textContent = message;
+    }
+    function normalizedInspectionError(error) {
+      return { code: error?.code || "INSPECTION_FAILED", message: error?.message || String(error) };
+    }
 
-    function options(current, allowFallback, self) {
-      const motionOptions = state.motions.map(m => `<option value="motion:${escapeHtml(m.id)}" ${current === `motion:${m.id}` ? "selected" : ""}>${escapeHtml(m.name)} · ${m.duration ? `${m.duration.toFixed(2)}s` : "时长未知"}</option>`).join("");
-      const fallback = allowFallback ? `<optgroup label="fallbackTo">${MotionMapping.allStates.filter(s => s.id !== self).map(s => `<option value="fallback:${s.id}" ${current === `fallback:${s.id}` ? "selected" : ""}>fallbackTo: ${s.id}</option>`).join("")}</optgroup>` : "";
-      return `<option value="">未关联</option><optgroup label="Live2D motions">${motionOptions}</optgroup>${fallback}`;
+    function renderInspection() {
+      const empty = $("inspectionEmpty");
+      const content = $("inspectionContent");
+      const status = $("inspectionStatus");
+      if (state.inspectionError) {
+        empty.classList.remove("hidden");
+        content.classList.add("hidden");
+        empty.textContent = "Inspection failed. Choose another Source Package or fix the reported resource. No files were uploaded.";
+        status.className = "inspection-status bad";
+        status.textContent = `${state.inspectionError.code}: ${state.inspectionError.message}`;
+        return;
+      }
+      if (!state.inspection) {
+        empty.classList.remove("hidden");
+        content.classList.add("hidden");
+        status.className = "inspection-status";
+        status.textContent = "Waiting for a local Source Package.";
+        return;
+      }
+      const inspection = state.inspection;
+      empty.classList.add("hidden");
+      content.classList.remove("hidden");
+      const missing = inspection.resources.filter(resource => !resource.exists).length;
+      const stateClass = missing ? "bad" : "good";
+      status.className = `inspection-status ${stateClass}`;
+      status.textContent = missing ? `${missing} referenced resource${missing === 1 ? "" : "s"} need attention.` : "Inspection complete. All referenced resources are present.";
+      const sourceLabel = inspection.source.kind === "destiny-child-pck" ? "Destiny Child PCK" : "Standard directory";
+      const summary = [
+        ["Source", sourceLabel],
+        ["Cubism", `Generation ${inspection.model.cubism}`],
+        ["Motions", inspection.motions.length],
+        ["Expressions", inspection.expressions.length],
+        ["Resources", `${inspection.resources.filter(resource => resource.exists).length}/${inspection.resources.length}`],
+      ];
+      $("inspectionSummary").innerHTML = summary.map(([label, value]) => `<div class="inspection-card"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("");
+      $("inspectionModel").innerHTML = [
+        ["Package", inspection.source.name],
+        ["Model config", inspection.source.modelConfig],
+        ["Fingerprint", inspection.source.fingerprint],
+        ["Model binary", inspection.model.modelFile || "Not declared"],
+      ].map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join("");
+      $("inspectionResources").innerHTML = inspection.resources.length
+        ? inspection.resources.map(resource => `<div class="resource-row"><span class="resource-kind">${escapeHtml(resource.kind)}</span><span class="resource-path">${escapeHtml(resource.path)}</span><span class="resource-state ${resource.exists ? "present" : "missing"}">${resource.exists ? "Present" : "Missing"}</span></div>`).join("")
+        : `<div class="empty-state">No referenced resources were declared.</div>`;
+      $("inspectionWarnings").innerHTML = inspection.warnings.length
+        ? inspection.warnings.map(warning => `<div class="inspection-warning"><strong>${escapeHtml(warning.code)}</strong> · ${escapeHtml(warning.resource || warning.message)}</div>`).join("")
+        : "";
+    }
+
+    function selectedMotionById(id) {
+      return MotionMapping.motion(state, id);
+    }
+
+    function mappingDetails(value) {
+      if (!value) return { title: "Unmapped", meta: "Choose a Motion in the left library.", unmapped: true };
+      if (value.startsWith("fallback:")) return { title: `fallbackTo: ${value.slice(9)}`, meta: "Uses the mapped target state." };
+      if (value.startsWith("motion:")) {
+        const motion = selectedMotionById(value.slice(7));
+        return motion
+          ? { title: motion.name, meta: `${motion.sourceFile} · ${motion.duration ? `${motion.duration.toFixed(2)}s` : "Duration unknown"}` }
+          : { title: "Motion unavailable", meta: "Reload the Source Package to restore this Motion." };
+      }
+      return { title: "Unknown assignment", meta: "Clear this slot and assign a source Motion again." };
+    }
+
+    function fallbackOptions(current, self) {
+      const currentTarget = current?.startsWith("fallback:") ? current.slice(9) : "";
+      const targets = MotionMapping.allStates
+        .filter(def => def.id !== self)
+        .map(def => `<option value="${escapeHtml(def.id)}" ${currentTarget === def.id ? "selected" : ""}>fallbackTo: ${escapeHtml(def.id)}</option>`)
+        .join("");
+      return `<option value="">No fallback</option>${targets}`;
+    }
+
+    function renderMappingSelection() {
+      const current = selectedMotion();
+      const targetCount = current
+        ? Object.values(state.mappings).filter(value => value === `motion:${current.id}`).length
+          + Object.values(state.reactionMappings).filter(value => value === `motion:${current.id}`).length
+        : 0;
+      $("mappingSelection").className = `mapping-selection${current ? " ready" : ""}`;
+      $("mappingSelection").innerHTML = current
+        ? `<span class="selection-label">Selected source Motion</span><strong>${escapeHtml(current.name)}</strong><span class="selection-meta">${escapeHtml(current.sourceFile)} · ${current.duration ? `${current.duration.toFixed(2)}s` : "Duration unknown"} · ${targetCount} slot${targetCount === 1 ? "" : "s"} currently assigned</span>`
+        : `<span class="selection-label">Selected source Motion</span><strong>No Motion selected</strong><span class="selection-meta">Choose one in the left Motion library, then assign it to a Clawd slot below.</span>`;
+    }
+
+    function assignmentMarkup(def, current, kind) {
+      const details = mappingDetails(current);
+      const assignAttribute = kind === "state" ? `data-assign-state="${escapeHtml(def.id)}"` : `data-assign-reaction="${escapeHtml(def.id)}"`;
+      const clearAttribute = kind === "state" ? `data-clear-state="${escapeHtml(def.id)}"` : `data-clear-reaction="${escapeHtml(def.id)}"`;
+      const fallback = kind === "state" && def.fallback
+        ? `<label class="fallback-field">Fallback target<select aria-label="${escapeHtml(def.id)} fallback target" data-fallback-state="${escapeHtml(def.id)}">${fallbackOptions(current, def.id)}</select></label>`
+        : "";
+      return `<div class="mapping-assignment"><div class="mapping-current" title="${escapeHtml(details.meta)}"><strong class="${details.unmapped ? "unmapped" : ""}">${escapeHtml(details.title)}</strong><span>${escapeHtml(details.meta)}</span></div><div class="mapping-actions"><button class="assign" aria-label="Assign selected Motion to ${escapeHtml(def.id)}" ${assignAttribute} ${state.selectedMotionId ? "" : "disabled"}>Use selected</button><button class="clear" aria-label="Clear ${escapeHtml(def.id)} mapping" ${clearAttribute} ${current ? "" : "disabled"}>Clear</button></div>${fallback}</div>`;
     }
 
     function renderMetrics() {
       const errors = MotionMapping.validate(state).filter(x => x.level === "error").length;
       const current = selectedMotion();
-      const modelLabel = state.model ? `${state.model.name} · Cubism ${state.model.cubism}` : "未载入";
-      const values = [["模型",modelLabel,""],["Motion 数量",String(state.motions.length),""],["当前播放",current?.name || "—",""],["已映射状态",String(Object.values(state.mappings).filter(Boolean).length),""],["指南校验",errors ? `${errors} 项待处理` : "可保存",errors ? "bad" : "good"]];
+      const modelLabel = state.model ? `${state.model.name} · Cubism ${state.model.cubism}` : "Not loaded";
+      const values = [["Model",modelLabel,""],["Motions",String(state.motions.length),""],["Selected Motion",current?.name || "—",""],["Mapped states",String(Object.values(state.mappings).filter(Boolean).length),""],["Guide validation",errors ? `${errors} pending` : "Ready",errors ? "bad" : "good"]];
       $("metrics").innerHTML = values.map(([label,value,cls]) => `<div class="metric"><span>${label}</span><strong class="${cls}">${escapeHtml(value)}</strong></div>`).join("");
     }
 
     function renderMotions() {
       const current = selectedMotion();
       const expression = state.expressions.find(item => item.id === state.selectedExpressionId);
-      $("motionCount").textContent = `${state.motions.length} 个`;
-      $("nowPlaying").innerHTML = current ? `<strong>${escapeHtml(current.name)}</strong><span class="muted">${escapeHtml(current.sourceFile)} · ${current.duration ? current.duration.toFixed(2) + "s" : "时长未知"}${expression ? ` · 表情 ${escapeHtml(expression.name)}` : ""}</span>` : `<strong>尚未载入</strong><span class="muted">—</span>`;
+      $("motionCount").textContent = String(state.motions.length);
+      $("nowPlaying").innerHTML = current ? `<strong>${escapeHtml(current.name)}</strong><span class="muted">${escapeHtml(current.sourceFile)} · ${current.duration ? current.duration.toFixed(2) + "s" : "Duration unknown"}${expression ? ` · Expression ${escapeHtml(expression.name)}` : ""}</span>` : `<strong>No Motion selected</strong><span class="muted">—</span>`;
       $("motionList").innerHTML = state.motions.map(m => `<button class="motion ${m.id === state.selectedMotionId ? "active" : ""}" data-motion="${escapeHtml(m.id)}"><strong>${escapeHtml(m.name)}</strong><small>${escapeHtml(m.sourceFile)} · ${m.duration ? m.duration.toFixed(2) + "s" : "—"}</small></button>`).join("");
       document.querySelectorAll("[data-motion]").forEach(button => button.addEventListener("click", async () => { dispatch({type:"SELECT_MOTION",id:button.dataset.motion}); await playMotion(button.dataset.motion); }));
       $("replay").disabled = !current;
@@ -327,28 +669,47 @@
     }
 
     function renderExpressions() {
-      $("expressionCount").textContent = `${state.expressions.length} 个`;
+      $("expressionCount").textContent = String(state.expressions.length);
       $("expressionList").innerHTML = state.expressions.map(expression => `<button class="expression ${expression.id === state.selectedExpressionId ? "active" : ""}" data-expression="${escapeHtml(expression.id)}"><strong>${escapeHtml(expression.name)}</strong><small>${escapeHtml(expression.sourceFile)}</small></button>`).join("");
       document.querySelectorAll("[data-expression]").forEach(button => button.addEventListener("click",()=>playExpression(button.dataset.expression)));
       $("resetExpression").disabled = !state.expressions.length;
     }
 
     function renderMappings() {
-      $("mappingTables").innerHTML = MotionMapping.groups.map(group => `<div class="group"><div class="group-title"><h3>${group.label}</h3><span class="muted">${group.hint}</span></div><table><thead><tr><th>Clawd 状态</th><th>指南语义</th><th>Live2D motion / fallback</th></tr></thead><tbody>${group.states.map(def => `<tr><td class="key"><code>${def.id}</code>${def.required ? '<span class="required">必需</span>' : ''}</td><td class="meaning">${def.meaning}</td><td><select data-state="${def.id}">${options(state.mappings[def.id] || "",def.fallback,def.id)}</select></td></tr>`).join("")}</tbody></table></div>`).join("") + `<div class="group"><div class="group-title"><h3>互动反应（reactions）</h3><span class="muted">与 Agent 状态分开</span></div><table><thead><tr><th>字段</th><th>触发方式</th><th>Live2D motion</th></tr></thead><tbody>${MotionMapping.reactions.map(def => `<tr><td class="key"><code>${def.id}</code></td><td class="meaning">${def.meaning}</td><td><select data-reaction="${def.id}">${options(state.reactionMappings[def.id] || "",false,def.id)}</select></td></tr>`).join("")}</tbody></table></div>`;
-      document.querySelectorAll("[data-state]").forEach(select => select.addEventListener("change",()=>dispatch({type:"MAP",key:select.dataset.state,value:select.value})));
-      document.querySelectorAll("[data-reaction]").forEach(select => select.addEventListener("change",()=>dispatch({type:"MAP_REACTION",key:select.dataset.reaction,value:select.value})));
+      renderMappingSelection();
+      $("mappingTables").innerHTML = MotionMapping.groups.map(group => `<div class="group"><div class="group-title"><h3>${group.label}</h3><span class="muted">${group.hint}</span></div><table><thead><tr><th>Clawd state</th><th>Assignment</th></tr></thead><tbody>${group.states.map(def => `<tr><td class="key"><code>${def.id}</code>${def.required ? '<span class="required">Required</span>' : ''}<span class="key-meaning">${def.meaning}</span></td><td>${assignmentMarkup(def, state.mappings[def.id] || "", "state")}</td></tr>`).join("")}</tbody></table></div>`).join("") + `<div class="group"><div class="group-title"><h3>Interaction reactions</h3><span class="muted">Separate from Agent states</span></div><table><thead><tr><th>Field</th><th>Assignment</th></tr></thead><tbody>${MotionMapping.reactions.map(def => `<tr><td class="key"><code>${def.id}</code><span class="key-meaning">${def.meaning}</span></td><td>${assignmentMarkup(def, state.reactionMappings[def.id] || "", "reaction")}</td></tr>`).join("")}</tbody></table></div>`;
+      document.querySelectorAll("[data-assign-state]").forEach(button => button.addEventListener("click",()=>dispatch({type:"MAP",key:button.dataset.assignState,value:state.selectedMotionId ? `motion:${state.selectedMotionId}` : ""})));
+      document.querySelectorAll("[data-clear-state]").forEach(button => button.addEventListener("click",()=>dispatch({type:"MAP",key:button.dataset.clearState,value:""})));
+      document.querySelectorAll("[data-assign-reaction]").forEach(button => button.addEventListener("click",()=>dispatch({type:"MAP_REACTION",key:button.dataset.assignReaction,value:state.selectedMotionId ? `motion:${state.selectedMotionId}` : ""})));
+      document.querySelectorAll("[data-clear-reaction]").forEach(button => button.addEventListener("click",()=>dispatch({type:"MAP_REACTION",key:button.dataset.clearReaction,value:""})));
+      document.querySelectorAll("[data-fallback-state]").forEach(select => select.addEventListener("change",()=>dispatch({type:"MAP",key:select.dataset.fallbackState,value:select.value ? `fallback:${select.value}` : ""})));
       $("quickState").innerHTML = MotionMapping.allStates.map(def => `<option value="${def.id}">${def.id} · ${def.meaning}</option>`).join("");
+      renderCodexMappings();
+    }
+
+    function codexValidation() {
+      return MotionMapping.codexRows.filter(row => !state.codexMappings[row.id]?.startsWith("motion:")).map(row => row.id);
+    }
+
+    function renderCodexMappings() {
+      const rows = MotionMapping.codexRows;
+      $("codexMapping").innerHTML = rows.map(row => {
+        const value = state.codexMappings[row.id] || "";
+        const motion = value.startsWith("motion:") ? selectedMotionById(value.slice(7)) : null;
+        return `<div class="codex-row"><code>${escapeHtml(row.id)}</code><strong class="${motion ? "" : "unmapped"}" title="${escapeHtml(motion?.sourceFile || "No Motion assigned")}">${escapeHtml(motion?.name || "Unmapped")}</strong><button data-codex-assign="${escapeHtml(row.id)}" ${state.selectedMotionId ? "" : "disabled"}>Use selected</button></div>`;
+      }).join("");
+      document.querySelectorAll("[data-codex-assign]").forEach(button => button.addEventListener("click", () => dispatch({ type: "MAP_CODEX", key: button.dataset.codexAssign, value: state.selectedMotionId ? `motion:${state.selectedMotionId}` : "" })));
     }
 
     const scenarios = [
-      { id:"core", label:"核心三态", description:"依次试听并设置 idle、thinking、working，再给 sleeping 设置 direct fallback。", steps:[
-        ["idle 使用当前动作",{type:"MAP_CURRENT",key:"idle"}], ["thinking 使用当前动作",{type:"MAP_CURRENT",key:"thinking"}], ["working 使用当前动作",{type:"MAP_CURRENT",key:"working"}], ["sleeping fallback idle",{type:"MAP",key:"sleeping",value:"fallback:idle"}]
+      { id:"core", label:"Core states", description:"Preview and assign idle, thinking, and working, then give sleeping a direct fallback.", steps:[
+        ["Current Motion → idle",{type:"MAP_CURRENT",key:"idle"}], ["Current Motion → thinking",{type:"MAP_CURRENT",key:"thinking"}], ["Current Motion → working",{type:"MAP_CURRENT",key:"working"}], ["sleeping fallback → idle",{type:"MAP",key:"sleeping",value:"fallback:idle"}]
       ]},
-      { id:"completion", label:"完成与提醒", description:"先试听候选动作，再分别绑定 attention（任务完成）与 notification（权限/提醒）。", steps:[
-        ["当前动作 → attention",{type:"MAP_CURRENT",key:"attention"}], ["当前动作 → notification",{type:"MAP_CURRENT",key:"notification"}]
+      { id:"completion", label:"Completion & alerts", description:"Preview candidates, then assign attention for task completion and notification for permissions or reminders.", steps:[
+        ["Current Motion → attention",{type:"MAP_CURRENT",key:"attention"}], ["Current Motion → notification",{type:"MAP_CURRENT",key:"notification"}]
       ]},
-      { id:"sleep", label:"完整睡眠", description:"切换 full 后检查 yawning、dozing、collapsing、waking 四段素材是否都已选择。", steps:[
-        ["切换 full",{type:"SET_SLEEP",value:"full"}], ["当前动作 → yawning",{type:"MAP_CURRENT",key:"yawning"}], ["当前动作 → dozing",{type:"MAP_CURRENT",key:"dozing"}], ["当前动作 → collapsing",{type:"MAP_CURRENT",key:"collapsing"}], ["当前动作 → waking",{type:"MAP_CURRENT",key:"waking"}]
+      { id:"sleep", label:"Full sleep", description:"Switch to full mode and assign all four sleep sequence slots.", steps:[
+        ["Switch to full",{type:"SET_SLEEP",value:"full"}], ["Current Motion → yawning",{type:"MAP_CURRENT",key:"yawning"}], ["Current Motion → dozing",{type:"MAP_CURRENT",key:"dozing"}], ["Current Motion → collapsing",{type:"MAP_CURRENT",key:"collapsing"}], ["Current Motion → waking",{type:"MAP_CURRENT",key:"waking"}]
       ]}
     ];
 
@@ -360,17 +721,20 @@
       $("scenarioTabs").innerHTML = scenarios.map(s => `<button class="${state.scenario === s.id ? "active" : ""}" data-scenario="${s.id}">${s.label}</button>`).join("");
       document.querySelectorAll("[data-scenario]").forEach(b=>b.addEventListener("click",()=>dispatch({type:"START_SCENARIO",id:b.dataset.scenario})));
       const scenario = scenarios.find(s=>s.id===state.scenario) || scenarios[0];
-      $("scenario").innerHTML = `<p>${scenario.description}</p><div><button id="startScenario" class="primary">从空映射开始</button></div><div class="steps">${scenario.steps.map(([label],i)=>`<button class="step ${state.scenario===scenario.id && i<state.scenarioStep ? "done" : ""}" data-step="${i}">${i+1}. ${label}</button>`).join("")}</div>`;
+      $("scenario").innerHTML = `<p>${scenario.description}</p><div><button id="startScenario" class="primary">Start with an empty mapping</button></div><div class="steps">${scenario.steps.map(([label],i)=>`<button class="step ${state.scenario===scenario.id && i<state.scenarioStep ? "done" : ""}" data-step="${i}">${i+1}. ${label}</button>`).join("")}</div>`;
       $("startScenario").addEventListener("click",()=>dispatch({type:"START_SCENARIO",id:scenario.id}));
       document.querySelectorAll("[data-step]").forEach(b=>b.addEventListener("click",()=>{const action=resolveScenarioAction(scenario.steps[Number(b.dataset.step)][1]);dispatch({type:"SCENARIO_STEP",inner:action});}));
     }
 
     function render() {
-      renderMetrics(); renderMotions(); renderExpressions(); renderMappings(); renderScenario();
+      renderInspection(); renderMetrics(); renderMotions(); renderExpressions(); renderMappings(); renderScenario();
       $("sleepMode").value = state.sleepMode;
       $("outputPrefix").value = state.outputPrefix;
+      $("saveProject").disabled = !state.model || !state.inspection;
       $("validation").innerHTML = MotionMapping.validate(state).map(x=>`<div class="${x.level}">${escapeHtml(x.text)}</div>`).join("");
       $("jsonOutput").textContent = JSON.stringify(MotionMapping.output(state),null,2);
+      $("buildCodex").disabled = codexBuildBusy || !liveModel || !state.model || !state.inspection || codexValidation().length > 0;
+      $("downloadCodex").disabled = codexBuildBusy || !codexArtifact;
     }
 
     function cubism2MotionDuration(text) {
@@ -390,6 +754,12 @@
       return signature.every((value,index) => bytes[index] === value);
     }
 
+    function browserInspectionError(code, message) {
+      const error = new Error(message);
+      error.code = code;
+      return error;
+    }
+
     function pckEntryType(bytes) {
       if (bytesMatch(bytes,[0x23,0x20,0x4c,0x69,0x76,0x65,0x32,0x44])) return "motion";
       if (bytesMatch(bytes,[0x6d,0x6f,0x63])) return "model";
@@ -399,19 +769,145 @@
     }
 
     function pckFile(data,name,type="application/octet-stream") {
-      return new File([data],name,{type});
+      const basename = name.split("/").pop() || name;
+      const file = new File([data], basename, { type });
+      // FileLoader matches resources by webkitRelativePath. Prefix the
+      // reconstructed PCK files with a synthetic root so rootless() keeps
+      // the embedded relative paths intact.
+      Object.defineProperty(file, "webkitRelativePath", { value: `pck/${name}`, configurable: true });
+      return file;
+    }
+
+    function browserRelative(file) {
+      const relative = (file.webkitRelativePath || file.name || "").replaceAll("\\", "/");
+      const parts = relative.split("/").filter(Boolean);
+      return parts.length > 1 ? parts.slice(1).join("/") : parts[0] || "";
+    }
+
+    function normalizeBrowserReference(reference, baseDirectory = "") {
+      if (typeof reference !== "string" || !reference.trim()) throw browserInspectionError("INVALID_RESOURCE_PATH", "A referenced resource path must be a non-empty string.");
+      const replaced = reference.replaceAll("\\", "/");
+      if (replaced.includes("\0") || replaced.startsWith("/") || /^[a-z]:\//i.test(replaced)) throw browserInspectionError("INVALID_RESOURCE_PATH", `Resource path is not safely relative: ${reference}`);
+      const parts = `${baseDirectory ? `${baseDirectory}/` : ""}${replaced}`.split("/");
+      const normalized = [];
+      for (const part of parts) {
+        if (!part || part === ".") continue;
+        if (part === "..") {
+          if (!normalized.length) throw browserInspectionError("INVALID_RESOURCE_PATH", `Resource path escapes the Source Package: ${reference}`);
+          normalized.pop();
+        } else normalized.push(part);
+      }
+      if (!normalized.length) throw browserInspectionError("INVALID_RESOURCE_PATH", `Resource path is empty: ${reference}`);
+      return normalized.join("/");
+    }
+
+    async function fingerprintBrowser(files) {
+      const chunks = [];
+      let size = 0;
+      for (const file of [...files].sort((left, right) => browserRelative(left).localeCompare(browserRelative(right)))) {
+        const pathBytes = new TextEncoder().encode(`${browserRelative(file)}\0`);
+        const data = new Uint8Array(await file.arrayBuffer());
+        chunks.push(pathBytes, data, new Uint8Array([0]));
+        size += pathBytes.length + data.length + 1;
+      }
+      const input = new Uint8Array(size);
+      let offset = 0;
+      for (const chunk of chunks) { input.set(chunk, offset); offset += chunk.length; }
+      if (window.crypto?.subtle) {
+        const digest = new Uint8Array(await window.crypto.subtle.digest("SHA-256", input));
+        return [...digest].map(value => value.toString(16).padStart(2, "0")).join("");
+      }
+      let first = 2166136261;
+      let second = 2166136261;
+      for (const byte of input) { first = Math.imul(first ^ byte, 16777619); second = Math.imul(second ^ (byte + 31), 16777619); }
+      return `browser-${(first >>> 0).toString(16).padStart(8, "0")}${(second >>> 0).toString(16).padStart(8, "0")}`;
+    }
+
+    async function buildBrowserInspection(list, modelFile, modelPath, raw, cubism, options = {}) {
+      const fileMap = new Map(list.map(file => [browserRelative(file), file]));
+      const modelDirectory = modelPath.includes("/") ? modelPath.slice(0, modelPath.lastIndexOf("/")) : "";
+      const warnings = [];
+      const resources = [];
+      const resolve = reference => {
+        const nested = normalizeBrowserReference(reference, modelDirectory);
+        if (fileMap.has(nested)) return nested;
+        const root = normalizeBrowserReference(reference);
+        return fileMap.has(root) ? root : nested;
+      };
+      const addResource = (kind, reference, required = true) => {
+        const relative = resolve(reference);
+        const exists = fileMap.has(relative);
+        resources.push({ kind, path: relative, required, exists });
+        if (!exists && required) warnings.push({ code: "MISSING_RESOURCE", resource: relative, kind });
+        return { relative, exists };
+      };
+      const readText = async relative => fileMap.has(relative) ? fileMap.get(relative).text() : null;
+      const motions = [];
+      const expressions = [];
+      const model = { cubism, configFile: modelPath, modelFile: null, textures: [], physics: null, pose: null };
+      if (cubism === 2) {
+        if (!raw.model || !Array.isArray(raw.textures) || !raw.motions) throw browserInspectionError("INVALID_MODEL_CONFIG", "Cubism 2 model.json is missing model, textures, or motions.");
+        model.modelFile = addResource("model", raw.model).relative;
+        model.textures = raw.textures.map(reference => addResource("texture", reference).relative);
+        for (const key of ["physics", "pose"]) if (raw[key]) model[key] = addResource(key, raw[key]).relative;
+        if (Array.isArray(raw.expressions)) raw.expressions.forEach((entry, index) => {
+          if (!entry?.file) return;
+          const resource = addResource("expression", entry.file);
+          expressions.push({ id: String(index), index, name: entry.name || entry.file.split("/").pop().replace(/\.exp\.json$/i, ""), sourceFile: resource.relative });
+        });
+        for (const [group, entries] of Object.entries(raw.motions || {})) for (let index = 0; index < entries.length; index++) {
+          const entry = entries[index];
+          if (!entry?.file) throw browserInspectionError("INVALID_MOTION_DEFINITION", `Cubism 2 motion ${group}:${index} has no file.`);
+          const resource = addResource("motion", entry.file);
+          let duration = null;
+          const text = resource.exists ? await readText(resource.relative) : null;
+          if (text) duration = cubism2MotionDuration(text);
+          motions.push({ id: `${group || "default"}:${index}`, group, index, name: entry.name || entry.file.split("/").pop().replace(/\.mtn$/i, ""), sourceFile: resource.relative, duration });
+        }
+      } else {
+        const references = raw.FileReferences;
+        if (!references || !references.Moc || !Array.isArray(references.Textures)) throw browserInspectionError("INVALID_MODEL_CONFIG", "Modern model3.json is missing FileReferences, Moc, or Textures.");
+        model.modelFile = addResource("model", references.Moc).relative;
+        model.textures = references.Textures.map(reference => addResource("texture", reference).relative);
+        for (const [key, kind] of [["Physics", "physics"], ["Pose", "pose"], ["UserData", "userdata"], ["DisplayInfo", "display-info"]]) if (references[key]) addResource(kind, references[key]);
+        if (Array.isArray(references.Expressions)) references.Expressions.forEach((entry, index) => {
+          if (!entry?.File) return;
+          const resource = addResource("expression", entry.File);
+          expressions.push({ id: String(index), index, name: entry.Name || entry.File.split("/").pop().replace(/\.exp3\.json$/i, ""), sourceFile: resource.relative });
+        });
+        for (const [group, entries] of Object.entries(references.Motions || {})) for (let index = 0; index < entries.length; index++) {
+          const entry = entries[index];
+          if (!entry?.File) throw browserInspectionError("INVALID_MOTION_DEFINITION", `Modern motion ${group}:${index} has no File.`);
+          const resource = addResource("motion", entry.File);
+          let duration = null;
+          const text = resource.exists ? await readText(resource.relative) : null;
+          if (text) {
+            try { duration = Number(JSON.parse(text).Meta?.Duration) || null; } catch { warnings.push({ code: "INVALID_MOTION_METADATA", resource: resource.relative, kind: "motion" }); }
+          }
+          motions.push({ id: `${group || "default"}:${index}`, group, index, name: entry.Name || entry.File.split("/").pop().replace(/\.motion3\.json$/i, ""), sourceFile: resource.relative, duration });
+        }
+      }
+      return {
+        schemaVersion: 1,
+        source: { kind: options.source === "destiny-child-pck" ? "destiny-child-pck" : "standard-directory", name: options.sourceName || options.modelName || modelFile.name, modelConfig: modelPath, fingerprint: options.fingerprint || await fingerprintBrowser(list), fileCount: list.length, ...(options.entryCount ? { entryCount: options.entryCount } : {}), ...(Number.isFinite(options.version) ? { version: options.version } : {}) },
+        model,
+        motions,
+        expressions,
+        resources,
+        warnings,
+      };
     }
 
     async function unpackDestinyChildPck(file) {
       const buffer = await file.arrayBuffer();
       const bytes = new Uint8Array(buffer);
       const view = new DataView(buffer);
-      if (bytes.length < 12 || !bytesMatch(bytes,[0x50,0x43,0x4b,0x00])) throw new Error("不是有效的 Destiny Child PCK（缺少 PCK\\0 文件头）");
+      if (bytes.length < 12 || !bytesMatch(bytes,[0x50,0x43,0x4b,0x00])) throw browserInspectionError("INVALID_PCK_HEADER", "Not a valid Destiny Child PCK (missing the PCK\\0 header).");
       const version = view.getFloat32(4,true);
       const count = view.getUint32(8,true);
       const recordSize = 25;
       const headerSize = 12 + count * recordSize;
-      if (!count || count > 4096 || headerSize > bytes.length) throw new Error(`PCK 文件表异常：${count} 个条目`);
+      if (!count || count > 4096 || headerSize > bytes.length) throw browserInspectionError("INVALID_PCK_TABLE", `Invalid PCK entry table: ${count} entries.`);
       const entries = [];
       for (let index=0; index<count; index++) {
         const base = 12 + index * recordSize;
@@ -419,8 +915,8 @@
         const offset = view.getUint32(base+9,true);
         const storedSize = view.getUint32(base+13,true);
         const originalSize = view.getUint32(base+17,true);
-        if (offset < headerSize || storedSize > bytes.length || offset + storedSize > bytes.length) throw new Error(`PCK 条目 ${index} 越界`);
-        if (flags !== 0 || storedSize !== originalSize) throw new Error(`PCK 条目 ${index} 使用了暂不支持的压缩/加密标记 ${flags}`);
+        if (offset < headerSize || storedSize > bytes.length || offset + storedSize > bytes.length) throw browserInspectionError("PCK_ENTRY_OUT_OF_BOUNDS", `PCK entry ${index} is out of bounds.`);
+        if (flags !== 0 || storedSize !== originalSize) throw browserInspectionError("UNSUPPORTED_PCK_FLAGS", `PCK entry ${index} uses unsupported compression/encryption flags (${flags}).`);
         const data = bytes.slice(offset,offset+storedSize);
         entries.push({index,flags,offset,storedSize,originalSize,data,type:pckEntryType(data)});
       }
@@ -433,11 +929,11 @@
         }
       });
       const modelJson = jsonPayloads.find(item => item.text?.includes('"model"') && item.text?.includes('"motions"'));
-      if (!modelJson) throw new Error("PCK 中没有找到 Live2D model.json");
+      if (!modelJson) throw browserInspectionError("PCK_MODEL_CONFIG_NOT_FOUND", "No Live2D model.json was found in the PCK.");
       let settings;
       try { settings = JSON.parse(modelJson.text); }
-      catch { throw new Error("PCK 内嵌 model.json 无法解析"); }
-      if (!settings.model || !Array.isArray(settings.textures) || !settings.motions) throw new Error("PCK 内嵌 JSON 不是完整的 Cubism 2 配置");
+      catch { throw browserInspectionError("INVALID_JSON", "The embedded PCK model.json could not be parsed."); }
+      if (!settings.model || !Array.isArray(settings.textures) || !settings.motions) throw browserInspectionError("INVALID_MODEL_CONFIG", "The embedded JSON is not a complete Cubism 2 configuration.");
       const modelEntries = entries.filter(entry => entry.type === "model");
       const textureEntries = entries.filter(entry => entry.type === "texture");
       const motionEntries = entries.filter(entry => entry.type === "motion");
@@ -446,11 +942,24 @@
       const extraJsonEntries = jsonEntries.filter(entry => entry.index !== modelJson.entry.index);
       const binaryEntries = entries.filter(entry => !["json","motion","texture"].includes(entry.type));
       const binaryRefs = [settings.model, settings.physics, settings.pose].filter(Boolean);
-      if (modelEntries.length < 1) throw new Error("PCK 中没有找到 Cubism 2 模型二进制");
-      if (textureEntries.length < settings.textures.length) throw new Error(`PCK 贴图数量不足：配置 ${settings.textures.length}，资源 ${textureEntries.length}`);
-      if (motionEntries.length < motionDefinitions.length) throw new Error(`PCK 动作数量不足：配置 ${motionDefinitions.length}，资源 ${motionEntries.length}`);
-      if (extraJsonEntries.length < expressionDefinitions.length) throw new Error(`PCK expression 数量不足：配置 ${expressionDefinitions.length}，资源 ${extraJsonEntries.length}`);
-      if (binaryEntries.length < binaryRefs.length) throw new Error(`PCK 二进制资源不足：配置 ${binaryRefs.length}，资源 ${binaryEntries.length}`);
+      if (modelEntries.length < 1) throw browserInspectionError("PCK_MODEL_BINARY_NOT_FOUND", "No Cubism 2 model binary was found in the PCK.");
+      if (textureEntries.length < settings.textures.length) throw browserInspectionError("PCK_TEXTURES_MISSING", `PCK has too few textures: configuration ${settings.textures.length}, resources ${textureEntries.length}.`);
+      if (motionEntries.length < motionDefinitions.length) throw browserInspectionError("PCK_MOTIONS_MISSING", `PCK has too few Motions: configuration ${motionDefinitions.length}, resources ${motionEntries.length}.`);
+      if (extraJsonEntries.length < expressionDefinitions.length) throw browserInspectionError("PCK_EXPRESSIONS_MISSING", `PCK has too few Expressions: configuration ${expressionDefinitions.length}, resources ${extraJsonEntries.length}.`);
+      if (binaryEntries.length < binaryRefs.length) throw browserInspectionError("PCK_BINARY_RESOURCES_MISSING", `PCK has too few binary resources: configuration ${binaryRefs.length}, resources ${binaryEntries.length}.`);
+      if (modelEntries.length > 1 || textureEntries.length > settings.textures.length || motionEntries.length > motionDefinitions.length || extraJsonEntries.length > expressionDefinitions.length) throw browserInspectionError("AMBIGUOUS_PCK_RESOURCES", "PCK contains extra typed resources that cannot be mapped unambiguously.");
+      const assigned = new Map();
+      const addAssigned = (name, data) => {
+        const previous = assigned.get(name);
+        const same = previous && previous.length === data.length && previous.every((value,index) => value === data[index]);
+        if (previous && !same) throw browserInspectionError("RESOURCE_COLLISION", `PCK resources resolve to the same path with different contents: ${name}`);
+        assigned.set(name, data);
+      };
+      addAssigned("model.json", modelJson.entry.data);
+      binaryRefs.forEach((name,index) => addAssigned(name,binaryEntries[index].data));
+      settings.textures.forEach((name,index) => addAssigned(name,textureEntries[index].data));
+      motionDefinitions.forEach((definition,index) => addAssigned(definition.file,motionEntries[index].data));
+      expressionDefinitions.forEach((definition,index) => addAssigned(definition.file,extraJsonEntries[index].data));
       const files = [
         pckFile(modelJson.entry.data,"model.json","application/json"),
         ...binaryRefs.map((name,index)=>pckFile(binaryEntries[index].data,name)),
@@ -464,53 +973,79 @@
     async function loadPck(file) {
       try {
         $("stageMessage").classList.remove("hidden");
-        $("stageMessage").textContent = `正在解析 ${file.name}…`;
+        $("stageMessage").textContent = `Inspecting ${file.name}…`;
         const unpacked = await unpackDestinyChildPck(file);
         await loadFolder(unpacked.files,{
           modelName:file.name.replace(/\.pck$/i,""),
+          sourceName:file.name,
           sourceFile:file.name,
           source:"destiny-child-pck",
-          loadMessage:`已从 ${file.name} 解出 ${unpacked.count} 个资源 · PCK ${unpacked.version.toFixed(1)}`
+          entryCount:unpacked.count,
+          version:unpacked.version,
+          fingerprint:await fingerprintBrowser([file]),
+          loadMessage:`Inspected ${file.name} · ${unpacked.count} entries · PCK ${unpacked.version.toFixed(1)}`
         });
       } catch (error) {
+        dispatch({type:"INSPECTION_ERROR",error:normalizedInspectionError(error)});
         $("stageMessage").classList.remove("hidden");
-        $("stageMessage").textContent = `载入失败：${error.message}`;
+        $("stageMessage").textContent = `Inspection failed: ${error.message}`;
         $("loadHint").textContent = error.message;
       }
     }
 
     async function loadFolder(files,options={}) {
+      let inspectionReady = false;
       try {
         for (const url of objectUrls) URL.revokeObjectURL(url);
         objectUrls = [];
         const list = [...files];
         const rootless = file => (file.webkitRelativePath || file.name).split("/").slice(1).join("/") || file.name;
         const fileMap = new Map(list.map(file => [rootless(file),file]));
-        const model3File = list.find(file => file.name.toLowerCase().endsWith(".model3.json"));
-        const model2File = list.find(file => /(^|\.)model\.json$/i.test(file.name) && !file.name.toLowerCase().endsWith(".model3.json"));
+        const model3Files = list.filter(file => file.name.toLowerCase().endsWith(".model3.json"));
+        const model2Files = list.filter(file => /(^|\.)model\.json$/i.test(file.name) && !file.name.toLowerCase().endsWith(".model3.json"));
+        if (model3Files.length + model2Files.length > 1) throw browserInspectionError("AMBIGUOUS_MODEL_CONFIG", "The Source Package contains more than one model configuration.");
+        const model3File = model3Files[0];
+        const model2File = model2Files[0];
         const modelFile = model3File || model2File;
-        if (!modelFile) throw new Error("文件夹中没有 .model3.json 或 Cubism 2 model.json");
+        if (!modelFile) throw browserInspectionError("MODEL_CONFIG_NOT_FOUND", "The directory has no .model3.json or Cubism 2 model.json.");
         const modelPath = rootless(modelFile);
         const modelDir = modelPath.includes("/") ? modelPath.slice(0,modelPath.lastIndexOf("/")+1) : "";
-        const raw = JSON.parse(await modelFile.text());
+        let raw;
+        try { raw = JSON.parse(await modelFile.text()); }
+        catch { throw browserInspectionError("INVALID_JSON", `${modelFile.name} is not valid UTF-8 JSON.`); }
         const original = structuredClone(raw);
-        const cubism = model3File ? 4 : 2;
-        if (cubism === 2 && (!raw.model || !Array.isArray(raw.textures))) throw new Error(`${modelFile.name} 不是有效的 Cubism 2 模型配置`);
+        const cubism = model3File ? Number(raw.Meta?.CubismVersion || raw.Version || 3) : 2;
+        if (![2, 3, 4, 5].includes(cubism)) throw browserInspectionError("UNSUPPORTED_CUBISM_VERSION", `Unsupported Cubism generation: ${cubism}`);
+        if (cubism === 2 && (!raw.model || !Array.isArray(raw.textures))) throw browserInspectionError("INVALID_MODEL_CONFIG", `${modelFile.name} is not a valid Cubism 2 model configuration.`);
+        const folderName = modelFile.webkitRelativePath?.split("/")[0];
+        const modelName = options.modelName || folderName || (cubism !== 2
+          ? modelFile.name.replace(/\.model3\.json$/i,"")
+          : modelPath.split("/").slice(-2,-1)[0] || modelFile.name.replace(/\.json$/i,""));
+        const inspection = await buildBrowserInspection(list, modelFile, modelPath, original, cubism, {
+          modelName,
+          sourceName: options.sourceName,
+          source: options.source,
+          entryCount: options.entryCount,
+          version: options.version,
+          fingerprint: options.fingerprint
+        });
+        dispatch({type:"LOAD_MODEL",model:{file:options.sourceFile || modelFile.name,name:modelName,cubism,source:options.source || "folder"},motions:inspection.motions,expressions:inspection.expressions,inspection});
+        inspectionReady = true;
         const resolveFile = ref => fileMap.get((modelDir + ref).replace(/^\.\//,"")) || fileMap.get(ref.replace(/^\.\//,""));
         const asDataUrl = file => new Promise((resolve,reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(reader.result);
-          reader.onerror = () => reject(reader.error || new Error(`无法读取 ${file.name}`));
+          reader.onerror = () => reject(reader.error || new Error(`Unable to read ${file.name}.`));
           reader.readAsDataURL(file);
         });
         const dataRef = async ref => {
           const file = resolveFile(ref);
-          if (!file) throw new Error(`缺少模型资源：${ref}`);
+          if (!file) throw browserInspectionError("MISSING_RESOURCE", `Missing model resource: ${ref}`);
           return asDataUrl(file);
         };
         const motions = [];
         const expressions = [];
-        if (cubism === 4) {
+        if (cubism !== 2) {
           const refs = raw.FileReferences || {};
           if (refs.Moc) refs.Moc = await dataRef(refs.Moc);
           if (Array.isArray(refs.Textures)) refs.Textures = await Promise.all(refs.Textures.map(dataRef));
@@ -535,7 +1070,7 @@
             }
           }
         } else {
-          if (!window.Live2D) throw new Error("Cubism 2 Core 未能载入；请联网刷新页面后重试");
+          if (!window.Live2D) throw browserInspectionError("RUNTIME_UNAVAILABLE", "Cubism 2 Core is unavailable. Refresh with network access or use a modern model.");
           raw.model = await dataRef(original.model);
           raw.textures = await Promise.all(original.textures.map(dataRef));
           for (const key of ["physics","pose"]) if (original[key]) raw[key] = await dataRef(original[key]);
@@ -558,20 +1093,28 @@
             }
           }
         }
-        const modelBlob = URL.createObjectURL(new Blob([JSON.stringify(raw)],{type:"application/json"})); objectUrls.push(modelBlob);
-        await mountModel(modelBlob);
-        const folderName = modelFile.webkitRelativePath?.split("/")[0];
-        const modelName = options.modelName || folderName || (cubism === 4
-          ? modelFile.name.replace(/\.model3\.json$/i,"")
-          : modelPath.split("/").slice(-2,-1)[0] || modelFile.name.replace(/\.json$/i,""));
-        dispatch({type:"LOAD_MODEL",model:{file:options.sourceFile || modelFile.name,name:modelName,cubism,source:options.source || "folder"},motions,expressions});
-        $("loadHint").textContent = options.loadMessage || `已载入 ${modelFile.name} · Cubism ${cubism}`;
-        $("stageMessage").classList.add("hidden");
-        if (motions[0]) await playMotion(motions[0].id);
+        dispatch({type:"LOAD_MODEL",model:{file:options.sourceFile || modelFile.name,name:modelName,cubism,source:options.source || "folder"},motions,expressions,inspection});
+        $("loadHint").textContent = options.loadMessage || `Inspected ${modelFile.name} · Cubism ${cubism}`;
+
+        try {
+          // Let pixi-live2d-display's FileLoader preserve relative paths for
+          // both directory uploads and reconstructed PCK entries.
+          await mountModel(list);
+          $("stageMessage").classList.add("hidden");
+          if (motions[0]) await playMotion(motions[0].id);
+        } catch (previewError) {
+          console.error("Live2Pet preview failed", previewError);
+          $("stageMessage").classList.remove("hidden");
+          $("stageMessage").textContent = `Inspection complete. Preview unavailable: ${previewError.message}`;
+        }
       } catch (error) {
+        console.error("Live2Pet load failed", error);
         $("stageMessage").classList.remove("hidden");
-        $("stageMessage").textContent = `载入失败：${error.message}`;
+        $("stageMessage").textContent = inspectionReady
+          ? `Inspection complete. Preview unavailable: ${error.message}`
+          : `Inspection failed: ${error.message}`;
         $("loadHint").textContent = error.message;
+        if (!inspectionReady) dispatch({type:"INSPECTION_ERROR",error:normalizedInspectionError(error)});
       }
     }
 
@@ -613,7 +1156,145 @@
 
     function downloadJson() {
       const url=URL.createObjectURL(new Blob([JSON.stringify(MotionMapping.output(state),null,2)],{type:"application/json"}));
-      const a=document.createElement("a");a.href=url;a.download="live2clawd-motion-map.json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+      const a=document.createElement("a");a.href=url;a.download="live2pet-motion-map.json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }
+
+    const CODEX_ATLAS = { width: 1536, height: 1872, columns: 8, rows: 9, cellWidth: 192, cellHeight: 208 };
+    let codexBuildBusy = false;
+    let codexArtifact = null;
+
+    function setBuildStatus(message, level = "") {
+      $("buildStatus").className = `build-status${level ? ` ${level}` : ""}`;
+      $("buildStatus").textContent = message;
+    }
+
+    function waitForNextFrame() {
+      return new Promise(resolve => requestAnimationFrame(() => resolve()));
+    }
+
+    function captureCodexCell() {
+      const source = $("live2dCanvas");
+      if (!source.width || !source.height) throw projectError("PREVIEW_NOT_READY", "The Live2D preview has no drawable pixels yet.");
+      const cell = document.createElement("canvas");
+      cell.width = CODEX_ATLAS.cellWidth;
+      cell.height = CODEX_ATLAS.cellHeight;
+      const context = cell.getContext("2d", { willReadFrequently: true });
+      context.clearRect(0, 0, cell.width, cell.height);
+      const scale = Math.min(cell.width / source.width, cell.height / source.height);
+      const width = source.width * scale;
+      const height = source.height * scale;
+      context.drawImage(source, (cell.width - width) / 2, (cell.height - height) / 2, width, height);
+      return context.getImageData(0, 0, cell.width, cell.height);
+    }
+
+    async function captureCodexMotion(motion, count) {
+      const duration = Math.max(0.8, Math.min(8, Number(motion.duration) || 1.2));
+      const playback = liveModel.motion(motion.group, motion.index, 3).catch(() => null);
+      const frames = [];
+      for (let index = 0; index < count; index += 1) {
+        await new Promise(resolve => setTimeout(resolve, Math.max(70, Math.round(duration * 1000 / (count + 1)))));
+        await waitForNextFrame();
+        frames.push(captureCodexCell());
+      }
+      await playback;
+      return frames;
+    }
+
+    function canvasToBlob(canvas, type, quality) {
+      return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(projectError("WEBP_ENCODER_FAILED", "This browser could not encode the transparent atlas as WebP.")), type, quality));
+    }
+
+    async function buildCodexPackage() {
+      if (codexBuildBusy) return;
+      if (!liveModel || !state.inspection) throw projectError("SOURCE_REQUIRED", "Load and preview a Source Package before building.");
+      const missing = codexValidation();
+      if (missing.length) throw projectError("INVALID_CODEX_MAPPING", `Map all Codex rows before building: ${missing.join(", ")}.`);
+      const zipApi = window.zip;
+      if (!zipApi || typeof zipApi.ZipWriter !== "function") throw projectError("ZIP_BUILDER_UNAVAILABLE", "The browser ZIP library did not load. Check network access, then refresh the Mapper.");
+      codexBuildBusy = true;
+      codexArtifact = null;
+      render();
+      try {
+        const captures = new Map();
+        for (const row of MotionMapping.codexRows) {
+          const value = state.codexMappings[row.id];
+          const motion = selectedMotionById(value.slice(7));
+          if (!motion) throw projectError("INVALID_CODEX_MAPPING", `${row.id} points to a Motion that is no longer loaded.`);
+          const needed = Math.max(row.frames, captures.get(motion.id)?.length || 0);
+          if (!captures.has(motion.id) || captures.get(motion.id).length < needed) {
+            setBuildStatus(`Capturing ${row.id} from ${motion.name} (${needed} frames)…`, "busy");
+            captures.set(motion.id, await captureCodexMotion(motion, needed));
+          }
+        }
+        const atlas = document.createElement("canvas");
+        atlas.width = CODEX_ATLAS.width;
+        atlas.height = CODEX_ATLAS.height;
+        const context = atlas.getContext("2d");
+        context.clearRect(0, 0, atlas.width, atlas.height);
+        const manifestRows = [];
+        for (let rowIndex = 0; rowIndex < MotionMapping.codexRows.length; rowIndex += 1) {
+          const row = MotionMapping.codexRows[rowIndex];
+          const motion = selectedMotionById(state.codexMappings[row.id].slice(7));
+          const frames = captures.get(motion.id).slice(0, row.frames);
+          frames.forEach((frame, column) => context.putImageData(frame, column * CODEX_ATLAS.cellWidth, rowIndex * CODEX_ATLAS.cellHeight));
+          manifestRows.push({ id: row.id, row: rowIndex, frameCount: frames.length, frames: frames.map((_, index) => ({ motionId: motion.id, sourceIndex: motion.index, time: index / Math.max(1, frames.length - 1) })) });
+        }
+        setBuildStatus("Encoding transparent WebP atlas…", "busy");
+        const spritesheet = await canvasToBlob(atlas, "image/webp", 0.82);
+        const manifest = { schemaVersion: 1, target: "codex-pet", contractVersion: 1, packageFiles: ["pet.json", "spritesheet.webp"], atlas: { ...CODEX_ATLAS }, mappings: { ...state.codexMappings }, rows: manifestRows, assets: { spritesheet: { path: "spritesheet.webp", format: "webp", width: CODEX_ATLAS.width, height: CODEX_ATLAS.height, frameCount: 1 } } };
+        setBuildStatus("Creating ZIP package…", "busy");
+        if (typeof zipApi.configure === "function") zipApi.configure({ useWebWorkers: false });
+        const writer = new zipApi.ZipWriter(new zipApi.BlobWriter("application/zip"));
+        await writer.add("pet.json", new zipApi.TextReader(`${JSON.stringify(manifest, null, 2)}\n`));
+        await writer.add("spritesheet.webp", new zipApi.BlobReader(spritesheet));
+        const blob = await writer.close();
+        const filename = `${projectId(state.projectName || "live2pet-codex")}-codex-pet.zip`;
+        codexArtifact = { blob, filename, manifest };
+        setBuildStatus(`Built ${filename} · ${Math.round(blob.size / 1024)} KiB · ${manifestRows.reduce((sum, row) => sum + row.frameCount, 0)} occupied cells.`, "good");
+      } catch (error) {
+        setBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad");
+      } finally {
+        codexBuildBusy = false;
+        render();
+      }
+    }
+
+    function downloadCodexPackage() {
+      if (!codexArtifact) return;
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(codexArtifact.blob);
+      link.download = codexArtifact.filename;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    }
+
+    function downloadProject() {
+      try {
+        const project = buildProjectDocument();
+        const filename = `${project.projectId}.live2pet`;
+        const url = URL.createObjectURL(new Blob([`${JSON.stringify(project, null, 2)}\n`], { type: "application/json" }));
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        setProjectStatus(`Saved ${filename}. Source assets remain on this computer.`, "good");
+      } catch (error) {
+        setProjectStatus(`${error.code || "PROJECT_SAVE_FAILED"}: ${error.message}`, "bad");
+      }
+    }
+
+    async function openProject(file) {
+      try {
+        const project = parseProjectDocument(await file.text());
+        const sourceMatches = state.inspection?.source.fingerprint === project.source.fingerprint;
+        dispatch({ type: "LOAD_PROJECT", project });
+        setProjectStatus(sourceMatches
+          ? `Opened ${file.name}. The Source Package fingerprint matches.`
+          : `Opened ${file.name}. Source fingerprint differs; review affected mappings before building.`, sourceMatches ? "good" : "");
+      } catch (error) {
+        setProjectStatus(`${error.code || "PROJECT_OPEN_FAILED"}: ${error.message}`, "bad");
+      }
     }
 
     $("chooseFolder").addEventListener("click",()=>$("folderInput").click());
@@ -628,13 +1309,22 @@
         e.target.value = "";
       }
     });
+    $("openProject").addEventListener("click",()=>$("projectInput").click());
+    $("projectInput").addEventListener("change",async e=>{
+      const projectFile = e.target.files[0];
+      if (!projectFile) return;
+      try { await openProject(projectFile); } finally { e.target.value = ""; }
+    });
+    $("saveProject").addEventListener("click",downloadProject);
     $("replay").addEventListener("click",()=>playMotion(state.selectedMotionId));
     $("playIdle").addEventListener("click",()=>{const idle=state.motions.find(m=>/idle/i.test(m.name))||state.motions[0];if(idle)playMotion(idle.id);});
     $("resetExpression").addEventListener("click",resetExpression);
     $("assignCurrent").addEventListener("click",()=>dispatch({type:"MAP",key:$("quickState").value,value:state.selectedMotionId?`motion:${state.selectedMotionId}`:""}));
     $("sleepMode").addEventListener("change",e=>dispatch({type:"SET_SLEEP",value:e.target.value}));
-    $("outputPrefix").addEventListener("change",e=>dispatch({type:"SET_PREFIX",value:e.target.value.trim()||"theme"}));
+    $("outputPrefix").addEventListener("change",e=>dispatch({type:"SET_PREFIX",value:e.target.value.trim()||"live2pet"}));
     $("downloadJson").addEventListener("click",downloadJson);
+    $("buildCodex").addEventListener("click", async () => { try { await buildCodexPackage(); } catch (error) { setBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad"); } });
+    $("downloadCodex").addEventListener("click",downloadCodexPackage);
     $("copyJson").addEventListener("click",async()=>{const text=JSON.stringify(MotionMapping.output(state),null,2);try{await navigator.clipboard.writeText(text)}catch{const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove();}});
     new ResizeObserver(()=>{if(app){app.resize();fitModel();}}).observe($("stage"));
     render();

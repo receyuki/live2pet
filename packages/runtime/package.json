@@ -1,0 +1,13 @@
+{
+  "name": "@live2pet/runtime",
+  "private": true,
+  "version": "0.1.0",
+  "type": "commonjs",
+  "exports": "./src/index.cjs",
+  "bin": {
+    "live2pet-runtime": "bin/live2pet-runtime.cjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.cjs"
+  }
+}

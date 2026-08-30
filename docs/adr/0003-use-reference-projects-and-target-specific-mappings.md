@@ -1,0 +1,3 @@
+# Use reference projects and target-specific mappings
+
+A Live2Pet Project will be stored as a `.live2pet` JSON document containing a Source Package path and content fingerprint rather than embedded model assets. It will define reusable Animation Recipes and a separate Motion Mapping for each Target Profile, allowing Clawd and Codex outputs to share rendered work without forcing their behavior vocabularies into one schema. Embedding source assets was rejected because of project size and redistribution risk; completely independent target projects were rejected because they would duplicate configuration and rendering.

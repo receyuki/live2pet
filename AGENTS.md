@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues are tracked in GitHub Issues for `receyuki/live2clawd`. See `docs/agents/issue-tracker.md`.
+Issues are tracked in GitHub Issues for `receyuki/live2pet`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
@@ -14,7 +14,7 @@ This is a single-context repository. See `docs/agents/domain.md`.
 
 ## Engineering behavior
 
-These principles are adapted for Live2Clawd from the behavioral guidance in [`multica-ai/andrej-karpathy-skills`](https://github.com/multica-ai/andrej-karpathy-skills/blob/main/CLAUDE.md).
+These principles are adapted for Live2Pet from the behavioral guidance in [`multica-ai/andrej-karpathy-skills`](https://github.com/multica-ai/andrej-karpathy-skills/blob/main/CLAUDE.md).
 
 ### Plan before editing
 

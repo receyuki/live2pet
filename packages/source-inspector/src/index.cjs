@@ -1,0 +1,390 @@
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const MAX_SOURCE_FILES = 10000;
+const MAX_PCK_BYTES = 512 * 1024 * 1024;
+const MAX_PCK_ENTRIES = 4096;
+const PCK_RECORD_SIZE = 25;
+
+class SourceInspectionError extends Error {
+  constructor(code, message, details = {}) {
+    super(message);
+    this.name = 'SourceInspectionError';
+    this.code = code;
+    this.details = details;
+  }
+}
+
+function fail(code, message, details = {}) {
+  throw new SourceInspectionError(code, message, details);
+}
+
+function sha256(update) {
+  const hash = crypto.createHash('sha256');
+  update(hash);
+  return hash.digest('hex');
+}
+
+function hashBuffer(buffer) {
+  return sha256((hash) => hash.update(buffer));
+}
+
+function hashFiles(files) {
+  return sha256((hash) => {
+    for (const file of files) {
+      hash.update(file.relative);
+      hash.update('\0');
+      hash.update(fs.readFileSync(file.absolute));
+      hash.update('\0');
+    }
+  });
+}
+
+function normalizeReference(reference, baseDirectory = '') {
+  if (typeof reference !== 'string' || !reference.trim()) {
+    fail('INVALID_RESOURCE_PATH', 'A referenced resource path must be a non-empty string.');
+  }
+  const replaced = reference.replaceAll('\\', '/');
+  if (replaced.includes('\0') || replaced.startsWith('/') || /^[a-z]:\//i.test(replaced)) {
+    fail('INVALID_RESOURCE_PATH', `Resource path is not safely relative: ${reference}`);
+  }
+  const candidate = path.posix.normalize(path.posix.join(baseDirectory || '', replaced));
+  if (!candidate || candidate === '.' || candidate === '..' || candidate.startsWith('../')) {
+    fail('INVALID_RESOURCE_PATH', `Resource path escapes the Source Package: ${reference}`);
+  }
+  return candidate;
+}
+
+function walkSourceDirectory(root) {
+  const files = [];
+  function visit(directory, relativeDirectory) {
+    const entries = fs.readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const absolute = path.join(directory, entry.name);
+      const relative = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
+      if (entry.isSymbolicLink()) fail('UNSUPPORTED_SYMLINK', `Source Package contains a symbolic link: ${relative}`);
+      if (entry.isDirectory()) {
+        visit(absolute, relative);
+        continue;
+      }
+      if (!entry.isFile()) fail('UNSUPPORTED_SOURCE_ENTRY', `Source Package entry is not a regular file: ${relative}`);
+      files.push({ absolute, relative: relative.replaceAll('\\', '/') });
+      if (files.length > MAX_SOURCE_FILES) fail('SOURCE_TOO_LARGE', `Source Package contains more than ${MAX_SOURCE_FILES} files.`);
+    }
+  }
+  visit(root, '');
+  return files;
+}
+
+function parseJsonBuffer(buffer, label) {
+  try {
+    return JSON.parse(buffer.toString('utf8'));
+  } catch (error) {
+    fail('INVALID_JSON', `${label} is not valid UTF-8 JSON.`, { cause: String(error.message || error) });
+  }
+}
+
+function basenameWithoutExtension(file, extensions) {
+  let name = path.posix.basename(file);
+  for (const extension of extensions) {
+    if (name.toLowerCase().endsWith(extension)) return name.slice(0, -extension.length);
+  }
+  return name;
+}
+
+function durationFromModernMotion(buffer) {
+  const parsed = parseJsonBuffer(buffer, 'Motion');
+  const duration = Number(parsed?.Meta?.Duration);
+  return Number.isFinite(duration) && duration > 0 ? duration : null;
+}
+
+function durationFromCubism2Motion(buffer) {
+  const text = buffer.toString('utf8');
+  const fps = Number(text.match(/^\$fps\s*=\s*([\d.]+)/mi)?.[1]) || 30;
+  let frameCount = 0;
+  for (const line of text.split(/\r?\n|\r/)) {
+    if (!line || line.startsWith('#') || line.startsWith('$')) continue;
+    const separator = line.indexOf('=');
+    if (separator < 0) continue;
+    frameCount = Math.max(frameCount, line.slice(separator + 1).split(',').length);
+  }
+  return frameCount > 1 ? (frameCount - 1) / fps : null;
+}
+
+function resourceName(reference, extensions) {
+  return basenameWithoutExtension(reference, extensions);
+}
+
+function createSourceView({ files, buffers, configPath, source }) {
+  const fileMap = new Map(files.map((file) => [file.relative, file]));
+  const bufferMap = buffers || new Map();
+  const warnings = [];
+  const resources = [];
+
+  function resolve(reference) {
+    const configDirectory = path.posix.dirname(configPath) === '.' ? '' : path.posix.dirname(configPath);
+    const relative = normalizeReference(reference, configDirectory);
+    if (fileMap.has(relative) || bufferMap.has(relative)) return relative;
+    const rootRelative = normalizeReference(reference);
+    if (fileMap.has(rootRelative) || bufferMap.has(rootRelative)) return rootRelative;
+    return relative;
+  }
+
+  function has(relative) {
+    return fileMap.has(relative) || bufferMap.has(relative);
+  }
+
+  function read(relative) {
+    if (bufferMap.has(relative)) return bufferMap.get(relative);
+    const file = fileMap.get(relative);
+    return file ? fs.readFileSync(file.absolute) : null;
+  }
+
+  function addResource(kind, reference, required = true) {
+    const relative = resolve(reference);
+    const exists = has(relative);
+    const item = { kind, path: relative, required, exists };
+    resources.push(item);
+    if (!exists && required) warnings.push({ code: 'MISSING_RESOURCE', resource: relative, kind });
+    return { ...item, relative };
+  }
+
+  return { source, configPath, warnings, resources, resolve, has, read, addResource };
+}
+
+function inspectSettings(settings, view, cubism) {
+  const model = {
+    cubism,
+    configFile: view.configPath,
+    modelFile: null,
+    textures: [],
+    physics: null,
+    pose: null,
+  };
+
+  const motions = [];
+  const expressions = [];
+  if (cubism === 2) {
+    if (!settings.model || !Array.isArray(settings.textures) || !settings.motions || typeof settings.motions !== 'object') {
+      fail('INVALID_MODEL_CONFIG', 'Cubism 2 model.json is missing model, textures, or motions.');
+    }
+    model.modelFile = view.addResource('model', settings.model).relative;
+    model.textures = settings.textures.map((reference) => view.addResource('texture', reference).relative);
+    for (const key of ['physics', 'pose']) {
+      if (settings[key]) model[key] = view.addResource(key, settings[key]).relative;
+    }
+    if (Array.isArray(settings.expressions)) {
+      settings.expressions.forEach((entry, index) => {
+        if (!entry?.file) return;
+        const resource = view.addResource('expression', entry.file);
+        expressions.push({
+          id: String(index),
+          index,
+          name: entry.name || resourceName(entry.file, ['.exp.json']),
+          sourceFile: resource.relative,
+        });
+      });
+    }
+    for (const [group, entries] of Object.entries(settings.motions)) {
+      if (!Array.isArray(entries)) continue;
+      entries.forEach((entry, index) => {
+        if (!entry?.file) fail('INVALID_MOTION_DEFINITION', `Cubism 2 motion ${group}:${index} has no file.`);
+        const resource = view.addResource('motion', entry.file);
+        const buffer = view.read(resource.relative);
+        motions.push({
+          id: `${group || 'default'}:${index}`,
+          group,
+          index,
+          name: entry.name || resourceName(entry.file, ['.mtn']),
+          sourceFile: resource.relative,
+          duration: buffer ? durationFromCubism2Motion(buffer) : null,
+        });
+      });
+    }
+  } else {
+    const references = settings.FileReferences;
+    if (!references || typeof references !== 'object' || !references.Moc || !Array.isArray(references.Textures)) {
+      fail('INVALID_MODEL_CONFIG', 'Modern model3.json is missing FileReferences, Moc, or Textures.');
+    }
+    model.modelFile = view.addResource('model', references.Moc).relative;
+    model.textures = references.Textures.map((reference) => view.addResource('texture', reference).relative);
+    for (const [key, kind] of [['Physics', 'physics'], ['Pose', 'pose'], ['UserData', 'userdata'], ['DisplayInfo', 'display-info']]) {
+      if (references[key]) view.addResource(kind, references[key]);
+    }
+    if (Array.isArray(references.Expressions)) {
+      references.Expressions.forEach((entry, index) => {
+        if (!entry?.File) return;
+        const resource = view.addResource('expression', entry.File);
+        expressions.push({
+          id: String(index),
+          index,
+          name: entry.Name || resourceName(entry.File, ['.exp3.json']),
+          sourceFile: resource.relative,
+        });
+      });
+    }
+    for (const [group, entries] of Object.entries(references.Motions || {})) {
+      if (!Array.isArray(entries)) continue;
+      entries.forEach((entry, index) => {
+        if (!entry?.File) fail('INVALID_MOTION_DEFINITION', `Modern motion ${group}:${index} has no File.`);
+        const resource = view.addResource('motion', entry.File);
+        const buffer = view.read(resource.relative);
+        let duration = null;
+        if (buffer) {
+          try { duration = durationFromModernMotion(buffer); } catch (error) {
+            if (!(error instanceof SourceInspectionError)) throw error;
+          }
+        }
+        motions.push({
+          id: `${group || 'default'}:${index}`,
+          group,
+          index,
+          name: entry.Name || resourceName(entry.File, ['.motion3.json']),
+          sourceFile: resource.relative,
+          duration,
+        });
+      });
+    }
+  }
+
+  return {
+    schemaVersion: 1,
+    source: { ...view.source, modelConfig: view.configPath },
+    model,
+    motions,
+    expressions,
+    resources: view.resources,
+    warnings: view.warnings,
+  };
+}
+
+function inspectDirectory(root) {
+  const files = walkSourceDirectory(root);
+  const modelCandidates = files.filter((file) => /\.model3\.json$/i.test(file.relative) || /(^|\/)model\.json$/i.test(file.relative));
+  if (!modelCandidates.length) fail('MODEL_CONFIG_NOT_FOUND', 'Source Package contains no model3.json or Cubism 2 model.json.');
+  if (modelCandidates.length > 1) fail('AMBIGUOUS_MODEL_CONFIG', 'Source Package contains more than one model configuration.', { candidates: modelCandidates.map((file) => file.relative) });
+
+  const config = modelCandidates[0];
+  const settings = parseJsonBuffer(fs.readFileSync(config.absolute), config.relative);
+  const cubism = /\.model3\.json$/i.test(config.relative)
+    ? Number(settings.Meta?.CubismVersion || settings.Version || 3)
+    : 2;
+  if (![2, 3, 4, 5].includes(cubism)) fail('UNSUPPORTED_CUBISM_VERSION', `Unsupported Cubism generation: ${cubism}`);
+  const source = {
+    kind: 'standard-directory',
+    name: path.basename(root),
+    fingerprint: hashFiles(files),
+    fileCount: files.length,
+  };
+  const view = createSourceView({ files, configPath: config.relative, source });
+  return inspectSettings(settings, view, cubism);
+}
+
+function bytesMatch(bytes, signature) {
+  return bytes.length >= signature.length && signature.every((value, index) => bytes[index] === value);
+}
+
+function pckEntryType(bytes) {
+  if (bytesMatch(bytes, [0x23, 0x20, 0x4c, 0x69, 0x76, 0x65, 0x32, 0x44])) return 'motion';
+  if (bytesMatch(bytes, [0x6d, 0x6f, 0x63])) return 'model';
+  if (bytesMatch(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return 'texture';
+  if (bytes.toString('utf8').trimStart().startsWith('{')) return 'json';
+  return 'unknown';
+}
+
+function parsePck(filePath) {
+  const bytes = fs.readFileSync(filePath);
+  if (bytes.length > MAX_PCK_BYTES) fail('PCK_TOO_LARGE', `PCK exceeds the ${MAX_PCK_BYTES} byte inspection limit.`);
+  if (bytes.length < 12 || !bytesMatch(bytes, [0x50, 0x43, 0x4b, 0x00])) fail('INVALID_PCK_HEADER', 'Not a Destiny Child PCK: missing PCK\\0 header.');
+  const version = bytes.readFloatLE(4);
+  const count = bytes.readUInt32LE(8);
+  const headerSize = 12 + count * PCK_RECORD_SIZE;
+  if (!count || count > MAX_PCK_ENTRIES || headerSize > bytes.length) fail('INVALID_PCK_TABLE', `Invalid PCK table: ${count} entries.`);
+
+  const entries = [];
+  for (let index = 0; index < count; index += 1) {
+    const base = 12 + index * PCK_RECORD_SIZE;
+    const flags = bytes.readUInt8(base + 8);
+    const offset = bytes.readUInt32LE(base + 9);
+    const storedSize = bytes.readUInt32LE(base + 13);
+    const originalSize = bytes.readUInt32LE(base + 17);
+    if (offset < headerSize || offset + storedSize > bytes.length) fail('PCK_ENTRY_OUT_OF_BOUNDS', `PCK entry ${index} is out of bounds.`, { index });
+    if (flags !== 0 || storedSize !== originalSize) fail('UNSUPPORTED_PCK_FLAGS', `PCK entry ${index} uses unsupported compression or encryption flags.`, { index, flags, storedSize, originalSize });
+    entries.push({ index, offset, end: offset + storedSize, storedSize, data: bytes.subarray(offset, offset + storedSize), type: pckEntryType(bytes.subarray(offset, offset + storedSize)) });
+  }
+  const ranges = [...entries].sort((left, right) => left.offset - right.offset);
+  for (let index = 1; index < ranges.length; index += 1) {
+    if (ranges[index].offset < ranges[index - 1].end) fail('OVERLAPPING_PCK_ENTRIES', `PCK entries ${ranges[index - 1].index} and ${ranges[index].index} overlap.`);
+  }
+
+  const jsonEntries = entries.filter((entry) => entry.type === 'json');
+  const parsedJson = jsonEntries.map((entry) => ({ entry, value: parseJsonBuffer(entry.data, `PCK JSON entry ${entry.index}`) }));
+  const modelJson = parsedJson.find(({ value }) => value && typeof value === 'object' && value.model && Array.isArray(value.textures) && value.motions);
+  if (!modelJson) fail('PCK_MODEL_CONFIG_NOT_FOUND', 'PCK contains no complete Cubism 2 model.json.');
+  const settings = modelJson.value;
+  const motionDefinitions = Object.values(settings.motions).flat().filter(Boolean);
+  const expressionDefinitions = Array.isArray(settings.expressions) ? settings.expressions.filter((entry) => entry?.file) : [];
+  const modelEntries = entries.filter((entry) => entry.type === 'model');
+  const textureEntries = entries.filter((entry) => entry.type === 'texture');
+  const motionEntries = entries.filter((entry) => entry.type === 'motion');
+  const extraJsonEntries = jsonEntries.filter((entry) => entry.index !== modelJson.entry.index);
+  const binaryEntries = entries.filter((entry) => !['json', 'motion', 'texture'].includes(entry.type));
+  const binaryRefs = [settings.model, settings.physics, settings.pose].filter(Boolean);
+  if (modelEntries.length < 1) fail('PCK_MODEL_BINARY_NOT_FOUND', 'PCK contains no Cubism 2 model binary.');
+  if (textureEntries.length < settings.textures.length) fail('PCK_TEXTURES_MISSING', 'PCK contains too few textures.', { expected: settings.textures.length, actual: textureEntries.length });
+  if (motionEntries.length < motionDefinitions.length) fail('PCK_MOTIONS_MISSING', 'PCK contains too few motions.', { expected: motionDefinitions.length, actual: motionEntries.length });
+  if (extraJsonEntries.length < expressionDefinitions.length) fail('PCK_EXPRESSIONS_MISSING', 'PCK contains too few expressions.', { expected: expressionDefinitions.length, actual: extraJsonEntries.length });
+  if (binaryEntries.length < binaryRefs.length) fail('PCK_BINARY_RESOURCES_MISSING', 'PCK contains too few model-side binary resources.', { expected: binaryRefs.length, actual: binaryEntries.length });
+  if (modelEntries.length > 1 || textureEntries.length > settings.textures.length || motionEntries.length > motionDefinitions.length || extraJsonEntries.length > expressionDefinitions.length) {
+    fail('AMBIGUOUS_PCK_RESOURCES', 'PCK contains extra typed resources that cannot be mapped to required model references.');
+  }
+
+  const buffers = new Map();
+  const setBuffer = (reference, data) => {
+    const relative = normalizeReference(reference);
+    const previous = buffers.get(relative);
+    if (previous && !previous.equals(data)) {
+      fail('RESOURCE_COLLISION', `PCK resources resolve to the same path with different contents: ${relative}`, { path: relative });
+    }
+    buffers.set(relative, data);
+  };
+  setBuffer('model.json', modelJson.entry.data);
+  binaryRefs.forEach((reference, index) => setBuffer(reference, binaryEntries[index].data));
+  settings.textures.forEach((reference, index) => setBuffer(reference, textureEntries[index].data));
+  motionDefinitions.forEach((definition, index) => setBuffer(definition.file, motionEntries[index].data));
+  expressionDefinitions.forEach((definition, index) => setBuffer(definition.file, extraJsonEntries[index].data));
+  return { version, count, entries, settings, buffers };
+}
+
+function inspectPck(filePath) {
+  const parsed = parsePck(filePath);
+  const source = {
+    kind: 'destiny-child-pck',
+    name: path.basename(filePath),
+    fingerprint: hashBuffer(fs.readFileSync(filePath)),
+    fileCount: parsed.buffers.size,
+    entryCount: parsed.count,
+    version: parsed.version,
+  };
+  const files = [...parsed.buffers.keys()].map((relative) => ({ relative, absolute: null }));
+  const view = createSourceView({ files, buffers: parsed.buffers, configPath: 'model.json', source });
+  return inspectSettings(parsed.settings, view, 2);
+}
+
+function inspectSourcePackage(inputPath) {
+  if (typeof inputPath !== 'string' || !inputPath.trim()) fail('INPUT_REQUIRED', 'An input Source Package path is required.');
+  const resolved = path.resolve(inputPath);
+  if (!fs.existsSync(resolved)) fail('INPUT_NOT_FOUND', 'The selected Source Package does not exist.');
+  const stat = fs.lstatSync(resolved);
+  if (stat.isDirectory()) return inspectDirectory(resolved);
+  if (stat.isFile() && path.extname(resolved).toLowerCase() === '.pck') return inspectPck(resolved);
+  fail('UNSUPPORTED_INPUT', 'Select a Source Package directory or a .pck file.');
+}
+
+module.exports = {
+  SourceInspectionError,
+  inspectSourcePackage,
+  normalizeReference,
+  parsePck,
+};
