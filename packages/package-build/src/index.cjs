@@ -12,6 +12,7 @@ const { sampleMotionCandidates } = require('../../renderer/src/index.cjs');
 const { CacheError, CacheStore, DEFAULT_CACHE_LIMIT, createCacheKey } = require('./cache.cjs');
 const { createClawdPreview, createCodexPreview, createTargetPreview, PREVIEW_CONTRACT_VERSION, TargetPreviewError } = require('./preview.cjs');
 const { decodeFrameSet, encodeFrameSet, FRAME_CACHE_SCHEMA_VERSION, FrameCacheError } = require('./frame-cache.cjs');
+const { decodeAsset, encodeAsset, ASSET_CACHE_SCHEMA_VERSION, AssetCacheError } = require('./asset-cache.cjs');
 
 const BUILD_CONTRACT_VERSION = 1;
 const STAGES = Object.freeze(['select', 'layout', 'compose', 'encode', 'manifest', 'preview', 'package', 'report']);
@@ -52,9 +53,9 @@ function resolveTargetRenderPreset(target, render = {}) {
   return { name: presetName, settings: { ...preset } };
 }
 
-function buildProvenance(target, targetContractVersion, render = {}) {
+function buildProvenance(target, targetContractVersion, render = {}, encoderVersion) {
   const selection = resolveTargetRenderPreset(target, render);
-  return {
+  const provenance = {
     schemaVersion: 1,
     buildContractVersion: BUILD_CONTRACT_VERSION,
     targetProfile: target,
@@ -63,6 +64,8 @@ function buildProvenance(target, targetContractVersion, render = {}) {
     render: selection.settings,
     encoder: { name: 'sharp', format: 'webp' },
   };
+  if (typeof encoderVersion === 'string' && encoderVersion.trim()) provenance.encoder.version = encoderVersion.trim();
+  return provenance;
 }
 
 function createArtifactFilename({ packageId, target, version = '1.0.0' } = {}) {
@@ -92,6 +95,7 @@ function createBuildReport({ build, projectId, source } = {}) {
       encoding: build.encoding ? { ...build.encoding } : null,
       package: build.package ? { format: build.package.format, byteLength: build.package.byteLength, files: [...(build.package.files || [])], ...(build.package.artifactName ? { artifactName: build.package.artifactName } : {}) } : null,
     },
+    cache: build.cache ? { enabled: build.cache.enabled === true, hits: Number.isInteger(build.cache.hits) ? build.cache.hits : 0, misses: Number.isInteger(build.cache.misses) ? build.cache.misses : 0 } : null,
     preview: build.preview ? { target: build.preview.target, source: build.preview.source, ready: build.preview.ready === true } : null,
     warnings: Array.isArray(build.warnings) ? build.warnings.map((warning) => ({ ...warning })) : [],
   };
@@ -113,6 +117,29 @@ function checkCancelled(signal) {
 
 function progress(onProgress, stage, status, details = {}) {
   if (typeof onProgress === 'function') onProgress({ stage, status, ...details });
+}
+
+function cacheIdentityAvailable(cache, cacheContext) {
+  return cache && typeof cache.get === 'function' && typeof cache.put === 'function' && cacheContext && typeof cacheContext === 'object'
+    && typeof cacheContext.sourceFingerprint === 'string' && typeof cacheContext.runtimeVersion === 'string'
+    && typeof cacheContext.rendererVersion === 'string';
+}
+
+function encodedCacheIdentityAvailable(cache, cacheContext) {
+  return Boolean(cacheIdentityAvailable(cache, cacheContext) && typeof cacheContext.encoderVersion === 'string' && cacheContext.encoderVersion.trim());
+}
+
+function encodedAssetCacheKey({ cacheContext, target, targetVersion, renderPreset, recipe }) {
+  return createCacheKey({
+    sourceFingerprint: cacheContext.sourceFingerprint,
+    runtimeVersion: cacheContext.runtimeVersion,
+    rendererVersion: cacheContext.rendererVersion,
+    recipe,
+    targetProfile: target,
+    targetVersion: String(targetVersion),
+    renderPreset,
+    artifact: 'encoded-webp',
+  });
 }
 
 function mappedMotionIds(values) {
@@ -448,6 +475,10 @@ async function buildClawdTheme(input = {}, options = {}) {
   const onProgress = options.onProgress || input.onProgress;
   const render = options.render || (options.renderPreset ? { preset: options.renderPreset } : {});
   const renderSelection = resolveTargetRenderPreset('clawd', render);
+  const cacheContext = options.cacheContext;
+  const cache = options.cache;
+  const cacheEnabled = encodedCacheIdentityAvailable(cache, cacheContext);
+  const cacheStats = { enabled: cacheEnabled, hits: 0, misses: 0 };
   checkCancelled(signal);
   progress(onProgress, CLAWD_STAGES[0], 'started');
   const target = createClawdTarget(mapping);
@@ -468,13 +499,46 @@ async function buildClawdTheme(input = {}, options = {}) {
     checkCancelled(signal);
     const frameSet = normalizeClawdFrameSet(framesByMotion[motionId], motionId, renderSelection.settings);
     const firstFrame = frameSet.frames[0];
-    const encoded = await encodeAnimatedWebp({ ...frameSet, width: firstFrame && firstFrame.width, height: firstFrame && firstFrame.height }, { sharpFactory: options.sharpFactory });
+    const delays = Array.isArray(frameSet.delay) ? [...frameSet.delay] : Array(frameSet.frames.length).fill(frameSet.delay);
+    const cacheKey = cacheEnabled ? encodedAssetCacheKey({
+      cacheContext,
+      target: 'clawd',
+      targetVersion: target.contractVersion,
+      renderPreset: renderSelection.name,
+      recipe: {
+        motionId,
+        expressionId: cacheContext.expressionId || null,
+        frameIds: frameSet.frames.map((frame, index) => typeof frame.id === 'string' && frame.id ? frame.id : `frame-${index}`),
+        render: { width: firstFrame && firstFrame.width, height: firstFrame && firstFrame.height, delays, quality: frameSet.quality, alphaQuality: frameSet.alphaQuality, lossless: frameSet.lossless },
+        encoderVersion: cacheContext.encoderVersion,
+      },
+    }) : null;
+    let encoded = null;
+    if (cacheKey) {
+      const cached = cache.get(cacheKey);
+      if (cached) {
+        try {
+          const decoded = decodeAsset(cached.data);
+          if (firstFrame && decoded.format === 'webp' && decoded.width === firstFrame.width && decoded.height === firstFrame.height && decoded.frameCount === frameSet.frames.length && decoded.delays.length === delays.length) {
+            encoded = { format: decoded.format, buffer: decoded.bytes, frameCount: decoded.frameCount, width: decoded.width, height: decoded.height, delays: decoded.delays, info: null };
+            cacheStats.hits += 1;
+          }
+        } catch (error) {
+          if (error instanceof AssetCacheError && typeof cache.removeFiles === 'function') cache.removeFiles(cacheKey.digest);
+        }
+      }
+    }
+    if (!encoded) {
+      if (cacheEnabled) cacheStats.misses += 1;
+      encoded = await encodeAnimatedWebp({ ...frameSet, width: firstFrame && firstFrame.width, height: firstFrame && firstFrame.height }, { sharpFactory: options.sharpFactory });
+      if (cacheKey) cache.put(cacheKey, encodeAsset({ format: encoded.format, width: encoded.width, height: encoded.height, frameCount: encoded.frameCount, delays: encoded.delays, bytes: encoded.buffer }), { projectId: cacheContext.projectId, sourceFingerprint: cacheContext.sourceFingerprint, artifact: 'encoded-webp' });
+    }
     const assetName = `${themeId}-${clawdAssetSlug(motionId, usedSlugs)}.webp`;
     assetsByMotion[motionId] = assetName;
     assets[assetName] = encoded.buffer;
     assetReports.push({ motionId, file: assetName, frameCount: encoded.frameCount, width: encoded.width, height: encoded.height, byteLength: encoded.buffer.byteLength, delays: encoded.delays });
   }
-  progress(onProgress, CLAWD_STAGES[1], 'completed', { assets: assetReports.length });
+  progress(onProgress, CLAWD_STAGES[1], 'completed', { assets: assetReports.length, cacheHits: cacheStats.hits, cacheMisses: cacheStats.misses });
   checkCancelled(signal);
 
   progress(onProgress, CLAWD_STAGES[2], 'started');
@@ -514,9 +578,10 @@ async function buildClawdTheme(input = {}, options = {}) {
     warnings: target.warnings || [],
     validation,
     encoding: { required: 'webp', status: 'completed', assetCount: assetReports.length },
-    provenance: buildProvenance('clawd', target.contractVersion, render),
+    provenance: buildProvenance('clawd', target.contractVersion, render, cacheContext && cacheContext.encoderVersion),
     package: packaged,
     preview,
+    cache: cacheStats,
   };
   result.report = createBuildReport({ build: result });
   progress(onProgress, CLAWD_STAGES[5], 'started');
@@ -531,6 +596,11 @@ async function buildCodexPet(input = {}, options = {}) {
   const onProgress = options.onProgress || input.onProgress;
   const render = options.render || (options.renderPreset ? { preset: options.renderPreset } : {});
   const renderSelection = resolveTargetRenderPreset('codex-pet', render);
+  const target = createCodexTarget(mapping);
+  const cacheContext = options.cacheContext;
+  const cache = options.cache;
+  const cacheEnabled = encodedCacheIdentityAvailable(cache, cacheContext);
+  const cacheStats = { enabled: cacheEnabled, hits: 0, misses: 0 };
   checkCancelled(signal);
 
   progress(onProgress, STAGES[0], 'started');
@@ -553,13 +623,45 @@ async function buildCodexPet(input = {}, options = {}) {
   let encoded = null;
   if (encodeRequested) {
     progress(onProgress, STAGES[3], 'started');
-    encoded = await encodeAnimatedWebp({ frames: [{ width: atlas.width, height: atlas.height, rgba: atlas.rgba }], width: atlas.width, height: atlas.height, quality: options.quality ?? 80, alphaQuality: options.alphaQuality ?? 100, lossless: options.lossless ?? false }, { sharpFactory: options.sharpFactory });
+    const quality = options.quality ?? 80;
+    const alphaQuality = options.alphaQuality ?? 100;
+    const lossless = options.lossless ?? false;
+    const cacheKey = cacheEnabled ? encodedAssetCacheKey({
+      cacheContext,
+      target: 'codex-pet',
+      targetVersion: target.contractVersion,
+      renderPreset: renderSelection.name,
+      recipe: {
+        rows: Object.fromEntries(Object.entries(selection.frameSets).map(([rowId, frames]) => [rowId, frames.map((frame, index) => typeof frame.id === 'string' && frame.id ? frame.id : `frame-${index}`)])),
+        atlas: { width: atlas.width, height: atlas.height, columns: ATLAS.columns, rows: ATLAS.rows },
+        encoding: { quality, alphaQuality, lossless },
+        encoderVersion: cacheContext.encoderVersion,
+      },
+    }) : null;
+    if (cacheKey) {
+      const cached = cache.get(cacheKey);
+      if (cached) {
+        try {
+          const decoded = decodeAsset(cached.data);
+          if (decoded.format === 'webp' && decoded.width === atlas.width && decoded.height === atlas.height && decoded.frameCount === 1) {
+            encoded = { format: decoded.format, buffer: decoded.bytes, frameCount: decoded.frameCount, width: decoded.width, height: decoded.height, delays: decoded.delays, info: null };
+            cacheStats.hits += 1;
+          }
+        } catch (error) {
+          if (error instanceof AssetCacheError && typeof cache.removeFiles === 'function') cache.removeFiles(cacheKey.digest);
+        }
+      }
+    }
+    if (!encoded) {
+      if (cacheEnabled) cacheStats.misses += 1;
+      encoded = await encodeAnimatedWebp({ frames: [{ width: atlas.width, height: atlas.height, rgba: atlas.rgba }], width: atlas.width, height: atlas.height, quality, alphaQuality, lossless }, { sharpFactory: options.sharpFactory });
+      if (cacheKey) cache.put(cacheKey, encodeAsset({ format: encoded.format, width: encoded.width, height: encoded.height, frameCount: encoded.frameCount, delays: encoded.delays, bytes: encoded.buffer }), { projectId: cacheContext.projectId, sourceFingerprint: cacheContext.sourceFingerprint, artifact: 'encoded-webp' });
+    }
     checkCancelled(signal);
-    progress(onProgress, STAGES[3], 'completed', { format: encoded.format, byteLength: encoded.buffer.length });
+    progress(onProgress, STAGES[3], 'completed', { format: encoded.format, byteLength: encoded.buffer.length, cacheHits: cacheStats.hits, cacheMisses: cacheStats.misses });
   }
 
   progress(onProgress, STAGES[4], 'started');
-  const target = createCodexTarget(mapping);
   const metadata = normalizeCodexMetadata(input.metadata || {});
   const artifactName = createArtifactFilename({ packageId: metadata.id, target: 'codex-pet', version: metadata.version });
   const manifest = {
@@ -612,10 +714,11 @@ async function buildCodexPet(input = {}, options = {}) {
     warnings: [],
     validation,
     encoding: encoded ? { required: 'webp', status: 'completed', format: encoded.format, frameCount: encoded.frameCount, width: encoded.width, height: encoded.height, byteLength: encoded.buffer.length } : { required: 'webp', status: 'pending', reason: 'Set encode:true or package:true to convert atlas.rgba to spritesheet.webp.' },
-    provenance: buildProvenance('codex-pet', target.contractVersion, render),
+    provenance: buildProvenance('codex-pet', target.contractVersion, render, cacheContext && cacheContext.encoderVersion),
     spritesheet: encoded ? encoded.buffer : null,
     package: packaged,
     preview,
+    cache: cacheStats,
   };
   result.report = createBuildReport({ build: result });
   progress(onProgress, STAGES[7], 'started');
@@ -647,11 +750,11 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
     if (renderer) {
       if (targetId === 'clawd' && !targetInput.framesByMotion && !targetInput.frames) {
         const ids = mappedMotionIds({ ...targetProject.mappings, ...targetProject.reactions });
-        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext || { sourceFingerprint: normalizedProject.source.fingerprint, runtimeVersion: targetOptions.runtimeVersion, rendererVersion: targetOptions.rendererVersion, targetVersion: targetOptions.targetVersion || '1', projectId: normalizedProject.projectId } });
+        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext || { sourceFingerprint: normalizedProject.source.fingerprint, runtimeVersion: targetOptions.runtimeVersion, rendererVersion: targetOptions.rendererVersion, targetVersion: targetOptions.targetVersion || '1', encoderVersion: targetOptions.encoderVersion, projectId: normalizedProject.projectId } });
         renderedInput = { ...targetInput, framesByMotion };
       } else if (targetId === 'codex-pet' && !targetInput.candidatesByRow && !targetInput.candidates) {
         const ids = mappedMotionIds(targetProject.mappings);
-        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext || { sourceFingerprint: normalizedProject.source.fingerprint, runtimeVersion: targetOptions.runtimeVersion, rendererVersion: targetOptions.rendererVersion, targetVersion: targetOptions.targetVersion || '1', projectId: normalizedProject.projectId } });
+        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext || { sourceFingerprint: normalizedProject.source.fingerprint, runtimeVersion: targetOptions.runtimeVersion, rendererVersion: targetOptions.rendererVersion, targetVersion: targetOptions.targetVersion || '1', encoderVersion: targetOptions.encoderVersion, projectId: normalizedProject.projectId } });
         const candidatesByRow = Object.fromEntries(Object.entries(targetProject.mappings).map(([row, value]) => [row, framesByMotion[value.slice(7)]?.frames || []]));
         renderedInput = { ...targetInput, candidatesByRow };
       }
@@ -681,6 +784,8 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
 module.exports = {
   BUILD_CONTRACT_VERSION,
   BUILD_REPORT_SCHEMA_VERSION,
+  ASSET_CACHE_SCHEMA_VERSION,
+  AssetCacheError,
   CLAWD_PACKAGE_LIMIT,
   CacheError,
   CacheStore,
@@ -705,7 +810,9 @@ module.exports = {
   createClawdPreview,
   createCodexPreview,
   createTargetPreview,
+  decodeAsset,
   createCacheKey,
+  encodeAsset,
   encodeAnimatedWebp,
   renderMappedMotions,
   resolveTargetRenderPreset,

@@ -4,6 +4,7 @@ const test = require('node:test');
 
 const {
   CLAWD_PACKAGE_LIMIT,
+  AssetCacheError,
   CacheStore,
   PackageBuildError,
   TARGET_RENDER_PRESETS,
@@ -18,7 +19,9 @@ const {
   createCodexPreview,
   createTargetPreview,
   createCodexPetZip,
+  decodeAsset,
   encodeAnimatedWebp,
+  encodeAsset,
   decodeFrameSet,
   encodeFrameSet,
   renderMappedMotions,
@@ -228,6 +231,14 @@ test('encodes stacked RGBA frames through the injected WebP encoder contract', a
   assert.equal(calls[0].input.length, 16);
 });
 
+test('encodes and validates the bounded WebP asset cache envelope', () => {
+  const bytes = encodeAsset({ format: 'webp', width: 2, height: 3, bytes: Uint8Array.from([1, 2, 3]) });
+  const decoded = decodeAsset(bytes);
+  assert.deepEqual({ format: decoded.format, width: decoded.width, height: decoded.height, frameCount: decoded.frameCount, delays: decoded.delays }, { format: 'webp', width: 2, height: 3, frameCount: 1, delays: [100] });
+  assert.deepEqual(decoded.bytes, Buffer.from([1, 2, 3]));
+  assert.throws(() => decodeAsset(bytes.subarray(0, 4)), (error) => error instanceof AssetCacheError && error.code === 'INVALID_ASSET_CACHE');
+});
+
 test('can encode and package a Codex atlas when explicitly requested', async () => {
   const events = [];
   const fakeSharp = (input, options) => ({
@@ -384,6 +395,38 @@ test('reuses verified render candidates only with a complete cache identity', as
   const encoded = encodeFrameSet({ motionId: 'idle', ...first.idle });
   const decoded = decodeFrameSet(encoded);
   assert.equal(decoded.frames[0].rgba.byteLength, first.idle.frames[0].rgba.byteLength);
+});
+
+test('reuses encoded Clawd assets only with a complete cache identity', async () => {
+  const cache = new CacheStore({ rootDir: require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'live2pet-encoded-clawd-cache-')) });
+  const cacheContext = { projectId: 'encoded-clawd', sourceFingerprint: 'source-sha256', runtimeVersion: 'core-5', rendererVersion: 'renderer-1', encoderVersion: 'sharp-0.34.5' };
+  let calls = 0;
+  const sharpFactory = () => ({ webp() { calls += 1; return { toBuffer: async () => ({ data: Buffer.from(`RIFF-clawd-${calls}`), info: { width: 2, height: 2, pages: 2 } }) }; } });
+  const first = await buildClawdTheme({ mapping: clawdMapping(), framesByMotion: clawdFrames() }, { cache, cacheContext, sharpFactory });
+  assert.equal(first.cache.misses, 5);
+  assert.equal(first.provenance.encoder.version, 'sharp-0.34.5');
+  assert.deepEqual(first.report.cache, { enabled: true, hits: 0, misses: 5 });
+  const second = await buildClawdTheme({ mapping: clawdMapping(), framesByMotion: clawdFrames() }, { cache, cacheContext, sharpFactory: () => { throw new Error('encoded cache miss'); } });
+  assert.equal(second.cache.hits, 5);
+  assert.equal(calls, 5);
+  assert.equal(cache.status({ projectId: 'encoded-clawd' }).entryCount, 5);
+});
+
+test('reuses the encoded Codex atlas when frame selections and encoder settings match', async () => {
+  const cache = new CacheStore({ rootDir: require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'live2pet-encoded-codex-cache-')) });
+  const cacheContext = { projectId: 'encoded-codex', sourceFingerprint: 'source-sha256', runtimeVersion: 'core-5', rendererVersion: 'renderer-1', encoderVersion: 'sharp-0.34.5' };
+  let calls = 0;
+  const sharpFactory = () => ({ webp() { calls += 1; return { toBuffer: async () => ({ data: Buffer.from(`RIFF-codex-${calls}`), info: { width: 1536, height: 1872 } }) }; } });
+  const first = await buildCodexPet({ mapping: { mappings: mapping() }, candidatesByRow: candidatesByRow() }, { encode: true, cache, cacheContext, sharpFactory });
+  assert.equal(first.cache.misses, 1);
+  assert.equal(first.provenance.encoder.version, 'sharp-0.34.5');
+  const second = await buildCodexPet({ mapping: { mappings: mapping() }, candidatesByRow: candidatesByRow() }, { encode: true, cache, cacheContext, sharpFactory: () => { throw new Error('encoded cache miss'); } });
+  assert.equal(second.cache.hits, 1);
+  assert.equal(calls, 1);
+  const changedEncoder = await buildCodexPet({ mapping: { mappings: mapping() }, candidatesByRow: candidatesByRow() }, { encode: true, cache, cacheContext: { ...cacheContext, encoderVersion: 'sharp-0.35.0' }, sharpFactory });
+  assert.equal(changedEncoder.cache.misses, 1);
+  assert.equal(calls, 2);
+  assert.equal(cache.status({ projectId: 'encoded-codex' }).entryCount, 2);
 });
 
 test('target Render Preset controls Clawd WebP quality and provenance stays path-free', async () => {
