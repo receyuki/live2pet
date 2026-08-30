@@ -215,6 +215,7 @@ test('renderer host helpers enforce sandbox defaults, CSP, and a narrow IPC surf
   assert.equal(options.webPreferences.sandbox, true);
   assert.match(createRendererCsp({ scriptNonce: 'nonce_123' }), /default-src 'none'/);
   assert.match(createRendererCsp({ scriptNonce: 'nonce_123' }), /script-src 'self' 'nonce-nonce_123'/);
+  assert.doesNotMatch(createRendererCsp(), /unsafe-eval|file:/);
   assert.match(createRendererCspMeta(), /^<meta http-equiv="Content-Security-Policy"/);
   assert.throws(
     () => createRendererWindowOptions({ preload: '/app/preload.cjs', width: 0 }),
@@ -232,6 +233,10 @@ test('renderer host helpers enforce sandbox defaults, CSP, and a narrow IPC surf
   const failure = await route({ protocolVersion: 1, method: 'unknown', args: [] });
   assert.equal(failure.ok, false);
   assert.equal(failure.error.code, 'UNKNOWN_RENDERER_METHOD');
+  const leakingRenderer = Object.create(renderer);
+  leakingRenderer.getState = async () => { throw new Error('failed at /Users/RY/private/model.model3.json'); };
+  const redacted = await createRendererIpcRouter({ renderer: leakingRenderer })({ protocolVersion: 1, method: 'getState', args: [] });
+  assert.equal(redacted.error.message, 'failed at <redacted-path>');
   const ipcCalls = [];
   const api = createRendererPreloadApi({ ipcRenderer: { invoke: async (...args) => (ipcCalls.push(args), { ok: true }) } });
   await api.playMotion('Base:idle');

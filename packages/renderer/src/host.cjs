@@ -107,6 +107,13 @@ function createRendererCspMeta(options = {}) {
   return `<meta http-equiv="Content-Security-Policy" content="${createRendererCsp(options)}">`;
 }
 
+function rendererIpcError(error) {
+  return {
+    code: error && error.code ? error.code : 'RENDERER_COMMAND_FAILED',
+    message: redactMessage(error && error.message ? error.message : error),
+  };
+}
+
 module.exports = {
   RENDERER_IPC_CHANNEL,
   RENDERER_IPC_METHODS,
@@ -116,4 +123,5 @@ module.exports = {
   createRendererPreloadApi,
   createRendererWindowOptions,
   normalizeRequest,
+  rendererIpcError,
 };
