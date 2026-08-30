@@ -11,6 +11,8 @@ const {
   createCodexPetZip,
   encodeAnimatedWebp,
 } = require('../src/index.cjs');
+const { validateClawdThemePackage } = require('../../clawd-target/src/index.cjs');
+const { validateCodexPetPackage } = require('../../codex-target/src/index.cjs');
 
 function mapping() {
   return {
@@ -130,6 +132,12 @@ test('builds a deterministic Codex atlas handoff with progress stages', async ()
   const second = await buildCodexPet({ mapping: { mappings: mapping() }, candidatesByRow: candidatesByRow() });
   assert.deepEqual(events.map(({ stage, status }) => `${stage}:${status}`), ['select:started', 'select:completed', 'layout:started', 'layout:completed', 'compose:started', 'compose:completed', 'manifest:started', 'manifest:completed']);
   assert.equal(first.target, 'codex-pet');
+  assert.deepEqual({ id: first.manifest.id, displayName: first.manifest.displayName, description: first.manifest.description, spritesheetPath: first.manifest.spritesheetPath }, {
+    id: 'live2pet-codex-pet',
+    displayName: 'Live2Pet Codex Pet',
+    description: 'A Codex pet generated locally by Live2Pet from Live2Pet Codex Pet.',
+    spritesheetPath: 'spritesheet.webp',
+  });
   assert.deepEqual(first.manifest.atlas, { width: 1536, height: 1872, columns: 8, rows: 9, cellWidth: 192, cellHeight: 208 });
   assert.deepEqual(first.manifest.rows.map((row) => row.frameCount), [6, 8, 8, 4, 5, 8, 6, 6, 6]);
   assert.equal(first.atlas.occupiedCells, 57);
@@ -216,4 +224,17 @@ test('reports unavailable or malformed WebP encoder inputs with typed errors', a
     () => encodeAnimatedWebp({ frames: [], width: 2, height: 1 }, { sharpFactory: () => {} }),
     (error) => error instanceof PackageBuildError && error.code === 'INVALID_WEBP_INPUT',
   );
+});
+
+test('build outputs satisfy the target package validators with the real encoders', async () => {
+  const codex = await buildCodexPet({ mapping: { mappings: mapping() }, candidatesByRow: candidatesByRow(), metadata: { id: 'validator-codex', displayName: 'Validator Codex', description: 'Synthetic validator pet.' } }, { package: true });
+  const codexValidation = validateCodexPetPackage({ files: codex.package.files, manifest: codex.manifest, spritesheet: { bytes: codex.spritesheet } });
+  assert.equal(codexValidation.ok, true);
+  assert.equal(codexValidation.spritesheet.width, 1536);
+  assert.equal(codexValidation.spritesheet.height, 1872);
+
+  const clawd = await buildClawdTheme({ mapping: clawdMapping(), framesByMotion: clawdFrames(), metadata: { id: 'validator-clawd', name: 'Validator Clawd' } }, { package: true });
+  const clawdValidation = validateClawdThemePackage({ themeId: clawd.themeId, manifest: clawd.manifest, assets: Object.fromEntries(clawd.assets.map((asset) => [asset.file, { byteLength: asset.byteLength }])), byteLength: clawd.package.byteLength });
+  assert.equal(clawdValidation.ok, true);
+  assert.equal(clawdValidation.assetCount, clawd.assets.length);
 });

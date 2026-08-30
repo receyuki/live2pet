@@ -10,9 +10,24 @@ importers:
 
   packages/clawd-target: {}
 
+  packages/cli:
+    dependencies:
+      '@live2pet/installation':
+        specifier: workspace:*
+        version: link:../installation
+      '@zip.js/zip.js':
+        specifier: 2.7.57
+        version: 2.7.57
+
   packages/codex-target: {}
 
   packages/frame-selection: {}
+
+  packages/installation:
+    dependencies:
+      '@zip.js/zip.js':
+        specifier: 2.7.57
+        version: 2.7.57
 
   packages/live2d-exporter:
     dependencies:
@@ -22,6 +37,8 @@ importers:
       pixi.js:
         specifier: 6.5.10
         version: 6.5.10
+
+  packages/mapper-session: {}
 
   packages/package-build:
     dependencies:

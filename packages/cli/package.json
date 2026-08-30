@@ -1,0 +1,17 @@
+{
+  "name": "@live2pet/cli",
+  "private": true,
+  "version": "0.1.0",
+  "type": "commonjs",
+  "exports": "./src/index.cjs",
+  "bin": {
+    "live2pet": "bin/live2pet.cjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.cjs"
+  },
+  "dependencies": {
+    "@zip.js/zip.js": "2.7.57",
+    "@live2pet/installation": "workspace:*"
+  }
+}

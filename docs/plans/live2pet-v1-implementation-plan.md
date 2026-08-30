@@ -1,6 +1,6 @@
 # Live2Pet V1 Implementation Plan
 
-Status: planning complete; WP1 source-inspection frontier implemented; implementation continues in dependency order
+Status: planning complete; WP1 source-inspection frontier and WP4 cache slice implemented; implementation continues in dependency order
 
 This plan turns the accepted architecture decisions and the V1 product specification into an executable delivery sequence. It is intentionally more operational than the ADRs and less repetitive than the specification.
 
@@ -22,7 +22,9 @@ The repository currently contains three proven but production-incomplete paths:
 
 These prototypes establish feasibility. They do not yet provide the complete Live2Pet Project workflow, shared application services, target-correct final previews, package validators, a stable CLI protocol, a distributable App, or full automated tests. Production work should capture their behavior through the public acceptance seam before replacing their duplicated logic.
 
-The first WP1 source-inspection slice is now captured in `packages/source-inspector/`: its public CLI and browser mapper use the same versioned normalized-manifest shape for standard directories and the supported uncompressed, unencrypted Destiny Child PCK layout. The initial reference-only Project schema is also captured in `packages/project/` with validation, deterministic serialization, and atomic file I/O. The runtime setup seam in `packages/runtime/` now discovers and validates user-provided modern or legacy JavaScript runtime entrypoints without exposing absolute paths in diagnostics. The renderer contract, deterministic synthetic implementation, and RGBA motion-candidate sampling are captured in `packages/renderer/`, deterministic motion-aware candidate deduplication and frame selection are captured in `packages/frame-selection/`, guide-aligned Clawd Target Profile rules are captured in `packages/clawd-target/`, Codex Pet V1 atlas/mapping rules, fixed transparent-cell layout planning, and RGBA composition are captured in `packages/codex-target/`, and the cancellable Package Build service now covers Codex atlas encoding plus guide-shaped Clawd theme encoding, size checks, and zip.js archive creation in `packages/package-build/`. The browser mapper exercises a nine-row Codex mapping and Canvas WebP → zip.js build path; browser-side Clawd encoding, official Cubism adapters, sandboxed hosting, target-specific validators, target previews, and platform packaging remain downstream and are intentionally not included in this slice.
+The first WP1 source-inspection slice is now captured in `packages/source-inspector/`: its public CLI and browser mapper use the same versioned normalized-manifest shape for standard directories and the supported uncompressed, unencrypted Destiny Child PCK layout. The initial reference-only Project schema is also captured in `packages/project/` with validation, deterministic serialization, and atomic file I/O. The runtime setup seam in `packages/runtime/` now discovers and validates user-provided modern or legacy JavaScript runtime entrypoints without exposing absolute paths in diagnostics. The renderer contract, deterministic synthetic implementation, and RGBA motion-candidate sampling are captured in `packages/renderer/`, deterministic motion-aware candidate deduplication and frame selection are captured in `packages/frame-selection/`, guide-aligned Clawd Target Profile rules and Clawd package validation are captured in `packages/clawd-target/`, Codex Pet V1 atlas/mapping rules, fixed transparent-cell layout planning, RGBA composition, and Codex package validation are captured in `packages/codex-target/`, and the cancellable Package Build service now covers Codex atlas encoding plus guide-shaped Clawd theme encoding, size checks, zip.js archive creation, and an integrity-checked bounded disk cache in `packages/package-build/`. A stable JSON `live2pet` CLI now provides one umbrella protocol over inspection, runtime diagnosis, project validation, ZIP package validation, and bounded-cache status/clear operations in `packages/cli/`. `packages/mapper-session/` now provides a loopback-only, token-authenticated, short-lived in-memory project session for the shared mapper host. The browser mapper exercises a nine-row Codex mapping and Canvas WebP → zip.js build path; browser-side Clawd encoding, official Cubism adapters, sandboxed hosting, target previews, and platform packaging remain downstream and are intentionally not included in this slice.
+
+The headless CLI now supports portable export and explicitly authorized installation through the conflict-aware `packages/installation/` service; host-specific path detection remains a later adapter.
 
 ## V1 success definition
 
@@ -154,6 +156,8 @@ Deliverables:
 - integrity-checked reuse and cleanup of partial staging data; and
 - sanitized build reports and collision-safe artifact naming.
 
+Current slice: `packages/package-build/src/cache.cjs` provides the bounded LRU cache, atomic writes, SHA-256 integrity checks, project/source filtering, status reporting, and clear operations. The orchestration, cache-key integration, export/install flow, and end-to-end safety seam remain to be completed.
+
 Exit gate:
 
 - identical recorded inputs produce the same selected frames, geometry, metadata, and package inventory;
@@ -182,6 +186,8 @@ Exit gate:
 - unsupported capabilities are omitted rather than advertised; and
 - oversized output fails before export with enough information to choose a lower Render Preset.
 
+Current slice: `packages/clawd-target/` now validates guide-shaped theme manifests, state/reaction bindings, fallbacks, referenced WebP assets, and the 80-MiB size limit. It is exercised against a real Sharp/zip.js Clawd build; final behavior preview and App integration remain.
+
 ### WP6 — Codex Pet V1 Target Profile
 
 Objective: build an official-contract Codex custom pet from Live2D Motions without compromising full-body readability.
@@ -201,6 +207,8 @@ Exit gate:
 - unused cells are fully transparent and no rendered pixel crosses a cell boundary;
 - selected frames are deterministic, ordered, preserve endpoints and major motion extrema, and keep the full character visible; and
 - the generated package loads through the current documented Codex custom-pet installation flow.
+
+Current slice: `packages/codex-target/` now validates the official `pet.json` fields, exact atlas geometry, static WebP dimensions, package inventory, and byte-level WebP headers. It is exercised against a real Sharp/zip.js Codex build; final-size preview and installation remain.
 
 ### WP7 — CLI, Codex skill, Mapper Session, export, and installation
 
@@ -222,6 +230,8 @@ Exit gate:
 - the session cannot read an unrelated path or execute a general command;
 - build and export never install implicitly; and
 - simulated upgrade failure restores the prior installed package.
+
+Current slice: `packages/cli/` exposes stable JSON operations for version, source inspection, runtime diagnosis, project validation, ZIP package validation, portable export, explicit installation, and bounded-cache status/clear. `packages/mapper-session/` provides the authenticated loopback session, while `packages/installation/` provides archive extraction, conflict policy, atomic commit, and rollback. The Codex skill, platform path adapters, and App/skill version handshake remain.
 
 ### WP8 — macOS hardening and source-release readiness
 
@@ -308,7 +318,7 @@ WP6 and the successful legacy portion of WP2 are complete. One Live2Pet Project 
 
 ### Milestone D — Integrated macOS source release
 
-WP7 and WP8 are complete. Source, documentation, CLI, and skill are ready for public use with user-provided runtimes. This milestone does not authorize publishing an official installer.
+When WP7 and WP8 are complete, source, documentation, CLI, and skill will be ready for public use with user-provided runtimes. The current implementation has only completed the shared CLI, Mapper Session, export, and installation slices; this milestone does not authorize publishing an official installer.
 
 ### Milestone E — Approved macOS installer
 

@@ -6,6 +6,7 @@ const {
 } = require('../../codex-target/src/index.cjs');
 const { composeCodexAtlasRgba } = require('../../codex-target/src/index.cjs');
 const { createClawdTarget } = require('../../clawd-target/src/index.cjs');
+const { CacheError, CacheStore, DEFAULT_CACHE_LIMIT, createCacheKey } = require('./cache.cjs');
 
 const BUILD_CONTRACT_VERSION = 1;
 const STAGES = Object.freeze(['select', 'layout', 'compose', 'encode', 'manifest', 'package']);
@@ -219,6 +220,21 @@ function clawdThemeBindings(target, assetsByMotion) {
   return { states, reactions };
 }
 
+function normalizeCodexMetadata(input = {}) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) fail('INVALID_CODEX_METADATA', 'Codex pet metadata must be an object.');
+  const displayName = typeof input.displayName === 'string' && input.displayName.trim()
+    ? input.displayName.trim()
+    : typeof input.name === 'string' && input.name.trim()
+      ? input.name.trim()
+      : 'Live2Pet Codex Pet';
+  const id = String(input.id || displayName).trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 96);
+  if (!id) fail('INVALID_CODEX_METADATA', 'Codex pet id must contain at least one safe filename character.');
+  const description = typeof input.description === 'string' && input.description.trim()
+    ? input.description.trim()
+    : `A Codex pet generated locally by Live2Pet from ${displayName}.`;
+  return { id, displayName, description, spritesheetPath: 'spritesheet.webp' };
+}
+
 async function createClawdThemeZip({ themeId, manifest, assets, readme, zipModule, maxBytes = CLAWD_PACKAGE_LIMIT } = {}) {
   const root = safeThemeId(themeId || manifest && manifest.name);
   const petJson = Buffer.from(normalizeManifestJson(manifest), 'utf8');
@@ -350,7 +366,9 @@ async function buildCodexPet(input = {}, options = {}) {
 
   progress(onProgress, STAGES[4], 'started');
   const target = createCodexTarget(mapping);
+  const metadata = normalizeCodexMetadata(input.metadata || {});
   const manifest = {
+    ...metadata,
     schemaVersion: BUILD_CONTRACT_VERSION,
     target: target.profile,
     contractVersion: target.contractVersion,
@@ -392,6 +410,9 @@ async function buildCodexPet(input = {}, options = {}) {
 module.exports = {
   BUILD_CONTRACT_VERSION,
   CLAWD_PACKAGE_LIMIT,
+  CacheError,
+  CacheStore,
+  DEFAULT_CACHE_LIMIT,
   CLAWD_STAGES,
   MAX_ENCODE_FRAMES,
   PackageBuildError,
@@ -400,5 +421,7 @@ module.exports = {
   buildCodexPet,
   createCodexPetZip,
   createClawdThemeZip,
+  createCacheKey,
   encodeAnimatedWebp,
+  normalizeCodexMetadata,
 };

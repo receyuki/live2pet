@@ -2,10 +2,13 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
+  CLAWD_PACKAGE_LIMIT,
   ClawdValidationError,
   assertValidClawdMapping,
+  assertValidClawdThemePackage,
   createClawdTarget,
   validateClawdMapping,
+  validateClawdThemePackage,
 } = require('../src/index.cjs');
 
 function directMapping() {
@@ -19,6 +22,40 @@ function directMapping() {
       attention: 'motion:attention',
     },
     reactions: { drag: 'motion:drag' },
+  };
+}
+
+function validThemePackage() {
+  return {
+    themeId: 'demo-theme',
+    byteLength: 4096,
+    manifest: {
+      schemaVersion: 1,
+      name: 'Demo Theme',
+      version: '1.2.3',
+      description: 'Synthetic Clawd theme fixture.',
+      viewBox: { x: 0, y: 0, width: 384, height: 384 },
+      eyeTracking: { enabled: false, states: [] },
+      miniMode: { supported: false },
+      sleepSequence: { mode: 'direct' },
+      states: {
+        idle: ['demo-idle.webp'],
+        thinking: ['demo-thinking.webp'],
+        working: ['demo-working.webp'],
+        sleeping: { fallbackTo: 'idle' },
+        attention: ['demo-attention.webp'],
+      },
+      reactions: {
+        drag: { file: 'demo-drag.webp' },
+      },
+    },
+    assets: {
+      'demo-idle.webp': Uint8Array.from([1]),
+      'demo-thinking.webp': Uint8Array.from([2]),
+      'demo-working.webp': Uint8Array.from([3]),
+      'demo-attention.webp': Uint8Array.from([4]),
+      'demo-drag.webp': Uint8Array.from([5]),
+    },
   };
 }
 
@@ -63,4 +100,58 @@ test('assertion exposes typed errors and a target-compatible shape', () => {
   assert.equal(target.contractVersion, 1);
   assert.equal(target.states.idle, 'motion:idle');
   assert.equal(target.reactions.drag, 'motion:drag');
+});
+
+test('validates a guide-shaped Clawd theme package with manifest, assets, and size', () => {
+  const result = validateClawdThemePackage(validThemePackage());
+  assert.equal(result.ok, true);
+  assert.equal(result.assetCount, 5);
+  assert.equal(result.referencedAssetCount, 5);
+  assert.equal(result.byteLength, 4096);
+  assert.equal(result.errors.length, 0);
+  assert.deepEqual(assertValidClawdThemePackage(validThemePackage()).warnings, []);
+});
+
+test('reports missing assets, unsafe names, invalid reactions, and fallback cycles', () => {
+  const input = validThemePackage();
+  input.manifest.states.idle = [{ file: 'demo-idle.webp' }];
+  input.manifest.states.sleeping = { fallbackTo: 'attention' };
+  input.manifest.states.attention = { fallbackTo: 'sleeping' };
+  input.manifest.reactions.drag = { fallbackTo: 'idle' };
+  delete input.assets['demo-thinking.webp'];
+  input.assets['../escape.webp'] = Uint8Array.from([9]);
+
+  const result = validateClawdThemePackage(input);
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some((error) => error.code === 'INVALID_CLAWD_STATE_BINDING' && error.slot === 'idle'));
+  assert.ok(result.errors.some((error) => error.code === 'INVALID_CLAWD_REACTION' && error.slot === 'drag'));
+  assert.ok(result.errors.some((error) => error.code === 'FALLBACK_CYCLE'));
+  assert.ok(result.errors.some((error) => error.code === 'MISSING_CLAWD_ASSET' && error.asset === 'demo-thinking.webp'));
+  assert.ok(result.errors.some((error) => error.code === 'INVALID_CLAWD_ASSET' && String(error.asset).includes('..')));
+});
+
+test('enforces full sleep assets, package size limits, and typed assertion failures', () => {
+  const input = validThemePackage();
+  input.byteLength = CLAWD_PACKAGE_LIMIT + 1;
+  input.manifest.sleepSequence.mode = 'full';
+
+  const result = validateClawdThemePackage(input);
+  assert.equal(result.ok, false);
+  assert.deepEqual(
+    result.errors.filter((error) => error.code === 'FULL_SLEEP_STATE_UNMAPPED').map((error) => error.slot),
+    ['yawning', 'dozing', 'collapsing', 'waking'],
+  );
+  assert.ok(result.errors.some((error) => error.code === 'CLAWD_PACKAGE_TOO_LARGE' && error.maxBytes === CLAWD_PACKAGE_LIMIT));
+  assert.throws(
+    () => assertValidClawdThemePackage(input),
+    (error) => error instanceof ClawdValidationError && error.code === 'INVALID_CLAWD_THEME_PACKAGE' && Array.isArray(error.details.errors),
+  );
+});
+
+test('warns when packaged assets are not referenced by theme.json', () => {
+  const input = validThemePackage();
+  input.assets['unused.webp'] = Uint8Array.from([6]);
+  const result = validateClawdThemePackage(input);
+  assert.equal(result.ok, true);
+  assert.ok(result.warnings.some((warning) => warning.code === 'UNUSED_CLAWD_ASSET' && warning.asset === 'unused.webp'));
 });

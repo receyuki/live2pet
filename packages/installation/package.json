@@ -1,0 +1,13 @@
+{
+  "name": "@live2pet/installation",
+  "private": true,
+  "version": "0.1.0",
+  "type": "commonjs",
+  "exports": "./src/index.cjs",
+  "dependencies": {
+    "@zip.js/zip.js": "2.7.57"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.cjs"
+  }
+}
