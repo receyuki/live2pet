@@ -14,8 +14,8 @@ const { createClawdPreview, createCodexPreview, createTargetPreview, PREVIEW_CON
 const { decodeFrameSet, encodeFrameSet, FRAME_CACHE_SCHEMA_VERSION, FrameCacheError } = require('./frame-cache.cjs');
 
 const BUILD_CONTRACT_VERSION = 1;
-const STAGES = Object.freeze(['select', 'layout', 'compose', 'encode', 'manifest', 'package']);
-const CLAWD_STAGES = Object.freeze(['validate', 'encode', 'manifest', 'package']);
+const STAGES = Object.freeze(['select', 'layout', 'compose', 'encode', 'manifest', 'preview', 'package', 'report']);
+const CLAWD_STAGES = Object.freeze(['validate', 'encode', 'manifest', 'preview', 'package', 'report']);
 const MAX_ENCODE_FRAMES = 4096;
 const PACKAGE_FILES = Object.freeze(['pet.json', 'spritesheet.webp']);
 const CLAWD_PACKAGE_LIMIT = 83_886_080;
@@ -476,12 +476,17 @@ async function buildClawdTheme(input = {}, options = {}) {
   });
   if (!validation.ok) fail('TARGET_VALIDATION_FAILED', 'The generated Clawd theme failed Target Profile validation.', { target: 'clawd', errors: validation.errors });
 
+  progress(onProgress, CLAWD_STAGES[3], 'started');
+  const preview = createClawdPreview({ manifest, assets: assetReports });
+  progress(onProgress, CLAWD_STAGES[3], 'completed', { ready: preview.ready, missingStates: preview.missingStates.length, missingReactions: preview.missingReactions.length });
+  checkCancelled(signal);
+
   let packaged = null;
   if (options.package === true) {
-    progress(onProgress, CLAWD_STAGES[3], 'started');
+    progress(onProgress, CLAWD_STAGES[4], 'started');
     packaged = await createClawdThemeZip({ themeId, manifest, assets, readme: input.readme, zipModule: options.zipModule, maxBytes: options.maxBytes ?? CLAWD_PACKAGE_LIMIT });
     checkCancelled(signal);
-    progress(onProgress, CLAWD_STAGES[3], 'completed', { byteLength: packaged.byteLength });
+    progress(onProgress, CLAWD_STAGES[4], 'completed', { byteLength: packaged.byteLength });
   }
   const result = {
     buildContractVersion: BUILD_CONTRACT_VERSION,
@@ -495,9 +500,11 @@ async function buildClawdTheme(input = {}, options = {}) {
     encoding: { required: 'webp', status: 'completed', assetCount: assetReports.length },
     provenance: buildProvenance('clawd', target.contractVersion, render),
     package: packaged,
+    preview,
   };
-  result.preview = createClawdPreview({ manifest, assets: assetReports });
   result.report = createBuildReport({ build: result });
+  progress(onProgress, CLAWD_STAGES[5], 'started');
+  progress(onProgress, CLAWD_STAGES[5], 'completed', { packageByteLength: packaged ? packaged.byteLength : 0, previewReady: preview.ready });
   return result;
 }
 
@@ -564,12 +571,17 @@ async function buildCodexPet(input = {}, options = {}) {
   });
   if (!validation.ok) fail('TARGET_VALIDATION_FAILED', 'The generated Codex Pet failed Target Profile validation.', { target: 'codex-pet', errors: validation.errors });
 
+  progress(onProgress, STAGES[5], 'started');
+  const preview = createCodexPreview({ manifest, selections: selection.selections });
+  progress(onProgress, STAGES[5], 'completed', { ready: preview.ready, rows: preview.rows.length });
+  checkCancelled(signal);
+
   let packaged = null;
   if (packageRequested) {
-    progress(onProgress, STAGES[5], 'started');
+    progress(onProgress, STAGES[6], 'started');
     packaged = await createCodexPetZip({ manifest, spritesheet: encoded.buffer, zipModule: options.zipModule });
     checkCancelled(signal);
-    progress(onProgress, STAGES[5], 'completed', { byteLength: packaged.byteLength });
+    progress(onProgress, STAGES[6], 'completed', { byteLength: packaged.byteLength });
   }
 
   const result = {
@@ -584,9 +596,11 @@ async function buildCodexPet(input = {}, options = {}) {
     provenance: buildProvenance('codex-pet', target.contractVersion, render),
     spritesheet: encoded ? encoded.buffer : null,
     package: packaged,
+    preview,
   };
-  result.preview = createCodexPreview({ manifest, selections: selection.selections });
   result.report = createBuildReport({ build: result });
+  progress(onProgress, STAGES[7], 'started');
+  progress(onProgress, STAGES[7], 'completed', { packageByteLength: packaged ? packaged.byteLength : 0, previewReady: preview.ready });
   return result;
 }
 

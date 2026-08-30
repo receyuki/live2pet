@@ -110,7 +110,13 @@ test('builds a guide-shaped Clawd theme package from captured Motion frames', as
   assert.deepEqual(result.preview.states.sleeping.files, ['assets/demo-theme-idle.webp']);
   assert.deepEqual(result.report.validation, { ok: true, errorCount: 0, warningCount: 0 });
   assert.equal(result.report.output.package.byteLength, result.package.byteLength);
-  assert.deepEqual(events.map(({ stage, status }) => `${stage}:${status}`), ['validate:started', 'validate:completed', 'encode:started', 'encode:completed', 'manifest:started', 'manifest:completed', 'package:started', 'package:completed']);
+  assert.deepEqual(events.find((event) => event.stage === 'preview' && event.status === 'completed'), {
+    stage: 'preview', status: 'completed', ready: true, missingStates: 0, missingReactions: 0,
+  });
+  assert.deepEqual(events.find((event) => event.stage === 'report' && event.status === 'completed'), {
+    stage: 'report', status: 'completed', packageByteLength: result.package.byteLength, previewReady: true,
+  });
+  assert.deepEqual(events.map(({ stage, status }) => `${stage}:${status}`), ['validate:started', 'validate:completed', 'encode:started', 'encode:completed', 'manifest:started', 'manifest:completed', 'preview:started', 'preview:completed', 'package:started', 'package:completed', 'report:started', 'report:completed']);
   const zip = require('@zip.js/zip.js');
   const reader = new zip.ZipReader(new zip.Uint8ArrayReader(result.package.buffer));
   const entries = await reader.getEntries();
@@ -152,7 +158,7 @@ test('builds a deterministic Codex atlas handoff with progress stages', async ()
   const events = [];
   const first = await buildCodexPet({ mapping: { mappings: mapping() }, candidatesByRow: candidatesByRow() }, { onProgress: (event) => events.push(event) });
   const second = await buildCodexPet({ mapping: { mappings: mapping() }, candidatesByRow: candidatesByRow() });
-  assert.deepEqual(events.map(({ stage, status }) => `${stage}:${status}`), ['select:started', 'select:completed', 'layout:started', 'layout:completed', 'compose:started', 'compose:completed', 'manifest:started', 'manifest:completed']);
+  assert.deepEqual(events.map(({ stage, status }) => `${stage}:${status}`), ['select:started', 'select:completed', 'layout:started', 'layout:completed', 'compose:started', 'compose:completed', 'manifest:started', 'manifest:completed', 'preview:started', 'preview:completed', 'report:started', 'report:completed']);
   assert.equal(first.target, 'codex-pet');
   assert.deepEqual({ id: first.manifest.id, displayName: first.manifest.displayName, description: first.manifest.description, spritesheetPath: first.manifest.spritesheetPath }, {
     id: 'live2pet-codex-pet',
@@ -171,6 +177,12 @@ test('builds a deterministic Codex atlas handoff with progress stages', async ()
   assert.equal(first.preview.spritesheet.cellWidth, 192);
   assert.equal(first.preview.rows.find((row) => row.id === 'running-right').frames[0].cell.x, 0);
   assert.equal(first.report.output.package, null);
+  assert.deepEqual(events.find((event) => event.stage === 'preview' && event.status === 'completed'), {
+    stage: 'preview', status: 'completed', ready: true, rows: 9,
+  });
+  assert.deepEqual(events.find((event) => event.stage === 'report' && event.status === 'completed'), {
+    stage: 'report', status: 'completed', packageByteLength: 0, previewReady: true,
+  });
   assert.deepEqual(first.manifest, second.manifest);
   assert.equal(crypto.createHash('sha256').update(first.atlas.rgba).digest('hex'), crypto.createHash('sha256').update(second.atlas.rgba).digest('hex'));
 });
@@ -223,7 +235,7 @@ test('can encode and package a Codex atlas when explicitly requested', async () 
   const result = await buildCodexPet({ mapping: { mappings: mapping() }, candidatesByRow: candidatesByRow() }, { package: true, sharpFactory: fakeSharp, onProgress: (event) => events.push(event) });
   assert.equal(result.encoding.status, 'completed');
   assert.equal(result.package.files.join(','), 'pet.json,spritesheet.webp');
-  assert.deepEqual(events.map(({ stage, status }) => `${stage}:${status}`), ['select:started', 'select:completed', 'layout:started', 'layout:completed', 'compose:started', 'compose:completed', 'encode:started', 'encode:completed', 'manifest:started', 'manifest:completed', 'package:started', 'package:completed']);
+  assert.deepEqual(events.map(({ stage, status }) => `${stage}:${status}`), ['select:started', 'select:completed', 'layout:started', 'layout:completed', 'compose:started', 'compose:completed', 'encode:started', 'encode:completed', 'manifest:started', 'manifest:completed', 'preview:started', 'preview:completed', 'package:started', 'package:completed', 'report:started', 'report:completed']);
   assert.deepEqual(result.manifest.assets.spritesheet, { path: 'spritesheet.webp', format: 'webp', width: 1536, height: 1872, frameCount: 1 });
 });
 
