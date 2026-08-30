@@ -148,6 +148,9 @@
     .build-status.good { color: var(--good); }
     .build-status.bad { color: var(--bad); }
     .build-status.busy { color: var(--warn); }
+    .build-readiness { min-height: 22px; margin-top: 8px; color: var(--muted); font-size: 12px; }
+    .build-readiness.good { color: var(--good); }
+    .build-readiness.bad { color: var(--bad); }
     pre { max-height: 430px; overflow: auto; padding: 13px; margin: 10px 0 0; background: #06101c; border: 1px solid var(--line); border-radius: 10px; color: #cfe1ff; font: 12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
     .inspection-panel { margin-bottom: 18px; }
     .inspection-status { min-height: 28px; max-width: 60ch; color: var(--muted); }
@@ -332,6 +335,7 @@
         <button id="buildCodex" class="primary" disabled>Build Codex Pet ZIP</button>
         <button id="downloadCodex" disabled>Download last ZIP</button>
       </div>
+      <div id="buildReadiness" class="build-readiness" role="status" aria-live="polite">Load a Source Package and map all nine Codex rows to enable building.</div>
       <div id="buildStatus" class="build-status" role="status" aria-live="polite">Load a Source Package and map all nine Codex rows to enable building.</div>
     </section>
 
@@ -691,6 +695,15 @@
       return MotionMapping.codexRows.filter(row => !state.codexMappings[row.id]?.startsWith("motion:")).map(row => row.id);
     }
 
+    function codexBuildReadiness() {
+      if (!state.model || !state.inspection) return { ready: false, level: "bad", message: "Load and inspect a Source Package first." };
+      if (!liveModel) return { ready: false, level: "bad", message: "Source inspected, but the Live2D preview is not ready. Wait for the preview to load or reload the Mapper." };
+      const missing = codexValidation();
+      const mapped = MotionMapping.codexRows.length - missing.length;
+      if (missing.length) return { ready: false, level: "bad", message: `Codex mapping: ${mapped}/${MotionMapping.codexRows.length} rows assigned. Assign: ${missing.join(", ")}.` };
+      return { ready: true, level: "good", message: "Codex mapping: 9/9 rows assigned. Ready to build." };
+    }
+
     function renderCodexMappings() {
       const rows = MotionMapping.codexRows;
       $("codexMapping").innerHTML = rows.map(row => {
@@ -733,7 +746,11 @@
       $("saveProject").disabled = !state.model || !state.inspection;
       $("validation").innerHTML = MotionMapping.validate(state).map(x=>`<div class="${x.level}">${escapeHtml(x.text)}</div>`).join("");
       $("jsonOutput").textContent = JSON.stringify(MotionMapping.output(state),null,2);
-      $("buildCodex").disabled = codexBuildBusy || !liveModel || !state.model || !state.inspection || codexValidation().length > 0;
+      const readiness = codexBuildReadiness();
+      $("buildCodex").disabled = codexBuildBusy || !readiness.ready;
+      $("buildCodex").title = readiness.message;
+      $("buildReadiness").className = `build-readiness ${readiness.level}`;
+      $("buildReadiness").textContent = readiness.message;
       $("downloadCodex").disabled = codexBuildBusy || !codexArtifact;
     }
 
