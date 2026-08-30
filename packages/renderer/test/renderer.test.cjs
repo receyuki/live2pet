@@ -1,4 +1,7 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 
 const {
@@ -13,6 +16,8 @@ const {
   createRendererIpcRouter,
   createRendererPreloadApi,
   createRendererWindowOptions,
+  createRendererAssetServer,
+  safeRelativePath,
   normalizePixiSource,
   pixiSourceFromManifest,
   sampleMotionCandidates,
@@ -243,4 +248,37 @@ test('renderer host helpers enforce sandbox defaults, CSP, and a narrow IPC surf
   await api.playMotion('Base:idle');
   assert.equal(ipcCalls[0][0], RENDERER_IPC_CHANNEL);
   assert.deepEqual(ipcCalls[0][1], { protocolVersion: 1, method: 'playMotion', args: ['Base:idle'] });
+});
+
+test('renderer asset server exposes only the selected source root and runtime file', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-renderer-assets-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-renderer-outside-'));
+  fs.mkdirSync(path.join(root, 'motions'));
+  fs.writeFileSync(path.join(root, 'model3.json'), '{}');
+  fs.writeFileSync(path.join(root, 'motions', 'idle.motion3.json'), '{}');
+  const runtimePath = path.join(outside, 'live2dcubismcore.min.js');
+  fs.writeFileSync(runtimePath, 'runtime');
+  assert.equal(safeRelativePath(root, 'motions/idle.motion3.json'), path.join(root, 'motions', 'idle.motion3.json'));
+  assert.equal(safeRelativePath(root, '../escape.txt'), null);
+  await assert.rejects(
+    () => createRendererAssetServer({ sourceRoot: root, runtimePath, host: '0.0.0.0' }),
+    (error) => error instanceof RendererContractError && error.code === 'NON_LOOPBACK_BINDING',
+  );
+  const server = await createRendererAssetServer({ sourceRoot: root, runtimePath });
+  try {
+    const model = await fetch(`${server.modelUrl('model3.json')}`);
+    assert.equal(model.status, 200);
+    assert.equal(await model.text(), '{}');
+    const runtime = await fetch(server.runtimeUrl);
+    assert.equal(runtime.status, 200);
+    assert.equal(await runtime.text(), 'runtime');
+    const traversal = await fetch(`${server.baseUrl}/model/${encodeURIComponent('../outside.txt')}`);
+    assert.equal(traversal.status, 404);
+    const arbitrary = await fetch(`${server.baseUrl}/runtime/${encodeURIComponent('other.js')}`);
+    assert.equal(arbitrary.status, 404);
+    const health = await fetch(`${server.baseUrl}/health`);
+    assert.deepEqual(await health.json(), { ok: true, protocolVersion: 1 });
+  } finally {
+    await server.close();
+  }
 });

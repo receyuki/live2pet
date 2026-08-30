@@ -313,4 +313,5 @@ module.exports = {
   sampleMotionCandidates,
   ...require('./pixi-live2d-adapter.cjs'),
   ...require('./host.cjs'),
+  ...require('./asset-server.cjs'),
 };
