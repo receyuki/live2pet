@@ -8,6 +8,12 @@ importers:
 
   .: {}
 
+  packages/app-host:
+    dependencies:
+      '@live2pet/mapper-session':
+        specifier: workspace:*
+        version: link:../mapper-session
+
   packages/clawd-target: {}
 
   packages/cli:
