@@ -4,7 +4,7 @@ const path = require('node:path');
 
 const { inspectSourcePackage, SourceInspectionError } = require('../../source-inspector/src/index.cjs');
 const { inspectRuntime, RuntimeValidationError } = require('../../runtime/src/index.cjs');
-const { loadProjectFile, ProjectValidationError } = require('../../project/src/index.cjs');
+const { loadProjectFile, ProjectValidationError, recoverAutosaveFile } = require('../../project/src/index.cjs');
 const { CacheError, CacheStore } = require('../../package-build/src/index.cjs');
 const { InstallationError, exportPackage, installPackage } = require('../../installation/src/index.cjs');
 const { validateClawdThemePackage } = require('../../clawd-target/src/index.cjs');
@@ -15,7 +15,7 @@ const PROTOCOL_VERSION = 1;
 const CLI_VERSION = '0.1.0';
 const MAX_PACKAGE_BYTES = 256 * 1024 * 1024;
 const MAX_PACKAGE_ENTRY_BYTES = 128 * 1024 * 1024;
-const OPERATIONS = Object.freeze(['version', 'inspect', 'runtime-diagnose', 'project-validate', 'package-validate', 'export', 'install', 'cache-status', 'cache-clear']);
+const OPERATIONS = Object.freeze(['version', 'inspect', 'runtime-diagnose', 'project-validate', 'project-recover', 'package-validate', 'export', 'install', 'cache-status', 'cache-clear']);
 
 class CliError extends Error {
   constructor(code, message, details = {}) {
@@ -101,12 +101,13 @@ function operationSpec(operation) {
   if (operation === 'inspect') return { usage: 'live2pet inspect --input <source-directory-or-pck> [--pretty]' };
   if (operation === 'runtime-diagnose') return { usage: 'live2pet runtime-diagnose --input <core-file-or-sdk-directory> [--pretty]' };
   if (operation === 'project-validate') return { usage: 'live2pet project-validate --input <project.live2pet> [--pretty]' };
+  if (operation === 'project-recover') return { usage: 'live2pet project-recover --input <project.live2pet> [--pretty]' };
   if (operation === 'package-validate') return { usage: 'live2pet package-validate --input <package.zip> [--target clawd|codex-pet] [--pretty]' };
   if (operation === 'export') return { usage: 'live2pet export --input <package.zip> --output <path.zip> [--overwrite] [--pretty]' };
   if (operation === 'install') return { usage: 'live2pet install --input <package.zip> --target clawd|codex-pet --target-root <directory> --confirm-install [--conflict cancel|upgrade|side-by-side] [--pretty]' };
   if (operation === 'cache-status') return { usage: 'live2pet cache-status --cache-dir <cache-directory> [--pretty]' };
   if (operation === 'cache-clear') return { usage: 'live2pet cache-clear --cache-dir <cache-directory> (--all | --project-id <id> | --source-fingerprint <sha256>) [--pretty]' };
-  return { usage: 'live2pet <version|inspect|runtime-diagnose|project-validate|package-validate|export|install|cache-status|cache-clear> [options]' };
+  return { usage: 'live2pet <version|inspect|runtime-diagnose|project-validate|project-recover|package-validate|export|install|cache-status|cache-clear> [options]' };
 }
 
 function sanitizeProject(project) {
@@ -256,6 +257,18 @@ async function execute(options = {}) {
       warnings: validation.result.warnings || [],
       result: validation,
     });
+  }
+
+  if (operation === 'project-recover') {
+    if (!options.input) fail('INPUT_REQUIRED', operationSpec(operation).usage);
+    let recovery;
+    try { recovery = recoverAutosaveFile(options.input); } catch (error) {
+      if (error instanceof ProjectValidationError) throw error;
+      fail(error && error.code === 'ENOENT' ? 'PROJECT_NOT_FOUND' : 'PROJECT_RECOVERY_FAILED', 'The project autosave could not be inspected.', { cause: error && error.code ? error.code : 'UNKNOWN' });
+    }
+    if (!recovery.available) return envelope(operation, operationId, { ok: true, progress: [{ stage: 'project-recover', status: 'completed' }], warnings: [], result: { available: false, reason: recovery.reason || 'autosave-not-found' } });
+    const sanitized = sanitizeProject(recovery.project);
+    return envelope(operation, operationId, { ok: true, progress: [{ stage: 'project-recover', status: 'completed' }], warnings: [], result: { available: true, project: sanitized.project, sourcePathConfigured: sanitized.sourcePathConfigured, modifiedAt: recovery.modifiedAt } });
   }
 
   if (operation === 'export') {

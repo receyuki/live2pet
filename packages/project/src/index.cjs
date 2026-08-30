@@ -115,6 +115,23 @@ function normalizeTarget(target, targetId) {
   return normalized;
 }
 
+function normalizeSourceReview(review) {
+  if (review == null) return undefined;
+  assertRecord(review, 'sourceReview');
+  if (typeof review.required !== 'boolean') fail('INVALID_PROJECT', 'sourceReview.required must be a boolean.');
+  const reason = text(review.reason, 'sourceReview.reason', { required: false, max: 128 });
+  const reviewedFingerprint = text(review.reviewedFingerprint, 'sourceReview.reviewedFingerprint', { required: false, max: 128 });
+  if (!Array.isArray(review.affectedRecipeIds) || review.affectedRecipeIds.some((id) => typeof id !== 'string' || !id.trim() || id.length > 128)) {
+    fail('INVALID_PROJECT', 'sourceReview.affectedRecipeIds must be an array of recipe ids.');
+  }
+  return {
+    required: review.required,
+    ...(reason !== undefined ? { reason } : {}),
+    ...(reviewedFingerprint !== undefined ? { reviewedFingerprint } : {}),
+    affectedRecipeIds: [...new Set(review.affectedRecipeIds)],
+  };
+}
+
 function validateProject(input) {
   assertRecord(input, 'project');
   if (input.schemaVersion !== SCHEMA_VERSION) {
@@ -135,6 +152,8 @@ function validateProject(input) {
   for (const targetId of TARGETS) project.targets[targetId] = normalizeTarget(input.targets?.[targetId], targetId);
   const rightsNote = text(input.rightsNote, 'rightsNote', { required: false, max: 4096 });
   if (rightsNote !== undefined) project.rightsNote = rightsNote;
+  const sourceReview = normalizeSourceReview(input.sourceReview);
+  if (sourceReview !== undefined) project.sourceReview = sourceReview;
   return project;
 }
 
@@ -186,14 +205,106 @@ function loadProjectFile(filePath) {
   return parseProject(fs.readFileSync(absolute, 'utf8'));
 }
 
+function autosavePath(filePath) {
+  if (typeof filePath !== 'string' || !filePath.trim()) fail('INVALID_PROJECT_PATH', 'A project file path is required.');
+  return `${path.resolve(filePath)}.autosave`;
+}
+
+function saveAutosaveFile(filePath, project) {
+  return saveProjectFile(autosavePath(filePath), project);
+}
+
+function clearAutosaveFile(filePath) {
+  const absolute = autosavePath(filePath);
+  try { fs.unlinkSync(absolute); } catch (error) {
+    if (error && error.code !== 'ENOENT') throw error;
+  }
+  return absolute;
+}
+
+function recoverAutosaveFile(filePath) {
+  const primary = path.resolve(filePath);
+  const autosave = autosavePath(filePath);
+  let autosaveStat;
+  try { autosaveStat = fs.statSync(autosave); } catch (error) {
+    if (error && error.code === 'ENOENT') return { available: false, path: autosave };
+    throw error;
+  }
+  let primaryStat = null;
+  try { primaryStat = fs.statSync(primary); } catch (error) {
+    if (error && error.code !== 'ENOENT') throw error;
+  }
+  if (primaryStat && autosaveStat.mtimeMs <= primaryStat.mtimeMs) return { available: false, path: autosave, reason: 'autosave-not-newer' };
+  return { available: true, path: autosave, modifiedAt: autosaveStat.mtime.toISOString(), project: loadProjectFile(autosave) };
+}
+
+function recipeDependencyIds(recipe) {
+  return { motionId: recipe.motionId, expressionId: recipe.expressionId || null };
+}
+
+function relinkProjectSource(project, nextSource, { previousManifest, nextManifest } = {}) {
+  const current = validateProject(project);
+  assertRecord(nextSource, 'nextSource');
+  const mergedSource = normalizeSource({ ...current.source, ...nextSource });
+  const changed = current.source.fingerprint !== mergedSource.fingerprint;
+  const nextProject = { ...current, source: mergedSource };
+  if (!changed) {
+    delete nextProject.sourceReview;
+    return { project: validateProject(nextProject), status: 'relinked', reviewRequired: false, affectedRecipeIds: [] };
+  }
+
+  const previousMotions = new Set(Array.isArray(previousManifest?.motions) ? previousManifest.motions.map((motion) => String(motion.id)) : []);
+  const nextMotions = new Set(Array.isArray(nextManifest?.motions) ? nextManifest.motions.map((motion) => String(motion.id)) : []);
+  const previousExpressions = new Set(Array.isArray(previousManifest?.expressions) ? previousManifest.expressions.map((expression) => String(expression.id)) : []);
+  const nextExpressions = new Set(Array.isArray(nextManifest?.expressions) ? nextManifest.expressions.map((expression) => String(expression.id)) : []);
+  const hasComparableManifests = previousMotions.size > 0 || previousExpressions.size > 0 || nextMotions.size > 0 || nextExpressions.size > 0;
+  const affectedRecipeIds = current.recipes.filter((recipe) => {
+    if (!hasComparableManifests) return true;
+    const dependency = recipeDependencyIds(recipe);
+    return !nextMotions.has(dependency.motionId) || (dependency.expressionId !== null && !nextExpressions.has(dependency.expressionId)) || (previousMotions.has(dependency.motionId) && !nextMotions.has(dependency.motionId));
+  }).map((recipe) => recipe.id);
+  const reviewRequired = current.recipes.length > 0;
+  nextProject.sourceReview = {
+    required: reviewRequired,
+    reason: 'source-fingerprint-changed',
+    affectedRecipeIds: affectedRecipeIds.length ? affectedRecipeIds : current.recipes.map((recipe) => recipe.id),
+  };
+  return { project: validateProject(nextProject), status: 'source-changed', reviewRequired, affectedRecipeIds: nextProject.sourceReview.affectedRecipeIds };
+}
+
+function acknowledgeSourceReview(project) {
+  const current = validateProject(project);
+  if (!current.sourceReview?.required) return current;
+  return validateProject({ ...current, sourceReview: { ...current.sourceReview, required: false, reviewedFingerprint: current.source.fingerprint } });
+}
+
+function isProjectBuildable(project) {
+  const current = validateProject(project);
+  return !current.sourceReview?.required;
+}
+
+function assertProjectBuildable(project) {
+  const current = validateProject(project);
+  if (current.sourceReview?.required) fail('PROJECT_REVIEW_REQUIRED', 'The Source Package changed and affected mappings must be reviewed before building.', { affectedRecipeIds: current.sourceReview.affectedRecipeIds });
+  return current;
+}
+
 module.exports = {
   MAX_PROJECT_BYTES,
   SCHEMA_VERSION,
   TARGETS,
   ProjectValidationError,
   createProject,
+  acknowledgeSourceReview,
+  assertProjectBuildable,
+  autosavePath,
+  clearAutosaveFile,
+  isProjectBuildable,
   loadProjectFile,
   parseProject,
+  recoverAutosaveFile,
+  relinkProjectSource,
+  saveAutosaveFile,
   saveProjectFile,
   serializeProject,
   validateProject,

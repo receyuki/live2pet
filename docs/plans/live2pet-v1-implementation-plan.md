@@ -26,6 +26,8 @@ The first WP1 source-inspection slice is now captured in `packages/source-inspec
 
 The headless CLI now supports portable export and explicitly authorized installation through the conflict-aware `packages/installation/` service; host-specific path detection remains a later adapter.
 
+The project service now also provides explicit autosave recovery, source relinking, and review gating when a source fingerprint changes. The Electron mapper still needs to connect these operations to its UI and build flow.
+
 ## V1 success definition
 
 V1 is complete when all of the following are observable on a clean supported macOS system:
@@ -156,7 +158,7 @@ Deliverables:
 - integrity-checked reuse and cleanup of partial staging data; and
 - sanitized build reports and collision-safe artifact naming.
 
-Current slice: `packages/package-build/src/cache.cjs` provides the bounded LRU cache, atomic writes, SHA-256 integrity checks, project/source filtering, status reporting, and clear operations. The orchestration, cache-key integration, export/install flow, and end-to-end safety seam remain to be completed.
+Current slice: `packages/package-build/src/cache.cjs` provides the bounded LRU cache, atomic writes, SHA-256 integrity checks, project/source filtering, status reporting, and clear operations. `buildProjectTargets` now drives the existing Clawd/Codex builders from one validated Project and stops on source-review gates. Full source-to-render orchestration, cache-key integration, target previews, and the end-to-end safety seam remain to be completed.
 
 Exit gate:
 
@@ -231,7 +233,7 @@ Exit gate:
 - build and export never install implicitly; and
 - simulated upgrade failure restores the prior installed package.
 
-Current slice: `packages/cli/` exposes stable JSON operations for version, source inspection, runtime diagnosis, project validation, ZIP package validation, portable export, explicit installation, and bounded-cache status/clear. `packages/mapper-session/` provides the authenticated loopback session, while `packages/installation/` provides archive extraction, conflict policy, atomic commit, and rollback. The Codex skill, platform path adapters, and App/skill version handshake remain.
+Current slice: `packages/cli/` exposes stable JSON operations for version, source inspection, runtime diagnosis, project validation/recovery, ZIP package validation, portable export, explicit installation, and bounded-cache status/clear. `packages/mapper-session/` provides the authenticated loopback session, while `packages/installation/` provides archive extraction, conflict policy, atomic commit, and rollback. The Codex skill, platform path adapters, and App/skill version handshake remain.
 
 ### WP8 — macOS hardening and source-release readiness
 

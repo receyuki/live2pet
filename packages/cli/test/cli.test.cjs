@@ -5,7 +5,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const test = require('node:test');
 
-const { createProject, saveProjectFile } = require('../../project/src/index.cjs');
+const { createProject, saveAutosaveFile, saveProjectFile } = require('../../project/src/index.cjs');
 const { CacheStore, createCacheKey, createClawdThemeZip, createCodexPetZip } = require('../../package-build/src/index.cjs');
 const { CLI_VERSION, OPERATIONS, PROTOCOL_VERSION, execute, parseArgs } = require('../src/index.cjs');
 
@@ -86,6 +86,27 @@ test('project-validate returns a normalized project without echoing its source p
   assert.equal(response.result.projectId, 'cli-fixture');
   assert.equal(response.result.sourcePathConfigured, true);
   assert.equal(Object.hasOwn(response.result.source, 'path'), false);
+  assert.equal(output.includes(sourcePath), false);
+});
+
+test('project-recover reports a newer autosave without exposing local paths', () => {
+  const root = temporaryDirectory();
+  const projectPath = path.join(root, 'project.live2pet');
+  const sourcePath = path.join(root, 'private-model');
+  const project = createProject({
+    projectId: 'recover-fixture',
+    name: 'Recover fixture',
+    source: { kind: 'standard-directory', name: 'private-model', fingerprint: 'b'.repeat(64), path: sourcePath },
+  });
+  saveProjectFile(projectPath, project);
+  const autosavePath = saveAutosaveFile(projectPath, project);
+  fs.utimesSync(autosavePath, new Date(Date.now() + 1000), new Date(Date.now() + 1000));
+  const output = execFileSync(process.execPath, [CLI, 'project-recover', '--input', projectPath], { encoding: 'utf8' });
+  const response = JSON.parse(output);
+  assert.equal(response.ok, true);
+  assert.equal(response.result.available, true);
+  assert.equal(response.result.project.projectId, 'recover-fixture');
+  assert.equal(response.result.sourcePathConfigured, true);
   assert.equal(output.includes(sourcePath), false);
 });
 

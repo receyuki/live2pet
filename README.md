@@ -8,11 +8,11 @@ Live2Pet is an early-stage local toolchain for loading Cubism models, previewing
 
 - `apps/mapper/` — browser-based Live2D motion preview, Clawd mapping, Codex nine-row mapping, and local Codex ZIP build prototype.
 - `packages/source-inspector/` — normalized Source Package inspection API and versioned `live2pet-inspect` CLI for standard Cubism directories and the supported Destiny Child PCK shape.
-- `packages/project/` — reference-only `.live2pet` Project schema, validation, deterministic serialization, and atomic file I/O.
+- `packages/project/` — reference-only `.live2pet` Project schema, validation, deterministic serialization, atomic file I/O, autosave recovery, source relinking, and review gating.
 - `packages/runtime/` — user-provided Cubism runtime discovery, bounded validation, redacted diagnosis, and restart-required settings metadata.
 - `packages/renderer/` — versioned playback/capture contract, deterministic motion candidate sampling, and copyright-safe synthetic renderer for CI.
 - `packages/frame-selection/` — deterministic motion-aware candidate deduplication and ordered frame selection for target atlases.
-- `packages/package-build/` — cancellable Codex Pet atlas builds and guide-shaped Clawd theme builds, including RGBA composition, Sharp WebP encoding, deterministic manifests, size limits, zip.js package creation, and an integrity-checked bounded disk cache.
+- `packages/package-build/` — cancellable project-target builds for Codex Pet and guide-shaped Clawd themes, including RGBA composition, Sharp WebP encoding, deterministic manifests, size limits, zip.js package creation, review gating, and an integrity-checked bounded disk cache.
 - `packages/cli/` — stable JSON CLI envelope over source inspection, runtime diagnosis, `.live2pet` project validation, ZIP package validation, export/install, and cache management.
 - `packages/installation/` — portable ZIP export plus explicit, conflict-aware, atomic installation with side-by-side and rollback semantics.
 - `packages/mapper-session/` — loopback-only, token-authenticated, short-lived project session for a shared visual mapper host.
@@ -49,6 +49,7 @@ node packages/cli/bin/live2pet.cjs version --pretty
 node packages/cli/bin/live2pet.cjs inspect --input /path/to/source-package --pretty
 node packages/cli/bin/live2pet.cjs runtime-diagnose --input /path/to/CubismCore.js --pretty
 node packages/cli/bin/live2pet.cjs project-validate --input /path/to/project.live2pet --pretty
+node packages/cli/bin/live2pet.cjs project-recover --input /path/to/project.live2pet --pretty
 node packages/cli/bin/live2pet.cjs package-validate --input /path/to/package.zip --pretty
 node packages/cli/bin/live2pet.cjs export --input /path/to/package.zip --output /path/to/export.zip --pretty
 node packages/cli/bin/live2pet.cjs install --input /path/to/package.zip --target codex-pet --target-root /path/to/pets --confirm-install --pretty

@@ -5,10 +5,17 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  acknowledgeSourceReview,
+  assertProjectBuildable,
   ProjectValidationError,
   createProject,
+  clearAutosaveFile,
+  isProjectBuildable,
   loadProjectFile,
   parseProject,
+  recoverAutosaveFile,
+  relinkProjectSource,
+  saveAutosaveFile,
   saveProjectFile,
   serializeProject,
 } = require('../src/index.cjs');
@@ -92,4 +99,52 @@ test('saves atomically and reloads the same project', () => {
   assert.deepEqual(loadProjectFile(filePath), fixture());
   assert.equal(fs.statSync(filePath).mode & 0o777, 0o600);
   assert.equal(fs.readdirSync(directory).filter((entry) => entry.endsWith('.tmp')).length, 0);
+});
+
+test('relinks a moved source without forcing review when the fingerprint is unchanged', () => {
+  const project = fixture();
+  const result = relinkProjectSource(project, { path: '/new/location/c311_02.pck' });
+  assert.equal(result.status, 'relinked');
+  assert.equal(result.reviewRequired, false);
+  assert.equal(result.project.source.path, '/new/location/c311_02.pck');
+  assert.equal(Object.hasOwn(result.project, 'sourceReview'), false);
+  assert.equal(result.project.recipes.length, project.recipes.length);
+});
+
+test('marks changed sources for review and blocks builds until acknowledged', () => {
+  const project = fixture();
+  const result = relinkProjectSource(project, { fingerprint: 'sha256:changed', path: '/new/c311_02.pck' });
+  assert.equal(result.status, 'source-changed');
+  assert.equal(result.reviewRequired, true);
+  assert.deepEqual(result.affectedRecipeIds, ['idle-recipe', 'smile-recipe']);
+  assert.equal(isProjectBuildable(result.project), false);
+  assert.throws(() => assertProjectBuildable(result.project), (error) => error instanceof ProjectValidationError && error.code === 'PROJECT_REVIEW_REQUIRED');
+  const acknowledged = acknowledgeSourceReview(result.project);
+  assert.equal(isProjectBuildable(acknowledged), true);
+  assert.equal(acknowledged.sourceReview.required, false);
+  assert.equal(acknowledged.sourceReview.reviewedFingerprint, 'sha256:changed');
+});
+
+test('preserves only affected recipe ids when comparable manifests reveal a missing dependency', () => {
+  const project = fixture();
+  const result = relinkProjectSource(project, { fingerprint: 'sha256:changed' }, {
+    previousManifest: { motions: [{ id: 'idle:0' }, { id: 'idle:1' }], expressions: [{ id: '0' }] },
+    nextManifest: { motions: [{ id: 'idle:0' }], expressions: [] },
+  });
+  assert.deepEqual(result.affectedRecipeIds, ['smile-recipe']);
+  assert.deepEqual(result.project.sourceReview.affectedRecipeIds, ['smile-recipe']);
+});
+
+test('offers explicit autosave recovery and cleanup', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-autosave-'));
+  const filePath = path.join(directory, 'project.live2pet');
+  saveProjectFile(filePath, fixture());
+  const autosave = saveAutosaveFile(filePath, fixture());
+  fs.utimesSync(autosave, new Date(Date.now() + 1000), new Date(Date.now() + 1000));
+  const recovery = recoverAutosaveFile(filePath);
+  assert.equal(recovery.available, true);
+  assert.equal(recovery.project.projectId, 'saint-louis');
+  assert.equal(recovery.path, autosave);
+  assert.equal(clearAutosaveFile(filePath), autosave);
+  assert.equal(recoverAutosaveFile(filePath).available, false);
 });

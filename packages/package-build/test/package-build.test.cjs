@@ -7,12 +7,14 @@ const {
   PackageBuildError,
   buildClawdTheme,
   buildCodexPet,
+  buildProjectTargets,
   createClawdThemeZip,
   createCodexPetZip,
   encodeAnimatedWebp,
 } = require('../src/index.cjs');
 const { validateClawdThemePackage } = require('../../clawd-target/src/index.cjs');
 const { validateCodexPetPackage } = require('../../codex-target/src/index.cjs');
+const { createProject, ProjectValidationError } = require('../../project/src/index.cjs');
 
 function mapping() {
   return {
@@ -237,4 +239,40 @@ test('build outputs satisfy the target package validators with the real encoders
   const clawdValidation = validateClawdThemePackage({ themeId: clawd.themeId, manifest: clawd.manifest, assets: Object.fromEntries(clawd.assets.map((asset) => [asset.file, { byteLength: asset.byteLength }])), byteLength: clawd.package.byteLength });
   assert.equal(clawdValidation.ok, true);
   assert.equal(clawdValidation.assetCount, clawd.assets.length);
+});
+
+test('buildProjectTargets drives both target builders from one validated project', async () => {
+  const project = createProject({
+    projectId: 'multi-target',
+    name: 'Multi-target fixture',
+    source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'sha256:fixture' },
+    targets: {
+      clawd: { profile: 'clawd', mappings: clawdMapping().states, reactions: clawdMapping().reactions, options: { sleepMode: 'direct' } },
+      'codex-pet': { profile: 'codex-pet', mappings: mapping(), reactions: {}, options: {} },
+    },
+  });
+  const events = [];
+  const result = await buildProjectTargets({
+    project,
+    inputsByTarget: { clawd: { framesByMotion: clawdFrames() }, 'codex-pet': { candidatesByRow: candidatesByRow() } },
+    optionsByTarget: { clawd: { sharpFactory: clawdSharpFactory() } },
+    onProgress: (event) => events.push(`${event.target}:${event.stage}:${event.status}`),
+  });
+  assert.deepEqual(result.targets, ['clawd', 'codex-pet']);
+  assert.equal(result.builds.clawd.target, 'clawd');
+  assert.equal(result.builds['codex-pet'].target, 'codex-pet');
+  assert.ok(events.includes('clawd:validate:completed'));
+  assert.ok(events.includes('codex-pet:compose:completed'));
+});
+
+test('buildProjectTargets refuses a project with an unreviewed source change', async () => {
+  const project = createProject({
+    projectId: 'needs-review',
+    name: 'Needs review',
+    source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'sha256:changed' },
+    sourceReview: { required: true, reason: 'source-fingerprint-changed', affectedRecipeIds: ['recipe-1'] },
+    recipes: [{ id: 'recipe-1', motionId: 'idle:0', expressionId: null }],
+    targets: { clawd: { profile: 'clawd', mappings: clawdMapping().states, reactions: clawdMapping().reactions, options: {} } },
+  });
+  await assert.rejects(() => buildProjectTargets({ project, targets: ['clawd'], inputsByTarget: { clawd: { framesByMotion: clawdFrames() } }, optionsByTarget: { clawd: { sharpFactory: clawdSharpFactory() } } }), (error) => error instanceof ProjectValidationError && error.code === 'PROJECT_REVIEW_REQUIRED');
 });

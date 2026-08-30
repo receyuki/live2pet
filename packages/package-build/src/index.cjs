@@ -6,6 +6,7 @@ const {
 } = require('../../codex-target/src/index.cjs');
 const { composeCodexAtlasRgba } = require('../../codex-target/src/index.cjs');
 const { createClawdTarget } = require('../../clawd-target/src/index.cjs');
+const { assertProjectBuildable, validateProject } = require('../../project/src/index.cjs');
 const { CacheError, CacheStore, DEFAULT_CACHE_LIMIT, createCacheKey } = require('./cache.cjs');
 
 const BUILD_CONTRACT_VERSION = 1;
@@ -407,6 +408,40 @@ async function buildCodexPet(input = {}, options = {}) {
   };
 }
 
+async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['clawd', 'codex-pet'], metadataByTarget = {}, optionsByTarget = {}, signal, onProgress } = {}) {
+  const normalizedProject = validateProject(project);
+  assertProjectBuildable(normalizedProject);
+  if (!Array.isArray(targets) || !targets.length || targets.some((target) => !['clawd', 'codex-pet'].includes(target))) fail('INVALID_BUILD_TARGETS', 'targets must contain clawd and/or codex-pet.');
+  const uniqueTargets = [...new Set(targets)];
+  const builds = {};
+  const warnings = [];
+  for (const targetId of uniqueTargets) {
+    checkCancelled(signal);
+    const targetInput = inputsByTarget[targetId] || {};
+    const targetProject = normalizedProject.targets[targetId];
+    if (!targetProject || !targetProject.mappings || !Object.keys(targetProject.mappings).length) fail('TARGET_MAPPING_REQUIRED', `${targetId} has no mappings in the Live2Pet Project.`);
+    const targetOptions = { ...(optionsByTarget[targetId] || {}), signal, onProgress: (event) => onProgress?.({ target: targetId, ...event }) };
+    let result;
+    if (targetId === 'clawd') {
+      result = await buildClawdTheme({
+        mapping: { sleepMode: targetProject.options.sleepMode || 'direct', states: targetProject.mappings, reactions: targetProject.reactions },
+        framesByMotion: targetInput.framesByMotion || targetInput.frames,
+        metadata: metadataByTarget[targetId] || targetInput.metadata,
+        readme: targetInput.readme,
+      }, targetOptions);
+    } else {
+      result = await buildCodexPet({
+        mapping: { mappings: targetProject.mappings },
+        candidatesByRow: targetInput.candidatesByRow || targetInput.candidates,
+        metadata: metadataByTarget[targetId] || targetInput.metadata,
+      }, targetOptions);
+    }
+    builds[targetId] = result;
+    warnings.push(...(result.warnings || []).map((warning) => ({ target: targetId, ...warning })));
+  }
+  return { buildContractVersion: BUILD_CONTRACT_VERSION, projectId: normalizedProject.projectId, targets: uniqueTargets, builds, warnings };
+}
+
 module.exports = {
   BUILD_CONTRACT_VERSION,
   CLAWD_PACKAGE_LIMIT,
@@ -419,6 +454,7 @@ module.exports = {
   STAGES,
   buildClawdTheme,
   buildCodexPet,
+  buildProjectTargets,
   createCodexPetZip,
   createClawdThemeZip,
   createCacheKey,
