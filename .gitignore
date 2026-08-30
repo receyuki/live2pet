@@ -1,0 +1,22 @@
+.DS_Store
+.env
+.env.*
+node_modules/
+
+# Local render output and packaged releases.
+/.work/
+/artifacts/
+
+# User-provided and derived character examples stay local for copyright safety.
+/examples/
+/archive/
+*.pck
+*.lpk
+*.moc
+*.moc3
+*.dat
+*.webp
+*.zip
+
+# Cubism Core is downloaded locally and is not redistributed by this repo.
+/packages/live2d-exporter/vendor/live2dcubismcore.min.js

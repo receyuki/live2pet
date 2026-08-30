@@ -1,0 +1,9 @@
+{
+  "name": "@live2clawd/exporter",
+  "private": true,
+  "version": "0.1.0",
+  "dependencies": {
+    "pixi-live2d-display": "0.4.0",
+    "pixi.js": "6.5.10"
+  }
+}

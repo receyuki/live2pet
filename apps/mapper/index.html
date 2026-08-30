@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live2Clawd Mapper</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07111f;
+      --panel: #101d30;
+      --panel2: #0c1829;
+      --line: #294362;
+      --text: #edf5ff;
+      --muted: #9db2cc;
+      --accent: #77aaff;
+      --good: #6fd4ad;
+      --warn: #f0c878;
+      --bad: #ff8f9d;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 1100px; background: var(--bg); color: var(--text); font: 14px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    button, select, input { font: inherit; }
+    button, select, input[type="text"] { color: var(--text); background: #0a1728; border: 1px solid var(--line); border-radius: 9px; }
+    button { cursor: pointer; padding: 8px 12px; }
+    button:hover, button.active { border-color: var(--accent); background: #183a64; }
+    button.primary { background: #235da9; border-color: #4381d4; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    select, input[type="text"] { width: 100%; min-height: 36px; padding: 6px 9px; }
+    a { color: #b8d4ff; }
+    code { color: #bdd7ff; }
+    .shell { width: min(1540px, calc(100% - 44px)); margin: 0 auto; padding: 30px 0 58px; }
+    .top { display: flex; justify-content: space-between; gap: 20px; align-items: start; }
+    h1 { margin: 4px 0 5px; font-size: 30px; }
+    h2 { margin: 0 0 10px; font-size: 18px; }
+    h3 { margin: 0; font-size: 15px; }
+    p { margin: 0; }
+    .eyebrow { color: #b8d4ff; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+    .muted { color: var(--muted); }
+    .badge { border: 1px solid var(--warn); color: var(--warn); padding: 6px 10px; border-radius: 999px; white-space: nowrap; }
+    .question, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+    .question { margin: 18px 0; padding: 14px 17px; color: var(--muted); }
+    .question strong { color: var(--text); }
+    .loadbar { display: flex; gap: 10px; align-items: center; margin-bottom: 18px; }
+    .hidden { display: none !important; }
+    .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 18px; }
+    .metric { padding: 11px 13px; background: var(--panel2); border: 1px solid var(--line); border-radius: 11px; }
+    .metric span { display: block; color: var(--muted); font-size: 12px; }
+    .metric strong { display: block; margin-top: 3px; font-size: 17px; }
+    .good { color: var(--good); }
+    .warn { color: var(--warn); }
+    .bad { color: var(--bad); }
+    .workspace { display: grid; grid-template-columns: minmax(440px, .9fr) minmax(620px, 1.25fr); gap: 18px; align-items: start; }
+    .panel { padding: 17px; }
+    .panel-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 12px; }
+    .stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1;
+      max-height: 560px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background-color: #dae5f3;
+      background-image: linear-gradient(45deg,#c6d2e3 25%,transparent 25%),linear-gradient(-45deg,#c6d2e3 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#c6d2e3 75%),linear-gradient(-45deg,transparent 75%,#c6d2e3 75%);
+      background-size: 24px 24px;
+      background-position: 0 0,0 12px,12px -12px,-12px 0;
+    }
+    canvas { width: 100%; height: 100%; display: block; }
+    .stage-message { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 40px; color: #344963; background: rgba(245,249,255,.75); }
+    .now { margin: 10px 0 13px; padding: 10px 12px; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; }
+    .now strong { display: block; font-size: 16px; }
+    .quick-map { display: grid; grid-template-columns: 1fr 160px; gap: 8px; margin-bottom: 13px; }
+    .motion-list, .expression-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; max-height: 430px; overflow: auto; padding-right: 4px; }
+    .expression-list { max-height: 210px; margin-top: 7px; }
+    .motion, .expression { text-align: left; padding: 9px 10px; }
+    .motion strong, .motion small, .expression strong, .expression small { display: block; }
+    .motion small, .expression small { color: var(--muted); margin-top: 2px; }
+    .controls { display: flex; gap: 8px; margin-bottom: 12px; }
+    .mapping-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+    label.field { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-top: 1px solid var(--line); padding: 8px 7px; text-align: left; vertical-align: middle; }
+    th { color: var(--muted); font-size: 11px; }
+    td.key { width: 118px; }
+    td.meaning { width: 190px; color: var(--muted); font-size: 12px; }
+    .required { color: var(--warn); font-size: 10px; margin-left: 4px; }
+    .group { margin-top: 17px; }
+    .group-title { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+    .validation { display: grid; gap: 6px; margin-top: 15px; }
+    .validation div { padding: 7px 10px; border-left: 3px solid var(--line); background: #091525; color: var(--muted); }
+    .validation .error { border-color: var(--bad); color: #ffd2d8; }
+    .validation .warning { border-color: var(--warn); color: #f7deb0; }
+    .validation .ok { border-color: var(--good); color: #bdf0dc; }
+    .walkthrough { margin-top: 18px; }
+    .tabs, .steps { display: flex; flex-wrap: wrap; gap: 7px; }
+    .scenario { margin-top: 12px; display: grid; gap: 10px; }
+    .step.done { color: var(--good); border-color: #3e735f; }
+    .output { margin-top: 18px; }
+    .output-actions { display: flex; gap: 8px; }
+    pre { max-height: 430px; overflow: auto; padding: 13px; margin: 10px 0 0; background: #06101c; border: 1px solid var(--line); border-radius: 10px; color: #cfe1ff; font: 12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+    footer { margin-top: 16px; color: var(--muted); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="top">
+      <div>
+        <div class="eyebrow">Live2Clawd Motion Mapper</div>
+        <h1>直接播放 Live2D，再选择 Clawd 对应关系</h1>
+        <p class="muted">选择模型文件夹或 Destiny Child PCK 后，页面直接加载 Cubism 2/3/4 模型与原始动作；无需先转换 WebP。</p>
+      </div>
+      <div class="badge">PROTOTYPE · 只在内存中运行</div>
+    </header>
+
+    <section class="question"><strong>本原型回答的问题：</strong>先看到 Live2D 原始动作，是否能比看已经命名好的 WebP 更可靠地决定 <code>attention</code>、<code>notification</code>、<code>error</code> 等 Clawd 状态映射？</section>
+
+    <section class="loadbar">
+      <button id="chooseFolder" class="primary">选择 Live2D 模型文件夹</button>
+      <input id="folderInput" class="hidden" type="file" webkitdirectory multiple>
+      <button id="choosePck">选择 Destiny Child PCK</button>
+      <input id="pckInput" class="hidden" type="file" accept=".pck,application/octet-stream">
+      <span id="loadHint" class="muted">支持 <code>.pck</code>、<code>.model3.json</code> 或 Cubism 2 <code>model.json</code></span>
+    </section>
+
+    <section id="metrics" class="metrics"></section>
+
+    <div class="workspace">
+      <section class="panel">
+        <div class="panel-head"><div><h2>Live2D 实时播放器</h2><p class="muted">点击动作后由 Cubism 直接播放一次</p></div></div>
+        <div id="stage" class="stage">
+          <canvas id="live2dCanvas"></canvas>
+          <div id="stageMessage" class="stage-message">选择模型文件夹后开始</div>
+        </div>
+        <div id="nowPlaying" class="now"><strong>尚未载入</strong><span class="muted">—</span></div>
+        <div class="controls">
+          <button id="replay" disabled>重播当前动作</button>
+          <button id="playIdle" disabled>回到 idle</button>
+        </div>
+        <div class="quick-map">
+          <select id="quickState"></select>
+          <button id="assignCurrent" disabled>把当前动作分配给它</button>
+        </div>
+        <div class="group-title"><h3>自由播放全部 Motion</h3><span id="motionCount" class="muted">0 个</span></div>
+        <div id="motionList" class="motion-list"></div>
+        <div class="group-title group"><h3>预览 Expressions</h3><span id="expressionCount" class="muted">0 个</span></div>
+        <div class="controls"><button id="resetExpression" disabled>恢复默认表情</button></div>
+        <div id="expressionList" class="expression-list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><div><h2>Clawd 映射</h2><p class="muted">只列出 guide-theme-creation 当前定义的状态</p></div></div>
+        <div class="mapping-controls">
+          <label class="field">睡眠序列
+            <select id="sleepMode"><option value="direct">direct</option><option value="full">full</option></select>
+          </label>
+          <label class="field">输出文件前缀
+            <input id="outputPrefix" type="text" value="saint-louis">
+          </label>
+        </div>
+        <div id="mappingTables"></div>
+        <div id="validation" class="validation"></div>
+      </section>
+    </div>
+
+    <section class="panel walkthrough">
+      <div class="panel-head"><div><h2>引导式判断</h2><p class="muted">从空映射开始，边播放边建立对应关系</p></div></div>
+      <div id="scenarioTabs" class="tabs"></div>
+      <div id="scenario" class="scenario"></div>
+    </section>
+
+    <section class="panel output">
+      <div class="panel-head">
+        <div><h2>转换与映射清单</h2><p class="muted">保存后可按该清单批量转换 WebP，并生成对应 theme.json。</p></div>
+        <div class="output-actions"><button id="copyJson">复制 JSON</button><button id="downloadJson" class="primary">下载 motion-map.json</button></div>
+      </div>
+      <pre id="jsonOutput"></pre>
+    </section>
+
+    <footer>状态语义依据 <a href="https://github.com/rullerzhou-afk/clawd-on-desk/blob/main/docs/guides/guide-theme-creation.md">Clawd Theme Creation Guide</a>。页面不会上传或保存模型文件；刷新即清空。</footer>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
+  <script src="../../packages/live2d-exporter/vendor/live2dcubismcore.min.js"></script>
+  <script src="../../packages/live2d-exporter/node_modules/pixi.js/dist/browser/pixi.min.js"></script>
+  <script src="../../packages/live2d-exporter/node_modules/pixi-live2d-display/dist/index.min.js"></script>
+  <script>
+    const MotionMapping = (() => {
+      const groups = [
+        { label: "核心状态", hint: "validator/runtime 基线", states: [
+          { id: "idle", meaning: "无 Agent 活动", required: true },
+          { id: "thinking", meaning: "用户提交提示词", required: true },
+          { id: "working", meaning: "Agent 使用工具", required: true },
+          { id: "sleeping", meaning: "睡眠序列结束后", required: true, fallback: true }
+        ]},
+        { label: "常用可选状态", hint: "关联后才导出", states: [
+          { id: "error", meaning: "工具执行失败", fallback: true },
+          { id: "attention", meaning: "任务完成", fallback: true },
+          { id: "notification", meaning: "权限请求 / 提醒", fallback: true },
+          { id: "sweeping", meaning: "上下文压缩", fallback: true },
+          { id: "carrying", meaning: "创建 worktree", fallback: true },
+          { id: "juggling", meaning: "Subagent 活跃" },
+          { id: "roam", meaning: "自由漫游（素材朝右）", fallback: true }
+        ]},
+        { label: "完整睡眠序列", hint: "full 模式时均需真实 motion", states: [
+          { id: "yawning", meaning: "开始进入睡眠", full: true },
+          { id: "dozing", meaning: "打哈欠之后", full: true },
+          { id: "collapsing", meaning: "正在入睡", full: true },
+          { id: "waking", meaning: "鼠标唤醒", full: true }
+        ]}
+      ];
+      const reactions = [
+        { id: "drag", meaning: "拖拽期间循环" },
+        { id: "clickLeft", meaning: "左侧双击" },
+        { id: "clickRight", meaning: "右侧双击" },
+        { id: "annoyed", meaning: "双击时 50% 替代" },
+        { id: "double", meaning: "快速四连击" }
+      ];
+      const allStates = groups.flatMap(group => group.states);
+      const fallbackAllowed = new Set(["error","attention","notification","sweeping","carrying","sleeping","roam"]);
+
+      function initial() {
+        return { model: null, motions: [], expressions: [], selectedMotionId: null, selectedExpressionId: null, mappings: {}, reactionMappings: {}, sleepMode: "direct", outputPrefix: "saint-louis", lastChange: "等待选择模型文件夹", scenario: null, scenarioStep: 0 };
+      }
+      function reducer(state, action) {
+        if (action.type === "LOAD_MODEL") return { ...state, model: action.model, motions: action.motions, expressions: action.expressions, selectedMotionId: action.motions[0]?.id || null, selectedExpressionId: null, lastChange: `已载入 ${action.motions.length} 个动作、${action.expressions.length} 个表情` };
+        if (action.type === "SELECT_MOTION") return { ...state, selectedMotionId: action.id, lastChange: `正在播放 ${action.id}` };
+        if (action.type === "SELECT_EXPRESSION") return { ...state, selectedExpressionId: action.id, lastChange: action.id === null ? "已恢复默认表情" : `正在预览表情 ${action.id}` };
+        if (action.type === "MAP") return { ...state, mappings: { ...state.mappings, [action.key]: action.value }, lastChange: `${action.key} → ${action.value || "未关联"}` };
+        if (action.type === "MAP_REACTION") return { ...state, reactionMappings: { ...state.reactionMappings, [action.key]: action.value }, lastChange: `${action.key} → ${action.value || "未关联"}` };
+        if (action.type === "SET_SLEEP") return { ...state, sleepMode: action.value, lastChange: `sleepSequence.mode → ${action.value}` };
+        if (action.type === "SET_PREFIX") return { ...state, outputPrefix: action.value, lastChange: `输出前缀 → ${action.value}` };
+        if (action.type === "CLEAR") return { ...state, mappings: {}, reactionMappings: {}, lastChange: "已清空映射" };
+        if (action.type === "START_SCENARIO") return { ...state, mappings: {}, reactionMappings: {}, sleepMode: "direct", scenario: action.id, scenarioStep: 0, lastChange: `开始场景 ${action.id}` };
+        if (action.type === "SCENARIO_STEP") {
+          const next = reducer(state, action.inner);
+          return { ...next, scenario: state.scenario, scenarioStep: state.scenarioStep + 1 };
+        }
+        return state;
+      }
+      function motion(state, id) { return state.motions.find(item => item.id === id) || null; }
+      function validate(state) {
+        const out = [];
+        for (const id of ["idle","thinking","working"]) if (!state.mappings[id]?.startsWith("motion:")) out.push({ level: "error", text: `${id} 必须选择真实 Live2D motion。` });
+        if (!state.mappings.sleeping) out.push({ level: "error", text: "sleeping 必须选择 motion 或 fallbackTo。" });
+        if (state.sleepMode === "full") for (const id of ["yawning","dozing","collapsing","waking"]) if (!state.mappings[id]?.startsWith("motion:")) out.push({ level: "error", text: `full 模式要求 ${id} 选择真实 motion。` });
+        for (const [id, value] of Object.entries(state.mappings)) {
+          if (!value?.startsWith("fallback:")) continue;
+          if (!fallbackAllowed.has(id)) out.push({ level: "error", text: `${id} 不允许 fallbackTo。` });
+          const target = value.slice(9);
+          if (!state.mappings[target]) out.push({ level: "error", text: `${id} 的 fallback 目标 ${target} 尚未映射。` });
+        }
+        if (!out.length) out.push({ level: "ok", text: "核心映射有效，可以保存转换清单。" });
+        return out;
+      }
+      function output(state) {
+        const item = value => {
+          if (!value) return null;
+          if (value.startsWith("fallback:")) return { fallbackTo: value.slice(9) };
+          const found = motion(state, value.slice(7));
+          return found ? { motion: found.sourceFile, group: found.group, index: found.index, duration: found.duration, output: `${state.outputPrefix}-${found.targetKey || "motion"}.webp` } : null;
+        };
+        const states = {};
+        for (const def of allStates) {
+          const mapped = item(state.mappings[def.id]);
+          if (mapped) {
+            if (mapped.motion) mapped.output = `${state.outputPrefix}-${def.id}.webp`;
+            states[def.id] = mapped;
+          }
+        }
+        const reactionOut = {};
+        for (const def of reactions) {
+          const mapped = item(state.reactionMappings[def.id]);
+          if (mapped) {
+            if (mapped.motion) mapped.output = `${state.outputPrefix}-reaction-${def.id}.webp`;
+            reactionOut[def.id] = mapped;
+          }
+        }
+        return {
+          schemaVersion: 1,
+          _comment: "Live2D motion selection for a Clawd theme; generated by a local prototype",
+          guide: "https://github.com/rullerzhou-afk/clawd-on-desk/blob/main/docs/guides/guide-theme-creation.md",
+          model: state.model ? { file: state.model.file, name: state.model.name, cubism: state.model.cubism, source: state.model.source } : null,
+          render: { width: 768, height: 768, fps: 20, format: "animated-webp" },
+          sleepSequence: { mode: state.sleepMode },
+          states,
+          reactions: reactionOut
+        };
+      }
+      return { groups, reactions, allStates, initial, reducer, motion, validate, output };
+    })();
+
+    let state = MotionMapping.initial();
+    let app = null;
+    let liveModel = null;
+    let objectUrls = [];
+    const $ = id => document.getElementById(id);
+
+    function dispatch(action) { state = MotionMapping.reducer(state, action); render(); }
+    function escapeHtml(value) { return String(value ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"})[c]); }
+    function selectedMotion() { return MotionMapping.motion(state, state.selectedMotionId); }
+
+    function options(current, allowFallback, self) {
+      const motionOptions = state.motions.map(m => `<option value="motion:${escapeHtml(m.id)}" ${current === `motion:${m.id}` ? "selected" : ""}>${escapeHtml(m.name)} · ${m.duration ? `${m.duration.toFixed(2)}s` : "时长未知"}</option>`).join("");
+      const fallback = allowFallback ? `<optgroup label="fallbackTo">${MotionMapping.allStates.filter(s => s.id !== self).map(s => `<option value="fallback:${s.id}" ${current === `fallback:${s.id}` ? "selected" : ""}>fallbackTo: ${s.id}</option>`).join("")}</optgroup>` : "";
+      return `<option value="">未关联</option><optgroup label="Live2D motions">${motionOptions}</optgroup>${fallback}`;
+    }
+
+    function renderMetrics() {
+      const errors = MotionMapping.validate(state).filter(x => x.level === "error").length;
+      const current = selectedMotion();
+      const modelLabel = state.model ? `${state.model.name} · Cubism ${state.model.cubism}` : "未载入";
+      const values = [["模型",modelLabel,""],["Motion 数量",String(state.motions.length),""],["当前播放",current?.name || "—",""],["已映射状态",String(Object.values(state.mappings).filter(Boolean).length),""],["指南校验",errors ? `${errors} 项待处理` : "可保存",errors ? "bad" : "good"]];
+      $("metrics").innerHTML = values.map(([label,value,cls]) => `<div class="metric"><span>${label}</span><strong class="${cls}">${escapeHtml(value)}</strong></div>`).join("");
+    }
+
+    function renderMotions() {
+      const current = selectedMotion();
+      const expression = state.expressions.find(item => item.id === state.selectedExpressionId);
+      $("motionCount").textContent = `${state.motions.length} 个`;
+      $("nowPlaying").innerHTML = current ? `<strong>${escapeHtml(current.name)}</strong><span class="muted">${escapeHtml(current.sourceFile)} · ${current.duration ? current.duration.toFixed(2) + "s" : "时长未知"}${expression ? ` · 表情 ${escapeHtml(expression.name)}` : ""}</span>` : `<strong>尚未载入</strong><span class="muted">—</span>`;
+      $("motionList").innerHTML = state.motions.map(m => `<button class="motion ${m.id === state.selectedMotionId ? "active" : ""}" data-motion="${escapeHtml(m.id)}"><strong>${escapeHtml(m.name)}</strong><small>${escapeHtml(m.sourceFile)} · ${m.duration ? m.duration.toFixed(2) + "s" : "—"}</small></button>`).join("");
+      document.querySelectorAll("[data-motion]").forEach(button => button.addEventListener("click", async () => { dispatch({type:"SELECT_MOTION",id:button.dataset.motion}); await playMotion(button.dataset.motion); }));
+      $("replay").disabled = !current;
+      $("playIdle").disabled = !state.motions.length;
+      $("assignCurrent").disabled = !current;
+    }
+
+    function renderExpressions() {
+      $("expressionCount").textContent = `${state.expressions.length} 个`;
+      $("expressionList").innerHTML = state.expressions.map(expression => `<button class="expression ${expression.id === state.selectedExpressionId ? "active" : ""}" data-expression="${escapeHtml(expression.id)}"><strong>${escapeHtml(expression.name)}</strong><small>${escapeHtml(expression.sourceFile)}</small></button>`).join("");
+      document.querySelectorAll("[data-expression]").forEach(button => button.addEventListener("click",()=>playExpression(button.dataset.expression)));
+      $("resetExpression").disabled = !state.expressions.length;
+    }
+
+    function renderMappings() {
+      $("mappingTables").innerHTML = MotionMapping.groups.map(group => `<div class="group"><div class="group-title"><h3>${group.label}</h3><span class="muted">${group.hint}</span></div><table><thead><tr><th>Clawd 状态</th><th>指南语义</th><th>Live2D motion / fallback</th></tr></thead><tbody>${group.states.map(def => `<tr><td class="key"><code>${def.id}</code>${def.required ? '<span class="required">必需</span>' : ''}</td><td class="meaning">${def.meaning}</td><td><select data-state="${def.id}">${options(state.mappings[def.id] || "",def.fallback,def.id)}</select></td></tr>`).join("")}</tbody></table></div>`).join("") + `<div class="group"><div class="group-title"><h3>互动反应（reactions）</h3><span class="muted">与 Agent 状态分开</span></div><table><thead><tr><th>字段</th><th>触发方式</th><th>Live2D motion</th></tr></thead><tbody>${MotionMapping.reactions.map(def => `<tr><td class="key"><code>${def.id}</code></td><td class="meaning">${def.meaning}</td><td><select data-reaction="${def.id}">${options(state.reactionMappings[def.id] || "",false,def.id)}</select></td></tr>`).join("")}</tbody></table></div>`;
+      document.querySelectorAll("[data-state]").forEach(select => select.addEventListener("change",()=>dispatch({type:"MAP",key:select.dataset.state,value:select.value})));
+      document.querySelectorAll("[data-reaction]").forEach(select => select.addEventListener("change",()=>dispatch({type:"MAP_REACTION",key:select.dataset.reaction,value:select.value})));
+      $("quickState").innerHTML = MotionMapping.allStates.map(def => `<option value="${def.id}">${def.id} · ${def.meaning}</option>`).join("");
+    }
+
+    const scenarios = [
+      { id:"core", label:"核心三态", description:"依次试听并设置 idle、thinking、working，再给 sleeping 设置 direct fallback。", steps:[
+        ["idle 使用当前动作",{type:"MAP_CURRENT",key:"idle"}], ["thinking 使用当前动作",{type:"MAP_CURRENT",key:"thinking"}], ["working 使用当前动作",{type:"MAP_CURRENT",key:"working"}], ["sleeping fallback idle",{type:"MAP",key:"sleeping",value:"fallback:idle"}]
+      ]},
+      { id:"completion", label:"完成与提醒", description:"先试听候选动作，再分别绑定 attention（任务完成）与 notification（权限/提醒）。", steps:[
+        ["当前动作 → attention",{type:"MAP_CURRENT",key:"attention"}], ["当前动作 → notification",{type:"MAP_CURRENT",key:"notification"}]
+      ]},
+      { id:"sleep", label:"完整睡眠", description:"切换 full 后检查 yawning、dozing、collapsing、waking 四段素材是否都已选择。", steps:[
+        ["切换 full",{type:"SET_SLEEP",value:"full"}], ["当前动作 → yawning",{type:"MAP_CURRENT",key:"yawning"}], ["当前动作 → dozing",{type:"MAP_CURRENT",key:"dozing"}], ["当前动作 → collapsing",{type:"MAP_CURRENT",key:"collapsing"}], ["当前动作 → waking",{type:"MAP_CURRENT",key:"waking"}]
+      ]}
+    ];
+
+    function resolveScenarioAction(action) {
+      if (action.type !== "MAP_CURRENT") return action;
+      return { type:"MAP", key:action.key, value:state.selectedMotionId ? `motion:${state.selectedMotionId}` : "" };
+    }
+    function renderScenario() {
+      $("scenarioTabs").innerHTML = scenarios.map(s => `<button class="${state.scenario === s.id ? "active" : ""}" data-scenario="${s.id}">${s.label}</button>`).join("");
+      document.querySelectorAll("[data-scenario]").forEach(b=>b.addEventListener("click",()=>dispatch({type:"START_SCENARIO",id:b.dataset.scenario})));
+      const scenario = scenarios.find(s=>s.id===state.scenario) || scenarios[0];
+      $("scenario").innerHTML = `<p>${scenario.description}</p><div><button id="startScenario" class="primary">从空映射开始</button></div><div class="steps">${scenario.steps.map(([label],i)=>`<button class="step ${state.scenario===scenario.id && i<state.scenarioStep ? "done" : ""}" data-step="${i}">${i+1}. ${label}</button>`).join("")}</div>`;
+      $("startScenario").addEventListener("click",()=>dispatch({type:"START_SCENARIO",id:scenario.id}));
+      document.querySelectorAll("[data-step]").forEach(b=>b.addEventListener("click",()=>{const action=resolveScenarioAction(scenario.steps[Number(b.dataset.step)][1]);dispatch({type:"SCENARIO_STEP",inner:action});}));
+    }
+
+    function render() {
+      renderMetrics(); renderMotions(); renderExpressions(); renderMappings(); renderScenario();
+      $("sleepMode").value = state.sleepMode;
+      $("outputPrefix").value = state.outputPrefix;
+      $("validation").innerHTML = MotionMapping.validate(state).map(x=>`<div class="${x.level}">${escapeHtml(x.text)}</div>`).join("");
+      $("jsonOutput").textContent = JSON.stringify(MotionMapping.output(state),null,2);
+    }
+
+    function cubism2MotionDuration(text) {
+      const fps = Number(text.match(/^\$fps\s*=\s*([\d.]+)/mi)?.[1]) || 30;
+      let frameCount = 0;
+      for (const line of text.split(/\r?\n|\r/)) {
+        if (!line || line.startsWith("#") || line.startsWith("$")) continue;
+        const separator = line.indexOf("=");
+        if (separator < 0) continue;
+        frameCount = Math.max(frameCount,line.slice(separator+1).split(",").length);
+      }
+      return frameCount > 1 ? (frameCount-1)/fps : null;
+    }
+
+    function bytesMatch(bytes, signature) {
+      if (bytes.length < signature.length) return false;
+      return signature.every((value,index) => bytes[index] === value);
+    }
+
+    function pckEntryType(bytes) {
+      if (bytesMatch(bytes,[0x23,0x20,0x4c,0x69,0x76,0x65,0x32,0x44])) return "motion";
+      if (bytesMatch(bytes,[0x6d,0x6f,0x63])) return "model";
+      if (bytesMatch(bytes,[0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a])) return "texture";
+      if (bytes[0] === 0x7b) return "json";
+      return "unknown";
+    }
+
+    function pckFile(data,name,type="application/octet-stream") {
+      return new File([data],name,{type});
+    }
+
+    async function unpackDestinyChildPck(file) {
+      const buffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      const view = new DataView(buffer);
+      if (bytes.length < 12 || !bytesMatch(bytes,[0x50,0x43,0x4b,0x00])) throw new Error("不是有效的 Destiny Child PCK（缺少 PCK\\0 文件头）");
+      const version = view.getFloat32(4,true);
+      const count = view.getUint32(8,true);
+      const recordSize = 25;
+      const headerSize = 12 + count * recordSize;
+      if (!count || count > 4096 || headerSize > bytes.length) throw new Error(`PCK 文件表异常：${count} 个条目`);
+      const entries = [];
+      for (let index=0; index<count; index++) {
+        const base = 12 + index * recordSize;
+        const flags = view.getUint8(base+8);
+        const offset = view.getUint32(base+9,true);
+        const storedSize = view.getUint32(base+13,true);
+        const originalSize = view.getUint32(base+17,true);
+        if (offset < headerSize || storedSize > bytes.length || offset + storedSize > bytes.length) throw new Error(`PCK 条目 ${index} 越界`);
+        if (flags !== 0 || storedSize !== originalSize) throw new Error(`PCK 条目 ${index} 使用了暂不支持的压缩/加密标记 ${flags}`);
+        const data = bytes.slice(offset,offset+storedSize);
+        entries.push({index,flags,offset,storedSize,originalSize,data,type:pckEntryType(data)});
+      }
+      const jsonEntries = entries.filter(entry => entry.type === "json");
+      const jsonPayloads = jsonEntries.map(entry => {
+        try {
+          return {entry,text:new TextDecoder().decode(entry.data)};
+        } catch {
+          return {entry,text:null};
+        }
+      });
+      const modelJson = jsonPayloads.find(item => item.text?.includes('"model"') && item.text?.includes('"motions"'));
+      if (!modelJson) throw new Error("PCK 中没有找到 Live2D model.json");
+      let settings;
+      try { settings = JSON.parse(modelJson.text); }
+      catch { throw new Error("PCK 内嵌 model.json 无法解析"); }
+      if (!settings.model || !Array.isArray(settings.textures) || !settings.motions) throw new Error("PCK 内嵌 JSON 不是完整的 Cubism 2 配置");
+      const modelEntries = entries.filter(entry => entry.type === "model");
+      const textureEntries = entries.filter(entry => entry.type === "texture");
+      const motionEntries = entries.filter(entry => entry.type === "motion");
+      const motionDefinitions = Object.values(settings.motions).flat();
+      const expressionDefinitions = Array.isArray(settings.expressions) ? settings.expressions.filter(entry => entry?.file) : [];
+      const extraJsonEntries = jsonEntries.filter(entry => entry.index !== modelJson.entry.index);
+      const binaryEntries = entries.filter(entry => !["json","motion","texture"].includes(entry.type));
+      const binaryRefs = [settings.model, settings.physics, settings.pose].filter(Boolean);
+      if (modelEntries.length < 1) throw new Error("PCK 中没有找到 Cubism 2 模型二进制");
+      if (textureEntries.length < settings.textures.length) throw new Error(`PCK 贴图数量不足：配置 ${settings.textures.length}，资源 ${textureEntries.length}`);
+      if (motionEntries.length < motionDefinitions.length) throw new Error(`PCK 动作数量不足：配置 ${motionDefinitions.length}，资源 ${motionEntries.length}`);
+      if (extraJsonEntries.length < expressionDefinitions.length) throw new Error(`PCK expression 数量不足：配置 ${expressionDefinitions.length}，资源 ${extraJsonEntries.length}`);
+      if (binaryEntries.length < binaryRefs.length) throw new Error(`PCK 二进制资源不足：配置 ${binaryRefs.length}，资源 ${binaryEntries.length}`);
+      const files = [
+        pckFile(modelJson.entry.data,"model.json","application/json"),
+        ...binaryRefs.map((name,index)=>pckFile(binaryEntries[index].data,name)),
+        ...textureEntries.slice(0,settings.textures.length).map((entry,index)=>pckFile(entry.data,settings.textures[index],"image/png")),
+        ...motionEntries.slice(0,motionDefinitions.length).map((entry,index)=>pckFile(entry.data,motionDefinitions[index].file,"text/plain")),
+        ...extraJsonEntries.slice(0,expressionDefinitions.length).map((entry,index)=>pckFile(entry.data,expressionDefinitions[index].file,"application/json"))
+      ];
+      return {files,version,count,entries};
+    }
+
+    async function loadPck(file) {
+      try {
+        $("stageMessage").classList.remove("hidden");
+        $("stageMessage").textContent = `正在解析 ${file.name}…`;
+        const unpacked = await unpackDestinyChildPck(file);
+        await loadFolder(unpacked.files,{
+          modelName:file.name.replace(/\.pck$/i,""),
+          sourceFile:file.name,
+          source:"destiny-child-pck",
+          loadMessage:`已从 ${file.name} 解出 ${unpacked.count} 个资源 · PCK ${unpacked.version.toFixed(1)}`
+        });
+      } catch (error) {
+        $("stageMessage").classList.remove("hidden");
+        $("stageMessage").textContent = `载入失败：${error.message}`;
+        $("loadHint").textContent = error.message;
+      }
+    }
+
+    async function loadFolder(files,options={}) {
+      try {
+        for (const url of objectUrls) URL.revokeObjectURL(url);
+        objectUrls = [];
+        const list = [...files];
+        const rootless = file => (file.webkitRelativePath || file.name).split("/").slice(1).join("/") || file.name;
+        const fileMap = new Map(list.map(file => [rootless(file),file]));
+        const model3File = list.find(file => file.name.toLowerCase().endsWith(".model3.json"));
+        const model2File = list.find(file => /(^|\.)model\.json$/i.test(file.name) && !file.name.toLowerCase().endsWith(".model3.json"));
+        const modelFile = model3File || model2File;
+        if (!modelFile) throw new Error("文件夹中没有 .model3.json 或 Cubism 2 model.json");
+        const modelPath = rootless(modelFile);
+        const modelDir = modelPath.includes("/") ? modelPath.slice(0,modelPath.lastIndexOf("/")+1) : "";
+        const raw = JSON.parse(await modelFile.text());
+        const original = structuredClone(raw);
+        const cubism = model3File ? 4 : 2;
+        if (cubism === 2 && (!raw.model || !Array.isArray(raw.textures))) throw new Error(`${modelFile.name} 不是有效的 Cubism 2 模型配置`);
+        const resolveFile = ref => fileMap.get((modelDir + ref).replace(/^\.\//,"")) || fileMap.get(ref.replace(/^\.\//,""));
+        const asDataUrl = file => new Promise((resolve,reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error || new Error(`无法读取 ${file.name}`));
+          reader.readAsDataURL(file);
+        });
+        const dataRef = async ref => {
+          const file = resolveFile(ref);
+          if (!file) throw new Error(`缺少模型资源：${ref}`);
+          return asDataUrl(file);
+        };
+        const motions = [];
+        const expressions = [];
+        if (cubism === 4) {
+          const refs = raw.FileReferences || {};
+          if (refs.Moc) refs.Moc = await dataRef(refs.Moc);
+          if (Array.isArray(refs.Textures)) refs.Textures = await Promise.all(refs.Textures.map(dataRef));
+          for (const key of ["Physics","Pose","UserData","DisplayInfo"]) if (refs[key]) refs[key] = await dataRef(refs[key]);
+          if (Array.isArray(refs.Expressions)) for (let index=0; index<refs.Expressions.length; index++) {
+            const entry = refs.Expressions[index];
+            if (!entry.File) continue;
+            const sourceFile = original.FileReferences.Expressions[index].File;
+            expressions.push({id:String(index),index,name:entry.Name || sourceFile.split("/").pop().replace(/\.exp3\.json$/i,""),sourceFile});
+            entry.File = await dataRef(sourceFile);
+          }
+          for (const [group, entries] of Object.entries(refs.Motions || {})) {
+            for (let index=0; index<entries.length; index++) {
+              const entry = entries[index];
+              const sourceFile = original.FileReferences.Motions[group][index].File;
+              const motionFile = resolveFile(sourceFile);
+              let duration = null;
+              if (motionFile) { try { duration = Number(JSON.parse(await motionFile.text()).Meta?.Duration) || null; } catch {} }
+              motions.push({ id:`${group || "default"}:${index}`, group, index, sourceFile, name:sourceFile.split("/").pop().replace(/\.motion3\.json$/i,""), duration });
+              entry.File = await dataRef(sourceFile);
+              if (entry.Sound) entry.Sound = await dataRef(original.FileReferences.Motions[group][index].Sound);
+            }
+          }
+        } else {
+          if (!window.Live2D) throw new Error("Cubism 2 Core 未能载入；请联网刷新页面后重试");
+          raw.model = await dataRef(original.model);
+          raw.textures = await Promise.all(original.textures.map(dataRef));
+          for (const key of ["physics","pose"]) if (original[key]) raw[key] = await dataRef(original[key]);
+          if (Array.isArray(raw.expressions)) for (let index=0; index<raw.expressions.length; index++) {
+            const sourceFile = original.expressions[index].file;
+            if (!sourceFile) continue;
+            expressions.push({id:String(index),index,name:original.expressions[index].name || sourceFile.split("/").pop().replace(/\.exp\.json$/i,""),sourceFile});
+            raw.expressions[index].file = await dataRef(sourceFile);
+          }
+          for (const [group, entries] of Object.entries(raw.motions || {})) {
+            for (let index=0; index<entries.length; index++) {
+              const entry = entries[index];
+              const sourceFile = original.motions[group][index].file;
+              const motionFile = resolveFile(sourceFile);
+              let duration = null;
+              if (motionFile) { try { duration = cubism2MotionDuration(await motionFile.text()); } catch {} }
+              motions.push({ id:`${group || "default"}:${index}`, group, index, sourceFile, name:sourceFile.split("/").pop().replace(/\.mtn$/i,""), duration });
+              entry.file = await dataRef(sourceFile);
+              if (original.motions[group][index].sound) entry.sound = await dataRef(original.motions[group][index].sound);
+            }
+          }
+        }
+        const modelBlob = URL.createObjectURL(new Blob([JSON.stringify(raw)],{type:"application/json"})); objectUrls.push(modelBlob);
+        await mountModel(modelBlob);
+        const folderName = modelFile.webkitRelativePath?.split("/")[0];
+        const modelName = options.modelName || folderName || (cubism === 4
+          ? modelFile.name.replace(/\.model3\.json$/i,"")
+          : modelPath.split("/").slice(-2,-1)[0] || modelFile.name.replace(/\.json$/i,""));
+        dispatch({type:"LOAD_MODEL",model:{file:options.sourceFile || modelFile.name,name:modelName,cubism,source:options.source || "folder"},motions,expressions});
+        $("loadHint").textContent = options.loadMessage || `已载入 ${modelFile.name} · Cubism ${cubism}`;
+        $("stageMessage").classList.add("hidden");
+        if (motions[0]) await playMotion(motions[0].id);
+      } catch (error) {
+        $("stageMessage").classList.remove("hidden");
+        $("stageMessage").textContent = `载入失败：${error.message}`;
+        $("loadHint").textContent = error.message;
+      }
+    }
+
+    async function mountModel(modelUrl) {
+      if (liveModel) { liveModel.destroy({children:true}); liveModel = null; }
+      if (!app) app = new PIXI.Application({view:$("live2dCanvas"),resizeTo:$("stage"),backgroundAlpha:0,antialias:true,autoStart:true});
+      liveModel = await PIXI.live2d.Live2DModel.from(modelUrl,{autoInteract:false,autoHitTest:false});
+      app.stage.addChild(liveModel);
+      fitModel();
+    }
+    function fitModel() {
+      if (!liveModel || !app) return;
+      const bounds = liveModel.getLocalBounds();
+      const pad = 24;
+      const scale = Math.min((app.renderer.width-pad*2)/bounds.width,(app.renderer.height-pad*2)/bounds.height);
+      liveModel.scale.set(scale);
+      liveModel.x = (app.renderer.width-bounds.width*scale)/2-bounds.x*scale;
+      liveModel.y = (app.renderer.height-bounds.height*scale)/2-bounds.y*scale;
+    }
+    async function playMotion(id) {
+      if (!liveModel) return;
+      const motion = MotionMapping.motion(state,id);
+      if (!motion) return;
+      dispatch({type:"SELECT_MOTION",id});
+      await liveModel.motion(motion.group,motion.index,3);
+    }
+    async function playExpression(id) {
+      if (!liveModel) return;
+      const expression = state.expressions.find(item => item.id === id);
+      if (!expression) return;
+      const applied = await liveModel.expression(expression.index);
+      if (applied !== false) dispatch({type:"SELECT_EXPRESSION",id});
+    }
+    function resetExpression() {
+      const manager = liveModel?.internalModel?.motionManager?.expressionManager;
+      if (manager) manager.resetExpression();
+      dispatch({type:"SELECT_EXPRESSION",id:null});
+    }
+
+    function downloadJson() {
+      const url=URL.createObjectURL(new Blob([JSON.stringify(MotionMapping.output(state),null,2)],{type:"application/json"}));
+      const a=document.createElement("a");a.href=url;a.download="live2clawd-motion-map.json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }
+
+    $("chooseFolder").addEventListener("click",()=>$("folderInput").click());
+    $("folderInput").addEventListener("change",e=>loadFolder(e.target.files));
+    $("choosePck").addEventListener("click",()=>$("pckInput").click());
+    $("pckInput").addEventListener("change",async e=>{
+      const pckFile = e.target.files[0];
+      if (!pckFile) return;
+      try {
+        await loadPck(pckFile);
+      } finally {
+        e.target.value = "";
+      }
+    });
+    $("replay").addEventListener("click",()=>playMotion(state.selectedMotionId));
+    $("playIdle").addEventListener("click",()=>{const idle=state.motions.find(m=>/idle/i.test(m.name))||state.motions[0];if(idle)playMotion(idle.id);});
+    $("resetExpression").addEventListener("click",resetExpression);
+    $("assignCurrent").addEventListener("click",()=>dispatch({type:"MAP",key:$("quickState").value,value:state.selectedMotionId?`motion:${state.selectedMotionId}`:""}));
+    $("sleepMode").addEventListener("change",e=>dispatch({type:"SET_SLEEP",value:e.target.value}));
+    $("outputPrefix").addEventListener("change",e=>dispatch({type:"SET_PREFIX",value:e.target.value.trim()||"theme"}));
+    $("downloadJson").addEventListener("click",downloadJson);
+    $("copyJson").addEventListener("click",async()=>{const text=JSON.stringify(MotionMapping.output(state),null,2);try{await navigator.clipboard.writeText(text)}catch{const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove();}});
+    new ResizeObserver(()=>{if(app){app.resize();fitModel();}}).observe($("stage"));
+    render();
+  </script>
+</body>
+</html>
