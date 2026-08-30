@@ -165,6 +165,7 @@ test('normalizes and validates the browser-facing Pixi source shape', () => {
   const normalized = normalizePixiSource(pixiSource());
   assert.equal(normalized.modelUrl, '/source/saint-louis.model3.json');
   assert.equal(normalized.motions[1].group, 'Base');
+  assert.equal(normalizePixiSource({ ...pixiSource(), motions: [{ ...pixiSource().motions[0], group: '' }] }).motions[0].group, '');
   assert.throws(
     () => normalizePixiSource({ ...pixiSource(), motions: [{ ...pixiSource().motions[0], id: pixiSource().motions[0].id }, { ...pixiSource().motions[1], id: pixiSource().motions[0].id }] }),
     (error) => error instanceof RendererContractError && error.code === 'INVALID_RENDER_SOURCE',

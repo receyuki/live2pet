@@ -32,7 +32,8 @@ function nonEmptyString(value, label) {
 function normalizeMotion(motion, index) {
   if (!motion || typeof motion !== 'object') fail('INVALID_RENDER_SOURCE', `Motion ${index} must be an object.`);
   const id = nonEmptyString(motion.id, `Motion ${index} id`);
-  const group = nonEmptyString(motion.group, `Motion ${id} group`);
+  if (typeof motion.group !== 'string' || motion.group.length > 256) fail('INVALID_RENDER_SOURCE', `Motion ${id} group must be a string of at most 256 characters.`);
+  const group = motion.group;
   const motionIndex = Number(motion.index);
   if (!Number.isInteger(motionIndex) || motionIndex < 0 || motionIndex > 100000) fail('INVALID_RENDER_SOURCE', `Motion ${id} index must be a non-negative integer.`);
   const duration = finiteNumber(motion.duration == null ? 0 : motion.duration, `Motion ${id} duration`, { min: 0, max: 3600 });
@@ -328,7 +329,8 @@ function pageCapture(motionId, time, width, height, priority) {
     runtime.render();
     const extractor = runtime.app.renderer.extract || (runtime.app.renderer.plugins && runtime.app.renderer.plugins.extract);
     if (!extractor || typeof extractor.pixels !== 'function') throw new Error('Pixi Extract plugin is unavailable; RGBA capture cannot proceed.');
-    const pixels = extractor.pixels(runtime.app.stage);
+    const frame = new window.PIXI.Rectangle(0, 0, width, height);
+    const pixels = extractor.pixels(runtime.app.stage, frame);
     return { width, height, motionId: motion.id, time: captureTime, rgba: Array.from(pixels) };
   })();
 }
