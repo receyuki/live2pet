@@ -6,7 +6,7 @@ Live2Pet is an early-stage local toolchain for loading Cubism models, previewing
 
 ## Components
 
-- `apps/mapper/` — browser-based Live2D motion preview, Clawd mapping, Codex nine-row mapping, and local Codex ZIP build prototype.
+- `apps/mapper/` — browser-based Live2D motion preview, Clawd mapping, Codex nine-row mapping, and local Codex ZIP build prototype. The Mapper has no runtime CDN dependency: modern Core can be selected locally, and Cubism 2 preview requires a user-selected local `live2d.min.js`.
 - `packages/source-inspector/` — normalized Source Package inspection API and versioned `live2pet-inspect` CLI for standard Cubism directories and the supported Destiny Child PCK shape.
 - `packages/project/` — reference-only `.live2pet` Project schema, validation, deterministic serialization, atomic file I/O, autosave recovery, source relinking, and review gating.
 - `packages/runtime/` — user-provided Cubism runtime discovery, bounded validation, redacted diagnosis, and restart-required settings metadata.
@@ -34,6 +34,8 @@ Live2Pet is an early-stage local toolchain for loading Cubism models, previewing
 Character models, rendered frames, theme examples, and release ZIP files are intentionally excluded from Git. They remain local under `examples/`, `.work/`, `archive/`, and `artifacts/` and are not part of the open-source repository.
 
 Live2Pet does not grant rights to any imported model, texture, motion, or derived animation. Cubism Core is also kept local and is not redistributed by this repository.
+
+The official modern Cubism Core download is available from [Live2D's SDK for Web page](https://www.live2d.com/en/sdk/download/web/). Cubism 2 Web runtime distribution was discontinued by Live2D; use a copy you are separately licensed to run for local development. Live2Pet does not download or redistribute either runtime.
 
 ## Development status
 

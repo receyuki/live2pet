@@ -51,6 +51,11 @@
     .question { margin: 18px 0; padding: 14px 17px; color: var(--muted); }
     .question strong { color: var(--text); }
     .loadbar { display: flex; gap: 10px; align-items: center; margin-bottom: 18px; }
+    .runtimebar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -6px 0 18px; padding: 11px 13px; background: #0b1628; border: 1px solid var(--line); border-radius: 11px; }
+    .runtimebar .runtime-label { color: var(--muted); font-size: 12px; }
+    .runtimebar .runtime-status { min-width: 16ch; color: var(--muted); font-size: 12px; }
+    .runtimebar .runtime-status.good { color: var(--good); }
+    .runtimebar .runtime-status.bad { color: var(--bad); }
     .projectbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 18px; align-items: center; margin-bottom: 18px; padding: 14px 17px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
     .project-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
     .project-status { grid-column: 1 / -1; min-height: 22px; color: var(--muted); }
@@ -225,6 +230,15 @@
       <span id="loadHint" class="muted" aria-live="polite">Supports .pck, .model3.json, or Cubism 2 model.json</span>
     </section>
 
+    <section class="runtimebar" aria-labelledby="runtimeHeading">
+      <span id="runtimeHeading" class="runtime-label">Local Cubism runtime</span>
+      <button id="chooseModernRuntime">Choose modern Core</button>
+      <input id="modernRuntimeInput" class="hidden" type="file" accept=".js,.wasm,application/javascript,application/wasm">
+      <button id="chooseLegacyRuntime">Choose Cubism 2 runtime</button>
+      <input id="legacyRuntimeInput" class="hidden" type="file" accept=".js,application/javascript">
+      <span id="runtimeStatus" class="runtime-status" role="status" aria-live="polite">Modern Core is optional for inspection; Cubism 2 preview requires a local runtime.</span>
+    </section>
+
     <section class="projectbar" aria-labelledby="projectHeading">
       <div>
         <div class="eyebrow">Live2Pet Project</div>
@@ -342,11 +356,10 @@
     <footer>Clawd state semantics follow the <a href="https://github.com/rullerzhou-afk/clawd-on-desk/blob/main/docs/guides/guide-theme-creation.md">Clawd Theme Creation Guide</a>. Source assets stay local; refreshing clears unsaved session state.</footer>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
   <script src="../../packages/live2d-exporter/vendor/live2dcubismcore.min.js"></script>
   <script src="../../packages/live2d-exporter/node_modules/pixi.js/dist/browser/pixi.min.js"></script>
-  <script src="../../packages/live2d-exporter/node_modules/pixi-live2d-display/dist/index.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.7.57/dist/zip-no-worker.min.js"></script>
+  <script src="../../packages/live2d-exporter/node_modules/pixi-live2d-display/dist/cubism4.min.js"></script>
+  <script src="../../node_modules/.pnpm/@zip.js+zip.js@2.7.57/node_modules/@zip.js/zip.js/dist/zip-no-worker.min.js"></script>
   <script>
     const MotionMapping = (() => {
       const groups = [
@@ -477,6 +490,10 @@
     let app = null;
     let liveModel = null;
     let objectUrls = [];
+    let activeSourceFiles = null;
+    let activeSourceOptions = null;
+    const runtimeScripts = new Map();
+    let legacyAdapterLoaded = false;
     const $ = id => document.getElementById(id);
 
     function dispatch(action) { state = MotionMapping.reducer(state, action); render(); }
@@ -554,6 +571,60 @@
     }
     function normalizedInspectionError(error) {
       return { code: error?.code || "INSPECTION_FAILED", message: error?.message || String(error) };
+    }
+
+    function setRuntimeStatus(message, level = "") {
+      const status = $("runtimeStatus");
+      status.className = `runtime-status${level ? ` ${level}` : ""}`;
+      status.textContent = message;
+    }
+
+    async function loadLocalRuntime(file, kind) {
+      if (!file) return;
+      const maxBytes = 128 * 1024 * 1024;
+      if (file.size > maxBytes) throw projectError("RUNTIME_TOO_LARGE", `The selected runtime exceeds the ${maxBytes}-byte limit.`);
+      const source = await file.text();
+      if (!source.trim()) throw projectError("RUNTIME_EMPTY", "The selected runtime file is empty.");
+      const signature = kind === "legacy" ? /(?:Live2D|L2D)/ : /(?:Live2DCubismCore|csmGetVersion|csmGetLatestMocVersion)/;
+      if (!signature.test(source)) throw projectError("UNKNOWN_RUNTIME", `The selected file does not look like a ${kind === "legacy" ? "Cubism 2" : "modern Cubism"} runtime.`);
+      const previous = runtimeScripts.get(kind);
+      if (previous) {
+        previous.element.remove();
+        URL.revokeObjectURL(previous.url);
+      }
+      const url = URL.createObjectURL(new Blob([source], { type: "application/javascript" }));
+      const element = document.createElement("script");
+      element.async = false;
+      element.src = url;
+      await new Promise((resolve, reject) => {
+        element.onload = resolve;
+        element.onerror = () => reject(projectError("RUNTIME_LOAD_FAILED", `The selected ${kind} runtime could not be executed.`));
+        document.head.appendChild(element);
+      });
+      runtimeScripts.set(kind, { element, url, name: file.name });
+      const available = kind === "legacy" ? Boolean(window.Live2D) : Boolean(window.Live2DCubismCore);
+      if (!available) throw projectError("UNKNOWN_RUNTIME", `The selected file does not expose a usable ${kind === "legacy" ? "Cubism 2" : "modern Cubism"} runtime.`);
+      if (kind === "legacy" && !legacyAdapterLoaded) {
+        await loadLegacyAdapter();
+      }
+      setRuntimeStatus(`${kind === "legacy" ? "Cubism 2" : "Modern Core"} loaded: ${file.name}`, "good");
+      if (activeSourceFiles && state.inspection) {
+        setRuntimeStatus(`${kind === "legacy" ? "Cubism 2" : "Modern Core"} loaded; refreshing preview…`, "good");
+        await loadFolder(activeSourceFiles, activeSourceOptions || {});
+      }
+    }
+
+    async function loadLegacyAdapter() {
+      if (legacyAdapterLoaded) return;
+      const element = document.createElement("script");
+      element.async = false;
+      element.src = "../../packages/live2d-exporter/node_modules/pixi-live2d-display/dist/cubism2.min.js";
+      await new Promise((resolve, reject) => {
+        element.onload = resolve;
+        element.onerror = () => reject(projectError("RENDERER_ADAPTER_UNAVAILABLE", "The local Cubism 2 Pixi adapter could not be loaded."));
+        document.head.appendChild(element);
+      });
+      legacyAdapterLoaded = true;
     }
 
     function renderInspection() {
@@ -1018,6 +1089,8 @@
         for (const url of objectUrls) URL.revokeObjectURL(url);
         objectUrls = [];
         const list = [...files];
+        activeSourceFiles = list;
+        activeSourceOptions = { ...options };
         const rootless = file => (file.webkitRelativePath || file.name).split("/").slice(1).join("/") || file.name;
         const fileMap = new Map(list.map(file => [rootless(file),file]));
         const model3Files = list.filter(file => file.name.toLowerCase().endsWith(".model3.json"));
@@ -1089,7 +1162,6 @@
             }
           }
         } else {
-          if (!window.Live2D) throw browserInspectionError("RUNTIME_UNAVAILABLE", "Cubism 2 Core is unavailable. Refresh with network access or use a modern model.");
           raw.model = await dataRef(original.model);
           raw.textures = await Promise.all(original.textures.map(dataRef));
           for (const key of ["physics","pose"]) if (original[key]) raw[key] = await dataRef(original[key]);
@@ -1118,6 +1190,8 @@
         try {
           // Let pixi-live2d-display's FileLoader preserve relative paths for
           // both directory uploads and reconstructed PCK entries.
+          if (cubism === 2 && !window.Live2D) throw browserInspectionError("RUNTIME_UNAVAILABLE", "Inspection is complete, but Cubism 2 preview needs a local live2d.min.js. Use Choose Cubism 2 runtime above.");
+          if (cubism !== 2 && !window.Live2DCubismCore) throw browserInspectionError("RUNTIME_UNAVAILABLE", "Inspection is complete, but modern preview needs a local Cubism Core JavaScript file.");
           await mountModel(list);
           $("stageMessage").classList.add("hidden");
           if (motions[0]) await playMotion(motions[0].id);
@@ -1324,6 +1398,32 @@
       if (!pckFile) return;
       try {
         await loadPck(pckFile);
+      } finally {
+        e.target.value = "";
+      }
+    });
+    $("chooseModernRuntime").addEventListener("click", () => $("modernRuntimeInput").click());
+    $("modernRuntimeInput").addEventListener("change", async e => {
+      const runtimeFile = e.target.files[0];
+      if (!runtimeFile) return;
+      try {
+        setRuntimeStatus(`Loading modern Core ${runtimeFile.name}…`);
+        await loadLocalRuntime(runtimeFile, "modern");
+      } catch (error) {
+        setRuntimeStatus(`${error.code || "RUNTIME_LOAD_FAILED"}: ${error.message}`, "bad");
+      } finally {
+        e.target.value = "";
+      }
+    });
+    $("chooseLegacyRuntime").addEventListener("click", () => $("legacyRuntimeInput").click());
+    $("legacyRuntimeInput").addEventListener("change", async e => {
+      const runtimeFile = e.target.files[0];
+      if (!runtimeFile) return;
+      try {
+        setRuntimeStatus(`Loading Cubism 2 runtime ${runtimeFile.name}…`);
+        await loadLocalRuntime(runtimeFile, "legacy");
+      } catch (error) {
+        setRuntimeStatus(`${error.code || "RUNTIME_LOAD_FAILED"}: ${error.message}`, "bad");
       } finally {
         e.target.value = "";
       }
