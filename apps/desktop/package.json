@@ -1,0 +1,20 @@
+{
+  "name": "@live2pet/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local-first Live2Pet desktop shell",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "typecheck": "node --check main.cjs preload.cjs forge.config.cjs"
+  },
+  "dependencies": {
+    "@live2pet/app-host": "workspace:*"
+  },
+  "devDependencies": {
+    "electron": "44.0.0"
+  },
+  "config": {
+    "forge": "forge.config.cjs"
+  }
+}

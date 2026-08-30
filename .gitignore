@@ -7,6 +7,8 @@ node_modules/
 # Local render output and packaged releases.
 /.work/
 /artifacts/
+/apps/desktop/out/
+/apps/desktop/make/
 
 # User-provided and derived character examples stay local for copyright safety.
 /examples/

@@ -122,7 +122,7 @@ All model processing remains local. Cubism Core and legacy runtimes are selected
 
 ### Workspace and module boundaries
 
-- Use an Electron Forge application with React and TypeScript in a pnpm workspace.
+- Use an Electron Forge application with React and TypeScript in a pnpm workspace. The current development shell may remain dependency-light while the shared contracts stabilize; its future Forge makers must be added only after the source-release and native-module gates pass.
 - Create a domain module for Source Package, Motion, Expression, Animation Recipe, Motion Mapping, Render Preset, Target Profile, Package Build, Live2Pet Project, and Pet Package schemas.
 - Create a project module for versioned `.live2pet` serialization, migrations, source fingerprints, relinking, dirty state, autosave recovery, and validation.
 - Create source-inspection adapters for standard Cubism directories and the tested Destiny Child PCK layout.
@@ -243,6 +243,8 @@ All model processing remains local. Cubism Core and legacy runtimes are selected
 - Visual work starts a Mapper Session bound only to loopback. Each session receives an unguessable bearer token, one project allowlist, Origin validation, strict Content Security Policy, no general filesystem API, an explicit close action, and a short idle expiry.
 - The browser mapper writes through typed project operations and cannot invoke arbitrary shell commands or read paths outside the selected project and Source Package.
 - If the Codex in-app browser cannot open the Mapper Session, the skill opens the same project in the Electron App and continues headless work after the project is saved.
+
+The development Electron shell loads the shared Mapper from a fixed repository path, denies new-window navigation, and exposes only typed `live2pet:app` IPC methods through a sandboxed, context-isolated preload. It does not package Cubism Core, model content, example assets, or generated packages. Forge makers, local renderer assets, and signed installers remain release-gated work.
 
 ### Security, privacy, licensing, and release
 

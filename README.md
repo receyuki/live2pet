@@ -19,6 +19,7 @@ Live2Pet is an early-stage local toolchain for loading Cubism models, previewing
 - `packages/installation/` — portable ZIP export plus explicit, conflict-aware, atomic installation with side-by-side and rollback semantics, and platform adapters for the documented Clawd and Codex user-data roots.
 - `packages/mapper-session/` — loopback-only, token-authenticated, short-lived project session, token-hiding client, and bounded browser-host bootstrap for a shared visual mapper.
 - `packages/app-host/` — Electron-ready typed IPC router, preload API, and hardened window defaults for the future desktop shell.
+- `apps/desktop/` — dependency-light Electron development shell that loads the mapper and keeps the App main/preload boundary typed.
 - `packages/clawd-target/` — guide-aligned Clawd Target Profile validation for states, sleep modes, fallbacks, and reactions.
 - `packages/codex-target/` — Codex Pet V1 atlas geometry, nine-row mapping, frame-reference layout planning, RGBA composition, and package-shape validation.
 - `packages/live2d-exporter/` — deterministic transparent-frame exporter and Destiny Child PCK unpacker.
