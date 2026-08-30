@@ -58,6 +58,8 @@ importers:
 
   packages/runtime: {}
 
+  packages/skill-client: {}
+
   packages/source-inspector: {}
 
 packages:
