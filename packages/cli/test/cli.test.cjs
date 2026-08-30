@@ -291,3 +291,28 @@ test('export and explicit install operations keep local paths out of JSON output
   assert.equal(installed.result.path, '<selected-target-root>');
   assert.equal(fs.existsSync(path.join(root, 'pets', 'cli-install', 'pet.json')), true);
 });
+
+test('install resolves the platform adapter when target-root is omitted', async () => {
+  const root = temporaryDirectory();
+  const spritesheet = Buffer.alloc(30);
+  spritesheet.write('RIFF', 0, 'ascii');
+  spritesheet.writeUInt32LE(22, 4);
+  spritesheet.write('WEBP', 8, 'ascii');
+  spritesheet.write('VP8X', 12, 'ascii');
+  spritesheet.writeUInt32LE(10, 16);
+  spritesheet[24] = 0xff; spritesheet[25] = 0x05; spritesheet[26] = 0x00;
+  spritesheet[27] = 0x4f; spritesheet[28] = 0x07; spritesheet[29] = 0x00;
+  const artifact = await createCodexPetZip({
+    manifest: { id: 'cli-default-root', displayName: 'CLI Default Root', description: 'Synthetic', spritesheetPath: 'spritesheet.webp' },
+    spritesheet,
+  });
+  const sourceZip = path.join(root, 'source.zip');
+  const codexHome = path.join(root, 'codex-home');
+  fs.writeFileSync(sourceZip, artifact.buffer);
+  const output = execFileSync(process.execPath, [CLI, 'install', '--input', sourceZip, '--target', 'codex-pet', '--confirm-install'], { encoding: 'utf8', env: { ...process.env, CODEX_HOME: codexHome } });
+  const response = JSON.parse(output);
+  assert.equal(response.ok, true);
+  assert.equal(response.result.path, '<selected-target-root>');
+  assert.equal(fs.existsSync(path.join(codexHome, 'pets', 'cli-default-root', 'pet.json')), true);
+  assert.equal(output.includes(codexHome), false);
+});

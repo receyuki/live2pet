@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const zip = require('@zip.js/zip.js');
+const { TargetPathError, inspectTargetRoot, resolveTargetRoot } = require('./platform-paths.cjs');
 
 const PROTOCOL_VERSION = 1;
 const MAX_ARCHIVE_BYTES = 256 * 1024 * 1024;
@@ -169,14 +170,19 @@ async function exportPackage({ packageBytes, outputPath, overwrite = false } = {
   return { path: absolute, byteLength: content.byteLength, sha256: crypto.createHash('sha256').update(content).digest('hex'), overwritten: Boolean(overwrite && existed) };
 }
 
-async function installPackage({ target, packageBytes, targetRoot, conflict = 'cancel', packageId, onProgress, beforeCommit, zipModule } = {}) {
+async function installPackage({ target, packageBytes, targetRoot, platform, homeDir, env, conflict = 'cancel', packageId, onProgress, beforeCommit, zipModule } = {}) {
   const policy = normalizeConflict(conflict);
   progress(onProgress, 'inspect', 'started');
   const entries = await readArchive(packageBytes, { zipModule });
   const identity = packageIdentity(entries, target, packageId);
   const installEntries = normalizeInstallEntries(entries, target, identity.root);
   progress(onProgress, 'inspect', 'completed', { target, packageId: identity.id, files: installEntries.length });
-  const root = ensureDirectory(targetRoot);
+  let resolvedRoot;
+  try { resolvedRoot = resolveTargetRoot(target, { targetRoot, platform, homeDir, env }); } catch (error) {
+    if (error instanceof TargetPathError) fail(error.code, error.message, error.details);
+    throw error;
+  }
+  const root = ensureDirectory(resolvedRoot.path);
   let destination = path.join(root, identity.id);
   let resolvedId = identity.id;
   const conflictExists = fs.existsSync(destination);
@@ -213,7 +219,10 @@ module.exports = {
   MAX_ENTRY_BYTES,
   MAX_ENTRY_COUNT,
   PROTOCOL_VERSION,
+  TargetPathError,
   exportPackage,
+  inspectTargetRoot,
   installPackage,
   readArchive,
+  resolveTargetRoot,
 };

@@ -118,7 +118,7 @@ function operationSpec(operation) {
   if (operation === 'package-build') return { usage: 'live2pet package-build --input <build-spec.json> [--target clawd|codex-pet] [--output <directory>] [--cache-dir <cache-directory>] [--runtime-version <id> --renderer-version <id> --encoder-version <id>] [--overwrite] [--pretty]' };
   if (operation === 'package-validate') return { usage: 'live2pet package-validate --input <package.zip> [--target clawd|codex-pet] [--pretty]' };
   if (operation === 'export') return { usage: 'live2pet export --input <package.zip> --output <path.zip> [--overwrite] [--pretty]' };
-  if (operation === 'install') return { usage: 'live2pet install --input <package.zip> --target clawd|codex-pet --target-root <directory> --confirm-install [--conflict cancel|upgrade|side-by-side] [--pretty]' };
+  if (operation === 'install') return { usage: 'live2pet install --input <package.zip> --target clawd|codex-pet [--target-root <directory>] --confirm-install [--conflict cancel|upgrade|side-by-side] [--pretty]' };
   if (operation === 'cache-status') return { usage: 'live2pet cache-status --cache-dir <cache-directory> [--pretty]' };
   if (operation === 'cache-clear') return { usage: 'live2pet cache-clear --cache-dir <cache-directory> (--all | --project-id <id> | --source-fingerprint <sha256>) [--pretty]' };
   return { usage: 'live2pet <version|inspect|runtime-diagnose|project-validate|project-recover|package-build|package-validate|export|install|cache-status|cache-clear> [options]' };
@@ -417,7 +417,6 @@ async function execute(options = {}) {
   if (operation === 'install') {
     if (!options.confirmInstall) fail('INSTALL_AUTHORIZATION_REQUIRED', 'Installation requires the explicit --confirm-install flag.');
     if (!options.target || !['clawd', 'codex-pet'].includes(options.target)) fail('TARGET_REQUIRED', operationSpec(operation).usage);
-    if (!options.targetRoot) fail('INSTALL_ROOT_REQUIRED', operationSpec(operation).usage);
     const packageBytes = readPackageFile(options.input);
     const validation = await validatePackageArchive(options.input, options.target);
     if (!validation.result.ok) fail('PACKAGE_VALIDATION_FAILED', 'The package failed target validation and was not installed.', { errors: validation.result.errors });

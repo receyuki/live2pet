@@ -27,7 +27,7 @@ The client exposes typed methods over the current CLI operations:
 | `packageValidate` | `package-validate` | Read-only archive validation |
 | `exportPackage` | `export` | Writes only the explicitly selected ZIP path |
 | `cacheStatus` / `cacheClear` | `cache-status` / `cache-clear` | Cache inspection or user-requested cache deletion |
-| `installPackage` | `install` | Requires `confirmInstall: true` and an explicit user authorization |
+| `installPackage` | `install` | Requires `confirmInstall: true` and an explicit user authorization; `targetRoot` may use the platform adapter default |
 
 The Package Build input is the transient schema in [`package-build-cli-input.md`](package-build-cli-input.md). RGBA buffers are passed as temporary build-spec values and never returned in the skill response. The CLI's path-redacted response is the only output the skill should summarize to the user.
 
@@ -38,3 +38,5 @@ Visual Motion Mapping is not performed by the headless client. The host starts a
 ## Installation and licensing
 
 Build and export never imply installation. The skill must explain the intended Target Profile and target root, receive explicit authorization in the current request, and then pass the CLI confirmation flag. It must not bundle or download Cubism Core, legacy runtimes, imported models, textures, or example themes. Those remain user-provided and separately licensed.
+
+When `targetRoot` is omitted after authorization, the installation adapter uses the documented per-platform user-data root and environment overrides (`LIVE2PET_CLAWD_ROOT`, `LIVE2PET_CODEX_ROOT`, `CODEX_HOME`, `APPDATA`, or `XDG_CONFIG_HOME`). The adapter does not create or inspect a directory until installation is explicitly invoked.

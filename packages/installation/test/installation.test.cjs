@@ -5,7 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { createClawdThemeZip, createCodexPetZip } = require('../../package-build/src/index.cjs');
-const { InstallationError, exportPackage, installPackage } = require('../src/index.cjs');
+const { InstallationError, exportPackage, installPackage, resolveTargetRoot } = require('../src/index.cjs');
 
 function tempDir() { return fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-install-')); }
 
@@ -74,4 +74,25 @@ test('rejects unsafe archive paths before touching the install root', async () =
   const root = tempDir();
   await assert.rejects(() => installPackage({ target: 'codex-pet', packageBytes: Uint8Array.from([1]), targetRoot: root, zipModule: fakeZip }), (error) => error instanceof InstallationError && error.code === 'UNSAFE_PACKAGE_PATH');
   assert.deepEqual(fs.readdirSync(root), []);
+});
+
+test('resolves documented Clawd and Codex roots without creating them', () => {
+  assert.deepEqual(resolveTargetRoot('clawd', { platform: 'darwin', homeDir: '/Users/demo', env: {} }), {
+    target: 'clawd', platform: 'darwin', path: '/Users/demo/Library/Application Support/clawd-on-desk/themes', source: 'default', variable: null,
+  });
+  assert.deepEqual(resolveTargetRoot('clawd', { platform: 'win32', homeDir: 'C:\\Users\\demo', env: { APPDATA: 'C:\\Users\\demo\\AppData\\Roaming' } }), {
+    target: 'clawd', platform: 'win32', path: 'C:\\Users\\demo\\AppData\\Roaming\\clawd-on-desk\\themes', source: 'default', variable: 'APPDATA',
+  });
+  assert.deepEqual(resolveTargetRoot('codex-pet', { platform: 'linux', homeDir: '/home/demo', env: { CODEX_HOME: '/srv/codex' } }), {
+    target: 'codex-pet', platform: 'linux', path: '/srv/codex/pets', source: 'default', variable: 'CODEX_HOME',
+  });
+  assert.deepEqual(resolveTargetRoot('clawd', { targetRoot: '/tmp/custom-themes', platform: 'darwin', homeDir: '/Users/demo', env: {} }).source, 'explicit');
+});
+
+test('installs into a platform default only when the caller explicitly invokes install', async () => {
+  const root = tempDir();
+  const archive = await codexArchive();
+  const result = await installPackage({ target: 'codex-pet', packageBytes: archive.buffer, platform: 'darwin', homeDir: root, env: {} });
+  assert.equal(result.packageId, 'demo-pet');
+  assert.equal(fs.existsSync(path.join(root, '.codex', 'pets', 'demo-pet', 'pet.json')), true);
 });
