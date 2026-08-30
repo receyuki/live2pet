@@ -1,8 +1,11 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 
 const { createProject } = require('../../project/src/index.cjs');
-const { MapperSessionError, createMapperSessionClient, startMapperSession } = require('../src/index.cjs');
+const { MAX_MAPPER_HTML_BYTES, MapperSessionError, createMapperSessionClient, startMapperSession, startMapperSessionHost } = require('../src/index.cjs');
 
 function project() {
   return createProject({
@@ -93,4 +96,73 @@ test('provides a token-authenticated client without exposing the bearer token', 
 
 test('rejects non-loopback client origins before making a request', () => {
   assert.throws(() => createMapperSessionClient({ origin: 'http://localhost:1234', token: 'x'.repeat(40) }), (error) => error instanceof MapperSessionError && error.code === 'SESSION_ORIGIN_INVALID');
+});
+
+test('serves an optional mapper document and performs a one-time browser bootstrap without putting the bearer token in the URL', async () => {
+  const mapperHtml = '<!doctype html><html><head><title>Mapper</title></head><body>fixture</body></html>';
+  const session = await startMapperSession({ project: project(), mapperHtml, idleTimeoutMs: 1000 });
+  try {
+    const mapperUrl = session.getMapperUrl();
+    assert.match(mapperUrl, new RegExp(`^${session.origin}/mapper#live2pet=http(?:%3A|:)`));
+    assert.equal(mapperUrl.includes(session.token), false);
+    const page = await fetch(mapperUrl);
+    assert.equal(page.status, 200);
+    assert.equal(await page.text(), mapperHtml);
+    assert.match(page.headers.get('content-security-policy'), /object-src 'none'/);
+
+    const payload = new URL(mapperUrl).hash.slice('#live2pet='.length);
+    const code = payload.slice(payload.lastIndexOf('.') + 1);
+    const bootstrapped = await fetch(`${session.origin}/bootstrap`, {
+      method: 'POST',
+      headers: { Origin: session.origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    const body = await bootstrapped.json();
+    assert.equal(bootstrapped.status, 200);
+    assert.equal(body.token, session.token);
+    const replay = await fetch(`${session.origin}/bootstrap`, {
+      method: 'POST',
+      headers: { Origin: session.origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    assert.equal(replay.status, 401);
+    assert.equal((await replay.json()).error.code, 'BOOTSTRAP_INVALID');
+    assert.equal(session.getMapperUrl(), null);
+  } finally {
+    await session.close();
+  }
+});
+
+test('rejects oversized mapper documents before opening a session', async () => {
+  await assert.rejects(
+    () => startMapperSession({ project: project(), mapperHtml: 'x'.repeat(MAX_MAPPER_HTML_BYTES + 1) }),
+    (error) => error instanceof MapperSessionError && error.code === 'INVALID_MAPPER_HTML',
+  );
+});
+
+test('creates a token-free launch descriptor for a file-based Mapper host and keeps the session client behind a closure', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-mapper-host-'));
+  const mapperPath = path.join(root, 'index.html');
+  fs.writeFileSync(mapperPath, '<!doctype html><html><body>host</body></html>');
+  const host = await startMapperSessionHost({ project: project(), mapperPath, mapperUrl: `file://${mapperPath}`, idleTimeoutMs: 1000 });
+  try {
+    const descriptor = host.getLaunchDescriptor();
+    assert.equal(descriptor.origin, host.origin);
+    assert.equal(descriptor.mapperUrl.startsWith(`file://${mapperPath}#live2pet=${encodeURIComponent(host.origin)}.`), true);
+    assert.equal(Object.hasOwn(descriptor, 'token'), false);
+    const client = host.getClient();
+    assert.equal((await client.getProject()).project.projectId, 'session-fixture');
+  } finally {
+    await host.close();
+  }
+});
+
+test('rejects non-loopback Mapper launch URLs', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-mapper-host-'));
+  const mapperPath = path.join(root, 'index.html');
+  fs.writeFileSync(mapperPath, '<!doctype html><html><body>host</body></html>');
+  await assert.rejects(
+    () => startMapperSessionHost({ project: project(), mapperPath, mapperUrl: 'https://example.invalid/mapper' }),
+    (error) => error instanceof MapperSessionError && error.code === 'INVALID_MAPPER_URL',
+  );
 });

@@ -39,6 +39,8 @@ Visual Motion Mapping is not performed by the headless client. The host starts a
 
 `@live2pet/mapper-session` exposes the host-side client for `getSession`, `getProject`, `updateProject`, and `close`. The client accepts only a `127.0.0.1` HTTP origin, sends the bearer token internally, and does not expose the token as a property that a UI or status serializer can accidentally display.
 
+The host helper may serve a caller-provided Mapper document (bounded to 4 MiB) and returns a launch descriptor without the bearer token. `getLaunchUrl()` places a one-time random bootstrap code in the URL fragment together with the loopback API origin; the fragment is never sent in an HTTP request. The Mapper exchanges that code once at `POST /bootstrap`, receives the bearer token in memory, and immediately removes the fragment from its history entry. A file-based Mapper host must explicitly allow the browser's opaque `null` Origin; the host always also allows its own loopback origin for trusted programmatic clients. The server emits a no-store HTML response with a restrictive baseline CSP and never serves arbitrary filesystem paths.
+
 ## Installation and licensing
 
 Build and export never imply installation. The skill must explain the intended Target Profile and target root, receive explicit authorization in the current request, and then pass the CLI confirmation flag. It must not bundle or download Cubism Core, legacy runtimes, imported models, textures, or example themes. Those remain user-provided and separately licensed.

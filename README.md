@@ -17,7 +17,7 @@ Live2Pet is an early-stage local toolchain for loading Cubism models, previewing
 - `packages/skill-client/` — dependency-free protocol client for the installed CLI, with version handshake, capability checks, typed failures, safe argument construction, and explicit install authorization.
 - `packages/skill-manager/` — text-only, bounded, symlink-free Codex skill bundle validation, status reporting, and atomic install/upgrade support.
 - `packages/installation/` — portable ZIP export plus explicit, conflict-aware, atomic installation with side-by-side and rollback semantics, and platform adapters for the documented Clawd and Codex user-data roots.
-- `packages/mapper-session/` — loopback-only, token-authenticated, short-lived project session and token-hiding client for a shared visual mapper host.
+- `packages/mapper-session/` — loopback-only, token-authenticated, short-lived project session, token-hiding client, and bounded browser-host bootstrap for a shared visual mapper.
 - `packages/clawd-target/` — guide-aligned Clawd Target Profile validation for states, sleep modes, fallbacks, and reactions.
 - `packages/codex-target/` — Codex Pet V1 atlas geometry, nine-row mapping, frame-reference layout planning, RGBA composition, and package-shape validation.
 - `packages/live2d-exporter/` — deterministic transparent-frame exporter and Destiny Child PCK unpacker.

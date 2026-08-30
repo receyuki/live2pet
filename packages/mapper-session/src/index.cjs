@@ -1,12 +1,17 @@
 const crypto = require('node:crypto');
+const fs = require('node:fs');
 const http = require('node:http');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 
 const { ProjectValidationError, validateProject } = require('../../project/src/index.cjs');
 
 const PROTOCOL_VERSION = 1;
 const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
+const MAX_MAPPER_HTML_BYTES = 4 * 1024 * 1024;
 const LOOPBACK_HOST = '127.0.0.1';
+const MAPPER_PATH = '/mapper';
 
 class MapperSessionError extends Error {
   constructor(code, message, details = {}) {
@@ -81,6 +86,41 @@ function jsonResponse(value, status = 200, headers = {}) {
   return { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'content-length': String(body.length), ...headers }, body };
 }
 
+function htmlResponse(html, status = 200, headers = {}) {
+  const body = Buffer.from(html, 'utf8');
+  return {
+    status,
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'no-store',
+      'content-security-policy': "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+      'x-content-type-options': 'nosniff',
+      'content-length': String(body.length),
+      ...headers,
+    },
+    body,
+  };
+}
+
+function resolveMapperUrl(value, fallback) {
+  const candidate = value === undefined ? fallback : value;
+  if (typeof candidate !== 'string' || !candidate.trim()) throw new MapperSessionError('INVALID_MAPPER_URL', 'mapperUrl must be a non-empty URL string.');
+  let parsed;
+  try { parsed = new URL(candidate); } catch { throw new MapperSessionError('INVALID_MAPPER_URL', 'mapperUrl must be a valid URL.'); }
+  if (parsed.protocol === 'file:') return candidate;
+  if (parsed.protocol === 'http:' && parsed.hostname === LOOPBACK_HOST) return candidate;
+  throw new MapperSessionError('INVALID_MAPPER_URL', 'mapperUrl must use a file URL or loopback http URL.');
+}
+
+function readMapperHtml(mapperPath) {
+  if (typeof mapperPath !== 'string' || !mapperPath.trim()) throw new MapperSessionError('MAPPER_PATH_REQUIRED', 'mapperPath is required when mapperHtml is not provided.');
+  let stat;
+  try { stat = fs.statSync(mapperPath); } catch (error) { throw new MapperSessionError('MAPPER_READ_FAILED', 'The Mapper document could not be read.', { cause: error && error.code ? error.code : 'UNKNOWN' }); }
+  if (!stat.isFile()) throw new MapperSessionError('MAPPER_READ_FAILED', 'The Mapper document path is not a file.');
+  if (stat.size > MAX_MAPPER_HTML_BYTES) throw new MapperSessionError('INVALID_MAPPER_HTML', `mapperHtml must be a UTF-8 string no larger than ${MAX_MAPPER_HTML_BYTES} bytes.`);
+  try { return fs.readFileSync(mapperPath, 'utf8'); } catch (error) { throw new MapperSessionError('MAPPER_READ_FAILED', 'The Mapper document could not be read.', { cause: error && error.code ? error.code : 'UNKNOWN' }); }
+}
+
 function errorResponse(error, status = 400) {
   return jsonResponse({ protocolVersion: PROTOCOL_VERSION, ok: false, error: { code: error.code || 'MAPPER_SESSION_FAILED', message: error.message || String(error), details: error.details || {} } }, status);
 }
@@ -129,12 +169,15 @@ function readJsonBody(request) {
   });
 }
 
-function startMapperSession({ project, allowedOrigins, host = LOOPBACK_HOST, port = 0, idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS } = {}) {
+function startMapperSession({ project, allowedOrigins, mapperHtml, host = LOOPBACK_HOST, port = 0, idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS } = {}) {
   if (host !== LOOPBACK_HOST) return Promise.reject(new MapperSessionError('NON_LOOPBACK_BINDING', 'Mapper Sessions can bind only to 127.0.0.1.'));
   if (!Number.isInteger(port) || port < 0 || port > 65535) return Promise.reject(new MapperSessionError('INVALID_PORT', 'Mapper Session port must be an integer between 0 and 65535.'));
   if (!Number.isInteger(idleTimeoutMs) || idleTimeoutMs < 1000 || idleTimeoutMs > 24 * 60 * 60 * 1000) return Promise.reject(new MapperSessionError('INVALID_IDLE_TIMEOUT', 'Mapper Session idleTimeoutMs must be between 1000 and 86400000.'));
   let currentProject;
   let origins;
+  if (mapperHtml !== undefined && (typeof mapperHtml !== 'string' || Buffer.byteLength(mapperHtml, 'utf8') > MAX_MAPPER_HTML_BYTES)) {
+    return Promise.reject(new MapperSessionError('INVALID_MAPPER_HTML', `mapperHtml must be a UTF-8 string no larger than ${MAX_MAPPER_HTML_BYTES} bytes.`));
+  }
   try {
     currentProject = normalizeProject(project);
     origins = normalizeOrigins(allowedOrigins);
@@ -144,6 +187,8 @@ function startMapperSession({ project, allowedOrigins, host = LOOPBACK_HOST, por
 
   const sessionId = crypto.randomUUID();
   const token = crypto.randomBytes(32).toString('base64url');
+  const browserCode = mapperHtml === undefined ? null : crypto.randomBytes(24).toString('base64url');
+  let browserCodeConsumed = false;
   const server = http.createServer();
   let timer = null;
   let closed = false;
@@ -176,13 +221,37 @@ function startMapperSession({ project, allowedOrigins, host = LOOPBACK_HOST, por
   server.on('request', async (request, response) => {
     const requestOrigin = typeof request.headers.origin === 'string' ? request.headers.origin : null;
     if (origins === null && origin) origins = new Set([origin]);
-    if (!isAllowedOrigin(requestOrigin)) {
+    const requestPath = new URL(request.url || '/', origin || `http://${LOOPBACK_HOST}`).pathname;
+    const isMapperDocument = request.method === 'GET' && requestPath === MAPPER_PATH && mapperHtml !== undefined;
+    if (!isMapperDocument && !isAllowedOrigin(requestOrigin)) {
       failRequest(response, new MapperSessionError('ORIGIN_NOT_ALLOWED', 'The request Origin is not allowed for this Mapper Session.'), 403);
       return;
     }
     const corsHeaders = { 'access-control-allow-origin': requestOrigin, vary: 'Origin' };
+    if (isMapperDocument) {
+      writeResponse(response, htmlResponse(mapperHtml, 200));
+      return;
+    }
     if (request.method === 'OPTIONS') {
       writeResponse(response, jsonResponse({ protocolVersion: PROTOCOL_VERSION, ok: true }, 204, { ...corsHeaders, 'access-control-allow-methods': 'GET, PUT, POST, OPTIONS', 'access-control-allow-headers': 'Authorization, Content-Type' }));
+      return;
+    }
+    if (request.method === 'POST' && requestPath === '/bootstrap') {
+      try {
+        const body = await readJsonBody(request);
+        const candidate = body && typeof body.code === 'string' ? body.code : '';
+        const expected = Buffer.from(browserCode || '');
+        const actual = Buffer.from(candidate);
+        if (browserCodeConsumed || !browserCode || actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) {
+          fail('BOOTSTRAP_INVALID', 'The Mapper Session browser bootstrap code is invalid or already used.');
+        }
+        browserCodeConsumed = true;
+        armTimer();
+        writeResponse(response, jsonResponse({ protocolVersion: PROTOCOL_VERSION, ok: true, token, expiresAt }, 200, corsHeaders));
+      } catch (error) {
+        const typed = error instanceof MapperSessionError;
+        failRequest(response, typed ? error : new MapperSessionError('BOOTSTRAP_FAILED', error.message || String(error)), typed && error.code === 'REQUEST_TOO_LARGE' ? 413 : 401);
+      }
       return;
     }
     if (!isAuthorized(request)) {
@@ -194,7 +263,6 @@ function startMapperSession({ project, allowedOrigins, host = LOOPBACK_HOST, por
       return;
     }
     armTimer();
-    const requestPath = new URL(request.url || '/', origin).pathname;
     try {
       if (request.method === 'GET' && requestPath === '/session') {
         writeResponse(response, jsonResponse({ protocolVersion: PROTOCOL_VERSION, ok: true, sessionId, origin, expiresAt, capabilities: ['project-read', 'project-write', 'close'] }, 200, corsHeaders));
@@ -233,6 +301,7 @@ function startMapperSession({ project, allowedOrigins, host = LOOPBACK_HOST, por
       const address = server.address();
       origin = `http://${LOOPBACK_HOST}:${address.port}`;
       if (origins === null) origins = new Set([origin]);
+      else origins.add(origin);
       armTimer();
       resolve({
         protocolVersion: PROTOCOL_VERSION,
@@ -241,10 +310,38 @@ function startMapperSession({ project, allowedOrigins, host = LOOPBACK_HOST, por
         origin,
         port: address.port,
         expiresAt,
+        getMapperUrl: ({ mapperUrl = `${origin}${MAPPER_PATH}` } = {}) => {
+          if (mapperHtml === undefined) return null;
+          if (browserCodeConsumed) return null;
+          const safeMapperUrl = resolveMapperUrl(mapperUrl, `${origin}${MAPPER_PATH}`);
+          return `${safeMapperUrl}#live2pet=${encodeURIComponent(origin)}.${browserCode}`;
+        },
         get closed() { return closed; },
         close: closeServer,
       });
     });
+  });
+}
+
+async function startMapperSessionHost({ project, mapperHtml, mapperPath, mapperUrl, allowedOrigins, host = LOOPBACK_HOST, port = 0, idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS } = {}) {
+  const document = mapperHtml === undefined ? readMapperHtml(mapperPath) : mapperHtml;
+  const resolvedMapperUrl = mapperUrl === undefined && mapperPath ? resolveMapperUrl(pathToFileURL(path.resolve(mapperPath)).href) : mapperUrl === undefined ? undefined : resolveMapperUrl(mapperUrl);
+  let origins = allowedOrigins;
+  if (origins === undefined && resolvedMapperUrl) {
+    const parsed = new URL(resolvedMapperUrl);
+    origins = parsed.protocol === 'file:' ? ['null'] : [parsed.origin];
+  }
+  const session = await startMapperSession({ project, mapperHtml: document, allowedOrigins: origins, host, port, idleTimeoutMs });
+  const launchUrl = () => session.getMapperUrl({ mapperUrl: resolvedMapperUrl || `${session.origin}${MAPPER_PATH}` });
+  return Object.freeze({
+    protocolVersion: session.protocolVersion,
+    sessionId: session.sessionId,
+    origin: session.origin,
+    expiresAt: session.expiresAt,
+    getLaunchUrl: launchUrl,
+    getLaunchDescriptor: () => ({ protocolVersion: session.protocolVersion, sessionId: session.sessionId, origin: session.origin, expiresAt: session.expiresAt, mapperUrl: launchUrl() }),
+    getClient: () => createMapperSessionClient({ origin: session.origin, token: session.token }),
+    close: session.close,
   });
 }
 
@@ -253,7 +350,12 @@ module.exports = {
   LOOPBACK_HOST,
   MapperSessionError,
   MAX_BODY_BYTES,
+  MAX_MAPPER_HTML_BYTES,
+  MAPPER_PATH,
   PROTOCOL_VERSION,
   createMapperSessionClient,
+  readMapperHtml,
+  resolveMapperUrl,
   startMapperSession,
+  startMapperSessionHost,
 };

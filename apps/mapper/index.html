@@ -61,6 +61,9 @@
     .project-status { grid-column: 1 / -1; min-height: 22px; color: var(--muted); }
     .project-status.good { color: var(--good); }
     .project-status.bad { color: var(--bad); }
+    .session-status { grid-column: 1 / -1; min-height: 18px; color: var(--muted); font-size: 12px; }
+    .session-status.good { color: var(--good); }
+    .session-status.bad { color: var(--bad); }
     .hidden { display: none !important; }
     .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 18px; }
     .metric { padding: 11px 13px; background: var(--panel2); border: 1px solid var(--line); border-radius: 11px; }
@@ -256,6 +259,7 @@
         <button id="saveProject" class="primary" disabled>Save .live2pet</button>
       </div>
       <div id="projectStatus" class="project-status" role="status" aria-live="polite">No project loaded.</div>
+      <div id="sessionStatus" class="session-status" role="status" aria-live="polite"></div>
     </section>
 
     <section class="panel inspection-panel" aria-labelledby="inspectionHeading">
@@ -511,9 +515,22 @@
     let activeSourceOptions = null;
     const runtimeScripts = new Map();
     let legacyAdapterLoaded = false;
+    let mapperSession = null;
+    let sessionProject = null;
     const $ = id => document.getElementById(id);
 
-    function dispatch(action) { state = MotionMapping.reducer(state, action); render(); }
+    function dispatch(action) {
+      state = MotionMapping.reducer(state, action);
+      if (action.type === "LOAD_MODEL" && sessionProject) {
+        if (state.inspection?.source?.fingerprint === sessionProject.source?.fingerprint) {
+          state = MotionMapping.reducer(state, { type: "LOAD_PROJECT", project: sessionProject });
+          setProjectStatus(`Loaded ${sessionProject.name} from the Mapper Session.` , "good");
+        } else {
+          setProjectStatus("The Mapper Session project is waiting for its matching Source Package.");
+        }
+      }
+      render();
+    }
     function escapeHtml(value) { return String(value ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"})[c]); }
     function selectedMotion() { return MotionMapping.motion(state, state.selectedMotionId); }
     function projectError(code, message) { const error = new Error(message); error.code = code; return error; }
@@ -590,6 +607,67 @@
     function setProjectStatus(message, level = "") {
       $("projectStatus").className = `project-status${level ? ` ${level}` : ""}`;
       $("projectStatus").textContent = message;
+    }
+    function setSessionStatus(message, level = "") {
+      const status = $("sessionStatus");
+      status.className = `session-status${level ? ` ${level}` : ""}`;
+      status.textContent = message;
+    }
+    function sessionBootstrap() {
+      const marker = "#live2pet=";
+      if (!location.hash.startsWith(marker)) return null;
+      const payload = location.hash.slice(marker.length);
+      const separator = payload.lastIndexOf(".");
+      if (separator < 1 || separator === payload.length - 1) throw projectError("SESSION_BOOTSTRAP_INVALID", "The Mapper Session launch fragment is invalid.");
+      const origin = decodeURIComponent(payload.slice(0, separator));
+      const code = payload.slice(separator + 1);
+      if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin) || !/^[A-Za-z0-9_-]{24,}$/.test(code)) throw projectError("SESSION_BOOTSTRAP_INVALID", "The Mapper Session launch fragment is invalid.");
+      history.replaceState(null, document.title, `${location.pathname}${location.search}`);
+      return { origin, code };
+    }
+    async function mapperSessionRequest(pathname, options = {}) {
+      if (!mapperSession) throw projectError("SESSION_NOT_CONNECTED", "The Mapper Session is not connected.");
+      const response = await fetch(`${mapperSession.origin}${pathname}`, {
+        ...options,
+        headers: { Authorization: `Bearer ${mapperSession.token}`, ...(options.body ? { "Content-Type": "application/json" } : {}), ...(options.headers || {}) },
+      });
+      let body = null;
+      try { body = await response.json(); } catch { throw projectError("SESSION_RESPONSE_INVALID", "The Mapper Session returned invalid JSON."); }
+      if (!response.ok || body?.ok === false) throw projectError(body?.error?.code || "SESSION_REQUEST_REJECTED", body?.error?.message || "The Mapper Session request was rejected.");
+      return body;
+    }
+    async function connectMapperSession() {
+      let launch;
+      try { launch = sessionBootstrap(); } catch (error) { setSessionStatus(`${error.code || "SESSION_BOOTSTRAP_INVALID"}: ${error.message}`, "bad"); return; }
+      if (!launch) return;
+      setSessionStatus("Connecting to the protected Mapper Session…");
+      try {
+        const response = await fetch(`${launch.origin}/bootstrap`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: launch.code }) });
+        const body = await response.json();
+        if (!response.ok || body?.ok !== true || typeof body.token !== "string") throw projectError(body?.error?.code || "SESSION_BOOTSTRAP_FAILED", body?.error?.message || "The Mapper Session bootstrap was rejected.");
+        mapperSession = { origin: launch.origin, token: body.token, sessionId: null };
+        const metadata = await mapperSessionRequest("/session");
+        mapperSession.sessionId = metadata.sessionId;
+        sessionProject = (await mapperSessionRequest("/project")).project;
+        setSessionStatus(`Connected to Mapper Session ${metadata.sessionId.slice(0, 8)}… · changes sync on Save.`, "good");
+        if (state.inspection?.source?.fingerprint === sessionProject.source?.fingerprint) {
+          dispatch({ type: "LOAD_PROJECT", project: sessionProject });
+          setProjectStatus(`Loaded ${sessionProject.name} from the Mapper Session.`, "good");
+        } else {
+          setProjectStatus(`Mapper Session project “${sessionProject.name}” is ready; choose its matching Source Package.`);
+        }
+      } catch (error) {
+        mapperSession = null;
+        sessionProject = null;
+        setSessionStatus(`${error.code || "SESSION_CONNECT_FAILED"}: ${error.message}`, "bad");
+      }
+    }
+    async function persistMapperSessionProject(project) {
+      if (!mapperSession) return false;
+      await mapperSessionRequest("/project", { method: "PUT", body: JSON.stringify(project) });
+      sessionProject = project;
+      setSessionStatus(`Connected to Mapper Session ${mapperSession.sessionId.slice(0, 8)}… · project saved.`, "good");
+      return true;
     }
     function normalizedInspectionError(error) {
       return { code: error?.code || "INSPECTION_FAILED", message: error?.message || String(error) };
@@ -1415,7 +1493,7 @@
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     }
 
-    function downloadProject() {
+    async function downloadProject() {
       try {
         const project = buildProjectDocument();
         const filename = `${project.projectId}.live2pet`;
@@ -1426,6 +1504,10 @@
         link.click();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
         setProjectStatus(`Saved ${filename}. Source assets remain on this computer.`, "good");
+        if (mapperSession) {
+          try { await persistMapperSessionProject(project); }
+          catch (error) { setSessionStatus(`${error.code || "SESSION_SAVE_FAILED"}: ${error.message}`, "bad"); }
+        }
       } catch (error) {
         setProjectStatus(`${error.code || "PROJECT_SAVE_FAILED"}: ${error.message}`, "bad");
       }
@@ -1503,6 +1585,7 @@
     $("copyJson").addEventListener("click",async()=>{const text=JSON.stringify(MotionMapping.output(state),null,2);try{await navigator.clipboard.writeText(text)}catch{const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove();}});
     new ResizeObserver(()=>{if(app){app.resize();fitModel();}}).observe($("stage"));
     render();
+    void connectMapperSession();
   </script>
 </body>
 </html>
