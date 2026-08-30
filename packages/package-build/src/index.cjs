@@ -5,7 +5,8 @@ const {
   selectCodexFrameSets,
 } = require('../../codex-target/src/index.cjs');
 const { composeCodexAtlasRgba } = require('../../codex-target/src/index.cjs');
-const { createClawdTarget } = require('../../clawd-target/src/index.cjs');
+const { createClawdTarget, validateClawdThemePackage } = require('../../clawd-target/src/index.cjs');
+const { validateCodexPetPackage } = require('../../codex-target/src/index.cjs');
 const { assertProjectBuildable, validateProject } = require('../../project/src/index.cjs');
 const { sampleMotionCandidates } = require('../../renderer/src/index.cjs');
 const { CacheError, CacheStore, DEFAULT_CACHE_LIMIT, createCacheKey } = require('./cache.cjs');
@@ -439,6 +440,13 @@ async function buildClawdTheme(input = {}, options = {}) {
   progress(onProgress, CLAWD_STAGES[2], 'completed', { states: Object.keys(bindings.states).length, reactions: Object.keys(bindings.reactions).length });
   checkCancelled(signal);
 
+  const validation = validateClawdThemePackage({
+    themeId,
+    manifest,
+    assets: Object.fromEntries(assetReports.map((asset) => [asset.file, { byteLength: asset.byteLength }])),
+  });
+  if (!validation.ok) fail('TARGET_VALIDATION_FAILED', 'The generated Clawd theme failed Target Profile validation.', { target: 'clawd', errors: validation.errors });
+
   let packaged = null;
   if (options.package === true) {
     progress(onProgress, CLAWD_STAGES[3], 'started');
@@ -454,6 +462,7 @@ async function buildClawdTheme(input = {}, options = {}) {
     manifest,
     assets: assetReports,
     warnings: target.warnings || [],
+    validation,
     encoding: { required: 'webp', status: 'completed', assetCount: assetReports.length },
     provenance: buildProvenance('clawd', target.contractVersion, render),
     package: packaged,
@@ -518,6 +527,13 @@ async function buildCodexPet(input = {}, options = {}) {
   checkCancelled(signal);
   progress(onProgress, STAGES[4], 'completed');
 
+  const validation = validateCodexPetPackage({
+    files: packageRequested ? [...PACKAGE_FILES] : undefined,
+    manifest,
+    spritesheet: { path: 'spritesheet.webp', format: 'webp', width: atlas.width, height: atlas.height, frameCount: 1, ...(encoded ? { byteLength: encoded.buffer.byteLength } : {}) },
+  });
+  if (!validation.ok) fail('TARGET_VALIDATION_FAILED', 'The generated Codex Pet failed Target Profile validation.', { target: 'codex-pet', errors: validation.errors });
+
   let packaged = null;
   if (packageRequested) {
     progress(onProgress, STAGES[5], 'started');
@@ -533,6 +549,7 @@ async function buildCodexPet(input = {}, options = {}) {
     atlas,
     selections: selection.selections,
     warnings: [],
+    validation,
     encoding: encoded ? { required: 'webp', status: 'completed', format: encoded.format, frameCount: encoded.frameCount, width: encoded.width, height: encoded.height, byteLength: encoded.buffer.length } : { required: 'webp', status: 'pending', reason: 'Set encode:true or package:true to convert atlas.rgba to spritesheet.webp.' },
     provenance: buildProvenance('codex-pet', target.contractVersion, render),
     spritesheet: encoded ? encoded.buffer : null,

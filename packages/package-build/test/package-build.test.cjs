@@ -101,6 +101,7 @@ test('builds a guide-shaped Clawd theme package from captured Motion frames', as
   assert.deepEqual(result.manifest.reactions.drag, { file: 'demo-theme-error.webp' });
   assert.equal(result.assets.length, 5);
   assert.equal(result.encoding.assetCount, 5);
+  assert.equal(result.validation.ok, true);
   assert.equal(result.provenance.renderPreset, 'balanced');
   assert.deepEqual(result.provenance.render, { width: 768, height: 768, fps: 24, quality: 82, alphaQuality: 100 });
   assert.equal(result.preview.source, 'generated-assets');
@@ -161,6 +162,7 @@ test('builds a deterministic Codex atlas handoff with progress stages', async ()
   assert.equal(first.atlas.occupiedCells, 57);
   assert.equal(first.atlas.transparentCells, 15);
   assert.equal(first.encoding.status, 'pending');
+  assert.equal(first.validation.ok, true);
   assert.equal(first.provenance.renderPreset, 'balanced');
   assert.equal(first.preview.source, 'generated-assets');
   assert.equal(first.preview.spritesheet.cellWidth, 192);
