@@ -5,12 +5,14 @@ const test = require('node:test');
 const {
   CLAWD_PACKAGE_LIMIT,
   PackageBuildError,
+  TARGET_RENDER_PRESETS,
   buildClawdTheme,
   buildCodexPet,
   buildProjectTargets,
   createClawdThemeZip,
   createCodexPetZip,
   encodeAnimatedWebp,
+  renderMappedMotions,
 } = require('../src/index.cjs');
 const { validateClawdThemePackage } = require('../../clawd-target/src/index.cjs');
 const { validateCodexPetPackage } = require('../../codex-target/src/index.cjs');
@@ -292,6 +294,20 @@ test('buildProjectTargets can render mapped Motions through the shared renderer 
   assert.equal(Object.keys(result.builds['codex-pet'].selections).length, 9);
   assert.ok(events.includes('clawd:render:completed'));
   assert.ok(events.includes('codex-pet:render:completed'));
+});
+
+test('renderer capture uses named target Render Presets', async () => {
+  const renderer = new SyntheticRenderer();
+  await renderer.load({ motions: [{ id: 'idle', duration: 0.1 }] });
+  const result = await renderMappedMotions({ renderer, motionIds: ['idle'], render: { preset: 'compact' }, target: 'codex-pet' });
+  assert.deepEqual(TARGET_RENDER_PRESETS['codex-pet'].compact, { width: 192, height: 208, samplesPerSecond: 32 });
+  assert.equal(result.idle.frames.length, 4);
+  assert.equal(result.idle.frames[0].width, 192);
+  assert.equal(result.idle.frames[0].height, 208);
+  await assert.rejects(
+    () => renderMappedMotions({ renderer, motionIds: ['idle'], render: { preset: 'unknown' }, target: 'codex-pet' }),
+    (error) => error instanceof PackageBuildError && error.code === 'INVALID_RENDER_PRESET',
+  );
 });
 
 test('buildProjectTargets refuses a project with an unreviewed source change', async () => {

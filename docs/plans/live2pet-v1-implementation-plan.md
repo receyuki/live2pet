@@ -158,7 +158,7 @@ Deliverables:
 - integrity-checked reuse and cleanup of partial staging data; and
 - sanitized build reports and collision-safe artifact naming.
 
-Current slice: `packages/package-build/src/cache.cjs` provides the bounded LRU cache, atomic writes, SHA-256 integrity checks, project/source filtering, status reporting, and clear operations. `buildProjectTargets` now drives the existing Clawd/Codex builders from one validated Project, can capture mapped Motions through the shared renderer contract when pre-captured inputs are absent, and stops on source-review gates. Full source-to-render orchestration, cache-key integration, target previews, and the end-to-end safety seam remain to be completed.
+Current slice: `packages/package-build/src/cache.cjs` provides the bounded LRU cache, atomic writes, SHA-256 integrity checks, project/source filtering, status reporting, and clear operations. `buildProjectTargets` now drives the existing Clawd/Codex builders from one validated Project, can capture mapped Motions through the shared renderer contract when pre-captured inputs are absent, applies named target-owned Render Presets, and stops on source-review gates. Full source-to-render orchestration, cache-key integration, target previews, and the end-to-end safety seam remain to be completed.
 
 Exit gate:
 

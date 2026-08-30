@@ -16,6 +16,18 @@ const CLAWD_STAGES = Object.freeze(['validate', 'encode', 'manifest', 'package']
 const MAX_ENCODE_FRAMES = 4096;
 const PACKAGE_FILES = Object.freeze(['pet.json', 'spritesheet.webp']);
 const CLAWD_PACKAGE_LIMIT = 83_886_080;
+const TARGET_RENDER_PRESETS = Object.freeze({
+  clawd: Object.freeze({
+    compact: Object.freeze({ width: 512, height: 512, fps: 18, quality: 76 }),
+    balanced: Object.freeze({ width: 768, height: 768, fps: 24, quality: 82 }),
+    high: Object.freeze({ width: 1024, height: 1024, fps: 30, quality: 88 }),
+  }),
+  'codex-pet': Object.freeze({
+    compact: Object.freeze({ width: 192, height: 208, samplesPerSecond: 32 }),
+    balanced: Object.freeze({ width: 192, height: 208, samplesPerSecond: 64 }),
+    high: Object.freeze({ width: 192, height: 208, samplesPerSecond: 96 }),
+  }),
+});
 
 class PackageBuildError extends Error {
   constructor(code, message, details = {}) {
@@ -64,9 +76,12 @@ function rendererMotionDescriptor(renderer, motionId) {
 async function renderMappedMotions({ renderer, motionIds, render = {}, signal, onProgress, target } = {}) {
   if (!renderer || typeof renderer.captureRgba !== 'function') fail('RENDERER_REQUIRED', 'A renderer implementing captureRgba is required when build inputs do not include captured frames.');
   if (!Array.isArray(motionIds) || !motionIds.length) fail('MOTION_MAPPING_REQUIRED', `No ${target || 'target'} Motion mappings are available for renderer capture.`);
-  const width = Number.isInteger(render.width) ? render.width : 256;
-  const height = Number.isInteger(render.height) ? render.height : 256;
-  const samples = Number.isInteger(render.samples) ? render.samples : 32;
+  const presetName = typeof render.preset === 'string' && render.preset.trim() ? render.preset.trim().toLowerCase() : 'balanced';
+  const preset = TARGET_RENDER_PRESETS[target] && TARGET_RENDER_PRESETS[target][presetName];
+  if (!preset) fail('INVALID_RENDER_PRESET', `Unknown ${target || 'target'} Render Preset: ${presetName}.`, { target, preset: presetName, available: Object.keys(TARGET_RENDER_PRESETS[target] || {}) });
+  const width = Number.isInteger(render.width) ? render.width : preset.width;
+  const height = Number.isInteger(render.height) ? render.height : preset.height;
+  const configuredSamples = Number.isInteger(render.samples) ? render.samples : null;
   const framesByMotion = {};
   for (const motionId of motionIds) {
     checkCancelled(signal);
@@ -76,12 +91,15 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
       : descriptor && descriptor.duration;
     const duration = configuredDuration == null ? 1 : Number(configuredDuration);
     if (!Number.isFinite(duration) || duration < 0 || duration > 3600) fail('INVALID_MOTION_DURATION', `Motion ${motionId} has no valid duration for renderer capture.`);
+    const samples = configuredSamples || (target === 'codex-pet'
+      ? Math.max(2, Math.ceil(duration * preset.samplesPerSecond))
+      : Math.max(2, Math.ceil(duration * preset.fps)));
     progress(onProgress, 'render', 'started', { target, motionId, width, height, samples, duration });
     const result = await sampleMotionCandidates(renderer, { motionId, duration, samples, width, height });
     checkCancelled(signal);
     framesByMotion[motionId] = {
       frames: result.candidates,
-      fps: duration > 0 ? samples / duration : 10,
+      fps: Number.isFinite(render.fps) ? render.fps : (render.preset ? (preset.fps || (duration > 0 ? samples / duration : 10)) : (duration > 0 ? samples / duration : 10)),
     };
     progress(onProgress, 'render', 'completed', { target, motionId, samples: result.candidates.length });
   }
@@ -477,11 +495,11 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
     if (renderer) {
       if (targetId === 'clawd' && !targetInput.framesByMotion && !targetInput.frames) {
         const ids = mappedMotionIds({ ...targetProject.mappings, ...targetProject.reactions });
-        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, render: targetInput.render || targetOptions.render, signal, onProgress: targetOptions.onProgress, target: targetId });
+        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId });
         renderedInput = { ...targetInput, framesByMotion };
       } else if (targetId === 'codex-pet' && !targetInput.candidatesByRow && !targetInput.candidates) {
         const ids = mappedMotionIds(targetProject.mappings);
-        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, render: targetInput.render || targetOptions.render, signal, onProgress: targetOptions.onProgress, target: targetId });
+        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId });
         const candidatesByRow = Object.fromEntries(Object.entries(targetProject.mappings).map(([row, value]) => [row, framesByMotion[value.slice(7)]?.frames || []]));
         renderedInput = { ...targetInput, candidatesByRow };
       }
@@ -517,6 +535,7 @@ module.exports = {
   MAX_ENCODE_FRAMES,
   PackageBuildError,
   STAGES,
+  TARGET_RENDER_PRESETS,
   buildClawdTheme,
   buildCodexPet,
   buildProjectTargets,
