@@ -7,6 +7,7 @@ const { inspectRuntime, RuntimeValidationError } = require('../../runtime/src/in
 const { loadProjectFile, ProjectValidationError, recoverAutosaveFile } = require('../../project/src/index.cjs');
 const { CacheError, CacheStore, PackageBuildError, buildProjectTargets } = require('../../package-build/src/index.cjs');
 const { InstallationError, exportPackage, installPackage } = require('../../installation/src/index.cjs');
+const { SkillManagerError, getSkillStatus, installSkill } = require('../../skill-manager/src/index.cjs');
 const { validateClawdThemePackage } = require('../../clawd-target/src/index.cjs');
 const { validateCodexPetPackage } = require('../../codex-target/src/index.cjs');
 const zip = require('@zip.js/zip.js');
@@ -16,7 +17,7 @@ const CLI_VERSION = '0.1.0';
 const MAX_PACKAGE_BYTES = 256 * 1024 * 1024;
 const MAX_PACKAGE_ENTRY_BYTES = 128 * 1024 * 1024;
 const MAX_BUILD_SPEC_BYTES = 128 * 1024 * 1024;
-const OPERATIONS = Object.freeze(['version', 'inspect', 'runtime-diagnose', 'project-validate', 'project-recover', 'package-build', 'package-validate', 'export', 'install', 'cache-status', 'cache-clear']);
+const OPERATIONS = Object.freeze(['version', 'inspect', 'runtime-diagnose', 'project-validate', 'project-recover', 'package-build', 'package-validate', 'export', 'install', 'skill-status', 'skill-install', 'cache-status', 'cache-clear']);
 
 class CliError extends Error {
   constructor(code, message, details = {}) {
@@ -119,9 +120,11 @@ function operationSpec(operation) {
   if (operation === 'package-validate') return { usage: 'live2pet package-validate --input <package.zip> [--target clawd|codex-pet] [--pretty]' };
   if (operation === 'export') return { usage: 'live2pet export --input <package.zip> --output <path.zip> [--overwrite] [--pretty]' };
   if (operation === 'install') return { usage: 'live2pet install --input <package.zip> --target clawd|codex-pet [--target-root <directory>] --confirm-install [--conflict cancel|upgrade|side-by-side] [--pretty]' };
+  if (operation === 'skill-status') return { usage: 'live2pet skill-status [--input <skill-directory>] [--target-root <codex-skills-directory>] [--pretty]' };
+  if (operation === 'skill-install') return { usage: 'live2pet skill-install --input <skill-directory> [--target-root <codex-skills-directory>] --confirm-install [--overwrite] [--pretty]' };
   if (operation === 'cache-status') return { usage: 'live2pet cache-status --cache-dir <cache-directory> [--pretty]' };
   if (operation === 'cache-clear') return { usage: 'live2pet cache-clear --cache-dir <cache-directory> (--all | --project-id <id> | --source-fingerprint <sha256>) [--pretty]' };
-  return { usage: 'live2pet <version|inspect|runtime-diagnose|project-validate|project-recover|package-build|package-validate|export|install|cache-status|cache-clear> [options]' };
+  return { usage: 'live2pet <version|inspect|runtime-diagnose|project-validate|project-recover|package-build|package-validate|export|install|skill-status|skill-install|cache-status|cache-clear> [options]' };
 }
 
 function sanitizeProject(project) {
@@ -143,7 +146,7 @@ function redactAbsolutePaths(value) {
 }
 
 function normalizeError(error) {
-  if (error instanceof CliError || error instanceof SourceInspectionError || error instanceof RuntimeValidationError || error instanceof ProjectValidationError || error instanceof CacheError || error instanceof PackageBuildError || error instanceof InstallationError) {
+  if (error instanceof CliError || error instanceof SourceInspectionError || error instanceof RuntimeValidationError || error instanceof ProjectValidationError || error instanceof CacheError || error instanceof PackageBuildError || error instanceof InstallationError || error instanceof SkillManagerError) {
     return { code: error.code, message: error.message, details: redactAbsolutePaths(error.details || {}) };
   }
   return { code: 'CLI_OPERATION_FAILED', message: error && error.message ? error.message : String(error), details: {} };
@@ -384,6 +387,19 @@ async function execute(options = {}) {
   }
 
   if (operation === 'package-build') return executePackageBuild(options, operationId);
+
+  if (operation === 'skill-status') {
+    const result = getSkillStatus({ sourceDir: options.input, targetRoot: options.targetRoot });
+    return envelope(operation, operationId, { ok: true, progress: [{ stage: 'skill-status', status: 'completed' }], warnings: [], result: redactAbsolutePaths(result) });
+  }
+
+  if (operation === 'skill-install') {
+    if (!options.confirmInstall) fail('INSTALL_AUTHORIZATION_REQUIRED', 'Skill installation requires the explicit --confirm-install flag.');
+    if (!options.input) fail('INPUT_REQUIRED', operationSpec(operation).usage);
+    const progressEvents = [];
+    const result = installSkill({ sourceDir: options.input, targetRoot: options.targetRoot, confirmInstall: true, overwrite: options.overwrite === true, onProgress: (event) => progressEvents.push(event) });
+    return envelope(operation, operationId, { ok: true, progress: progressEvents, warnings: [], result: redactAbsolutePaths(result) });
+  }
 
   if (operation === 'package-validate') {
     const validation = await validatePackageArchive(options.input, options.target);

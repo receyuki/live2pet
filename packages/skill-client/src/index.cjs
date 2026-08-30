@@ -14,6 +14,8 @@ const OPERATIONS = Object.freeze([
   'package-validate',
   'export',
   'install',
+  'skill-status',
+  'skill-install',
   'cache-status',
   'cache-clear',
 ]);
@@ -232,6 +234,18 @@ function createSkillClient({
         appendValue(args, '--target-root', options.targetRoot);
         appendValue(args, '--package-id', options.packageId);
         appendValue(args, '--conflict', options.conflict);
+        appendBoolean(args, '--confirm-install', true);
+        return args;
+      })());
+    },
+    skillStatus: (sourceDir, targetRoot) => invoke('skill-status', (() => { const args = []; appendValue(args, '--input', sourceDir); appendValue(args, '--target-root', targetRoot); return args; })()),
+    skillInstall: (sourceDir, options = {}) => {
+      if (options.confirmInstall !== true) fail('INSTALL_AUTHORIZATION_REQUIRED', 'Skill installation requires explicit user authorization via confirmInstall: true.');
+      return invoke('skill-install', (() => {
+        const args = [];
+        appendValue(args, '--input', sourceDir);
+        appendValue(args, '--target-root', options.targetRoot);
+        appendBoolean(args, '--overwrite', options.overwrite);
         appendBoolean(args, '--confirm-install', true);
         return args;
       })());

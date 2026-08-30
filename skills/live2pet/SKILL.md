@@ -19,6 +19,7 @@ Live2Pet is a local-only bridge for turning a user-selected Live2D Source Packag
 - Use `project-validate` or `project-recover` for a reference-only `.live2pet` document.
 - Use `package-build` with the documented transient build spec for headless builds. It must contain pre-captured RGBA inputs; the CLI does not locate or execute a runtime on behalf of an unconfigured skill. Use `--output` only for a portable export directory.
 - Use `package-validate` after a build or when the user supplies an existing ZIP. Use `export` to copy a validated artifact without installing it.
+- Use `skill-status` to compare the repository/App skill bundle with the installed `live2pet` skill. Use `skill-install` only when the user explicitly authorizes installing or updating the skill.
 - Use `cache-status` and `cache-clear` only when the user asks to inspect or manage the local build cache.
 
 ## Visual mapping

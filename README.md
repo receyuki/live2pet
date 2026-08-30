@@ -15,6 +15,7 @@ Live2Pet is an early-stage local toolchain for loading Cubism models, previewing
 - `packages/package-build/` — cancellable project-target builds for Codex Pet and guide-shaped Clawd themes, including shared-renderer RGBA capture, target-owned Render Presets, verified candidate-frame and encoded-WebP cache reuse, path-free build provenance and concise build reports, generated-asset target preview plans, pre-package Target Profile validation, safe versioned artifact names, RGBA composition, Sharp WebP encoding, deterministic manifests, size limits, zip.js package creation, review gating, and an integrity-checked bounded disk cache.
 - `packages/cli/` — stable JSON CLI envelope over source inspection, runtime diagnosis, `.live2pet` project validation, shared Package Build from transient pre-captured inputs, ZIP package validation, export/install, and cache management.
 - `packages/skill-client/` — dependency-free protocol client for the installed CLI, with version handshake, capability checks, typed failures, safe argument construction, and explicit install authorization.
+- `packages/skill-manager/` — text-only, bounded, symlink-free Codex skill bundle validation, status reporting, and atomic install/upgrade support.
 - `packages/installation/` — portable ZIP export plus explicit, conflict-aware, atomic installation with side-by-side and rollback semantics, and platform adapters for the documented Clawd and Codex user-data roots.
 - `packages/mapper-session/` — loopback-only, token-authenticated, short-lived project session for a shared visual mapper host.
 - `packages/clawd-target/` — guide-aligned Clawd Target Profile validation for states, sleep modes, fallbacks, and reactions.
@@ -61,6 +62,8 @@ node packages/cli/bin/live2pet.cjs export --input /path/to/package.zip --output 
 node packages/cli/bin/live2pet.cjs install --input /path/to/package.zip --target codex-pet --target-root /path/to/pets --confirm-install --pretty
 node packages/cli/bin/live2pet.cjs cache-status --cache-dir /path/to/cache --pretty
 node packages/cli/bin/live2pet.cjs cache-clear --cache-dir /path/to/cache --project-id my-project --pretty
+node packages/cli/bin/live2pet.cjs skill-status --input skills/live2pet --pretty
+node packages/cli/bin/live2pet.cjs skill-install --input skills/live2pet --target-root /path/to/codex/skills --confirm-install --pretty
 node --test packages/skill-client/test/*.test.cjs
 ```
 

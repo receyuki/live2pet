@@ -79,6 +79,21 @@ test('requires explicit authorization before exposing install to the CLI', async
   assert.equal(invoked, false);
 });
 
+test('requires explicit authorization for skill installation and forwards its target root', async () => {
+  const calls = [];
+  const client = createSkillClient({
+    cliPath: 'live2pet',
+    runProcess: async (_file, args) => {
+      calls.push(args);
+      const operation = args[0];
+      return { stdout: envelope(operation, { result: operation === 'version' ? { protocolVersion: 1, cliVersion: '0.1.0', operations: ['version', 'skill-install'] } : {} }) };
+    },
+  });
+  assert.throws(() => client.skillInstall('/tmp/skill', { targetRoot: '/tmp/codex-skills' }), (error) => error instanceof SkillProtocolError && error.code === 'INSTALL_AUTHORIZATION_REQUIRED');
+  await client.skillInstall('/tmp/skill', { targetRoot: '/tmp/codex-skills', confirmInstall: true, overwrite: true });
+  assert.deepEqual(calls[1], ['skill-install', '--input', '/tmp/skill', '--target-root', '/tmp/codex-skills', '--overwrite', '--confirm-install']);
+});
+
 test('validates cache filter shape and forwards safe install flags', async () => {
   const calls = [];
   const client = createSkillClient({

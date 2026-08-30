@@ -316,3 +316,29 @@ test('install resolves the platform adapter when target-root is omitted', async 
   assert.equal(fs.existsSync(path.join(codexHome, 'pets', 'cli-default-root', 'pet.json')), true);
   assert.equal(output.includes(codexHome), false);
 });
+
+test('skill status and install use the text-only bundle manager', () => {
+  const root = temporaryDirectory();
+  const source = path.resolve(__dirname, '../../../skills/live2pet');
+  const target = path.join(root, 'codex-skills');
+  const statusOutput = execFileSync(process.execPath, [CLI, 'skill-status', '--input', source, '--target-root', target], { encoding: 'utf8' });
+  const status = JSON.parse(statusOutput);
+  assert.equal(status.ok, true);
+  assert.equal(status.result.source.valid, true);
+  assert.equal(status.result.installed.exists, false);
+  assert.equal(status.result.upToDate, false);
+  assert.equal(statusOutput.includes(source), false);
+  let missingConfirmation;
+  try {
+    execFileSync(process.execPath, [CLI, 'skill-install', '--input', source, '--target-root', target], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (error) {
+    missingConfirmation = JSON.parse(error.stdout);
+  }
+  assert.equal(missingConfirmation.error.code, 'INSTALL_AUTHORIZATION_REQUIRED');
+  const installedOutput = execFileSync(process.execPath, [CLI, 'skill-install', '--input', source, '--target-root', target, '--confirm-install'], { encoding: 'utf8' });
+  const installed = JSON.parse(installedOutput);
+  assert.equal(installed.ok, true);
+  assert.ok(installed.progress.some((event) => event.stage === 'commit' && event.status === 'completed'));
+  assert.equal(installed.result.path, '<redacted-path>');
+  assert.equal(fs.existsSync(path.join(target, 'live2pet', 'SKILL.md')), true);
+});

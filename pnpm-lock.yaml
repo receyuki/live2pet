@@ -60,6 +60,8 @@ importers:
 
   packages/skill-client: {}
 
+  packages/skill-manager: {}
+
   packages/source-inspector: {}
 
 packages:
