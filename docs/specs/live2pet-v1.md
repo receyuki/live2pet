@@ -244,7 +244,7 @@ All model processing remains local. Cubism Core and legacy runtimes are selected
 - The browser mapper writes through typed project operations and cannot invoke arbitrary shell commands or read paths outside the selected project and Source Package.
 - If the Codex in-app browser cannot open the Mapper Session, the skill opens the same project in the Electron App and continues headless work after the project is saved.
 
-The development Electron shell loads the shared Mapper from a fixed repository path, denies new-window navigation, and exposes only typed `live2pet:app` IPC methods through a sandboxed, context-isolated preload. It does not package Cubism Core, model content, example assets, or generated packages. Forge makers, local renderer assets, and signed installers remain release-gated work.
+The development Electron shell loads the shared Mapper from a fixed repository path, denies new-window and renderer navigation, rejects webviews and permission requests, and exposes only typed `live2pet:app` IPC methods through a sandboxed, context-isolated preload. The Mapper document carries a local CSP that permits only its packaged scripts, inline prototype UI, local images, and loopback Mapper Sessions. It does not package Cubism Core, model content, example assets, or generated packages. Forge makers, local renderer assets, and signed installers remain release-gated work.
 
 ### Security, privacy, licensing, and release
 

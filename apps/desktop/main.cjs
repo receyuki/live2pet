@@ -39,6 +39,11 @@ async function createMainWindow() {
   const preload = path.join(__dirname, 'preload.cjs');
   mainWindow = new BrowserWindow(createAppWindowOptions({ preload, width: 1540, height: 960, show: false }));
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  const mapperUrl = pathToFileURL(MAPPER_PATH).href;
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url !== mapperUrl) event.preventDefault();
+  });
+  mainWindow.webContents.on('will-attach-webview', (event) => event.preventDefault());
   mainWindow.on('closed', () => { mainWindow = null; });
   const showWindow = () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show(); };
   mainWindow.once('ready-to-show', showWindow);
@@ -51,6 +56,9 @@ async function createMainWindow() {
 }
 
 app.whenReady().then(async () => {
+  const defaultSession = require('electron').session.defaultSession;
+  defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  defaultSession.setPermissionCheckHandler(() => false);
   registerIpc();
   await createMainWindow();
   app.on('activate', async () => { if (!mainWindow) await createMainWindow(); });

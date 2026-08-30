@@ -12,6 +12,10 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(main, /event\.sender !== mainWindow\.webContents/);
   assert.match(main, /setWindowOpenHandler\(\(\) => \(\{ action: 'deny' \}\)\)/);
   assert.match(main, /mainWindow\.once\('ready-to-show', showWindow\);[\s\S]*await mainWindow\.loadFile\(MAPPER_PATH\);[\s\S]*!mainWindow\.isVisible\(\)/);
+  assert.match(main, /webContents\.on\('will-navigate'/);
+  assert.match(main, /webContents\.on\('will-attach-webview'/);
+  assert.match(main, /setPermissionRequestHandler/);
+  assert.match(main, /setPermissionCheckHandler/);
   assert.doesNotMatch(main, /nodeIntegration:\s*true/);
   assert.match(preload, /contextBridge\.exposeInMainWorld\('live2pet'/);
   assert.doesNotMatch(preload, /exposeInMainWorld\([^,]+,\s*\{\s*ipcRenderer/);
