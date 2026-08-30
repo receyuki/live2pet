@@ -336,7 +336,7 @@
         <button id="downloadCodex" disabled>Download last ZIP</button>
       </div>
       <div id="buildReadiness" class="build-readiness" role="status" aria-live="polite">Load a Source Package and map all nine Codex rows to enable building.</div>
-      <div id="buildStatus" class="build-status" role="status" aria-live="polite">Load a Source Package and map all nine Codex rows to enable building.</div>
+      <div id="buildStatus" class="build-status" role="status" aria-live="polite">No Codex package has been built yet.</div>
     </section>
 
     <footer>Clawd state semantics follow the <a href="https://github.com/rullerzhou-afk/clawd-on-desk/blob/main/docs/guides/guide-theme-creation.md">Clawd Theme Creation Guide</a>. Source assets stay local; refreshing clears unsaved session state.</footer>
@@ -747,11 +747,13 @@
       $("validation").innerHTML = MotionMapping.validate(state).map(x=>`<div class="${x.level}">${escapeHtml(x.text)}</div>`).join("");
       $("jsonOutput").textContent = JSON.stringify(MotionMapping.output(state),null,2);
       const readiness = codexBuildReadiness();
-      $("buildCodex").disabled = codexBuildBusy || !readiness.ready;
+      $("buildCodex").disabled = codexBuildBusy;
+      $("buildCodex").textContent = codexBuildBusy ? "Building Codex Pet ZIP…" : "Build Codex Pet ZIP";
       $("buildCodex").title = readiness.message;
       $("buildReadiness").className = `build-readiness ${readiness.level}`;
       $("buildReadiness").textContent = readiness.message;
       $("downloadCodex").disabled = codexBuildBusy || !codexArtifact;
+      $("downloadCodex").title = codexArtifact ? `Download ${codexArtifact.filename}` : "Build a Codex Pet ZIP first.";
     }
 
     function cubism2MotionDuration(text) {
