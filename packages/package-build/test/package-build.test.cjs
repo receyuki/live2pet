@@ -15,6 +15,7 @@ const {
 const { validateClawdThemePackage } = require('../../clawd-target/src/index.cjs');
 const { validateCodexPetPackage } = require('../../codex-target/src/index.cjs');
 const { createProject, ProjectValidationError } = require('../../project/src/index.cjs');
+const { SyntheticRenderer } = require('../../renderer/src/index.cjs');
 
 function mapping() {
   return {
@@ -263,6 +264,34 @@ test('buildProjectTargets drives both target builders from one validated project
   assert.equal(result.builds['codex-pet'].target, 'codex-pet');
   assert.ok(events.includes('clawd:validate:completed'));
   assert.ok(events.includes('codex-pet:compose:completed'));
+});
+
+test('buildProjectTargets can render mapped Motions through the shared renderer contract', async () => {
+  const renderer = new SyntheticRenderer();
+  await renderer.load({ motions: [...new Set(['idle', 'thinking', 'working', 'error', 'attention', ...Object.values(mapping()).map((value) => value.slice(7))].map((id) => ({ id, duration: 0.2 }))) ] });
+  const project = createProject({
+    projectId: 'renderer-targets',
+    name: 'Renderer targets',
+    source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'sha256:fixture' },
+    targets: {
+      clawd: { profile: 'clawd', mappings: clawdMapping().states, reactions: clawdMapping().reactions, options: { sleepMode: 'direct' } },
+      'codex-pet': { profile: 'codex-pet', mappings: mapping(), reactions: {}, options: {} },
+    },
+  });
+  const events = [];
+  const result = await buildProjectTargets({
+    project,
+    inputsByTarget: {
+      clawd: { renderer, render: { width: 2, height: 2, samples: 2 } },
+      'codex-pet': { renderer, render: { width: 192, height: 208, samples: 8 } },
+    },
+    optionsByTarget: { clawd: { sharpFactory: clawdSharpFactory() } },
+    onProgress: (event) => events.push(`${event.target}:${event.stage}:${event.status}`),
+  });
+  assert.equal(result.builds.clawd.assets.length, 5);
+  assert.equal(Object.keys(result.builds['codex-pet'].selections).length, 9);
+  assert.ok(events.includes('clawd:render:completed'));
+  assert.ok(events.includes('codex-pet:render:completed'));
 });
 
 test('buildProjectTargets refuses a project with an unreviewed source change', async () => {

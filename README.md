@@ -12,7 +12,7 @@ Live2Pet is an early-stage local toolchain for loading Cubism models, previewing
 - `packages/runtime/` — user-provided Cubism runtime discovery, bounded validation, redacted diagnosis, and restart-required settings metadata.
 - `packages/renderer/` — versioned playback/capture contract, deterministic motion candidate sampling, copyright-safe synthetic renderer for CI, a temporary Pixi/Cubism browser adapter, and a loopback-confined asset server for user-provided runtime/model files.
 - `packages/frame-selection/` — deterministic motion-aware candidate deduplication and ordered frame selection for target atlases.
-- `packages/package-build/` — cancellable project-target builds for Codex Pet and guide-shaped Clawd themes, including RGBA composition, Sharp WebP encoding, deterministic manifests, size limits, zip.js package creation, review gating, and an integrity-checked bounded disk cache.
+- `packages/package-build/` — cancellable project-target builds for Codex Pet and guide-shaped Clawd themes, including shared-renderer RGBA capture, RGBA composition, Sharp WebP encoding, deterministic manifests, size limits, zip.js package creation, review gating, and an integrity-checked bounded disk cache.
 - `packages/cli/` — stable JSON CLI envelope over source inspection, runtime diagnosis, `.live2pet` project validation, ZIP package validation, export/install, and cache management.
 - `packages/installation/` — portable ZIP export plus explicit, conflict-aware, atomic installation with side-by-side and rollback semantics.
 - `packages/mapper-session/` — loopback-only, token-authenticated, short-lived project session for a shared visual mapper host.

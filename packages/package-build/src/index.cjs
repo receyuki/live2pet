@@ -7,6 +7,7 @@ const {
 const { composeCodexAtlasRgba } = require('../../codex-target/src/index.cjs');
 const { createClawdTarget } = require('../../clawd-target/src/index.cjs');
 const { assertProjectBuildable, validateProject } = require('../../project/src/index.cjs');
+const { sampleMotionCandidates } = require('../../renderer/src/index.cjs');
 const { CacheError, CacheStore, DEFAULT_CACHE_LIMIT, createCacheKey } = require('./cache.cjs');
 
 const BUILD_CONTRACT_VERSION = 1;
@@ -35,6 +36,56 @@ function checkCancelled(signal) {
 
 function progress(onProgress, stage, status, details = {}) {
   if (typeof onProgress === 'function') onProgress({ stage, status, ...details });
+}
+
+function mappedMotionIds(values) {
+  const ids = [];
+  const seen = new Set();
+  for (const value of Object.values(values || {})) {
+    if (typeof value !== 'string' || !value.startsWith('motion:')) continue;
+    const id = value.slice(7);
+    if (!seen.has(id)) {
+      seen.add(id);
+      ids.push(id);
+    }
+  }
+  return ids;
+}
+
+function rendererMotionDescriptor(renderer, motionId) {
+  const collections = [renderer && renderer.source && renderer.source.motions, renderer && renderer.motions].filter(Array.isArray);
+  for (const collection of collections) {
+    const motion = collection.find((item) => item && item.id === motionId);
+    if (motion) return motion;
+  }
+  return null;
+}
+
+async function renderMappedMotions({ renderer, motionIds, render = {}, signal, onProgress, target } = {}) {
+  if (!renderer || typeof renderer.captureRgba !== 'function') fail('RENDERER_REQUIRED', 'A renderer implementing captureRgba is required when build inputs do not include captured frames.');
+  if (!Array.isArray(motionIds) || !motionIds.length) fail('MOTION_MAPPING_REQUIRED', `No ${target || 'target'} Motion mappings are available for renderer capture.`);
+  const width = Number.isInteger(render.width) ? render.width : 256;
+  const height = Number.isInteger(render.height) ? render.height : 256;
+  const samples = Number.isInteger(render.samples) ? render.samples : 32;
+  const framesByMotion = {};
+  for (const motionId of motionIds) {
+    checkCancelled(signal);
+    const descriptor = rendererMotionDescriptor(renderer, motionId);
+    const configuredDuration = render.durations && Object.prototype.hasOwnProperty.call(render.durations, motionId)
+      ? render.durations[motionId]
+      : descriptor && descriptor.duration;
+    const duration = configuredDuration == null ? 1 : Number(configuredDuration);
+    if (!Number.isFinite(duration) || duration < 0 || duration > 3600) fail('INVALID_MOTION_DURATION', `Motion ${motionId} has no valid duration for renderer capture.`);
+    progress(onProgress, 'render', 'started', { target, motionId, width, height, samples, duration });
+    const result = await sampleMotionCandidates(renderer, { motionId, duration, samples, width, height });
+    checkCancelled(signal);
+    framesByMotion[motionId] = {
+      frames: result.candidates,
+      fps: duration > 0 ? samples / duration : 10,
+    };
+    progress(onProgress, 'render', 'completed', { target, motionId, samples: result.candidates.length });
+  }
+  return framesByMotion;
 }
 
 function frameMetadata(frame) {
@@ -421,19 +472,33 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
     const targetProject = normalizedProject.targets[targetId];
     if (!targetProject || !targetProject.mappings || !Object.keys(targetProject.mappings).length) fail('TARGET_MAPPING_REQUIRED', `${targetId} has no mappings in the Live2Pet Project.`);
     const targetOptions = { ...(optionsByTarget[targetId] || {}), signal, onProgress: (event) => onProgress?.({ target: targetId, ...event }) };
+    const renderer = targetInput.renderer || targetOptions.renderer;
+    let renderedInput = targetInput;
+    if (renderer) {
+      if (targetId === 'clawd' && !targetInput.framesByMotion && !targetInput.frames) {
+        const ids = mappedMotionIds({ ...targetProject.mappings, ...targetProject.reactions });
+        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, render: targetInput.render || targetOptions.render, signal, onProgress: targetOptions.onProgress, target: targetId });
+        renderedInput = { ...targetInput, framesByMotion };
+      } else if (targetId === 'codex-pet' && !targetInput.candidatesByRow && !targetInput.candidates) {
+        const ids = mappedMotionIds(targetProject.mappings);
+        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, render: targetInput.render || targetOptions.render, signal, onProgress: targetOptions.onProgress, target: targetId });
+        const candidatesByRow = Object.fromEntries(Object.entries(targetProject.mappings).map(([row, value]) => [row, framesByMotion[value.slice(7)]?.frames || []]));
+        renderedInput = { ...targetInput, candidatesByRow };
+      }
+    }
     let result;
     if (targetId === 'clawd') {
       result = await buildClawdTheme({
         mapping: { sleepMode: targetProject.options.sleepMode || 'direct', states: targetProject.mappings, reactions: targetProject.reactions },
-        framesByMotion: targetInput.framesByMotion || targetInput.frames,
-        metadata: metadataByTarget[targetId] || targetInput.metadata,
-        readme: targetInput.readme,
+        framesByMotion: renderedInput.framesByMotion || renderedInput.frames,
+        metadata: metadataByTarget[targetId] || renderedInput.metadata,
+        readme: renderedInput.readme,
       }, targetOptions);
     } else {
       result = await buildCodexPet({
         mapping: { mappings: targetProject.mappings },
-        candidatesByRow: targetInput.candidatesByRow || targetInput.candidates,
-        metadata: metadataByTarget[targetId] || targetInput.metadata,
+        candidatesByRow: renderedInput.candidatesByRow || renderedInput.candidates,
+        metadata: metadataByTarget[targetId] || renderedInput.metadata,
       }, targetOptions);
     }
     builds[targetId] = result;
@@ -459,5 +524,6 @@ module.exports = {
   createClawdThemeZip,
   createCacheKey,
   encodeAnimatedWebp,
+  renderMappedMotions,
   normalizeCodexMetadata,
 };
