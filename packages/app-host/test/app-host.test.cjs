@@ -11,6 +11,7 @@ const {
   createAppIpcRouter,
   createAppPreloadApi,
   createAppWindowOptions,
+  normalizeInstallRequest,
   normalizeRequest,
 } = require('../src/index.cjs');
 
@@ -33,6 +34,9 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.equal(APP_IPC_METHODS.includes('startMapperSession'), true);
   assert.equal(APP_IPC_METHODS.includes('buildProject'), true);
   assert.equal(APP_IPC_METHODS.includes('getBuildArtifact'), true);
+  assert.equal(APP_IPC_METHODS.includes('installArtifact'), true);
+  assert.deepEqual(normalizeInstallRequest({ artifactId: 'artifact', target: 'codex-pet', confirmInstall: true }), { artifactId: 'artifact', target: 'codex-pet', conflict: 'cancel', confirmInstall: true });
+  assert.throws(() => normalizeInstallRequest({ artifactId: 'artifact', target: 'codex-pet' }), (error) => error instanceof AppHostError && error.code === 'INSTALL_AUTHORIZATION_REQUIRED');
 });
 
 test('routes a single Mapper Session without exposing its client or token in the launch descriptor', async () => {
@@ -111,6 +115,9 @@ test('rejects malformed or unavailable App Package Build requests with typed err
   const unavailable = await withoutService({ protocolVersion: 1, method: 'buildProject', args: [{ project: {} }] });
   assert.equal(unavailable.ok, false);
   assert.equal(unavailable.error.code, 'APP_BUILD_UNAVAILABLE');
+  const installUnavailable = await withoutService({ protocolVersion: 1, method: 'installArtifact', args: [{ artifactId: 'artifact', target: 'codex-pet', confirmInstall: true }] });
+  assert.equal(installUnavailable.ok, false);
+  assert.equal(installUnavailable.error.code, 'APP_INSTALL_UNAVAILABLE');
 
   const router = createAppIpcRouter({ mapperHostFactory: async () => fakeHost(), buildProjectService: async () => ({}) });
   const malformed = await router({ protocolVersion: 1, method: 'buildProject', args: [{ project: {}, renderer: 'not-allowed' }] });
@@ -205,6 +212,86 @@ test('routes a real synthetic Clawd build through the App seam and returns a dow
   assert.equal(artifact.result.filename, 'app-real-clawd-build-clawd-1.0.0.zip');
 });
 
+test('installs only a current artifact after explicit confirmation and redacts target paths', async () => {
+  const calls = [];
+  const router = createAppIpcRouter({
+    mapperHostFactory: async () => fakeHost(),
+    buildProjectService: async () => ({
+      buildContractVersion: 1,
+      projectId: 'app-install',
+      targets: ['codex-pet'],
+      warnings: [],
+      builds: {
+        'codex-pet': {
+          target: 'codex-pet',
+          package: { artifactName: 'app-install-codex-pet-1.0.0.zip', byteLength: 3, files: ['pet.json'], buffer: Uint8Array.from([1, 2, 3]) },
+        },
+      },
+    }),
+    installPackageService: async (input) => {
+      calls.push(input);
+      input.onProgress({ stage: 'commit', status: 'completed', target: input.target });
+      if (input.conflict === 'cancel') {
+        const error = new Error('An installation already exists.');
+        error.code = 'INSTALL_CONFLICT';
+        error.details = { path: '/Users/private/Library/Application Support/live2pet' };
+        throw error;
+      }
+      return { protocolVersion: 1, target: input.target, packageId: 'app-install', conflict: input.conflict, files: ['pet.json'], byteLength: 3, path: '/Users/private/Library/Application Support/live2pet/app-install' };
+    },
+  });
+  const built = await router({ protocolVersion: 1, method: 'buildProject', args: [{ project: { projectId: 'app-install' }, targets: ['codex-pet'] }] });
+  const artifactId = built.result.artifacts[0].artifactId;
+  const unauthorized = await router({ protocolVersion: 1, method: 'installArtifact', args: [{ artifactId, target: 'codex-pet', conflict: 'upgrade' }] });
+  assert.equal(unauthorized.ok, false);
+  assert.equal(unauthorized.error.code, 'INSTALL_AUTHORIZATION_REQUIRED');
+  const conflict = await router({ protocolVersion: 1, method: 'installArtifact', args: [{ artifactId, target: 'codex-pet', conflict: 'cancel', confirmInstall: true }] });
+  assert.equal(conflict.ok, false);
+  assert.equal(conflict.error.code, 'INSTALL_CONFLICT');
+  assert.equal(conflict.error.details.path, '<redacted-path>');
+  const installed = await router({ protocolVersion: 1, method: 'installArtifact', args: [{ artifactId, target: 'codex-pet', conflict: 'upgrade', confirmInstall: true }] });
+  assert.equal(installed.ok, true);
+  assert.equal(installed.result.path, '<platform-default-target-root>');
+  assert.equal(installed.result.packageId, 'app-install');
+  assert.deepEqual(installed.progress, [{ stage: 'commit', status: 'completed', target: 'codex-pet' }]);
+  assert.deepEqual(calls.map((input) => ({ target: input.target, conflict: input.conflict, bytes: [...input.packageBytes] })), [
+    { target: 'codex-pet', conflict: 'cancel', bytes: [1, 2, 3] },
+    { target: 'codex-pet', conflict: 'upgrade', bytes: [1, 2, 3] },
+  ]);
+  const mismatch = await router({ protocolVersion: 1, method: 'installArtifact', args: [{ artifactId, target: 'clawd', confirmInstall: true }] });
+  assert.equal(mismatch.ok, false);
+  assert.equal(mismatch.error.code, 'INSTALL_TARGET_MISMATCH');
+});
+
+test('retains the latest artifact for an unrelated target across builds', async () => {
+  const router = createAppIpcRouter({
+    mapperHostFactory: async () => fakeHost(),
+    buildProjectService: async (input) => {
+      const target = input.targets[0];
+      return {
+        projectId: 'app-multi-target',
+        targets: [target],
+        builds: {
+          [target]: {
+            target,
+            package: { artifactName: `${target}.zip`, byteLength: 1, files: ['manifest.json'], buffer: Uint8Array.from([target.length]) },
+          },
+        },
+      };
+    },
+  });
+  const codex = await router({ protocolVersion: 1, method: 'buildProject', args: [{ project: {}, targets: ['codex-pet'] }] });
+  const codexId = codex.result.artifacts[0].artifactId;
+  const clawd = await router({ protocolVersion: 1, method: 'buildProject', args: [{ project: {}, targets: ['clawd'] }] });
+  const clawdId = clawd.result.artifacts[0].artifactId;
+  assert.equal((await router({ protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: codexId }] })).ok, true);
+  assert.equal((await router({ protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: clawdId }] })).ok, true);
+  const rebuiltCodex = await router({ protocolVersion: 1, method: 'buildProject', args: [{ project: {}, targets: ['codex-pet'] }] });
+  assert.equal((await router({ protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: codexId }] })).error.code, 'BUILD_ARTIFACT_NOT_FOUND');
+  assert.equal((await router({ protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: clawdId }] })).ok, true);
+  assert.notEqual(rebuiltCodex.result.artifacts[0].artifactId, codexId);
+});
+
 test('preload exposes only typed methods and the window options keep Electron sandbox defaults', async () => {
   const calls = [];
   const api = createAppPreloadApi({ ipcRenderer: { invoke: async (...args) => (calls.push(args), { ok: true }) } });
@@ -212,11 +299,13 @@ test('preload exposes only typed methods and the window options keep Electron sa
   await api.startMapperSession({});
   await api.buildProject({ project: { projectId: 'app-fixture' } });
   await api.getBuildArtifact('fixture-artifact');
+  await api.installArtifact({ artifactId: 'fixture-artifact', target: 'codex-pet', confirmInstall: true });
   assert.equal(calls[0][0], APP_IPC_CHANNEL);
   assert.deepEqual(calls[0][1], { protocolVersion: 1, method: 'getVersion', args: [] });
   assert.deepEqual(calls[1][1], { protocolVersion: 1, method: 'startMapperSession', args: [{}] });
   assert.deepEqual(calls[2][1], { protocolVersion: 1, method: 'buildProject', args: [{ project: { projectId: 'app-fixture' } }] });
   assert.deepEqual(calls[3][1], { protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'fixture-artifact' }] });
+  assert.deepEqual(calls[4][1], { protocolVersion: 1, method: 'installArtifact', args: [{ artifactId: 'fixture-artifact', target: 'codex-pet', confirmInstall: true }] });
   assert.equal(Object.hasOwn(api, 'ipcRenderer'), false);
   const options = createAppWindowOptions({ preload: '/app/preload.cjs' });
   assert.equal(options.webPreferences.nodeIntegration, false);

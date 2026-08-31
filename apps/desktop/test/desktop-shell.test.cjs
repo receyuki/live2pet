@@ -13,6 +13,7 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(main, /return app\.isPackaged \? PACKAGED_MAPPER_PATH : DEVELOPMENT_MAPPER_PATH;/);
   assert.match(main, /mapperAssetRoot: app\.isPackaged \? path\.dirname\(documentPath\) : undefined,/);
   assert.match(main, /buildProjectService: buildProjectTargets/);
+  assert.match(main, /installPackageService: installPackage/);
   assert.match(main, /event\.sender !== mainWindow\.webContents/);
   assert.match(main, /setWindowOpenHandler\(\(\) => \(\{ action: 'deny' \}\)\)/);
   assert.match(main, /mainWindow\.once\('ready-to-show', showWindow\);[\s\S]*await mainWindow\.loadFile\(documentPath\);[\s\S]*!mainWindow\.isVisible\(\)/);
@@ -41,6 +42,7 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /function desktopBuildApi\(\)/);
   assert.match(mapper, /window\.live2pet\.buildProject/);
   assert.match(mapper, /window\.live2pet\.getBuildArtifact/);
+  assert.match(mapper, /window\.live2pet\.installArtifact/);
   assert.match(mapper, /optionsByTarget: \{ "codex-pet": \{ package: true/);
   assert.match(mapper, /if \(desktopArtifact\) \{/);
   assert.match(mapper, /Encoding transparent WebP atlas/);
@@ -48,6 +50,9 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /optionsByTarget: \{ clawd: \{ package: true/);
   assert.match(mapper, /id="buildClawd"/);
   assert.match(mapper, /id="downloadClawd"/);
+  assert.match(mapper, /id="installCodex"/);
+  assert.match(mapper, /id="installClawd"/);
+  assert.match(mapper, /confirmInstall: true/);
   assert.match(mapper, /function prepareClawdPreview\(artifact\)/);
   assert.match(mapper, /id="clawdTargetPreview"/);
   assert.match(mapper, /id="clawdPreviewState"/);

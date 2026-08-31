@@ -168,6 +168,13 @@
     .build-status.good { color: var(--good); }
     .build-status.bad { color: var(--bad); }
     .build-status.busy { color: var(--warn); }
+    .install-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+    .install-controls .field { min-width: min(260px, 100%); flex: 1 1 220px; }
+    .install-controls button { flex: 0 0 auto; }
+    .install-status { min-height: 22px; margin-top: 7px; color: var(--muted); font-size: 12px; }
+    .install-status.good { color: var(--good); }
+    .install-status.bad { color: var(--bad); }
+    .install-status.busy { color: var(--warn); }
     .build-readiness { min-height: 22px; margin-top: 8px; color: var(--muted); font-size: 12px; }
     .build-readiness.good { color: var(--good); }
     .build-readiness.bad { color: var(--bad); }
@@ -392,6 +399,18 @@
         <button id="buildCodex" class="primary" disabled data-i18n="build.codex.build">Build Codex Pet ZIP</button>
         <button id="downloadCodex" disabled data-i18n="build.codex.download">Download last ZIP</button>
       </div>
+      <div id="codexInstallControls" class="install-controls hidden">
+        <label class="field"><span data-i18n="build.install.conflictLabel">If this package already exists</span>
+          <select id="codexInstallConflict" data-i18n-aria-label="build.install.conflictLabel">
+            <option value="cancel" data-i18n="build.install.conflict.cancel">Ask before replacing</option>
+            <option value="upgrade" data-i18n="build.install.conflict.upgrade">Replace the current package</option>
+            <option value="side-by-side" data-i18n="build.install.conflict.sideBySide">Install alongside the current package</option>
+          </select>
+        </label>
+        <span class="muted" data-i18n="build.install.target.codex">Codex default location</span>
+        <button id="installCodex" data-i18n="build.install.codex">Install Codex Pet</button>
+      </div>
+      <div id="codexInstallStatus" class="install-status" role="status" aria-live="polite"></div>
       <div id="buildReadiness" class="build-readiness" role="status" aria-live="polite">Load a Source Package and map all nine Codex rows to enable building.</div>
       <div id="buildStatus" class="build-status" role="status" aria-live="polite">No Codex package has been built yet.</div>
       <div id="codexTargetPreview" class="target-preview hidden" aria-live="polite">
@@ -408,6 +427,18 @@
         <button id="buildClawd" class="primary" disabled data-i18n="build.clawd.build">Build Clawd Theme ZIP</button>
         <button id="downloadClawd" disabled data-i18n="build.clawd.download">Download last ZIP</button>
       </div>
+      <div id="clawdInstallControls" class="install-controls hidden">
+        <label class="field"><span data-i18n="build.install.conflictLabel">If this package already exists</span>
+          <select id="clawdInstallConflict" data-i18n-aria-label="build.install.conflictLabel">
+            <option value="cancel" data-i18n="build.install.conflict.cancel">Ask before replacing</option>
+            <option value="upgrade" data-i18n="build.install.conflict.upgrade">Replace the current package</option>
+            <option value="side-by-side" data-i18n="build.install.conflict.sideBySide">Install alongside the current package</option>
+          </select>
+        </label>
+        <span class="muted" data-i18n="build.install.target.clawd">Clawd default location</span>
+        <button id="installClawd" data-i18n="build.install.clawd">Install Clawd Theme</button>
+      </div>
+      <div id="clawdInstallStatus" class="install-status" role="status" aria-live="polite"></div>
       <div id="clawdBuildReadiness" class="build-readiness" role="status" aria-live="polite">Load a Source Package and complete the required Clawd mapping to enable building.</div>
       <div id="clawdBuildStatus" class="build-status" role="status" aria-live="polite">No Clawd theme has been built yet.</div>
       <div id="clawdBuildSummary" class="target-copy hidden" aria-live="polite"></div>
@@ -530,6 +561,20 @@
           "build.codex.build": "Build Codex Pet ZIP",
           "build.codex.building": "Building Codex Pet ZIP…",
           "build.codex.download": "Download last ZIP",
+          "build.install.conflictLabel": "If this package already exists",
+          "build.install.conflict.cancel": "Ask before replacing",
+          "build.install.conflict.upgrade": "Replace the current package",
+          "build.install.conflict.sideBySide": "Install alongside the current package",
+          "build.install.conflict.none": "new installation",
+          "build.install.codex": "Install Codex Pet",
+          "build.install.clawd": "Install Clawd Theme",
+          "build.install.target.codex": "Codex default location",
+          "build.install.target.clawd": "Clawd default location",
+          "build.install.confirm": "Install {filename} in the {target}?",
+          "build.install.cancelled": "Installation cancelled.",
+          "build.install.busy": "Installing {filename}…",
+          "build.install.success": "Installed {filename} as {packageId} ({conflict}).",
+          "build.install.unavailable": "Install is available in the Live2Pet Desktop App after an App build.",
           "build.codex.readiness": "Load a Source Package and map all nine Codex rows to enable building.",
           "build.codex.status.empty": "No Codex package has been built yet.",
           "build.clawd.eyebrow": "Clawd Theme Package",
@@ -797,6 +842,20 @@
           "build.codex.build": "构建 Codex Pet ZIP",
           "build.codex.building": "正在构建 Codex Pet ZIP…",
           "build.codex.download": "下载上一次 ZIP",
+          "build.install.conflictLabel": "如果目标包已存在",
+          "build.install.conflict.cancel": "替换前询问",
+          "build.install.conflict.upgrade": "替换当前包",
+          "build.install.conflict.sideBySide": "与当前包并存安装",
+          "build.install.conflict.none": "全新安装",
+          "build.install.codex": "安装 Codex Pet",
+          "build.install.clawd": "安装 Clawd 主题",
+          "build.install.target.codex": "Codex 默认目录",
+          "build.install.target.clawd": "Clawd 默认目录",
+          "build.install.confirm": "要将 {filename} 安装到 {target} 吗？",
+          "build.install.cancelled": "已取消安装。",
+          "build.install.busy": "正在安装 {filename}…",
+          "build.install.success": "已将 {filename} 安装为 {packageId}（{conflict}）。",
+          "build.install.unavailable": "安装功能仅在桌面 App 构建完成后可用。",
           "build.codex.readiness": "加载资源包并映射九个 Codex 行后即可构建。",
           "build.codex.status.empty": "尚未构建 Codex 资源包。",
           "build.clawd.eyebrow": "Clawd 主题资源包",
@@ -1788,6 +1847,10 @@
       $("buildReadiness").textContent = readiness.message;
       $("downloadCodex").disabled = codexBuildBusy || !codexArtifact;
       $("downloadCodex").title = codexArtifact ? `${I18n.t("build.codex.download")} ${codexArtifact.filename}` : I18n.t("build.downloadFirst.codex");
+      const installApi = desktopInstallApi();
+      const codexInstallable = Boolean(installApi && codexArtifact?.artifactId);
+      $("codexInstallControls").classList.toggle("hidden", !codexInstallable);
+      $("installCodex").disabled = !codexInstallable || codexInstallBusy;
       const clawdReadiness = clawdBuildReadiness();
       $("buildClawd").disabled = clawdBuildBusy || !clawdReadiness.ready;
       $("buildClawd").textContent = clawdBuildBusy ? I18n.t("build.clawd.building") : I18n.t("build.clawd.build");
@@ -1796,6 +1859,9 @@
       $("clawdBuildReadiness").textContent = clawdReadiness.message;
       $("downloadClawd").disabled = clawdBuildBusy || !clawdArtifact;
       $("downloadClawd").title = clawdArtifact ? `${I18n.t("build.clawd.download")} ${clawdArtifact.filename}` : I18n.t("build.downloadFirst.clawd");
+      const clawdInstallable = Boolean(installApi && clawdArtifact?.artifactId);
+      $("clawdInstallControls").classList.toggle("hidden", !clawdInstallable);
+      $("installClawd").disabled = !clawdInstallable || clawdInstallBusy;
       const targetPreview = $("codexTargetPreview");
       const hasTargetPreview = Boolean(codexArtifact?.previewUrl && codexArtifact?.cellPreviewUrl);
       targetPreview.classList.toggle("hidden", !hasTargetPreview);
@@ -2252,8 +2318,10 @@
     const CLAWD_PACKAGE_VERSION = "1.0.0";
     let codexBuildBusy = false;
     let codexArtifact = null;
+    let codexInstallBusy = false;
     let clawdBuildBusy = false;
     let clawdArtifact = null;
+    let clawdInstallBusy = false;
     let clawdPreview = null;
 
     function setBuildStatus(message, level = "") {
@@ -2411,6 +2479,10 @@
       return window.live2pet && typeof window.live2pet.buildProject === "function" && typeof window.live2pet.getBuildArtifact === "function" ? window.live2pet : null;
     }
 
+    function desktopInstallApi() {
+      return window.live2pet && typeof window.live2pet.installArtifact === "function" ? window.live2pet : null;
+    }
+
     function appBuildCandidate(frame, motion, index, total) {
       return {
         id: `${motion.id}-capture-${index}`,
@@ -2504,6 +2576,7 @@
       const build = response.result.builds?.clawd || {};
       return {
         blob: new Blob([payload.result.bytes], { type: "application/zip" }),
+        artifactId: artifact.artifactId,
         filename: artifact.filename,
         themeId: build.themeId || null,
         manifest: build.manifest || null,
@@ -2564,6 +2637,46 @@
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     }
 
+    function setInstallStatus(target, message, level = "") {
+      const element = $(target === "clawd" ? "clawdInstallStatus" : "codexInstallStatus");
+      element.className = `install-status${level ? ` ${level}` : ""}`;
+      element.textContent = message;
+    }
+
+    async function installTargetArtifact(target) {
+      const codex = target === "codex-pet";
+      const artifact = codex ? codexArtifact : clawdArtifact;
+      const api = desktopInstallApi();
+      const statusTarget = codex ? "codex-pet" : "clawd";
+      const conflict = $(codex ? "codexInstallConflict" : "clawdInstallConflict").value;
+      if (!artifact?.artifactId || !api) {
+        setInstallStatus(statusTarget, I18n.t("build.install.unavailable"), "bad");
+        return;
+      }
+      const targetLabel = I18n.t(codex ? "build.install.target.codex" : "build.install.target.clawd");
+      if (!window.confirm(I18n.t("build.install.confirm", { filename: artifact.filename, target: targetLabel }))) {
+        setInstallStatus(statusTarget, I18n.t("build.install.cancelled"));
+        return;
+      }
+      if (codex) codexInstallBusy = true;
+      else clawdInstallBusy = true;
+      render();
+      setInstallStatus(statusTarget, I18n.t("build.install.busy", { filename: artifact.filename }), "busy");
+      try {
+        const response = await api.installArtifact({ artifactId: artifact.artifactId, target, conflict, confirmInstall: true });
+        if (!response?.ok) throw projectError(response?.error?.code || "APP_INSTALL_FAILED", response?.error?.message || "The App installation service rejected the request.");
+        const result = response.result || {};
+        const conflictKey = ["none", "cancel", "upgrade", "side-by-side"].includes(result.conflict) ? result.conflict : "none";
+        setInstallStatus(statusTarget, I18n.t("build.install.success", { filename: artifact.filename, packageId: result.packageId || "package", conflict: I18n.t(`build.install.conflict.${conflictKey}`) }), "good");
+      } catch (error) {
+        setInstallStatus(statusTarget, `${error.code || "INSTALL_FAILED"}: ${error.message}`, "bad");
+      } finally {
+        if (codex) codexInstallBusy = false;
+        else clawdInstallBusy = false;
+        render();
+      }
+    }
+
     async function buildCodexThroughDesktop(project, captures) {
       const api = desktopBuildApi();
       if (!api) return null;
@@ -2588,7 +2701,7 @@
       if (!artifact?.artifactId) throw projectError("APP_BUILD_ARTIFACT_MISSING", "The App Package Build completed without a downloadable Codex artifact.");
       const payload = await api.getBuildArtifact(artifact.artifactId);
       if (!payload?.ok || !payload.result?.bytes) throw projectError(payload?.error?.code || "APP_BUILD_ARTIFACT_FAILED", payload?.error?.message || "The App could not retrieve the built Codex artifact.");
-      return { blob: new Blob([payload.result.bytes], { type: "application/zip" }), filename: artifact.filename, manifest: response.result.builds?.["codex-pet"]?.manifest || null };
+      return { blob: new Blob([payload.result.bytes], { type: "application/zip" }), artifactId: artifact.artifactId, filename: artifact.filename, manifest: response.result.builds?.["codex-pet"]?.manifest || null };
     }
 
     function releaseCodexPreview() {
@@ -2800,8 +2913,10 @@
     $("downloadJson").addEventListener("click",downloadJson);
     $("buildCodex").addEventListener("click", async () => { try { await buildCodexPackage(); } catch (error) { setBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad"); } });
     $("downloadCodex").addEventListener("click",downloadCodexPackage);
+    $("installCodex").addEventListener("click", async () => { await installTargetArtifact("codex-pet"); });
     $("buildClawd").addEventListener("click", async () => { try { await buildClawdPackage(); } catch (error) { setClawdBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad"); } });
     $("downloadClawd").addEventListener("click",downloadClawdPackage);
+    $("installClawd").addEventListener("click", async () => { await installTargetArtifact("clawd"); });
     $("clawdPreviewState").addEventListener("change", event => { if (clawdPreview) { clawdPreview.selected = event.target.value; render(); } });
     $("languageSelect").addEventListener("change", event => I18n.setLocale(event.target.value));
     window.addEventListener("live2pet:locale-changed", () => render());

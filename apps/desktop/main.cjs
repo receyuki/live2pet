@@ -9,6 +9,7 @@ const {
 } = require('../../packages/app-host/src/index.cjs');
 const { startMapperSessionHost } = require('../../packages/mapper-session/src/index.cjs');
 const { buildProjectTargets } = require('../../packages/package-build/src/index.cjs');
+const { installPackage } = require('../../packages/installation/src/index.cjs');
 
 const DEVELOPMENT_MAPPER_PATH = path.resolve(__dirname, '../mapper/index.html');
 const PACKAGED_MAPPER_PATH = path.join(process.resourcesPath, 'mapper-dist', 'index.html');
@@ -32,7 +33,7 @@ function mapperHostFactory(options = {}) {
 }
 
 function registerIpc() {
-  route = createAppIpcRouter({ mapperHostFactory, buildProjectService: buildProjectTargets, appVersion: app.getVersion() });
+  route = createAppIpcRouter({ mapperHostFactory, buildProjectService: buildProjectTargets, installPackageService: installPackage, appVersion: app.getVersion() });
   ipcMain.handle(APP_IPC_CHANNEL, (event, request) => {
     if (!mainWindow || event.sender !== mainWindow.webContents) return { protocolVersion: 1, ok: false, error: { code: 'APP_SENDER_NOT_ALLOWED', message: 'The App IPC sender is not allowed.' } };
     return route(request);

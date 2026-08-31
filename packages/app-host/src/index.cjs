@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 
 const { MapperSessionError, startMapperSessionHost } = require('../../mapper-session/src/index.cjs');
+const { installPackage } = require('../../installation/src/index.cjs');
 
 const APP_IPC_PROTOCOL_VERSION = 1;
 const APP_IPC_CHANNEL = 'live2pet:app';
@@ -11,6 +12,7 @@ const APP_IPC_METHODS = Object.freeze([
   'updateMapperProject',
   'buildProject',
   'getBuildArtifact',
+  'installArtifact',
   'closeMapperSession',
 ]);
 
@@ -47,6 +49,23 @@ function normalizeBuildRequest(value) {
     ...(value.targets ? { targets: [...value.targets] } : {}),
     metadataByTarget: value.metadataByTarget || {},
     optionsByTarget: value.optionsByTarget || {},
+  };
+}
+
+function normalizeInstallRequest(value) {
+  if (!isRecord(value)) fail('INVALID_INSTALL_REQUEST', 'App installation input must be an object.');
+  const allowed = new Set(['artifactId', 'target', 'conflict', 'confirmInstall']);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) fail('INVALID_INSTALL_REQUEST', `App installation input contains unsupported fields: ${unknown.join(', ')}.`);
+  if (typeof value.artifactId !== 'string' || !value.artifactId.trim()) fail('INVALID_INSTALL_REQUEST', 'App installation input requires an artifactId.');
+  if (!['clawd', 'codex-pet'].includes(value.target)) fail('INVALID_INSTALL_REQUEST', 'App installation target must be clawd or codex-pet.');
+  if (value.conflict !== undefined && !['cancel', 'upgrade', 'side-by-side'].includes(value.conflict)) fail('INVALID_INSTALL_REQUEST', 'App installation conflict must be cancel, upgrade, or side-by-side.');
+  if (value.confirmInstall !== true) fail('INSTALL_AUTHORIZATION_REQUIRED', 'Installing a package requires explicit confirmation.');
+  return {
+    artifactId: value.artifactId.trim(),
+    target: value.target,
+    conflict: value.conflict || 'cancel',
+    confirmInstall: true,
   };
 }
 
@@ -105,6 +124,18 @@ function collectBuildArtifacts(built = {}) {
   return artifacts;
 }
 
+function summarizeInstall(result = {}) {
+  return {
+    protocolVersion: result.protocolVersion,
+    target: result.target,
+    packageId: result.packageId,
+    conflict: result.conflict,
+    files: Array.isArray(result.files) ? [...result.files] : [],
+    byteLength: result.byteLength,
+    path: '<platform-default-target-root>',
+  };
+}
+
 function normalizeRequest(request) {
   if (!request || typeof request !== 'object' || Array.isArray(request)) fail('INVALID_APP_REQUEST', 'App IPC request must be an object.');
   if (request.protocolVersion !== APP_IPC_PROTOCOL_VERSION) fail('UNSUPPORTED_APP_PROTOCOL', 'App IPC protocol version is not supported.');
@@ -115,16 +146,21 @@ function normalizeRequest(request) {
 }
 
 function typedError(error) {
+  const redactedKeys = new Set(['path', 'targetRoot', 'destination']);
+  const details = error && error.details && typeof error.details === 'object'
+    ? Object.fromEntries(Object.entries(error.details).map(([key, value]) => [key, redactedKeys.has(key) ? '<redacted-path>' : value]))
+    : undefined;
   return {
     code: error && error.code ? error.code : 'APP_COMMAND_FAILED',
     message: error && error.message ? error.message : String(error),
-    ...(error && error.details && typeof error.details === 'object' ? { details: error.details } : {}),
+    ...(details ? { details } : {}),
   };
 }
 
-function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, buildProjectService = null, appVersion = '0.1.0' } = {}) {
+function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, buildProjectService = null, installPackageService = null, appVersion = '0.1.0' } = {}) {
   if (typeof mapperHostFactory !== 'function') fail('INVALID_APP_ROUTER', 'mapperHostFactory must be a function.');
   if (buildProjectService !== null && typeof buildProjectService !== 'function') fail('INVALID_APP_ROUTER', 'buildProjectService must be a function when provided.');
+  if (installPackageService !== null && typeof installPackageService !== 'function') fail('INVALID_APP_ROUTER', 'installPackageService must be a function when provided.');
   if (typeof appVersion !== 'string' || !appVersion.trim()) fail('INVALID_APP_ROUTER', 'appVersion must be a non-empty string.');
   let activeHost = null;
   let activeClient = null;
@@ -169,11 +205,19 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, buildP
       if (normalized.method === 'buildProject') {
         if (!buildProjectService) fail('APP_BUILD_UNAVAILABLE', 'The App Package Build service is not configured.');
         const input = normalizeBuildRequest(normalized.args[0]);
-        buildArtifacts = new Map();
+        const buildTargets = input.targets || ['clawd', 'codex-pet'];
+        for (const [artifactId, artifact] of buildArtifacts) {
+          if (buildTargets.includes(artifact.target)) buildArtifacts.delete(artifactId);
+        }
         const progress = [];
         const built = await buildProjectService({ ...input, onProgress: (event) => progress.push(event) });
         const artifacts = collectBuildArtifacts(built);
-        buildArtifacts = new Map(artifacts.map((artifact) => [artifact.artifactId, artifact]));
+        for (const artifact of artifacts) {
+          for (const [artifactId, previous] of buildArtifacts) {
+            if (previous.target === artifact.target) buildArtifacts.delete(artifactId);
+          }
+          buildArtifacts.set(artifact.artifactId, artifact);
+        }
         return {
           protocolVersion: APP_IPC_PROTOCOL_VERSION,
           ok: true,
@@ -190,6 +234,21 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, buildP
         const artifact = buildArtifacts.get(request.artifactId);
         if (!artifact) fail('BUILD_ARTIFACT_NOT_FOUND', 'The requested build artifact is no longer available. Build the project again.');
         return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: { artifactId: artifact.artifactId, target: artifact.target, filename: artifact.filename, byteLength: artifact.byteLength, bytes: new Uint8Array(artifact.bytes) } };
+      }
+      if (normalized.method === 'installArtifact') {
+        if (!installPackageService) fail('APP_INSTALL_UNAVAILABLE', 'The App installation service is not configured.');
+        const input = normalizeInstallRequest(normalized.args[0]);
+        const artifact = buildArtifacts.get(input.artifactId);
+        if (!artifact) fail('BUILD_ARTIFACT_NOT_FOUND', 'The requested build artifact is no longer available. Build the project again.');
+        if (artifact.target !== input.target) fail('INSTALL_TARGET_MISMATCH', 'The selected artifact does not belong to the requested Target Profile.');
+        const progress = [];
+        const installed = await installPackageService({
+          target: artifact.target,
+          packageBytes: artifact.bytes,
+          conflict: input.conflict,
+          onProgress: (event) => progress.push(event),
+        });
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, progress, result: summarizeInstall(installed) };
       }
       if (normalized.method === 'closeMapperSession') return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: await closeActive() };
       fail('UNKNOWN_APP_METHOD', `App method is not allowed: ${normalized.method}.`);
@@ -210,6 +269,7 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL } = {}) {
     updateMapperProject: (project) => invoke('updateMapperProject', project),
     buildProject: (input) => invoke('buildProject', input),
     getBuildArtifact: (artifactId) => invoke('getBuildArtifact', { artifactId }),
+    installArtifact: (request) => invoke('installArtifact', request),
     closeMapperSession: () => invoke('closeMapperSession'),
   });
 }
@@ -246,7 +306,9 @@ module.exports = {
   createAppWindowOptions,
   normalizeRequest,
   normalizeBuildRequest,
+  normalizeInstallRequest,
   summarizeBuild,
   summarizeBuildTargets,
+  summarizeInstall,
   collectBuildArtifacts,
 };
