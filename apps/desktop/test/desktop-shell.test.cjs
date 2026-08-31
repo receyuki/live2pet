@@ -13,6 +13,8 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(main, /return app\.isPackaged \? PACKAGED_MAPPER_PATH : DEVELOPMENT_MAPPER_PATH;/);
   assert.match(main, /mapperAssetRoot: app\.isPackaged \? path\.dirname\(documentPath\) : undefined,/);
   assert.match(main, /buildProjectService: buildProjectTargets/);
+  assert.match(main, /APP_BUILD_PROGRESS_CHANNEL/);
+  assert.match(main, /webContents\.send\(APP_BUILD_PROGRESS_CHANNEL/);
   assert.match(main, /installPackageService: installPackage/);
   assert.match(main, /event\.sender !== mainWindow\.webContents/);
   assert.match(main, /setWindowOpenHandler\(\(\) => \(\{ action: 'deny' \}\)\)/);
@@ -25,10 +27,12 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(preload, /contextBridge\.exposeInMainWorld\('live2pet'/);
   assert.match(preload, /const APP_IPC_CHANNEL = 'live2pet:app';/);
   assert.match(preload, /const APP_IPC_PROTOCOL_VERSION = 1;/);
+  assert.match(preload, /const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';/);
   for (const method of ['getVersion', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'buildProject', 'getBuildArtifact', 'installArtifact', 'closeMapperSession']) {
     assert.match(preload, new RegExp(`invoke\\('${method}'`));
   }
   assert.match(preload, /getBuildArtifact: \(artifactId\) => invoke\('getBuildArtifact', \{ artifactId \}\)/);
+  assert.match(preload, /onBuildProgress/);
   assert.doesNotMatch(preload, /require\(['"]\.\.\/\.\.\/packages\/app-host/);
   assert.doesNotMatch(preload, /exposeInMainWorld\([^,]+,\s*\{\s*ipcRenderer/);
 });
@@ -68,6 +72,17 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /connect-src 'self' blob: http:\/\/127\.0\.0\.1:\*/);
   assert.match(mapper, /function buildPreviewFiles\(files, modelFile, cubism, modelJson\)/);
   assert.match(mapper, /function restorePersistedRuntimes\(\)/);
+  assert.match(mapper, /function subscribeBuildProgress\(\)/);
+  assert.match(mapper, /function beginBuildProgress\(target/);
+  assert.match(mapper, /function setBuildProgressCapture\(target/);
+  assert.match(mapper, /function handleBuildProgress\(event\)/);
+  assert.match(mapper, /function compressClawdFrameSet\(frameSet/);
+  assert.match(mapper, /rgbaDeflate/);
+  assert.match(mapper, /motion-completed/);
+  assert.match(mapper, /subscribeBuildProgress\(\);/);
+  assert.match(mapper, /build\.progress\.stage\.currentCount/);
+  assert.match(mapper, /id="codexBuildProgressBar"/);
+  assert.match(mapper, /id="clawdBuildProgressBar"/);
   assert.match(mapper, /id="clearSavedRuntimes"/);
   assert.match(mapper, /const RUNTIME_DB_NAME = "live2pet-mapper-runtime"/);
   assert.match(mapper, /const I18n = \(\(\) =>/);

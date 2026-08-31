@@ -3,6 +3,7 @@ const { pathToFileURL } = require('node:url');
 const { app, BrowserWindow, ipcMain } = require('electron');
 
 const {
+  APP_BUILD_PROGRESS_CHANNEL,
   APP_IPC_CHANNEL,
   createAppIpcRouter,
   createAppWindowOptions,
@@ -33,7 +34,16 @@ function mapperHostFactory(options = {}) {
 }
 
 function registerIpc() {
-  route = createAppIpcRouter({ mapperHostFactory, buildProjectService: buildProjectTargets, installPackageService: installPackage, appVersion: app.getVersion() });
+  route = createAppIpcRouter({
+    mapperHostFactory,
+    buildProjectService: buildProjectTargets,
+    installPackageService: installPackage,
+    onBuildProgress: (event) => {
+      if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+      try { mainWindow.webContents.send(APP_BUILD_PROGRESS_CHANNEL, event); } catch {}
+    },
+    appVersion: app.getVersion(),
+  });
   ipcMain.handle(APP_IPC_CHANNEL, (event, request) => {
     if (!mainWindow || event.sender !== mainWindow.webContents) return { protocolVersion: 1, ok: false, error: { code: 'APP_SENDER_NOT_ALLOWED', message: 'The App IPC sender is not allowed.' } };
     return route(request);

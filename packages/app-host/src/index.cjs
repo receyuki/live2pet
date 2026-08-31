@@ -5,6 +5,45 @@ const { installPackage } = require('../../installation/src/index.cjs');
 
 const APP_IPC_PROTOCOL_VERSION = 1;
 const APP_IPC_CHANNEL = 'live2pet:app';
+const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';
+const BUILD_PROGRESS_FIELDS = Object.freeze([
+  'target',
+  'stage',
+  'status',
+  'motionId',
+  'name',
+  'width',
+  'height',
+  'samples',
+  'duration',
+  'total',
+  'completed',
+  'index',
+  'frameCount',
+  'concurrency',
+  'percent',
+  'fraction',
+  'message',
+  'error',
+  'motions',
+  'assets',
+  'states',
+  'reactions',
+  'rows',
+  'cells',
+  'occupiedCells',
+  'transparentCells',
+  'cache',
+  'cacheHits',
+  'cacheMisses',
+  'ready',
+  'missingStates',
+  'missingReactions',
+  'format',
+  'byteLength',
+  'packageByteLength',
+  'previewReady',
+]);
 const APP_IPC_METHODS = Object.freeze([
   'getVersion',
   'startMapperSession',
@@ -31,6 +70,45 @@ function fail(code, message, details = {}) {
 
 function isRecord(value) {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function sanitizeBuildProgressValue(value, depth = 0) {
+  if (typeof value === 'string') {
+    if (/^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value)) return '<redacted-path>';
+    return value.slice(0, 256);
+  }
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  if (typeof value === 'boolean') return value;
+  if (depth >= 1 || !Array.isArray(value) || value.length > 64) return undefined;
+  const normalized = value.map((item) => sanitizeBuildProgressValue(item, depth + 1));
+  return normalized.every((item) => item !== undefined) ? normalized : undefined;
+}
+
+/**
+ * Keep build progress binary-free, bounded, and independent from arbitrary
+ * values supplied by a build service before crossing the App boundary.
+ */
+function normalizeBuildProgressEvent(event) {
+  if (!isRecord(event)) return null;
+  const normalized = {};
+  for (const key of BUILD_PROGRESS_FIELDS) {
+    if (!Object.hasOwn(event, key)) continue;
+    const value = sanitizeBuildProgressValue(event[key]);
+    if (value !== undefined) normalized[key] = value;
+  }
+  if (typeof normalized.stage !== 'string' || !normalized.stage.trim()) return null;
+  if (typeof normalized.status !== 'string' || !normalized.status.trim()) return null;
+  normalized.stage = normalized.stage.trim().slice(0, 64);
+  normalized.status = normalized.status.trim().slice(0, 64);
+  return normalized;
+}
+
+function normalizeBuildProgressPayload(payload) {
+  if (!isRecord(payload)) return null;
+  if (payload.protocolVersion !== APP_IPC_PROTOCOL_VERSION || typeof payload.buildId !== 'string' || !payload.buildId.trim() || !Number.isInteger(payload.sequence) || payload.sequence < 1) return null;
+  const event = normalizeBuildProgressEvent(payload);
+  if (!event) return null;
+  return { protocolVersion: APP_IPC_PROTOCOL_VERSION, buildId: payload.buildId.trim().slice(0, 128), sequence: payload.sequence, ...event };
 }
 
 function normalizeBuildRequest(value) {
@@ -157,10 +235,11 @@ function typedError(error) {
   };
 }
 
-function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, buildProjectService = null, installPackageService = null, appVersion = '0.1.0' } = {}) {
+function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, buildProjectService = null, installPackageService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
   if (typeof mapperHostFactory !== 'function') fail('INVALID_APP_ROUTER', 'mapperHostFactory must be a function.');
   if (buildProjectService !== null && typeof buildProjectService !== 'function') fail('INVALID_APP_ROUTER', 'buildProjectService must be a function when provided.');
   if (installPackageService !== null && typeof installPackageService !== 'function') fail('INVALID_APP_ROUTER', 'installPackageService must be a function when provided.');
+  if (onBuildProgress !== null && typeof onBuildProgress !== 'function') fail('INVALID_APP_ROUTER', 'onBuildProgress must be a function when provided.');
   if (typeof appVersion !== 'string' || !appVersion.trim()) fail('INVALID_APP_ROUTER', 'appVersion must be a non-empty string.');
   let activeHost = null;
   let activeClient = null;
@@ -210,7 +289,21 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, buildP
           if (buildTargets.includes(artifact.target)) buildArtifacts.delete(artifactId);
         }
         const progress = [];
-        const built = await buildProjectService({ ...input, onProgress: (event) => progress.push(event) });
+        const buildId = crypto.randomUUID();
+        let sequence = 0;
+        const emitBuildProgress = (event) => {
+          const safeEvent = normalizeBuildProgressEvent(event);
+          if (!safeEvent) return;
+          progress.push(safeEvent);
+          if (onBuildProgress) {
+            try {
+              onBuildProgress({ protocolVersion: APP_IPC_PROTOCOL_VERSION, buildId, sequence: ++sequence, ...safeEvent });
+            } catch {
+              // Progress delivery is best-effort and must never fail a build.
+            }
+          }
+        };
+        const built = await buildProjectService({ ...input, onProgress: emitBuildProgress });
         const artifacts = collectBuildArtifacts(built);
         for (const artifact of artifacts) {
           for (const [artifactId, previous] of buildArtifacts) {
@@ -262,12 +355,28 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL } = {}) {
   if (!ipcRenderer || typeof ipcRenderer.invoke !== 'function') fail('INVALID_APP_PRELOAD', 'App preload API requires ipcRenderer.invoke.');
   if (typeof channel !== 'string' || !channel.trim()) fail('INVALID_APP_PRELOAD', 'App IPC channel must be a non-empty string.');
   const invoke = (method, ...args) => ipcRenderer.invoke(channel, { protocolVersion: APP_IPC_PROTOCOL_VERSION, method, args });
+  const onBuildProgress = (listener) => {
+    if (typeof listener !== 'function') throw new TypeError('onBuildProgress requires a function listener.');
+    if (typeof ipcRenderer.on !== 'function' || typeof ipcRenderer.removeListener !== 'function') throw new TypeError('onBuildProgress requires Electron event listener support.');
+    const handler = (_event, payload) => {
+      const normalized = normalizeBuildProgressPayload(payload);
+      if (normalized) listener(Object.freeze(normalized));
+    };
+    ipcRenderer.on(APP_BUILD_PROGRESS_CHANNEL, handler);
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      ipcRenderer.removeListener(APP_BUILD_PROGRESS_CHANNEL, handler);
+    };
+  };
   return Object.freeze({
     getVersion: () => invoke('getVersion'),
     startMapperSession: (options) => invoke('startMapperSession', options),
     getMapperProject: () => invoke('getMapperProject'),
     updateMapperProject: (project) => invoke('updateMapperProject', project),
     buildProject: (input) => invoke('buildProject', input),
+    onBuildProgress,
     getBuildArtifact: (artifactId) => invoke('getBuildArtifact', { artifactId }),
     installArtifact: (request) => invoke('installArtifact', request),
     closeMapperSession: () => invoke('closeMapperSession'),
@@ -296,6 +405,7 @@ function createAppWindowOptions({ preload, width = 1280, height = 860, show = fa
 }
 
 module.exports = {
+  APP_BUILD_PROGRESS_CHANNEL,
   APP_IPC_CHANNEL,
   APP_IPC_METHODS,
   APP_IPC_PROTOCOL_VERSION,
@@ -307,6 +417,8 @@ module.exports = {
   normalizeRequest,
   normalizeBuildRequest,
   normalizeInstallRequest,
+  normalizeBuildProgressEvent,
+  normalizeBuildProgressPayload,
   summarizeBuild,
   summarizeBuildTargets,
   summarizeInstall,

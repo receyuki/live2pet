@@ -5,6 +5,7 @@ const { createProject } = require('../../project/src/index.cjs');
 const { buildProjectTargets } = require('../../package-build/src/index.cjs');
 
 const {
+  APP_BUILD_PROGRESS_CHANNEL,
   APP_IPC_CHANNEL,
   APP_IPC_METHODS,
   AppHostError,
@@ -12,6 +13,7 @@ const {
   createAppPreloadApi,
   createAppWindowOptions,
   normalizeInstallRequest,
+  normalizeBuildProgressEvent,
   normalizeRequest,
 } = require('../src/index.cjs');
 
@@ -108,6 +110,35 @@ test('routes Package Build through the injected shared service and strips binary
   assert.equal(afterClose.ok, false);
   assert.equal(afterClose.error.code, 'BUILD_ARTIFACT_NOT_FOUND');
   assert.deepEqual({ project: calls[0].project, targets: calls[0].targets, inputsByTarget: calls[0].inputsByTarget }, input);
+});
+
+test('forwards safe, sequenced build progress to the App listener without leaking arbitrary values', async () => {
+  const events = [];
+  const router = createAppIpcRouter({
+    onBuildProgress: (event) => events.push(event),
+    buildProjectService: async (input) => {
+      input.onProgress({ target: 'codex-pet', stage: 'preview', status: 'completed', total: 3, completed: 1, index: 2, frameCount: 6, concurrency: 2, message: 'preview ready', path: '/private/source', bytes: Uint8Array.from([1, 2, 3]) });
+      input.onProgress({ target: 'codex-pet', stage: 'package', status: 'started', byteLength: 42 });
+      input.onProgress({ target: 'codex-pet', stage: 'package', status: 'completed', packageByteLength: 42 });
+      return { projectId: 'app-progress', targets: ['codex-pet'], builds: {} };
+    },
+  });
+  const response = await router({ protocolVersion: 1, method: 'buildProject', args: [{ project: { projectId: 'app-progress' }, targets: ['codex-pet'] }] });
+  assert.equal(response.ok, true);
+  assert.equal(response.progress.length, 3);
+  assert.equal(events.length, 3);
+  assert.equal(normalizeBuildProgressEvent({ stage: 'preview', status: 'completed' }).stage, 'preview');
+  assert.equal(events[0].protocolVersion, 1);
+  assert.equal(typeof events[0].buildId, 'string');
+  assert.equal(events[0].buildId, events[1].buildId);
+  assert.deepEqual(events.map((event) => event.sequence), [1, 2, 3]);
+  assert.equal(Object.hasOwn(events[0], 'path'), false);
+  assert.equal(Object.hasOwn(events[0], 'bytes'), false);
+  assert.deepEqual(
+    Object.fromEntries(['total', 'completed', 'index', 'frameCount', 'concurrency', 'message'].map((key) => [key, events[0][key]])),
+    { total: 3, completed: 1, index: 2, frameCount: 6, concurrency: 2, message: 'preview ready' },
+  );
+  assert.equal(events[2].packageByteLength, 42);
 });
 
 test('rejects malformed or unavailable App Package Build requests with typed errors', async () => {
@@ -312,6 +343,30 @@ test('preload exposes only typed methods and the window options keep Electron sa
   assert.equal(options.webPreferences.contextIsolation, true);
   assert.equal(options.webPreferences.sandbox, true);
   assert.equal(options.webPreferences.webviewTag, false);
+});
+
+test('preload onBuildProgress subscribes with a safe payload and supports idempotent cancellation', () => {
+  const listeners = new Map();
+  const removed = [];
+  const api = createAppPreloadApi({
+    ipcRenderer: {
+      invoke: async () => ({ ok: true }),
+      on: (channel, listener) => listeners.set(channel, listener),
+      removeListener: (channel, listener) => { removed.push([channel, listener]); if (listeners.get(channel) === listener) listeners.delete(channel); },
+    },
+  });
+  const received = [];
+  const unsubscribe = api.onBuildProgress((event) => received.push(event));
+  assert.equal(typeof unsubscribe, 'function');
+  const handler = listeners.get(APP_BUILD_PROGRESS_CHANNEL);
+  handler({ sender: 'hidden' }, { protocolVersion: 1, buildId: 'build-1', sequence: 1, stage: 'preview', status: 'completed', target: 'codex-pet', secret: 'drop-me', path: '/private/source' });
+  handler({}, { protocolVersion: 2, buildId: 'build-1', sequence: 2, stage: 'package', status: 'started' });
+  assert.equal(received.length, 1);
+  assert.deepEqual(received[0], { protocolVersion: 1, buildId: 'build-1', sequence: 1, stage: 'preview', status: 'completed', target: 'codex-pet' });
+  unsubscribe();
+  unsubscribe();
+  assert.equal(removed.length, 1);
+  assert.equal(removed[0][0], APP_BUILD_PROGRESS_CHANNEL);
 });
 
 test('requires safe App window dimensions and a preload path', () => {

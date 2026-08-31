@@ -29,6 +29,15 @@ an explicit confirmation step. The install control offers cancel, upgrade, and
 side-by-side conflict policies and uses the platform adapter's default target
 root; the renderer never supplies an arbitrary filesystem path.
 
+Build progress is streamed over a versioned, path-redacted IPC event channel and
+shown in the Mapper for both targets. Live2D capture stays sequential on the
+single preview renderer; captured Clawd RGBA frames are deflate-compressed before
+the IPC handoff and restored with bounded validation in the App. After capture,
+Clawd WebP assets are encoded with a bounded worker pool (two concurrent assets
+by default) while output order stays stable. The event stream includes stage
+transitions and per-Motion encoding updates, so long builds remain observable
+without exposing frame bytes or local paths to the renderer.
+
 From the repository root, install workspace dependencies and run:
 
 ```text

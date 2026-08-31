@@ -168,6 +168,18 @@
     .build-status.good { color: var(--good); }
     .build-status.bad { color: var(--bad); }
     .build-status.busy { color: var(--warn); }
+    .build-progress { display: grid; gap: 7px; margin-top: 10px; padding: 10px 12px; background: #0b1628; border: 1px solid var(--line); border-radius: 10px; }
+    .build-progress.good { border-color: #3e735f; }
+    .build-progress.bad { border-color: var(--bad); }
+    .build-progress.busy { border-color: #8c7130; }
+    .build-progress-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; min-width: 0; }
+    .build-progress-stage { min-width: 0; overflow-wrap: anywhere; font-weight: 650; }
+    .build-progress-percent { flex: 0 0 auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .build-progress progress { width: 100%; height: 8px; display: block; border: 0; border-radius: 999px; background: #06101c; accent-color: var(--accent); }
+    .build-progress progress::-webkit-progress-bar { background: #06101c; border-radius: 999px; }
+    .build-progress progress::-webkit-progress-value { background: var(--accent); border-radius: 999px; }
+    .build-progress progress::-moz-progress-bar { background: var(--accent); border-radius: 999px; }
+    .build-progress-detail { min-height: 18px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
     .install-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
     .install-controls .field { min-width: min(260px, 100%); flex: 1 1 220px; }
     .install-controls button { flex: 0 0 auto; }
@@ -413,6 +425,11 @@
       <div id="codexInstallStatus" class="install-status" role="status" aria-live="polite"></div>
       <div id="buildReadiness" class="build-readiness" role="status" aria-live="polite">Load a Source Package and map all nine Codex rows to enable building.</div>
       <div id="buildStatus" class="build-status" role="status" aria-live="polite">No Codex package has been built yet.</div>
+      <div id="codexBuildProgress" class="build-progress hidden" role="group" aria-labelledby="codexBuildProgressStage">
+        <div class="build-progress-head"><span id="codexBuildProgressStage" class="build-progress-stage" role="status" aria-live="polite"></span><span id="codexBuildProgressPercent" class="build-progress-percent"></span></div>
+        <progress id="codexBuildProgressBar" max="100" value="0" data-i18n-aria-label="build.progress.aria.codex" aria-label="Codex Pet build progress"></progress>
+        <div id="codexBuildProgressDetail" class="build-progress-detail" role="status" aria-live="polite" aria-atomic="true"></div>
+      </div>
       <div id="codexTargetPreview" class="target-preview hidden" aria-live="polite">
         <figure><figcaption data-i18n="preview.codex.atlasCaption">Generated atlas · package preview</figcaption><img id="codexAtlasPreview" data-i18n-alt="preview.codex.atlasAlt" alt="Generated Codex Pet atlas preview"></figure>
         <figure><figcaption data-i18n="preview.codex.cellCaption">First cell · 192 × 208 final size</figcaption><img id="codexCellPreview" class="cell-preview" data-i18n-alt="preview.codex.cellAlt" alt="Generated Codex Pet first cell preview"></figure>
@@ -441,6 +458,11 @@
       <div id="clawdInstallStatus" class="install-status" role="status" aria-live="polite"></div>
       <div id="clawdBuildReadiness" class="build-readiness" role="status" aria-live="polite">Load a Source Package and complete the required Clawd mapping to enable building.</div>
       <div id="clawdBuildStatus" class="build-status" role="status" aria-live="polite">No Clawd theme has been built yet.</div>
+      <div id="clawdBuildProgress" class="build-progress hidden" role="group" aria-labelledby="clawdBuildProgressStage">
+        <div class="build-progress-head"><span id="clawdBuildProgressStage" class="build-progress-stage" role="status" aria-live="polite"></span><span id="clawdBuildProgressPercent" class="build-progress-percent"></span></div>
+        <progress id="clawdBuildProgressBar" max="100" value="0" data-i18n-aria-label="build.progress.aria.clawd" aria-label="Clawd Theme build progress"></progress>
+        <div id="clawdBuildProgressDetail" class="build-progress-detail" role="status" aria-live="polite" aria-atomic="true"></div>
+      </div>
       <div id="clawdBuildSummary" class="target-copy hidden" aria-live="polite"></div>
       <div id="clawdTargetPreview" class="target-preview hidden" aria-live="polite">
         <figure><figcaption data-i18n="preview.clawd.caption">Generated Clawd state · animated WebP</figcaption><img id="clawdMotionPreview" class="clawd-motion-preview" data-i18n-alt="preview.clawd.alt" alt="Generated Clawd state preview"></figure>
@@ -651,6 +673,7 @@
           "metrics.validation.ready": "Ready",
           "build.status.app": "Building through the shared App Package Build service…",
           "build.status.capture": "Capturing {slot} from {motion} ({count} frames)…",
+          "build.status.captureCompress": "Compressing {motion} for the Desktop App · {current}/{total} frames…",
           "build.status.codexApp": "Built {filename} through the App · {size} KiB · shared Package Build.",
           "build.status.codexBrowser": "Built {filename} · {size} KiB · {cells} occupied cells.",
           "build.status.encode": "Encoding transparent WebP atlas…",
@@ -659,6 +682,30 @@
           "build.status.clawdApp": "Built {filename} through the App · {size} KiB · {motions} Motion assets.",
           "build.status.clawdPreviewUnavailable": "Built {filename} through the App · {size} KiB. Preview unavailable: {message}",
           "build.status.clawdSummary": "Guide validation passed · {states} state bindings · {reactions} reactions · {motions} animated WebP assets.",
+          "build.progress.aria.codex": "Codex Pet build progress",
+          "build.progress.aria.clawd": "Clawd Theme build progress",
+          "build.progress.percent": "{percent}%",
+          "build.progress.stage.capture": "Capture",
+          "build.progress.stage.select": "Select frames",
+          "build.progress.stage.layout": "Plan atlas",
+          "build.progress.stage.compose": "Compose atlas",
+          "build.progress.stage.encode": "Encode WebP",
+          "build.progress.stage.validate": "Validate target",
+          "build.progress.stage.manifest": "Create manifest",
+          "build.progress.stage.preview": "Prepare preview",
+          "build.progress.stage.package": "Create ZIP",
+          "build.progress.stage.report": "Write build report",
+          "build.progress.capture.current": "Capturing Motion {current} of {total}: {motion}",
+          "build.progress.capture.done": "Captured {completed} of {total} Motions.",
+          "build.progress.stage.started": "{stage} started.",
+          "build.progress.stage.completed": "{stage} completed.",
+          "build.progress.stage.current": "{stage} · {motion}",
+          "build.progress.stage.currentCount": "{stage} · {completed}/{total}: {motion}",
+          "build.progress.stage.countDone": "{stage} completed · {completed}/{total}.",
+          "build.progress.done": "Build complete.",
+          "build.progress.failed": "Build failed: {message}",
+          "build.progress.unknownFailure": "Unknown build error.",
+          "build.progress.waiting": "Build progress will appear here.",
           "build.browserOnly": "Open this Mapper in Live2Pet Desktop to build a Clawd Theme ZIP through the shared App service.",
           "build.sourceRequired": "Load and inspect a Source Package first.",
           "build.previewRequired": "Source inspected, but the Live2D preview is not ready. Wait for the preview to load or reload the Mapper.",
@@ -932,6 +979,7 @@
           "metrics.validation.ready": "就绪",
           "build.status.app": "正在通过共享 App 资源包构建服务处理…",
           "build.status.capture": "正在从 {motion} 捕获 {slot}（{count} 帧）…",
+          "build.status.captureCompress": "正在为 Desktop App 压缩 {motion} · {current}/{total} 帧…",
           "build.status.codexApp": "已通过 App 构建 {filename} · {size} KiB · 共享资源包构建。",
           "build.status.codexBrowser": "已构建 {filename} · {size} KiB · {cells} 个有效单元。",
           "build.status.encode": "正在编码透明 WebP 图集…",
@@ -940,6 +988,30 @@
           "build.status.clawdApp": "已通过 App 构建 {filename} · {size} KiB · {motions} 个动作资源。",
           "build.status.clawdPreviewUnavailable": "已通过 App 构建 {filename} · {size} KiB，但预览不可用：{message}",
           "build.status.clawdSummary": "指南校验通过 · {states} 个状态绑定 · {reactions} 个反应 · {motions} 个动画 WebP 资源。",
+          "build.progress.aria.codex": "Codex Pet 构建进度",
+          "build.progress.aria.clawd": "Clawd 主题构建进度",
+          "build.progress.percent": "{percent}%",
+          "build.progress.stage.capture": "捕获动作",
+          "build.progress.stage.select": "选择帧",
+          "build.progress.stage.layout": "规划图集",
+          "build.progress.stage.compose": "合成图集",
+          "build.progress.stage.encode": "编码 WebP",
+          "build.progress.stage.validate": "校验目标",
+          "build.progress.stage.manifest": "创建清单",
+          "build.progress.stage.preview": "准备预览",
+          "build.progress.stage.package": "创建 ZIP",
+          "build.progress.stage.report": "写入构建报告",
+          "build.progress.capture.current": "正在捕获动作 {current}/{total}：{motion}",
+          "build.progress.capture.done": "已捕获 {completed}/{total} 个动作。",
+          "build.progress.stage.started": "{stage} 已开始。",
+          "build.progress.stage.completed": "{stage} 已完成。",
+          "build.progress.stage.current": "{stage} · {motion}",
+          "build.progress.stage.currentCount": "{stage} · {completed}/{total}：{motion}",
+          "build.progress.stage.countDone": "{stage} 已完成 · {completed}/{total}。",
+          "build.progress.done": "构建完成。",
+          "build.progress.failed": "构建失败：{message}",
+          "build.progress.unknownFailure": "未知构建错误。",
+          "build.progress.waiting": "构建进度会显示在这里。",
           "build.browserOnly": "请在 Live2Pet Desktop 中打开此 Mapper，通过共享 App 服务构建 Clawd 主题 ZIP。",
           "build.sourceRequired": "请先加载并检查资源包。",
           "build.previewRequired": "资源检查已完成，但 Live2D 预览尚未就绪。等待预览加载或刷新 Mapper。",
@@ -1832,6 +1904,7 @@
 
     function render() {
       renderProjectWorkflow(); renderInspection(); renderMetrics(); renderMotions(); renderExpressions(); renderMappings(); renderScenario();
+      renderBuildProgress("codex"); renderBuildProgress("clawd");
       $("sleepMode").value = state.sleepMode;
       $("clawdRenderPreset").value = state.clawdRenderPreset;
       $("codexRenderPreset").value = state.codexRenderPreset;
@@ -2324,6 +2397,217 @@
     let clawdInstallBusy = false;
     let clawdPreview = null;
 
+    const BUILD_PROGRESS_CONFIG = Object.freeze({
+      codex: Object.freeze({ target: "codex-pet", stages: Object.freeze(["capture", "select", "layout", "compose", "encode", "manifest", "preview", "package", "report"]) }),
+      clawd: Object.freeze({ target: "clawd", stages: Object.freeze(["capture", "validate", "encode", "manifest", "preview", "package", "report"]) }),
+    });
+    const BUILD_PROGRESS_STAGE_ALIASES = Object.freeze({ render: "encode" });
+    const BUILD_PROGRESS_STAGE_KEYS = Object.freeze({
+      capture: "build.progress.stage.capture",
+      select: "build.progress.stage.select",
+      layout: "build.progress.stage.layout",
+      compose: "build.progress.stage.compose",
+      encode: "build.progress.stage.encode",
+      validate: "build.progress.stage.validate",
+      manifest: "build.progress.stage.manifest",
+      preview: "build.progress.stage.preview",
+      package: "build.progress.stage.package",
+      report: "build.progress.stage.report",
+    });
+
+    function createBuildProgress(target) {
+      const config = BUILD_PROGRESS_CONFIG[target];
+      return { target, status: "idle", stage: "", stageStatus: "started", stageIndex: 0, percent: 0, captureCompleted: 0, captureTotal: 0, stageCompleted: 0, stageTotal: 0, completedMotionIds: new Set(), currentMotion: "", eventDetails: {}, error: "", completed: false, stageCount: config.stages.length };
+    }
+
+    const buildProgress = { codex: createBuildProgress("codex"), clawd: createBuildProgress("clawd") };
+    let buildProgressUnsubscribe = null;
+
+    function progressTargetKey(target) {
+      if (target === "clawd" || target === "clawd-theme") return "clawd";
+      if (target === "codex" || target === "codex-pet") return "codex";
+      return null;
+    }
+
+    function progressStageName(progress) {
+      return progress.stage ? I18n.t(BUILD_PROGRESS_STAGE_KEYS[progress.stage] || progress.stage) : I18n.t("build.progress.waiting");
+    }
+
+    function progressPercent(stageIndex, stageCount, fraction) {
+      if (stageIndex >= stageCount - 1 && fraction >= 1) return 100;
+      return Math.max(0, Math.min(99, Math.round(((stageIndex + fraction) / stageCount) * 100)));
+    }
+
+    function buildProgressDetail(progress) {
+      if (progress.status === "bad") return I18n.t("build.progress.failed", { message: progress.error || I18n.t("build.progress.unknownFailure") });
+      if (progress.completed) return I18n.t("build.progress.done");
+      const stage = progressStageName(progress);
+      if (progress.stage === "capture" && progress.captureTotal > 0) {
+        if (progress.captureCompleted >= progress.captureTotal) return I18n.t("build.progress.capture.done", { completed: progress.captureCompleted, total: progress.captureTotal });
+        return I18n.t("build.progress.capture.current", {
+          current: Math.min(progress.captureCompleted + 1, progress.captureTotal),
+          total: progress.captureTotal,
+          motion: progress.currentMotion || I18n.t("mapping.selected.none"),
+        });
+      }
+      if (progress.stageTotal > 0) {
+        if (progress.stageCompleted >= progress.stageTotal) return I18n.t("build.progress.stage.countDone", { stage, completed: progress.stageCompleted, total: progress.stageTotal });
+        return I18n.t("build.progress.stage.currentCount", {
+          stage,
+          completed: progress.stageCompleted,
+          total: progress.stageTotal,
+          motion: progress.currentMotion || I18n.t("mapping.selected.none"),
+        });
+      }
+      if (progress.currentMotion) return I18n.t("build.progress.stage.current", { stage, motion: progress.currentMotion });
+      return progress.stageStatus === "completed"
+        ? I18n.t("build.progress.stage.completed", { stage })
+        : I18n.t("build.progress.stage.started", { stage });
+    }
+
+    function renderBuildProgress(target) {
+      const progress = buildProgress[target];
+      const prefix = target === "clawd" ? "clawd" : "codex";
+      const root = $(`${prefix}BuildProgress`);
+      if (!root) return;
+      const visible = progress.status !== "idle";
+      root.className = `build-progress${visible && progress.status ? ` ${progress.status}` : ""}`;
+      root.classList.toggle("hidden", !visible);
+      root.setAttribute("aria-busy", progress.status === "busy" ? "true" : "false");
+      const stage = progressStageName(progress);
+      const detail = buildProgressDetail(progress);
+      $(`${prefix}BuildProgressStage`).textContent = stage;
+      $(`${prefix}BuildProgressPercent`).textContent = I18n.t("build.progress.percent", { percent: progress.percent });
+      $(`${prefix}BuildProgressBar`).value = progress.percent;
+      $(`${prefix}BuildProgressBar`).setAttribute("aria-valuetext", `${I18n.t("build.progress.percent", { percent: progress.percent })} · ${stage} · ${detail}`);
+      $(`${prefix}BuildProgressDetail`).textContent = detail;
+    }
+
+    function beginBuildProgress(target, captureTotal = 0) {
+      buildProgress[target] = createBuildProgress(target);
+      buildProgress[target].status = "busy";
+      buildProgress[target].stage = "capture";
+      buildProgress[target].captureTotal = Math.max(0, Number(captureTotal) || 0);
+      renderBuildProgress(target);
+    }
+
+    function setBuildProgressCapture(target, completed, total, currentMotion = "") {
+      const progress = buildProgress[target];
+      progress.status = "busy";
+      progress.stage = "capture";
+      progress.stageStatus = completed >= total && total > 0 ? "completed" : "started";
+      progress.stageIndex = 0;
+      progress.captureCompleted = Math.max(0, Math.min(Number(total) || 0, Number(completed) || 0));
+      progress.captureTotal = Math.max(0, Number(total) || 0);
+      progress.stageCompleted = 0;
+      progress.stageTotal = 0;
+      progress.completedMotionIds = new Set();
+      progress.currentMotion = String(currentMotion || "").slice(0, 160);
+      progress.eventDetails = {};
+      progress.percent = progressPercent(0, progress.stageCount, progress.captureTotal ? progress.captureCompleted / progress.captureTotal : 0);
+      renderBuildProgress(target);
+    }
+
+    function setBuildProgressStage(target, stage, status = "started", details = {}) {
+      const progress = buildProgress[target];
+      const canonicalStage = BUILD_PROGRESS_STAGE_ALIASES[stage] || stage;
+      const stageIndex = BUILD_PROGRESS_CONFIG[target].stages.indexOf(canonicalStage);
+      if (stageIndex < 0) return;
+      if (stageIndex < progress.stageIndex || (stageIndex === progress.stageIndex && progress.stageStatus === "completed" && status === "started")) return;
+      const motionEvent = status === "motion-started" || status === "motion-completed";
+      const stageChanged = canonicalStage !== progress.stage;
+      if (stageChanged) {
+        progress.stageCompleted = 0;
+        progress.stageTotal = 0;
+        progress.completedMotionIds = new Set();
+      }
+      progress.status = status === "failed" ? "bad" : "busy";
+      progress.stage = canonicalStage;
+      progress.stageStatus = status === "completed" ? "completed" : status === "failed" ? "failed" : "started";
+      progress.stageIndex = stageIndex;
+      progress.captureCompleted = progress.captureTotal;
+      progress.currentMotion = String(details.motionName || details.motion || details.motionId || details.slot || "").slice(0, 160);
+      const total = Number(details.total);
+      if (Number.isFinite(total) && total > 0) progress.stageTotal = Math.max(0, Math.floor(total));
+      if (motionEvent && status === "motion-completed") {
+        const motionId = String(details.motionId || details.motionName || details.motion || details.slot || "").trim();
+        if (motionId) progress.completedMotionIds.add(motionId);
+        else progress.stageCompleted += 1;
+        progress.stageCompleted = Math.min(progress.stageTotal || Number.MAX_SAFE_INTEGER, Math.max(progress.stageCompleted, progress.completedMotionIds.size));
+      } else if (Number.isFinite(Number(details.completed)) && Number(details.completed) >= 0) {
+        progress.stageCompleted = Math.max(0, Math.floor(Number(details.completed)));
+      } else if (status === "completed" && progress.stageTotal > 0) {
+        progress.stageCompleted = progress.stageTotal;
+      }
+      progress.eventDetails = {
+        ...(details.motions != null ? { motions: Number(details.motions) } : {}),
+        ...(details.assets != null ? { assets: Number(details.assets) } : {}),
+        ...(details.rows != null ? { rows: Number(details.rows) } : {}),
+        ...(progress.stageTotal > 0 ? { total: progress.stageTotal, completed: progress.stageCompleted } : {}),
+      };
+      const fraction = progress.stageTotal > 0
+        ? Math.min(1, progress.stageCompleted / progress.stageTotal)
+        : status === "completed" ? 1 : 0.05;
+      progress.percent = progressPercent(stageIndex, progress.stageCount, fraction);
+      if (canonicalStage === "report" && status === "completed") {
+        progress.status = "good";
+        progress.completed = true;
+        progress.percent = 100;
+      }
+      renderBuildProgress(target);
+    }
+
+    function completeBuildProgress(target) {
+      const progress = buildProgress[target];
+      progress.status = "good";
+      progress.stage = "report";
+      progress.stageStatus = "completed";
+      progress.stageIndex = progress.stageCount - 1;
+      progress.percent = 100;
+      progress.completed = true;
+      progress.error = "";
+      renderBuildProgress(target);
+    }
+
+    function failBuildProgress(target, error) {
+      const progress = buildProgress[target];
+      progress.status = "bad";
+      progress.stageStatus = "failed";
+      progress.error = String(error?.message || error || I18n.t("build.progress.unknownFailure")).slice(0, 240);
+      progress.completed = false;
+      renderBuildProgress(target);
+    }
+
+    function handleBuildProgress(event) {
+      if (!event || typeof event !== "object") return;
+      if (!codexBuildBusy && !clawdBuildBusy) return;
+      const target = progressTargetKey(event.target) || (clawdBuildBusy ? "clawd" : codexBuildBusy ? "codex" : null);
+      if (!target || typeof event.stage !== "string") return;
+      const status = ["completed", "started", "failed", "motion-started", "motion-completed"].includes(event.status) ? event.status : null;
+      if (!status) return;
+      if (status === "failed") {
+        failBuildProgress(target, event.error || event.message || "Build failed.");
+        return;
+      }
+      setBuildProgressStage(target, event.stage, status, event);
+    }
+
+    function consumeBuildProgressEvents(events) {
+      if (!Array.isArray(events)) return;
+      events.forEach(handleBuildProgress);
+    }
+
+    function subscribeBuildProgress() {
+      const bridge = window.live2pet;
+      if (!bridge || typeof bridge.onBuildProgress !== "function" || buildProgressUnsubscribe) return;
+      try {
+        const unsubscribe = bridge.onBuildProgress(handleBuildProgress);
+        buildProgressUnsubscribe = typeof unsubscribe === "function" ? unsubscribe : () => {};
+      } catch (error) {
+        console.warn("Live2Pet build progress listener unavailable", error);
+      }
+    }
+
     function setBuildStatus(message, level = "") {
       $("buildStatus").className = `build-status${level ? ` ${level}` : ""}`;
       $("buildStatus").textContent = message;
@@ -2534,6 +2818,42 @@
       return Math.max(2, Math.min(settings.maxFrames, Math.round(duration * settings.fps)));
     }
 
+    async function deflateCaptureBytes(bytes) {
+      if (typeof CompressionStream !== "function" || typeof Response !== "function" || typeof Blob !== "function") return null;
+      try {
+        const source = new Blob([bytes]);
+        const compressed = source.stream().pipeThrough(new CompressionStream("deflate"));
+        return new Uint8Array(await new Response(compressed).arrayBuffer());
+      } catch (error) {
+        console.warn("Live2Pet capture compression unavailable", error);
+        return null;
+      }
+    }
+
+    async function compressClawdFrameSet(frameSet, onFrame = null) {
+      if (!frameSet || !Array.isArray(frameSet.frames) || typeof CompressionStream !== "function") return frameSet;
+      const frames = [];
+      for (let index = 0; index < frameSet.frames.length; index += 1) {
+        const frame = frameSet.frames[index];
+        const raw = frame?.rgba;
+        const source = ArrayBuffer.isView(raw) ? new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength) : null;
+        if (!source) {
+          frames.push(frame);
+          if (typeof onFrame === "function") onFrame(index + 1, frameSet.frames.length);
+          continue;
+        }
+        const compressed = await deflateCaptureBytes(source);
+        if (compressed) {
+          const { rgba, ...metadata } = frame;
+          frames.push({ ...metadata, rgbaDeflate: compressed, compression: "deflate" });
+        } else {
+          frames.push(frame);
+        }
+        if (typeof onFrame === "function") onFrame(index + 1, frameSet.frames.length);
+      }
+      return { ...frameSet, frames };
+    }
+
     async function captureClawdMotion(motion) {
       const settings = clawdRenderSettings();
       const count = clawdFrameCount(motion);
@@ -2560,6 +2880,7 @@
         version: CLAWD_PACKAGE_VERSION,
         author: "Live2Pet",
       };
+      setBuildProgressStage("clawd", "validate", "started");
       setClawdBuildStatus(I18n.t("build.status.app"), "busy");
       const response = await api.buildProject({
         project,
@@ -2569,6 +2890,7 @@
         optionsByTarget: { clawd: { package: true, render: { preset: state.clawdRenderPreset } } },
       });
       if (!response?.ok) throw projectError(response?.error?.code || "APP_BUILD_FAILED", response?.error?.message || "The App Package Build service rejected the request.");
+      consumeBuildProgressEvents(response.progress);
       const artifact = response.result?.artifacts?.find(item => item.target === "clawd");
       if (!artifact?.artifactId) throw projectError("APP_BUILD_ARTIFACT_MISSING", "The App Package Build completed without a downloadable Clawd artifact.");
       const payload = await api.getBuildArtifact(artifact.artifactId);
@@ -2599,14 +2921,23 @@
         const captures = {};
         const motionIds = clawdMappedMotionIds();
         const settings = clawdRenderSettings();
+        beginBuildProgress("clawd", motionIds.length);
         setClawdBuildStatus(I18n.t("build.status.clawdCapture", { count: motionIds.length, width: settings.width }), "busy");
-        for (const motionId of motionIds) {
+        for (const [index, motionId] of motionIds.entries()) {
           const motion = selectedMotionById(motionId);
           if (!motion) throw projectError("INVALID_CLAWD_MAPPING", `${motionId} points to a Motion that is no longer loaded.`);
           const frameCount = clawdFrameCount(motion);
+          setBuildProgressCapture("clawd", index, motionIds.length, motion.name);
           setClawdBuildStatus(I18n.t("build.status.capture", { slot: motionId, motion: motion.name, count: frameCount }), "busy");
-          captures[motionId] = await captureClawdMotion(motion);
+          const captured = await captureClawdMotion(motion);
+          setClawdBuildStatus(I18n.t("build.status.captureCompress", { motion: motion.name, current: 0, total: captured.frames.length }), "busy");
+          captures[motionId] = await compressClawdFrameSet(captured, (completed, total) => {
+            setClawdBuildStatus(I18n.t("build.status.captureCompress", { motion: motion.name, current: completed, total }), "busy");
+          });
+          setBuildProgressCapture("clawd", index + 1, motionIds.length, motion.name);
         }
+        setBuildProgressCapture("clawd", motionIds.length, motionIds.length);
+        await new Promise(resolve => setTimeout(resolve, 0));
         const desktopArtifact = await buildClawdThroughDesktop(project, captures);
         if (!desktopArtifact) throw projectError("APP_BUILD_UNAVAILABLE", I18n.t("build.clawdNoApp"));
         clawdArtifact = desktopArtifact;
@@ -2620,8 +2951,10 @@
           : I18n.t("build.status.clawdApp", { filename: desktopArtifact.filename, size: Math.round(desktopArtifact.blob.size / 1024), motions: desktopArtifact.assets.length }), "good");
         $("clawdBuildSummary").textContent = I18n.t("build.status.clawdSummary", { states, reactions, motions: desktopArtifact.assets.length });
         $("clawdBuildSummary").classList.remove("hidden");
+        completeBuildProgress("clawd");
       } catch (error) {
         setClawdBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad");
+        failBuildProgress("clawd", error);
       } finally {
         clawdBuildBusy = false;
         render();
@@ -2687,6 +3020,7 @@
         const frames = captures.get(motion.id) || [];
         candidatesByRow[row.id] = frames.map((frame, index) => appBuildCandidate(frame, motion, index, frames.length));
       }
+      setBuildProgressStage("codex", "select", "started");
       setBuildStatus(I18n.t("build.status.app"), "busy");
       const quality = state.codexRenderPreset === "compact" ? 76 : state.codexRenderPreset === "high" ? 88 : 82;
       const response = await api.buildProject({
@@ -2697,6 +3031,7 @@
         optionsByTarget: { "codex-pet": { package: true, quality, render: { preset: state.codexRenderPreset } } },
       });
       if (!response?.ok) throw projectError(response?.error?.code || "APP_BUILD_FAILED", response?.error?.message || "The App Package Build service rejected the request.");
+      consumeBuildProgressEvents(response.progress);
       const artifact = response.result?.artifacts?.find(item => item.target === "codex-pet");
       if (!artifact?.artifactId) throw projectError("APP_BUILD_ARTIFACT_MISSING", "The App Package Build completed without a downloadable Codex artifact.");
       const payload = await api.getBuildArtifact(artifact.artifactId);
@@ -2721,19 +3056,26 @@
       releaseCodexPreview();
       codexArtifact = null;
       render();
+      const captureMotionIds = [...new Set(MotionMapping.codexRows.map(row => state.codexMappings[row.id].slice(7)))];
+      beginBuildProgress("codex", captureMotionIds.length);
       const previewUrls = [];
       try {
         const captures = new Map();
+        let capturedCount = 0;
         for (const row of MotionMapping.codexRows) {
           const value = state.codexMappings[row.id];
           const motion = selectedMotionById(value.slice(7));
           if (!motion) throw projectError("INVALID_CODEX_MAPPING", `${row.id} points to a Motion that is no longer loaded.`);
           const needed = Math.max(row.frames, captures.get(motion.id)?.length || 0);
           if (!captures.has(motion.id) || captures.get(motion.id).length < needed) {
+            setBuildProgressCapture("codex", capturedCount, captureMotionIds.length, motion.name);
             setBuildStatus(I18n.t("build.status.capture", { slot: row.id, motion: motion.name, count: needed }), "busy");
             captures.set(motion.id, await captureCodexMotion(motion, needed));
+            capturedCount += 1;
+            setBuildProgressCapture("codex", capturedCount, captureMotionIds.length, motion.name);
           }
         }
+        setBuildProgressCapture("codex", captureMotionIds.length, captureMotionIds.length);
         const atlas = document.createElement("canvas");
         atlas.width = CODEX_ATLAS.width;
         atlas.height = CODEX_ATLAS.height;
@@ -2744,8 +3086,16 @@
           const row = MotionMapping.codexRows[rowIndex];
           const motion = selectedMotionById(state.codexMappings[row.id].slice(7));
           const frames = captures.get(motion.id).slice(0, row.frames);
+          if (!desktopBuildApi()) setBuildProgressStage("codex", "select", "started", { motionId: motion.id, total: MotionMapping.codexRows.length, completed: rowIndex });
           frames.forEach((frame, column) => context.putImageData(frame, column * CODEX_ATLAS.cellWidth, rowIndex * CODEX_ATLAS.cellHeight));
           manifestRows.push({ id: row.id, row: rowIndex, frameCount: frames.length, frames: frames.map((_, index) => ({ motionId: motion.id, sourceIndex: motion.index, time: index / Math.max(1, frames.length - 1) })) });
+        }
+        if (!desktopBuildApi()) {
+          setBuildProgressStage("codex", "select", "completed", { total: MotionMapping.codexRows.length, completed: MotionMapping.codexRows.length });
+          setBuildProgressStage("codex", "layout", "started");
+          setBuildProgressStage("codex", "layout", "completed");
+          setBuildProgressStage("codex", "compose", "started");
+          setBuildProgressStage("codex", "compose", "completed");
         }
         const atlasPreviewUrl = URL.createObjectURL(await canvasToBlob(atlas, "image/png"));
         previewUrls.push(atlasPreviewUrl);
@@ -2761,12 +3111,20 @@
           codexArtifact = { ...desktopArtifact, previewUrl: atlasPreviewUrl, cellPreviewUrl };
           previewUrls.length = 0;
           setBuildStatus(I18n.t("build.status.codexApp", { filename: desktopArtifact.filename, size: Math.round(desktopArtifact.blob.size / 1024) }), "good");
+          completeBuildProgress("codex");
           return;
         }
+        setBuildProgressStage("codex", "encode", "started");
         setBuildStatus(I18n.t("build.status.encode"), "busy");
         const renderPreset = state.codexRenderPreset;
         const quality = renderPreset === "compact" ? 0.76 : renderPreset === "high" ? 0.88 : 0.82;
         const spritesheet = await canvasToBlob(atlas, "image/webp", quality);
+        setBuildProgressStage("codex", "encode", "completed");
+        setBuildProgressStage("codex", "manifest", "started");
+        setBuildProgressStage("codex", "manifest", "completed");
+        setBuildProgressStage("codex", "preview", "started");
+        setBuildProgressStage("codex", "preview", "completed");
+        setBuildProgressStage("codex", "package", "started");
         const manifest = { schemaVersion: 1, target: "codex-pet", contractVersion: 1, version: CODEX_PACKAGE_VERSION, packageFiles: ["pet.json", "spritesheet.webp"], renderPreset, atlas: { ...CODEX_ATLAS }, mappings: { ...state.codexMappings }, rows: manifestRows, assets: { spritesheet: { path: "spritesheet.webp", format: "webp", width: CODEX_ATLAS.width, height: CODEX_ATLAS.height, frameCount: 1 } } };
         setBuildStatus(I18n.t("build.status.zip"), "busy");
         if (typeof zipApi.configure === "function") zipApi.configure({ useWebWorkers: false });
@@ -2778,9 +3136,12 @@
         codexArtifact = { blob, filename, manifest, previewUrl: atlasPreviewUrl, cellPreviewUrl };
         previewUrls.length = 0;
         setBuildStatus(I18n.t("build.status.codexBrowser", { filename, size: Math.round(blob.size / 1024), cells: manifestRows.reduce((sum, row) => sum + row.frameCount, 0) }), "good");
+        setBuildProgressStage("codex", "package", "completed");
+        completeBuildProgress("codex");
       } catch (error) {
         previewUrls.forEach(url => URL.revokeObjectURL(url));
         setBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad");
+        failBuildProgress("codex", error);
       } finally {
         codexBuildBusy = false;
         render();
@@ -2928,6 +3289,7 @@
     });
     new ResizeObserver(()=>{if(app){app.resize();fitModel();}}).observe($("stage"));
     I18n.apply();
+    subscribeBuildProgress();
     const recoveredDraft = restoreProjectDraft();
     setProjectStatus(I18n.t("project.status.empty"));
     setBuildStatus(I18n.t("build.codex.status.empty"));

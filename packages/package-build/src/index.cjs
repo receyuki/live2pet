@@ -13,13 +13,19 @@ const { CacheError, CacheStore, DEFAULT_CACHE_LIMIT, createCacheKey } = require(
 const { createClawdPreview, createCodexPreview, createTargetPreview, PREVIEW_CONTRACT_VERSION, TargetPreviewError } = require('./preview.cjs');
 const { decodeFrameSet, encodeFrameSet, FRAME_CACHE_SCHEMA_VERSION, FrameCacheError } = require('./frame-cache.cjs');
 const { decodeAsset, encodeAsset, ASSET_CACHE_SCHEMA_VERSION, AssetCacheError } = require('./asset-cache.cjs');
+const { createInflate } = require('node:zlib');
 
 const BUILD_CONTRACT_VERSION = 1;
 const STAGES = Object.freeze(['select', 'layout', 'compose', 'encode', 'manifest', 'preview', 'package', 'report']);
 const CLAWD_STAGES = Object.freeze(['validate', 'encode', 'manifest', 'preview', 'package', 'report']);
 const MAX_ENCODE_FRAMES = 4096;
+const MAX_RGBA_FRAME_DIMENSION = 4096;
+const MAX_RGBA_FRAME_BYTES = 64 * 1024 * 1024;
+const RGBA_FRAME_COMPRESSION = 'deflate';
 const PACKAGE_FILES = Object.freeze(['pet.json', 'spritesheet.webp']);
 const CLAWD_PACKAGE_LIMIT = 83_886_080;
+const DEFAULT_CLAWD_ENCODING_CONCURRENCY = 2;
+const MAX_CLAWD_ENCODING_CONCURRENCY = 8;
 const BUILD_REPORT_SCHEMA_VERSION = 1;
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const TARGET_RENDER_PRESETS = Object.freeze({
@@ -113,6 +119,104 @@ function fail(code, message, details = {}) {
 
 function checkCancelled(signal) {
   if (signal && signal.aborted) fail('BUILD_CANCELLED', 'Package Build was cancelled before the next stage completed.');
+}
+
+function rgbaByteLength(width, height, label = 'RGBA frame') {
+  if (!Number.isSafeInteger(width) || width < 1 || width > MAX_RGBA_FRAME_DIMENSION || !Number.isSafeInteger(height) || height < 1 || height > MAX_RGBA_FRAME_DIMENSION) {
+    fail('INVALID_RGBA_FRAME', `${label} width and height must be integers between 1 and ${MAX_RGBA_FRAME_DIMENSION}.`, { width, height, maxDimension: MAX_RGBA_FRAME_DIMENSION });
+  }
+  const byteLength = width * height * 4;
+  if (!Number.isSafeInteger(byteLength) || byteLength > MAX_RGBA_FRAME_BYTES) {
+    fail('RGBA_FRAME_TOO_LARGE', `${label} RGBA payload exceeds the ${MAX_RGBA_FRAME_BYTES}-byte limit.`, { width, height, byteLength, maxBytes: MAX_RGBA_FRAME_BYTES });
+  }
+  return byteLength;
+}
+
+function normalizeByteBuffer(value, label) {
+  if (Buffer.isBuffer(value)) return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  if (value instanceof Uint8Array) return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  if (ArrayBuffer.isView(value)) return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  if (value instanceof ArrayBuffer) return Buffer.from(value);
+  fail('INVALID_RGBA_FRAME', `${label} must be a byte buffer.`);
+}
+
+function cancellationError() {
+  return new PackageBuildError('BUILD_CANCELLED', 'Package Build was cancelled before the next stage completed.');
+}
+
+/**
+ * Decode one browser-produced `CompressionStream("deflate")` RGBA payload.
+ * The stream is intentionally bounded by the dimensions supplied alongside the
+ * payload so a small compressed input cannot expand without limit. Destroying
+ * the inflater on abort also stops an in-flight decode instead of waiting for
+ * all compressed bytes to be produced.
+ */
+function decodeCompressedRgbaFrame({ width, height, rgbaDeflate, compression } = {}, { signal, label = 'RGBA frame' } = {}) {
+  const expectedBytes = rgbaByteLength(width, height, label);
+  if (compression !== RGBA_FRAME_COMPRESSION) fail('INVALID_RGBA_FRAME', `${label} compression must be "${RGBA_FRAME_COMPRESSION}".`);
+  const compressed = normalizeByteBuffer(rgbaDeflate, `${label}.rgbaDeflate`);
+  if (!compressed.byteLength) fail('INVALID_RGBA_FRAME', `${label}.rgbaDeflate cannot be empty.`);
+  if (compressed.byteLength > MAX_RGBA_FRAME_BYTES) fail('RGBA_FRAME_TOO_LARGE', `${label}.rgbaDeflate exceeds the ${MAX_RGBA_FRAME_BYTES}-byte limit.`, { compressedBytes: compressed.byteLength, maxBytes: MAX_RGBA_FRAME_BYTES });
+  checkCancelled(signal);
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let outputBytes = 0;
+    let settled = false;
+    let inflater;
+    const cleanup = () => {
+      if (signal && typeof signal.removeEventListener === 'function') signal.removeEventListener('abort', onAbort);
+    };
+    const rejectOnce = (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const resolveOnce = (value) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const onAbort = () => {
+      if (!settled && inflater) inflater.destroy(cancellationError());
+    };
+    try {
+      inflater = createInflate();
+      inflater.on('data', (chunk) => {
+        if (signal && signal.aborted) {
+          inflater.destroy(cancellationError());
+          return;
+        }
+        outputBytes += chunk.byteLength;
+        if (outputBytes > expectedBytes || outputBytes > MAX_RGBA_FRAME_BYTES) {
+          inflater.destroy(new PackageBuildError('RGBA_FRAME_SIZE_MISMATCH', `${label} decompressed RGBA payload exceeds the declared ${width}×${height} size.`, { width, height, expectedBytes, actualBytes: outputBytes }));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      inflater.once('error', (error) => {
+        if (error instanceof PackageBuildError) rejectOnce(error);
+        else rejectOnce(new PackageBuildError('RGBA_DECOMPRESSION_FAILED', `${label} deflate payload could not be decoded.`, { cause: error && error.code ? error.code : String(error && error.message ? error.message : error) }));
+      });
+      inflater.once('end', () => {
+        if (signal && signal.aborted) {
+          rejectOnce(cancellationError());
+          return;
+        }
+        if (outputBytes !== expectedBytes) {
+          rejectOnce(new PackageBuildError('RGBA_FRAME_SIZE_MISMATCH', `${label} decompressed RGBA payload is ${outputBytes} bytes; expected ${expectedBytes} bytes for ${width}×${height}.`, { width, height, expectedBytes, actualBytes: outputBytes }));
+          return;
+        }
+        resolveOnce(Buffer.concat(chunks, outputBytes));
+      });
+      if (signal && typeof signal.addEventListener === 'function') signal.addEventListener('abort', onAbort, { once: true });
+      checkCancelled(signal);
+      inflater.end(compressed);
+    } catch (error) {
+      rejectOnce(error instanceof PackageBuildError ? error : new PackageBuildError('RGBA_DECOMPRESSION_FAILED', `${label} deflate payload could not be decoded.`, { cause: String(error && error.message ? error.message : error) }));
+    }
+  });
 }
 
 function progress(onProgress, stage, status, details = {}) {
@@ -265,17 +369,38 @@ function resolveZip(explicit) {
   }
 }
 
-function normalizeEncodeFrames(frames, width, height) {
+async function normalizeEncodeFrames(frames, width, height, { signal } = {}) {
   if (!Array.isArray(frames) || !frames.length || frames.length > MAX_ENCODE_FRAMES) fail('INVALID_WEBP_INPUT', `WebP encoding requires between 1 and ${MAX_ENCODE_FRAMES} frames.`);
   if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) fail('INVALID_WEBP_INPUT', 'WebP width and height must be positive integers.');
-  return frames.map((frame, index) => {
-    if (!frame || !ArrayBuffer.isView(frame.rgba) || frame.width !== width || frame.height !== height || frame.rgba.byteLength !== width * height * 4) fail('INVALID_WEBP_INPUT', `Frame ${index} must contain ${width}×${height} RGBA bytes.`);
-    return Buffer.from(frame.rgba.buffer, frame.rgba.byteOffset, frame.rgba.byteLength);
-  });
+  const expectedBytes = rgbaByteLength(width, height, 'WebP frame');
+  const normalized = [];
+  for (const [index, frame] of frames.entries()) {
+    checkCancelled(signal);
+    if (!frame || typeof frame !== 'object' || frame.width !== width || frame.height !== height) fail('INVALID_WEBP_INPUT', `Frame ${index} must contain ${width}×${height} RGBA bytes.`);
+    const hasRaw = frame.rgba !== undefined;
+    const hasCompressed = frame.rgbaDeflate !== undefined;
+    if (hasRaw && hasCompressed) fail('INVALID_WEBP_INPUT', `Frame ${index} cannot contain both rgba and rgbaDeflate payloads.`);
+    if (hasCompressed) {
+      try {
+        const decoded = await decodeCompressedRgbaFrame(frame, { signal, label: `Frame ${index}` });
+        if (decoded.byteLength !== expectedBytes) fail('INVALID_WEBP_INPUT', `Frame ${index} must contain ${expectedBytes} decompressed RGBA bytes.`);
+        normalized.push(decoded);
+      } catch (error) {
+        if (error instanceof PackageBuildError) throw error;
+        fail('RGBA_DECOMPRESSION_FAILED', `Frame ${index} deflate payload could not be decoded.`, { cause: String(error && error.message ? error.message : error) });
+      }
+      continue;
+    }
+    if (!hasRaw || !ArrayBuffer.isView(frame.rgba) || frame.rgba.byteLength !== expectedBytes) fail('INVALID_WEBP_INPUT', `Frame ${index} must contain ${width}×${height} RGBA bytes.`);
+    normalized.push(Buffer.from(frame.rgba.buffer, frame.rgba.byteOffset, frame.rgba.byteLength));
+  }
+  checkCancelled(signal);
+  return normalized;
 }
 
-async function encodeAnimatedWebp({ frames, width, height, delay = 100, loop = 0, quality = 80, alphaQuality = 100, lossless = false } = {}, { sharpFactory } = {}) {
-  const normalizedFrames = normalizeEncodeFrames(frames, width, height);
+async function encodeAnimatedWebp({ frames, width, height, delay = 100, loop = 0, quality = 80, alphaQuality = 100, lossless = false } = {}, { sharpFactory, signal } = {}) {
+  const normalizedFrames = await normalizeEncodeFrames(frames, width, height, { signal });
+  checkCancelled(signal);
   if (!Number.isInteger(loop) || loop < 0 || loop > 65535) fail('INVALID_WEBP_INPUT', 'WebP loop count must be an integer between 0 and 65535.');
   if (!Number.isFinite(quality) || quality < 0 || quality > 100 || !Number.isFinite(alphaQuality) || alphaQuality < 0 || alphaQuality > 100) fail('INVALID_WEBP_INPUT', 'WebP quality values must be between 0 and 100.');
   const delays = Array.isArray(delay) ? delay : Array(normalizedFrames.length).fill(delay);
@@ -401,6 +526,36 @@ function clawdAssetSlug(motionId, used) {
   return slug;
 }
 
+function resolveClawdEncodingConcurrency(value) {
+  const concurrency = value == null ? DEFAULT_CLAWD_ENCODING_CONCURRENCY : Number(value);
+  if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > MAX_CLAWD_ENCODING_CONCURRENCY) {
+    fail('INVALID_ENCODING_CONCURRENCY', `Clawd encodingConcurrency must be an integer between 1 and ${MAX_CLAWD_ENCODING_CONCURRENCY}.`);
+  }
+  return concurrency;
+}
+
+async function mapConcurrentOrdered(items, concurrency, worker, signal) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  let firstError = null;
+  const runWorker = async () => {
+    while (!firstError) {
+      const index = nextIndex++;
+      if (index >= items.length) return;
+      try {
+        checkCancelled(signal);
+        results[index] = await worker(items[index], index);
+      } catch (error) {
+        firstError ||= error;
+        return;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => runWorker()));
+  if (firstError) throw firstError;
+  return results;
+}
+
 function clawdThemeBindings(target, assetsByMotion) {
   const states = {};
   for (const [slot, value] of Object.entries(target.states || {})) {
@@ -490,12 +645,13 @@ async function buildClawdTheme(input = {}, options = {}) {
   progress(onProgress, CLAWD_STAGES[0], 'completed', { motions: motionIds.length });
   checkCancelled(signal);
 
-  progress(onProgress, CLAWD_STAGES[1], 'started', { motions: motionIds.length });
+  const encodingConcurrency = resolveClawdEncodingConcurrency(options.encodingConcurrency);
+  progress(onProgress, CLAWD_STAGES[1], 'started', { motions: motionIds.length, total: motionIds.length, concurrency: encodingConcurrency });
   const assetsByMotion = {};
   const assets = {};
   const assetReports = [];
   const usedSlugs = new Set();
-  for (const motionId of motionIds) {
+  const jobs = motionIds.map((motionId, index) => {
     checkCancelled(signal);
     const frameSet = normalizeClawdFrameSet(framesByMotion[motionId], motionId, renderSelection.settings);
     const firstFrame = frameSet.frames[0];
@@ -513,7 +669,14 @@ async function buildClawdTheme(input = {}, options = {}) {
         encoderVersion: cacheContext.encoderVersion,
       },
     }) : null;
+    return { motionId, index, frameSet, firstFrame, delays, cacheKey };
+  });
+  const encodedResults = await mapConcurrentOrdered(jobs, encodingConcurrency, async (job) => {
+    checkCancelled(signal);
+    const { motionId, index, frameSet, firstFrame, delays, cacheKey } = job;
+    progress(onProgress, CLAWD_STAGES[1], 'motion-started', { motionId, index, total: motionIds.length });
     let encoded = null;
+    let cacheStatus = cacheEnabled ? 'miss' : 'disabled';
     if (cacheKey) {
       const cached = cache.get(cacheKey);
       if (cached) {
@@ -522,6 +685,7 @@ async function buildClawdTheme(input = {}, options = {}) {
           if (firstFrame && decoded.format === 'webp' && decoded.width === firstFrame.width && decoded.height === firstFrame.height && decoded.frameCount === frameSet.frames.length && decoded.delays.length === delays.length) {
             encoded = { format: decoded.format, buffer: decoded.bytes, frameCount: decoded.frameCount, width: decoded.width, height: decoded.height, delays: decoded.delays, info: null };
             cacheStats.hits += 1;
+            cacheStatus = 'hit';
           }
         } catch (error) {
           if (error instanceof AssetCacheError && typeof cache.removeFiles === 'function') cache.removeFiles(cacheKey.digest);
@@ -529,16 +693,23 @@ async function buildClawdTheme(input = {}, options = {}) {
       }
     }
     if (!encoded) {
+      checkCancelled(signal);
       if (cacheEnabled) cacheStats.misses += 1;
-      encoded = await encodeAnimatedWebp({ ...frameSet, width: firstFrame && firstFrame.width, height: firstFrame && firstFrame.height }, { sharpFactory: options.sharpFactory });
+      encoded = await encodeAnimatedWebp({ ...frameSet, width: firstFrame && firstFrame.width, height: firstFrame && firstFrame.height }, { sharpFactory: options.sharpFactory, signal });
+      checkCancelled(signal);
       if (cacheKey) cache.put(cacheKey, encodeAsset({ format: encoded.format, width: encoded.width, height: encoded.height, frameCount: encoded.frameCount, delays: encoded.delays, bytes: encoded.buffer }), { projectId: cacheContext.projectId, sourceFingerprint: cacheContext.sourceFingerprint, artifact: 'encoded-webp' });
     }
+    checkCancelled(signal);
+    progress(onProgress, CLAWD_STAGES[1], 'motion-completed', { motionId, index, total: motionIds.length, cache: cacheStatus, frameCount: encoded.frameCount });
+    return { motionId, encoded };
+  }, signal);
+  for (const { motionId, encoded } of encodedResults) {
     const assetName = `${themeId}-${clawdAssetSlug(motionId, usedSlugs)}.webp`;
     assetsByMotion[motionId] = assetName;
     assets[assetName] = encoded.buffer;
     assetReports.push({ motionId, file: assetName, frameCount: encoded.frameCount, width: encoded.width, height: encoded.height, byteLength: encoded.buffer.byteLength, delays: encoded.delays });
   }
-  progress(onProgress, CLAWD_STAGES[1], 'completed', { assets: assetReports.length, cacheHits: cacheStats.hits, cacheMisses: cacheStats.misses });
+  progress(onProgress, CLAWD_STAGES[1], 'completed', { assets: assetReports.length, cacheHits: cacheStats.hits, cacheMisses: cacheStats.misses, concurrency: encodingConcurrency });
   checkCancelled(signal);
 
   progress(onProgress, CLAWD_STAGES[2], 'started');
@@ -787,6 +958,10 @@ module.exports = {
   ASSET_CACHE_SCHEMA_VERSION,
   AssetCacheError,
   CLAWD_PACKAGE_LIMIT,
+  DEFAULT_CLAWD_ENCODING_CONCURRENCY,
+  MAX_RGBA_FRAME_BYTES,
+  MAX_RGBA_FRAME_DIMENSION,
+  RGBA_FRAME_COMPRESSION,
   CacheError,
   CacheStore,
   DEFAULT_CACHE_LIMIT,
@@ -810,6 +985,7 @@ module.exports = {
   createClawdPreview,
   createCodexPreview,
   createTargetPreview,
+  decodeCompressedRgbaFrame,
   decodeAsset,
   createCacheKey,
   encodeAsset,

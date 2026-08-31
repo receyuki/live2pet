@@ -1,9 +1,11 @@
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const test = require('node:test');
+const { deflateSync } = require('node:zlib');
 
 const {
   CLAWD_PACKAGE_LIMIT,
+  DEFAULT_CLAWD_ENCODING_CONCURRENCY,
   AssetCacheError,
   CacheStore,
   PackageBuildError,
@@ -19,6 +21,7 @@ const {
   createCodexPreview,
   createTargetPreview,
   createCodexPetZip,
+  decodeCompressedRgbaFrame,
   decodeAsset,
   encodeAnimatedWebp,
   encodeAsset,
@@ -123,7 +126,13 @@ test('builds a guide-shaped Clawd theme package from captured Motion frames', as
   assert.deepEqual(events.find((event) => event.stage === 'report' && event.status === 'completed'), {
     stage: 'report', status: 'completed', packageByteLength: result.package.byteLength, previewReady: true,
   });
-  assert.deepEqual(events.map(({ stage, status }) => `${stage}:${status}`), ['validate:started', 'validate:completed', 'encode:started', 'encode:completed', 'manifest:started', 'manifest:completed', 'preview:started', 'preview:completed', 'package:started', 'package:completed', 'report:started', 'report:completed']);
+  assert.deepEqual(events.filter(({ status }) => status === 'started' || status === 'completed').map(({ stage, status }) => `${stage}:${status}`), ['validate:started', 'validate:completed', 'encode:started', 'encode:completed', 'manifest:started', 'manifest:completed', 'preview:started', 'preview:completed', 'package:started', 'package:completed', 'report:started', 'report:completed']);
+  const motionStarted = events.filter(({ stage, status }) => stage === 'encode' && status === 'motion-started');
+  const motionCompleted = events.filter(({ stage, status }) => stage === 'encode' && status === 'motion-completed');
+  assert.equal(DEFAULT_CLAWD_ENCODING_CONCURRENCY, 2);
+  assert.deepEqual(motionStarted.map(({ motionId }) => motionId), ['idle', 'thinking', 'working', 'error', 'attention']);
+  assert.deepEqual(motionCompleted.map(({ motionId }) => motionId).sort(), ['attention', 'error', 'idle', 'thinking', 'working']);
+  assert.equal(events.at(-1).status, 'completed');
   const zip = require('@zip.js/zip.js');
   const reader = new zip.ZipReader(new zip.Uint8ArrayReader(result.package.buffer));
   const entries = await reader.getEntries();
@@ -137,6 +146,65 @@ test('builds a guide-shaped Clawd theme package from captured Motion frames', as
     'demo-theme/assets/demo-theme-working.webp',
   ]);
   await reader.close();
+});
+
+test('builds Clawd themes from deflate-compressed RGBA frame transport', async () => {
+  const rawFrames = clawdFrames();
+  const compressedFrames = Object.fromEntries(Object.entries(rawFrames).map(([motionId, frameSet]) => [motionId, {
+    ...frameSet,
+    frames: frameSet.frames.map((frame) => ({
+      width: frame.width,
+      height: frame.height,
+      rgbaDeflate: deflateSync(Buffer.from(frame.rgba)),
+      compression: 'deflate',
+    })),
+  }]));
+  const result = await buildClawdTheme(
+    { mapping: clawdMapping(), framesByMotion: compressedFrames, metadata: { id: 'compressed-theme', name: 'Compressed Theme' } },
+    { sharpFactory: clawdSharpFactory(), encodingConcurrency: 1 },
+  );
+  assert.equal(result.target, 'clawd');
+  assert.equal(result.assets.length, 5);
+  assert.equal(result.validation.ok, true);
+  assert.deepEqual(result.assets.map((asset) => asset.motionId), Object.keys(rawFrames));
+});
+
+test('rejects malformed or oversized deflate RGBA frames before WebP encoding', async () => {
+  const frames = clawdFrames();
+  frames.idle.frames[0] = {
+    width: 2,
+    height: 2,
+    rgbaDeflate: deflateSync(Buffer.alloc(17)),
+    compression: 'deflate',
+  };
+  await assert.rejects(
+    () => buildClawdTheme({ mapping: clawdMapping(), framesByMotion: frames }, { sharpFactory: clawdSharpFactory(), encodingConcurrency: 1 }),
+    (error) => error instanceof PackageBuildError && error.code === 'RGBA_FRAME_SIZE_MISMATCH',
+  );
+  const invalidCompression = clawdFrames();
+  invalidCompression.idle.frames[0] = {
+    width: 2,
+    height: 2,
+    rgbaDeflate: deflateSync(Buffer.alloc(16)),
+    compression: 'deflate-raw',
+  };
+  await assert.rejects(
+    () => buildClawdTheme({ mapping: clawdMapping(), framesByMotion: invalidCompression }, { sharpFactory: clawdSharpFactory(), encodingConcurrency: 1 }),
+    (error) => error instanceof PackageBuildError && error.code === 'INVALID_RGBA_FRAME',
+  );
+  await assert.rejects(
+    () => decodeCompressedRgbaFrame({ width: 2, height: 2, rgbaDeflate: Uint8Array.from([1, 2, 3]), compression: 'deflate' }),
+    (error) => error instanceof PackageBuildError && error.code === 'RGBA_DECOMPRESSION_FAILED',
+  );
+  const signal = {
+    aborted: false,
+    addEventListener(_event, listener) { this.aborted = true; listener(); },
+    removeEventListener() {},
+  };
+  await assert.rejects(
+    () => decodeCompressedRgbaFrame({ width: 2, height: 2, rgbaDeflate: deflateSync(Buffer.alloc(16)), compression: 'deflate' }, { signal }),
+    (error) => error instanceof PackageBuildError && error.code === 'BUILD_CANCELLED',
+  );
 });
 
 test('rejects missing Clawd captures and oversized theme archives', async () => {
@@ -159,6 +227,49 @@ test('rejects missing Clawd captures and oversized theme archives', async () => 
     (error) => error instanceof PackageBuildError && error.code === 'CLAWD_PACKAGE_TOO_LARGE' && error.details.maxBytes === 10,
   );
   assert.equal(CLAWD_PACKAGE_LIMIT, 83886080);
+});
+
+test('encodes Clawd Motion assets with bounded concurrent workers and stable output order', async () => {
+  const frames = clawdFrames();
+  const motionIds = Object.keys(frames);
+  const started = [];
+  const completed = [];
+  const events = [];
+  let active = 0;
+  let maxActive = 0;
+  const sharpFactory = (input) => ({
+    webp() {
+      const motionIndex = input[0];
+      started.push(motionIndex);
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      return {
+        toBuffer: async () => {
+          await new Promise((resolve) => setTimeout(resolve, motionIndex === 0 ? 20 : 5));
+          active -= 1;
+          completed.push(motionIndex);
+          return { data: Buffer.from(`RIFF-concurrent-${motionIndex}`), info: { width: 2, height: 2, pages: 2 } };
+        },
+      };
+    },
+  });
+
+  const result = await buildClawdTheme(
+    { mapping: clawdMapping(), framesByMotion: frames, metadata: { id: 'concurrent-theme', name: 'Concurrent Theme' } },
+    { sharpFactory, encodingConcurrency: 2, onProgress: (event) => events.push(event) },
+  );
+
+  assert.equal(maxActive, 2);
+  assert.deepEqual(started, [0, 1, 2, 3, 4]);
+  assert.notDeepEqual(completed, started);
+  assert.deepEqual(result.assets.map((asset) => asset.motionId), motionIds);
+  assert.deepEqual(result.assets.map((asset) => asset.file), motionIds.map((motionId) => `concurrent-theme-${motionId}.webp`));
+  const motionEvents = events.filter(({ stage, status }) => stage === 'encode' && ['motion-started', 'motion-completed'].includes(status));
+  assert.equal(motionEvents.length, motionIds.length * 2);
+  assert.equal(events.filter(({ stage, status }) => stage === 'encode' && status === 'motion-started').length, motionIds.length);
+  assert.equal(events.filter(({ stage, status }) => stage === 'encode' && status === 'motion-completed').length, motionIds.length);
+  assert.deepEqual(events.find(({ stage, status }) => stage === 'encode' && status === 'started'), { stage: 'encode', status: 'started', motions: motionIds.length, total: motionIds.length, concurrency: 2 });
+  assert.equal(events.find(({ stage, status }) => stage === 'encode' && status === 'completed').concurrency, 2);
 });
 
 test('builds a deterministic Codex atlas handoff with progress stages', async () => {
