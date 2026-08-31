@@ -77,7 +77,10 @@ preview follows manifest fallbacks; it does not yet replace a full Clawd runtime
 behavior simulation. The same artifact can be installed from the Mapper through
 an explicit confirmation step. The install control offers cancel, upgrade, and
 side-by-side conflict policies and uses the platform adapter's default target
-root; the renderer never supplies an arbitrary filesystem path.
+root by default. The Desktop App can also open a native folder picker; the
+renderer receives only a short-lived opaque location id while the selected path
+stays in the main process. Browser-only sessions continue to use download/export
+instead of installation.
 
 Build progress is streamed over a versioned, path-redacted IPC event channel and
 shown in the Mapper for both targets. Live2D capture stays sequential on the
