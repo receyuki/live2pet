@@ -2,6 +2,8 @@
 
 `@live2pet/app-host` is the Electron main/preload contract. It intentionally contains no Electron import, so protocol tests can run in CI without downloading a platform binary.
 
+`inspectSource` accepts only a selected local `inputPath` and an optional filename-safe `projectId`. The injected main-process service calls the shared Source Package inspector and may provide an App-owned bounded cache. The response is the same versioned, binary-free normalized manifest returned by the CLI, with a short `inspect` progress event and warnings. Absolute paths and binary values are rejected or redacted at the App boundary; the renderer never receives PCK resource bytes through this method.
+
 The main process creates one router and registers it on the fixed `live2pet:app` channel:
 
 ```js

@@ -76,6 +76,19 @@ test('inspect operation reuses the normalized Source Package contract', () => {
   assert.equal(output.includes(root), false);
 });
 
+test('inspect operation can persist source-derived results in the bounded cache', () => {
+  const root = modernFixture();
+  const cacheDir = temporaryDirectory();
+  const output = execFileSync(process.execPath, [CLI, 'inspect', '--input', root, '--cache-dir', cacheDir], { encoding: 'utf8' });
+  const response = JSON.parse(output);
+  assert.equal(response.ok, true);
+  const status = JSON.parse(execFileSync(process.execPath, [CLI, 'cache-status', '--cache-dir', cacheDir], { encoding: 'utf8' }));
+  assert.equal(status.ok, true);
+  assert.equal(status.result.entryCount, 1);
+  assert.equal(status.result.entries[0].artifact, 'source-inspection');
+  assert.equal(status.result.entries[0].sourceFingerprint, response.result.source.fingerprint);
+});
+
 test('runtime-diagnose operation redacts the selected absolute path', () => {
   const root = temporaryDirectory();
   const runtime = path.join(root, 'live2dcubismcore.min.js');

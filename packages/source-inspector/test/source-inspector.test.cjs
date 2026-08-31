@@ -6,7 +6,8 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const test = require('node:test');
 
-const { SourceInspectionError, inspectSourcePackage } = require('../src/index.cjs');
+const { CacheStore } = require('../../package-build/src/cache.cjs');
+const { SourceInspectionError, decodeInspectionCache, inspectSourcePackage } = require('../src/index.cjs');
 
 function temporaryDirectory() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-inspector-'));
@@ -200,6 +201,16 @@ test('CLI emits a stable JSON envelope without echoing the absolute input path',
   assert.equal(output.includes(fixture.root), false);
 });
 
+test('standalone inspector CLI accepts the shared bounded cache option', () => {
+  const fixture = modernFixture();
+  const cacheRoot = temporaryDirectory();
+  const cli = path.join(__dirname, '..', 'bin', 'live2pet-inspect.cjs');
+  const output = execFileSync(process.execPath, [cli, '--input', fixture.root, '--cache-dir', cacheRoot], { encoding: 'utf8' });
+  const response = JSON.parse(output);
+  assert.equal(response.ok, true);
+  assert.equal(fs.readdirSync(cacheRoot).filter((name) => name.endsWith('.bin')).length, 1);
+});
+
 test('CLI returns typed JSON errors and a non-zero exit code', () => {
   const fixture = pckFixture({ flags: 1 });
   const cli = path.join(__dirname, '..', 'bin', 'live2pet-inspect.cjs');
@@ -226,4 +237,22 @@ test('fingerprints change when a source resource changes', () => {
   const after = inspectSourcePackage(fixture.root).source.fingerprint;
   assert.notEqual(after, before);
   assert.equal(crypto.createHash('sha256').update(after).digest('hex').length, 64);
+});
+
+test('stores PCK extraction in a bounded cache without changing the normalized manifest', () => {
+  const fixture = pckFixture();
+  const cacheRoot = temporaryDirectory();
+  const cache = new CacheStore({ rootDir: cacheRoot, maxBytes: 1024 * 1024 });
+  const first = inspectSourcePackage(fixture.pck, { cache, projectId: 'synthetic-pck' });
+  const status = cache.status({ projectId: 'synthetic-pck' });
+  assert.equal(status.entryCount, 1);
+  assert.equal(status.entries[0].artifact, 'source-inspection');
+  assert.equal(status.entries[0].sourceFingerprint, first.source.fingerprint);
+  const cached = cache.get(status.entries[0].key);
+  assert.ok(cached);
+  assert.equal(decodeInspectionCache(cached.data).resources.length, 5);
+  const second = inspectSourcePackage(fixture.pck, { cache, projectId: 'synthetic-pck' });
+  assert.deepEqual(second, first);
+  assert.equal(JSON.stringify(second).includes(fixture.root), false);
+  assert.ok(cached.data.byteLength > JSON.stringify(first).length);
 });

@@ -17,6 +17,13 @@ the future packager resource path, but the Forge CLI is not a workspace
 dependency yet because its current rebuild chain is rejected by the repository's
 exotic-subdependency policy.
 
+The main process also injects the shared Source Package inspector into the typed
+`inspectSource` method. Standard directories and supported Destiny Child PCK
+files therefore produce the same normalized manifest as the CLI. PCK-derived
+resources are retained only in an App-owned bounded cache under the Electron
+user-data directory; the renderer receives metadata and warnings, never source
+or runtime bytes.
+
 The shared Mapper exposes both Codex Pet and Clawd Theme build actions. Clawd
 captures mapped Motion frames in the renderer and sends them through the same
 typed `buildProject` service; the returned ZIP is available only through an

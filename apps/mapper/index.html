@@ -1591,6 +1591,38 @@
       return { code: error?.code || "INSPECTION_FAILED", message: error?.message || String(error) };
     }
 
+    function desktopInspectionApi() {
+      return window.live2pet && typeof window.live2pet.inspectSource === "function" ? window.live2pet : null;
+    }
+
+    function localFilePath(file) {
+      const value = file?.path;
+      return typeof value === "string" && /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value) ? value : null;
+    }
+
+    function selectedSourcePath(files, options = {}) {
+      if (typeof options.sourcePath === "string" && options.sourcePath.trim()) return options.sourcePath.trim();
+      const list = [...(files || [])];
+      if (list.length === 1 && /\.pck$/i.test(list[0]?.name || "")) return localFilePath(list[0]);
+      const first = list.find(file => localFilePath(file) && file.webkitRelativePath);
+      if (!first) return null;
+      const absolute = localFilePath(first).replaceAll("\\", "/");
+      const relative = String(first.webkitRelativePath).replaceAll("\\", "/").replace(/^\/+/, "");
+      const suffix = `/${relative}`;
+      return absolute.endsWith(suffix) ? absolute.slice(0, -suffix.length) || "/" : null;
+    }
+
+    async function inspectThroughDesktop(files, options = {}) {
+      const api = desktopInspectionApi();
+      const inputPath = selectedSourcePath(files, options);
+      if (!api || !inputPath) return null;
+      const response = await api.inspectSource({ inputPath, projectId: projectId(options.modelName || files?.[0]?.name || "source") });
+      if (!response || response.ok !== true || !response.result) {
+        throw browserInspectionError(response?.error?.code || "INSPECTION_FAILED", response?.error?.message || "The App Source Package inspection was rejected.");
+      }
+      return response.result;
+    }
+
     function setRuntimeStatus(message, level = "") {
       const status = $("runtimeStatus");
       status.className = `runtime-status${level ? ` ${level}` : ""}`;
@@ -2239,15 +2271,18 @@
       try {
         $("stageMessage").classList.remove("hidden");
         $("stageMessage").textContent = I18n.t("source.stage.inspecting", { name: file.name });
+        const inspectionManifest = await inspectThroughDesktop([file], { sourcePath: localFilePath(file), modelName: file.name.replace(/\.pck$/i, "") });
         const unpacked = await unpackDestinyChildPck(file);
         await loadFolder(unpacked.files,{
           modelName:file.name.replace(/\.pck$/i,""),
           sourceName:file.name,
           sourceFile:file.name,
+          sourcePath:localFilePath(file),
           source:"destiny-child-pck",
           entryCount:unpacked.count,
           version:unpacked.version,
           fingerprint:await fingerprintBrowser([file]),
+          ...(inspectionManifest ? { inspectionManifest } : {}),
           loadMessage:I18n.t("source.load.inspected", { name: file.name, count: unpacked.count, version: unpacked.version.toFixed(1) })
         });
       } catch (error) {
@@ -2266,6 +2301,8 @@
         const list = [...files];
         activeSourceFiles = list;
         activeSourceOptions = { ...options };
+        const inspectionManifest = await inspectThroughDesktop(list, options);
+        if (inspectionManifest) activeSourceOptions.inspectionManifest = inspectionManifest;
         const rootless = file => (file.webkitRelativePath || file.name).split("/").slice(1).join("/") || file.name;
         const fileMap = new Map(list.map(file => [rootless(file),file]));
         const model3Files = list.filter(file => file.name.toLowerCase().endsWith(".model3.json"));
@@ -2288,7 +2325,7 @@
         const modelName = options.modelName || folderName || (cubism !== 2
           ? modelFile.name.replace(/\.model3\.json$/i,"")
           : modelPath.split("/").slice(-2,-1)[0] || modelFile.name.replace(/\.json$/i,""));
-        const inspection = await buildBrowserInspection(list, modelFile, modelPath, original, cubism, {
+        const inspection = inspectionManifest || await buildBrowserInspection(list, modelFile, modelPath, original, cubism, {
           modelName,
           sourceName: options.sourceName,
           source: options.source,

@@ -112,7 +112,7 @@ function parseArgs(argv = []) {
 
 function operationSpec(operation) {
   if (operation === 'version') return { usage: 'live2pet version [--pretty]' };
-  if (operation === 'inspect') return { usage: 'live2pet inspect --input <source-directory-or-pck> [--pretty]' };
+  if (operation === 'inspect') return { usage: 'live2pet inspect --input <source-directory-or-pck> [--cache-dir <cache-directory>] [--pretty]' };
   if (operation === 'runtime-diagnose') return { usage: 'live2pet runtime-diagnose --input <core-file-or-sdk-directory> [--pretty]' };
   if (operation === 'project-validate') return { usage: 'live2pet project-validate --input <project.live2pet> [--pretty]' };
   if (operation === 'project-recover') return { usage: 'live2pet project-recover --input <project.live2pet> [--pretty]' };
@@ -363,7 +363,8 @@ async function execute(options = {}) {
 
   if (operation === 'inspect') {
     if (!options.input) fail('INPUT_REQUIRED', operationSpec(operation).usage);
-    const result = inspectSourcePackage(options.input);
+    const cache = options.cacheDir ? new CacheStore({ rootDir: options.cacheDir }) : null;
+    const result = inspectSourcePackage(options.input, cache ? { cache } : undefined);
     return envelope(operation, operationId, { ok: true, progress: [{ stage: 'inspect', status: 'completed' }], warnings: result.warnings, result });
   }
 

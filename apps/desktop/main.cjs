@@ -9,13 +9,16 @@ const {
   createAppWindowOptions,
 } = require('../../packages/app-host/src/index.cjs');
 const { startMapperSessionHost } = require('../../packages/mapper-session/src/index.cjs');
-const { buildProjectTargets } = require('../../packages/package-build/src/index.cjs');
+const { CacheStore, buildProjectTargets } = require('../../packages/package-build/src/index.cjs');
 const { installPackage } = require('../../packages/installation/src/index.cjs');
+const { inspectSourcePackage } = require('../../packages/source-inspector/src/index.cjs');
 
 const DEVELOPMENT_MAPPER_PATH = path.resolve(__dirname, '../mapper/index.html');
 const PACKAGED_MAPPER_PATH = path.join(process.resourcesPath, 'mapper-dist', 'index.html');
+const SOURCE_CACHE_LIMIT = 1024 * 1024 * 1024;
 let mainWindow = null;
 let route = null;
+let sourceCache = null;
 
 function mapperPath() {
   return app.isPackaged ? PACKAGED_MAPPER_PATH : DEVELOPMENT_MAPPER_PATH;
@@ -33,9 +36,20 @@ function mapperHostFactory(options = {}) {
   });
 }
 
+function sourceInspectionService({ inputPath, projectId } = {}) {
+  if (!sourceCache) {
+    sourceCache = new CacheStore({
+      rootDir: path.join(app.getPath('userData'), 'cache', 'source-inspection'),
+      maxBytes: SOURCE_CACHE_LIMIT,
+    });
+  }
+  return inspectSourcePackage(inputPath, { cache: sourceCache, projectId });
+}
+
 function registerIpc() {
   route = createAppIpcRouter({
     mapperHostFactory,
+    sourceInspectionService,
     buildProjectService: buildProjectTargets,
     installPackageService: installPackage,
     onBuildProgress: (event) => {

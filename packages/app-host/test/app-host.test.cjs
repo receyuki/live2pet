@@ -1,8 +1,14 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const test = require('node:test');
 
 const { createProject } = require('../../project/src/index.cjs');
+const { CacheStore } = require('../../package-build/src/cache.cjs');
 const { buildProjectTargets } = require('../../package-build/src/index.cjs');
+const { inspectSourcePackage } = require('../../source-inspector/src/index.cjs');
 
 const {
   APP_BUILD_ARTIFACT_CHUNK_BYTES,
@@ -13,6 +19,7 @@ const {
   createAppIpcRouter,
   createAppPreloadApi,
   createAppWindowOptions,
+  normalizeInspectRequest,
   normalizeInstallRequest,
   normalizeBuildProgressEvent,
   normalizeRequest,
@@ -38,8 +45,40 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.equal(APP_IPC_METHODS.includes('buildProject'), true);
   assert.equal(APP_IPC_METHODS.includes('getBuildArtifact'), true);
   assert.equal(APP_IPC_METHODS.includes('installArtifact'), true);
+  assert.equal(APP_IPC_METHODS.includes('inspectSource'), true);
+  assert.deepEqual(normalizeInspectRequest({ inputPath: '/tmp/source', projectId: 'fixture' }), { inputPath: '/tmp/source', projectId: 'fixture' });
+  assert.throws(() => normalizeInspectRequest({ inputPath: '/tmp/source', shell: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_INSPECT_REQUEST');
   assert.deepEqual(normalizeInstallRequest({ artifactId: 'artifact', target: 'codex-pet', confirmInstall: true }), { artifactId: 'artifact', target: 'codex-pet', conflict: 'cancel', confirmInstall: true });
   assert.throws(() => normalizeInstallRequest({ artifactId: 'artifact', target: 'codex-pet' }), (error) => error instanceof AppHostError && error.code === 'INSTALL_AUTHORIZATION_REQUIRED');
+});
+
+test('routes the same normalized synthetic Source Package manifest as the CLI and caches App-side PCK extraction', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-app-inspect-'));
+  fs.mkdirSync(path.join(root, 'hero', 'motions'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'hero', 'hero.model3.json'), JSON.stringify({
+    Version: 3,
+    FileReferences: {
+      Moc: 'hero.moc3',
+      Textures: ['hero.png'],
+      Motions: { Main: [{ File: 'motions/idle.motion3.json', Name: 'Idle' }] },
+    },
+  }));
+  fs.writeFileSync(path.join(root, 'hero', 'hero.moc3'), Buffer.from('moc-fixture'));
+  fs.writeFileSync(path.join(root, 'hero', 'hero.png'), Buffer.from('png-fixture'));
+  fs.writeFileSync(path.join(root, 'hero', 'motions', 'idle.motion3.json'), JSON.stringify({ Meta: { Duration: 1 } }));
+  const cache = new CacheStore({ rootDir: fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-app-cache-')), maxBytes: 1024 * 1024 });
+  const router = createAppIpcRouter({
+    sourceInspectionService: ({ inputPath, projectId }) => inspectSourcePackage(inputPath, { cache, projectId }),
+  });
+  const appResponse = await router({ protocolVersion: 1, method: 'inspectSource', args: [{ inputPath: root, projectId: 'app-inspect' }] });
+  assert.equal(appResponse.ok, true);
+  assert.deepEqual(appResponse.warnings, appResponse.result.warnings);
+  const cliPath = path.join(__dirname, '../../cli/bin/live2pet.cjs');
+  const cliResponse = JSON.parse(execFileSync(process.execPath, [cliPath, 'inspect', '--input', root], { encoding: 'utf8' }));
+  assert.equal(cliResponse.ok, true);
+  assert.deepEqual(appResponse.result, cliResponse.result);
+  assert.equal(JSON.stringify(appResponse).includes(root), false);
+  assert.equal(cache.status({ projectId: 'app-inspect' }).entryCount, 1);
 });
 
 test('routes a single Mapper Session without exposing its client or token in the launch descriptor', async () => {
@@ -203,11 +242,17 @@ test('rejects malformed or unavailable App Package Build requests with typed err
   const installUnavailable = await withoutService({ protocolVersion: 1, method: 'installArtifact', args: [{ artifactId: 'artifact', target: 'codex-pet', confirmInstall: true }] });
   assert.equal(installUnavailable.ok, false);
   assert.equal(installUnavailable.error.code, 'APP_INSTALL_UNAVAILABLE');
+  const inspectionUnavailable = await withoutService({ protocolVersion: 1, method: 'inspectSource', args: [{ inputPath: '/tmp/source' }] });
+  assert.equal(inspectionUnavailable.ok, false);
+  assert.equal(inspectionUnavailable.error.code, 'APP_INSPECTION_UNAVAILABLE');
 
   const router = createAppIpcRouter({ mapperHostFactory: async () => fakeHost(), buildProjectService: async () => ({}) });
   const malformed = await router({ protocolVersion: 1, method: 'buildProject', args: [{ project: {}, renderer: 'not-allowed' }] });
   assert.equal(malformed.ok, false);
   assert.equal(malformed.error.code, 'INVALID_BUILD_REQUEST');
+  const malformedInspection = await createAppIpcRouter({ sourceInspectionService: async () => ({}) })({ protocolVersion: 1, method: 'inspectSource', args: [{ inputPath: '/tmp/source', extra: true }] });
+  assert.equal(malformedInspection.ok, false);
+  assert.equal(malformedInspection.error.code, 'INVALID_INSPECT_REQUEST');
 });
 
 test('routes a real synthetic Codex build through the App seam and returns a downloadable artifact handle', async () => {
@@ -386,6 +431,7 @@ test('preload exposes only typed methods and the window options keep Electron sa
   await api.getBuildArtifact('fixture-artifact');
   await api.getBuildArtifact('fixture-artifact', 1024);
   await api.installArtifact({ artifactId: 'fixture-artifact', target: 'codex-pet', confirmInstall: true });
+  await api.inspectSource({ inputPath: '/tmp/source' });
   assert.equal(calls[0][0], APP_IPC_CHANNEL);
   assert.deepEqual(calls[0][1], { protocolVersion: 1, method: 'getVersion', args: [] });
   assert.deepEqual(calls[1][1], { protocolVersion: 1, method: 'startMapperSession', args: [{}] });
@@ -393,6 +439,7 @@ test('preload exposes only typed methods and the window options keep Electron sa
   assert.deepEqual(calls[3][1], { protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'fixture-artifact', offset: 0 }] });
   assert.deepEqual(calls[4][1], { protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'fixture-artifact', offset: 1024 }] });
   assert.deepEqual(calls[5][1], { protocolVersion: 1, method: 'installArtifact', args: [{ artifactId: 'fixture-artifact', target: 'codex-pet', confirmInstall: true }] });
+  assert.deepEqual(calls[6][1], { protocolVersion: 1, method: 'inspectSource', args: [{ inputPath: '/tmp/source' }] });
   assert.equal(Object.hasOwn(api, 'ipcRenderer'), false);
   const options = createAppWindowOptions({ preload: '/app/preload.cjs' });
   assert.equal(options.webPreferences.nodeIntegration, false);

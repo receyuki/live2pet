@@ -7,6 +7,7 @@ const APP_IPC_PROTOCOL_VERSION = 1;
 const APP_IPC_CHANNEL = 'live2pet:app';
 const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';
 const APP_BUILD_ARTIFACT_CHUNK_BYTES = 1024 * 1024;
+const APP_SOURCE_INSPECTION_PROGRESS_STAGE = 'inspect';
 const BUILD_PROGRESS_FIELDS = Object.freeze([
   'target',
   'stage',
@@ -47,6 +48,7 @@ const BUILD_PROGRESS_FIELDS = Object.freeze([
 ]);
 const APP_IPC_METHODS = Object.freeze([
   'getVersion',
+  'inspectSource',
   'startMapperSession',
   'getMapperProject',
   'updateMapperProject',
@@ -129,6 +131,40 @@ function normalizeBuildRequest(value) {
     metadataByTarget: value.metadataByTarget || {},
     optionsByTarget: value.optionsByTarget || {},
   };
+}
+
+function normalizeInspectRequest(value) {
+  if (!isRecord(value)) fail('INVALID_INSPECT_REQUEST', 'App Source Package inspection input must be an object.');
+  const allowed = new Set(['inputPath', 'projectId']);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) fail('INVALID_INSPECT_REQUEST', `App Source Package inspection input contains unsupported fields: ${unknown.join(', ')}.`);
+  if (typeof value.inputPath !== 'string' || !value.inputPath.trim() || value.inputPath.length > 4096 || value.inputPath.includes('\0')) fail('INVALID_INSPECT_REQUEST', 'App Source Package inspection input requires a valid local inputPath.');
+  if (value.projectId !== undefined && (typeof value.projectId !== 'string' || !value.projectId.trim() || value.projectId.length > 96 || !/^[a-z0-9][a-z0-9._-]{0,95}$/i.test(value.projectId.trim()))) fail('INVALID_INSPECT_REQUEST', 'projectId must be a filename-safe identifier when provided.');
+  return {
+    inputPath: value.inputPath.trim(),
+    ...(value.projectId === undefined ? {} : { projectId: value.projectId.trim() }),
+  };
+}
+
+function sanitizeInspectionValue(value, depth = 0) {
+  if (Buffer.isBuffer(value) || value instanceof ArrayBuffer || ArrayBuffer.isView(value)) fail('INVALID_INSPECT_RESULT', 'App Source Package inspection results cannot contain binary data.');
+  if (typeof value === 'string') return /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value) ? '<redacted-path>' : value.slice(0, 4096);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'boolean' || value === null) return value;
+  if (value === undefined) return null;
+  if (depth > 8) fail('INVALID_INSPECT_RESULT', 'App Source Package inspection results are nested too deeply.');
+  if (Array.isArray(value)) {
+    if (value.length > 10000) fail('INVALID_INSPECT_RESULT', 'App Source Package inspection results contain too many entries.');
+    return value.map((item) => sanitizeInspectionValue(item, depth + 1));
+  }
+  if (!isRecord(value)) fail('INVALID_INSPECT_RESULT', 'App Source Package inspection results contain an unsupported value.');
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizeInspectionValue(item, depth + 1)]));
+}
+
+function summarizeSourceInspection(result) {
+  const sanitized = sanitizeInspectionValue(result);
+  if (!isRecord(sanitized) || sanitized.schemaVersion !== 1 || !isRecord(sanitized.source) || !isRecord(sanitized.model) || !Array.isArray(sanitized.motions) || !Array.isArray(sanitized.expressions) || !Array.isArray(sanitized.resources) || !Array.isArray(sanitized.warnings)) fail('INVALID_INSPECT_RESULT', 'App Source Package inspection did not return the versioned normalized manifest contract.');
+  return sanitized;
 }
 
 function normalizeInstallRequest(value) {
@@ -236,8 +272,9 @@ function typedError(error) {
   };
 }
 
-function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, buildProjectService = null, installPackageService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
+function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, sourceInspectionService = null, buildProjectService = null, installPackageService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
   if (typeof mapperHostFactory !== 'function') fail('INVALID_APP_ROUTER', 'mapperHostFactory must be a function.');
+  if (sourceInspectionService !== null && typeof sourceInspectionService !== 'function') fail('INVALID_APP_ROUTER', 'sourceInspectionService must be a function when provided.');
   if (buildProjectService !== null && typeof buildProjectService !== 'function') fail('INVALID_APP_ROUTER', 'buildProjectService must be a function when provided.');
   if (installPackageService !== null && typeof installPackageService !== 'function') fail('INVALID_APP_ROUTER', 'installPackageService must be a function when provided.');
   if (onBuildProgress !== null && typeof onBuildProgress !== 'function') fail('INVALID_APP_ROUTER', 'onBuildProgress must be a function when provided.');
@@ -263,6 +300,18 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, buildP
     try {
       const normalized = normalizeRequest(request);
       if (normalized.method === 'getVersion') return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: { appVersion, protocolVersion: APP_IPC_PROTOCOL_VERSION, methods: [...APP_IPC_METHODS] } };
+      if (normalized.method === 'inspectSource') {
+        if (!sourceInspectionService) fail('APP_INSPECTION_UNAVAILABLE', 'The App Source Package inspection service is not configured.');
+        const input = normalizeInspectRequest(normalized.args[0]);
+        const inspected = summarizeSourceInspection(await sourceInspectionService(input));
+        return {
+          protocolVersion: APP_IPC_PROTOCOL_VERSION,
+          ok: true,
+          progress: [{ stage: APP_SOURCE_INSPECTION_PROGRESS_STAGE, status: 'completed' }],
+          warnings: inspected.warnings,
+          result: inspected,
+        };
+      }
       if (normalized.method === 'startMapperSession') {
         if (activeHost) fail('MAPPER_SESSION_ACTIVE', 'A Mapper Session is already active. Close it before starting another session.');
         const [options = {}] = normalized.args;
@@ -390,6 +439,7 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL } = {}) {
   };
   return Object.freeze({
     getVersion: () => invoke('getVersion'),
+    inspectSource: (input) => invoke('inspectSource', input),
     startMapperSession: (options) => invoke('startMapperSession', options),
     getMapperProject: () => invoke('getMapperProject'),
     updateMapperProject: (project) => invoke('updateMapperProject', project),
@@ -425,6 +475,7 @@ function createAppWindowOptions({ preload, width = 1280, height = 860, show = fa
 module.exports = {
   APP_BUILD_ARTIFACT_CHUNK_BYTES,
   APP_BUILD_PROGRESS_CHANNEL,
+  APP_SOURCE_INSPECTION_PROGRESS_STAGE,
   APP_IPC_CHANNEL,
   APP_IPC_METHODS,
   APP_IPC_PROTOCOL_VERSION,
@@ -434,6 +485,7 @@ module.exports = {
   createAppPreloadApi,
   createAppWindowOptions,
   normalizeRequest,
+  normalizeInspectRequest,
   normalizeBuildRequest,
   normalizeInstallRequest,
   normalizeBuildProgressEvent,
@@ -442,4 +494,5 @@ module.exports = {
   summarizeBuildTargets,
   summarizeInstall,
   collectBuildArtifacts,
+  summarizeSourceInspection,
 };

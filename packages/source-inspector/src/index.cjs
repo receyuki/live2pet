@@ -6,6 +6,17 @@ const MAX_SOURCE_FILES = 10000;
 const MAX_PCK_BYTES = 512 * 1024 * 1024;
 const MAX_PCK_ENTRIES = 4096;
 const PCK_RECORD_SIZE = 25;
+const SOURCE_CACHE_SCHEMA_VERSION = 1;
+const SOURCE_CACHE_HEADER_BYTES = 4 * 1024 * 1024;
+const SOURCE_CACHE_KEY = Object.freeze({
+  runtimeVersion: 'source-inspector',
+  rendererVersion: 'none',
+  recipe: Object.freeze({ operation: 'inspect', schemaVersion: SOURCE_CACHE_SCHEMA_VERSION }),
+  targetProfile: 'source-package',
+  targetVersion: String(SOURCE_CACHE_SCHEMA_VERSION),
+  renderPreset: 'none',
+  artifact: 'source-inspection',
+});
 
 class SourceInspectionError extends Error {
   constructor(code, message, details = {}) {
@@ -39,6 +50,82 @@ function hashFiles(files) {
       hash.update('\0');
     }
   });
+}
+
+function normalizeCacheBytes(value) {
+  if (Buffer.isBuffer(value)) return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  if (value instanceof Uint8Array) return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  if (ArrayBuffer.isView(value)) return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  fail('INVALID_INSPECTION_CACHE', 'Source inspection cache data must be a byte buffer.');
+}
+
+function sourceCacheKey(sourceFingerprint) {
+  return { sourceFingerprint, ...SOURCE_CACHE_KEY };
+}
+
+function encodeInspectionCache({ manifest, buffers = new Map() } = {}) {
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) fail('INVALID_INSPECTION_CACHE', 'Source inspection cache requires a normalized manifest.');
+  if (!(buffers instanceof Map)) fail('INVALID_INSPECTION_CACHE', 'Source inspection cache resources must be a Map.');
+  const payloads = [];
+  let offset = 0;
+  const resources = [];
+  for (const [relative, value] of buffers.entries()) {
+    if (typeof relative !== 'string' || !relative.trim()) fail('INVALID_INSPECTION_CACHE', 'Source inspection cache resource paths must be non-empty.');
+    const bytes = normalizeCacheBytes(value);
+    const resource = {
+      path: normalizeReference(relative),
+      offset,
+      length: bytes.byteLength,
+      sha256: hashBuffer(bytes),
+    };
+    resources.push(resource);
+    payloads.push(bytes);
+    offset += bytes.byteLength;
+  }
+  const header = Buffer.from(JSON.stringify({
+    schemaVersion: SOURCE_CACHE_SCHEMA_VERSION,
+    kind: 'source-inspection',
+    manifest,
+    resources,
+  }), 'utf8');
+  if (header.byteLength > SOURCE_CACHE_HEADER_BYTES) fail('SOURCE_CACHE_HEADER_TOO_LARGE', `Source inspection cache metadata exceeds the ${SOURCE_CACHE_HEADER_BYTES}-byte limit.`);
+  const prefix = Buffer.allocUnsafe(4);
+  prefix.writeUInt32LE(header.byteLength, 0);
+  return Buffer.concat([prefix, header, ...payloads]);
+}
+
+function decodeInspectionCache(value) {
+  const bytes = normalizeCacheBytes(value);
+  if (bytes.byteLength < 5) fail('INVALID_INSPECTION_CACHE', 'Source inspection cache data is truncated before its header.');
+  const headerLength = bytes.readUInt32LE(0);
+  if (!headerLength || headerLength > SOURCE_CACHE_HEADER_BYTES || headerLength + 4 > bytes.byteLength) fail('INVALID_INSPECTION_CACHE', 'Source inspection cache header length is invalid.');
+  let header;
+  try { header = JSON.parse(bytes.toString('utf8', 4, 4 + headerLength)); } catch (error) {
+    fail('INVALID_INSPECTION_CACHE', 'Source inspection cache header is not valid JSON.', { cause: String(error.message || error) });
+  }
+  if (!header || header.schemaVersion !== SOURCE_CACHE_SCHEMA_VERSION || header.kind !== 'source-inspection' || !header.manifest || typeof header.manifest !== 'object' || !Array.isArray(header.resources)) {
+    fail('INVALID_INSPECTION_CACHE', 'Source inspection cache header does not match the supported schema.');
+  }
+  const payloadLength = bytes.byteLength - 4 - headerLength;
+  const ranges = [];
+  for (const [index, resource] of header.resources.entries()) {
+    if (!resource || typeof resource.path !== 'string' || !resource.path || !Number.isSafeInteger(resource.offset) || resource.offset < 0 || !Number.isSafeInteger(resource.length) || resource.length < 0 || resource.offset + resource.length > payloadLength || typeof resource.sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(resource.sha256)) {
+      fail('INVALID_INSPECTION_CACHE', `Source inspection cache resource ${index} is invalid.`);
+    }
+    normalizeReference(resource.path);
+    ranges.push({ start: resource.offset, end: resource.offset + resource.length });
+  }
+  ranges.sort((left, right) => left.start - right.start);
+  for (let index = 1; index < ranges.length; index += 1) {
+    if (ranges[index].start < ranges[index - 1].end) fail('INVALID_INSPECTION_CACHE', 'Source inspection cache resources overlap.');
+  }
+  return { manifest: header.manifest, resources: header.resources.map((resource) => ({ ...resource })) };
+}
+
+function sourceCacheAvailable(cache) {
+  if (cache == null) return false;
+  if (!cache || typeof cache.get !== 'function' || typeof cache.put !== 'function') fail('INVALID_INSPECTION_CACHE', 'Source inspection cache must expose get() and put() methods.');
+  return true;
 }
 
 function normalizeReference(reference, baseDirectory = '') {
@@ -259,9 +346,9 @@ function inspectSettings(settings, view, cubism) {
   };
 }
 
-function inspectDirectory(root) {
-  const files = walkSourceDirectory(root);
-  const modelCandidates = files.filter((file) => /\.model3\.json$/i.test(file.relative) || /(^|\/)model\.json$/i.test(file.relative));
+function inspectDirectory(root, { files = null, fingerprint = null, withResources = false } = {}) {
+  const sourceFiles = files || walkSourceDirectory(root);
+  const modelCandidates = sourceFiles.filter((file) => /\.model3\.json$/i.test(file.relative) || /(^|\/)model\.json$/i.test(file.relative));
   if (!modelCandidates.length) fail('MODEL_CONFIG_NOT_FOUND', 'Source Package contains no model3.json or Cubism 2 model.json.');
   if (modelCandidates.length > 1) fail('AMBIGUOUS_MODEL_CONFIG', 'Source Package contains more than one model configuration.', { candidates: modelCandidates.map((file) => file.relative) });
 
@@ -274,11 +361,12 @@ function inspectDirectory(root) {
   const source = {
     kind: 'standard-directory',
     name: path.basename(root),
-    fingerprint: hashFiles(files),
-    fileCount: files.length,
+    fingerprint: fingerprint || hashFiles(sourceFiles),
+    fileCount: sourceFiles.length,
   };
-  const view = createSourceView({ files, configPath: config.relative, source });
-  return inspectSettings(settings, view, cubism);
+  const view = createSourceView({ files: sourceFiles, configPath: config.relative, source });
+  const manifest = inspectSettings(settings, view, cubism);
+  return withResources ? { manifest, buffers: new Map() } : manifest;
 }
 
 function bytesMatch(bytes, signature) {
@@ -293,8 +381,8 @@ function pckEntryType(bytes) {
   return 'unknown';
 }
 
-function parsePck(filePath) {
-  const bytes = fs.readFileSync(filePath);
+function parsePck(filePath, sourceBytes = null) {
+  const bytes = sourceBytes || fs.readFileSync(filePath);
   if (bytes.length > MAX_PCK_BYTES) fail('PCK_TOO_LARGE', `PCK exceeds the ${MAX_PCK_BYTES} byte inspection limit.`);
   if (bytes.length < 12 || !bytesMatch(bytes, [0x50, 0x43, 0x4b, 0x00])) fail('INVALID_PCK_HEADER', 'Not a Destiny Child PCK: missing PCK\\0 header.');
   const version = bytes.readFloatLE(4);
@@ -357,33 +445,75 @@ function parsePck(filePath) {
   return { version, count, entries, settings, buffers };
 }
 
-function inspectPck(filePath) {
-  const parsed = parsePck(filePath);
+function inspectPck(filePath, { bytes = null, fingerprint = null, withResources = false } = {}) {
+  const parsed = parsePck(filePath, bytes);
   const source = {
     kind: 'destiny-child-pck',
     name: path.basename(filePath),
-    fingerprint: hashBuffer(fs.readFileSync(filePath)),
+    fingerprint: fingerprint || hashBuffer(bytes || fs.readFileSync(filePath)),
     fileCount: parsed.buffers.size,
     entryCount: parsed.count,
     version: parsed.version,
   };
   const files = [...parsed.buffers.keys()].map((relative) => ({ relative, absolute: null }));
   const view = createSourceView({ files, buffers: parsed.buffers, configPath: 'model.json', source });
-  return inspectSettings(parsed.settings, view, 2);
+  const manifest = inspectSettings(parsed.settings, view, 2);
+  return withResources ? { manifest, buffers: parsed.buffers } : manifest;
 }
 
-function inspectSourcePackage(inputPath) {
+function resolveSourceInput(inputPath) {
   if (typeof inputPath !== 'string' || !inputPath.trim()) fail('INPUT_REQUIRED', 'An input Source Package path is required.');
   const resolved = path.resolve(inputPath);
   if (!fs.existsSync(resolved)) fail('INPUT_NOT_FOUND', 'The selected Source Package does not exist.');
   const stat = fs.lstatSync(resolved);
-  if (stat.isDirectory()) return inspectDirectory(resolved);
-  if (stat.isFile() && path.extname(resolved).toLowerCase() === '.pck') return inspectPck(resolved);
+  if (stat.isDirectory()) {
+    const files = walkSourceDirectory(resolved);
+    return { kind: 'directory', resolved, files, fingerprint: hashFiles(files) };
+  }
+  if (stat.isFile() && path.extname(resolved).toLowerCase() === '.pck') {
+    if (stat.size > MAX_PCK_BYTES) fail('PCK_TOO_LARGE', `PCK exceeds the ${MAX_PCK_BYTES} byte inspection limit.`);
+    const bytes = fs.readFileSync(resolved);
+    return { kind: 'pck', resolved, bytes, fingerprint: hashBuffer(bytes) };
+  }
   fail('UNSUPPORTED_INPUT', 'Select a Source Package directory or a .pck file.');
 }
 
+function inspectSourcePackage(inputPath, { cache = null, projectId } = {}) {
+  const descriptor = resolveSourceInput(inputPath);
+  const useCache = sourceCacheAvailable(cache);
+  const key = useCache ? sourceCacheKey(descriptor.fingerprint) : null;
+  if (useCache) {
+    const cached = cache.get(key);
+    if (cached) {
+      try {
+        const decoded = decodeInspectionCache(cached.data);
+        if (decoded.manifest?.source?.fingerprint === descriptor.fingerprint) return decoded.manifest;
+      } catch {
+        // A stale or manually damaged cache entry is ignored and rebuilt below.
+      }
+    }
+  }
+
+  const inspected = descriptor.kind === 'directory'
+    ? inspectDirectory(descriptor.resolved, { files: descriptor.files, fingerprint: descriptor.fingerprint, withResources: useCache })
+    : inspectPck(descriptor.resolved, { bytes: descriptor.bytes, fingerprint: descriptor.fingerprint, withResources: useCache });
+  const manifest = useCache ? inspected.manifest : inspected;
+  if (useCache) {
+    const data = encodeInspectionCache({ manifest, buffers: inspected.buffers });
+    cache.put(key, data, {
+      ...(projectId === undefined ? {} : { projectId }),
+      sourceFingerprint: descriptor.fingerprint,
+      artifact: SOURCE_CACHE_KEY.artifact,
+    });
+  }
+  return manifest;
+}
+
 module.exports = {
+  SOURCE_CACHE_SCHEMA_VERSION,
   SourceInspectionError,
+  decodeInspectionCache,
+  encodeInspectionCache,
   inspectSourcePackage,
   normalizeReference,
   parsePck,
