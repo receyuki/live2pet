@@ -565,7 +565,7 @@ function normalizeClawdMetadata(input = {}) {
   return { themeId, metadata };
 }
 
-function collectClawdMotionIds(target) {
+function collectClawdMotionIds(target, behavior = {}) {
   const ids = [];
   const seen = new Set();
   const collect = value => {
@@ -575,6 +575,10 @@ function collectClawdMotionIds(target) {
   };
   Object.values(target.states || {}).forEach(collect);
   Object.values(target.reactions || {}).forEach(collect);
+  for (const field of ['idleAnimations', 'workingTiers', 'jugglingTiers']) {
+    if (!Array.isArray(behavior[field])) continue;
+    for (const entry of behavior[field]) collect(entry && entry.motion);
+  }
   return ids;
 }
 
@@ -654,6 +658,32 @@ function deriveClawdBehaviorMetadata(metadata, target, assetsByMotion) {
   return result;
 }
 
+function normalizeClawdBehaviorInput(input, assetsByMotion) {
+  if (input == null) return {};
+  if (!input || typeof input !== 'object' || Array.isArray(input)) fail('INVALID_CLAWD_METADATA', 'Clawd behavior configuration must be an object.');
+  const result = {};
+  if (input.roamFlipAssets !== undefined) {
+    if (typeof input.roamFlipAssets !== 'boolean') fail('INVALID_CLAWD_METADATA', 'behavior.roamFlipAssets must be a boolean.');
+    result.roamFlipAssets = input.roamFlipAssets;
+  }
+  for (const field of ['idleAnimations', 'workingTiers', 'jugglingTiers']) {
+    if (input[field] === undefined) continue;
+    if (!Array.isArray(input[field])) fail('INVALID_CLAWD_METADATA', `behavior.${field} must be an array.`);
+    result[field] = input[field].map((entry, index) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry) || typeof entry.motion !== 'string' || !entry.motion.startsWith('motion:') || !entry.motion.slice(7)) {
+        fail('INVALID_CLAWD_METADATA', `behavior.${field}[${index}] must reference a Motion as motion:<id>.`);
+      }
+      const motionId = entry.motion.slice(7);
+      const file = assetsByMotion[motionId];
+      if (!file) fail('MISSING_CLAWD_FRAME_SET', `behavior.${field}[${index}] references ${motionId}, but no captured frames are available.`);
+      const mapped = { file };
+      for (const key of ['duration', 'minSessions', 'maxSessions']) if (entry[key] !== undefined && entry[key] !== null) mapped[key] = entry[key];
+      return mapped;
+    });
+  }
+  return result;
+}
+
 function normalizeCodexMetadata(input = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) fail('INVALID_CODEX_METADATA', 'Codex pet metadata must be an object.');
   const displayName = typeof input.displayName === 'string' && input.displayName.trim()
@@ -723,7 +753,7 @@ async function buildClawdTheme(input = {}, options = {}) {
   checkCancelled(signal);
   progress(onProgress, CLAWD_STAGES[0], 'started');
   const target = createClawdTarget(mapping);
-  const motionIds = collectClawdMotionIds(target);
+  const motionIds = collectClawdMotionIds(target, input.behavior);
   if (!framesByMotion || typeof framesByMotion !== 'object' || Array.isArray(framesByMotion)) fail('INVALID_CLAWD_FRAME_SET', 'framesByMotion must be an object keyed by Motion id.');
   for (const motionId of motionIds) if (!Object.hasOwn(framesByMotion, motionId)) fail('MISSING_CLAWD_FRAME_SET', `${motionId} is mapped but has no captured frames.`);
   const { themeId, metadata } = normalizeClawdMetadata(input.metadata || {});
@@ -800,7 +830,7 @@ async function buildClawdTheme(input = {}, options = {}) {
 
   progress(onProgress, CLAWD_STAGES[2], 'started');
   const bindings = clawdThemeBindings(target, assetsByMotion);
-  const behaviorMetadata = deriveClawdBehaviorMetadata(metadata, target, assetsByMotion);
+  const behaviorMetadata = { ...deriveClawdBehaviorMetadata(metadata, target, assetsByMotion), ...normalizeClawdBehaviorInput(input.behavior, assetsByMotion) };
   const manifest = { ...behaviorMetadata, states: bindings.states, sleepSequence: { mode: target.sleepSequence.mode }, reactions: bindings.reactions };
   progress(onProgress, CLAWD_STAGES[2], 'completed', { states: Object.keys(bindings.states).length, reactions: Object.keys(bindings.reactions).length });
   checkCancelled(signal);
@@ -1022,6 +1052,7 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
       result = await buildClawdTheme({
         mapping: { sleepMode: targetProject.options.sleepMode || 'direct', states: targetProject.mappings, reactions: targetProject.reactions },
         framesByMotion: renderedInput.framesByMotion || renderedInput.frames,
+        behavior: targetProject.options.behavior,
         metadata: metadataByTarget[targetId] || renderedInput.metadata,
         readme: renderedInput.readme,
       }, targetOptions);

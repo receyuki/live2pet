@@ -136,6 +136,23 @@
     .mapping-current strong.unmapped { color: var(--muted); font-weight: 500; }
     .mapping-current span { display: none; }
     .mapping-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+    .behavior-config { display: grid; gap: 12px; margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #0b1b31; }
+    .behavior-config-head { display: grid; gap: 3px; }
+    .behavior-config-head h3 { margin: 0; font-size: 14px; }
+    .behavior-config-section { display: grid; gap: 7px; }
+    .behavior-config-section > .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .behavior-config-section > .section-head strong { font-size: 12px; }
+    .behavior-entries { display: grid; gap: 5px; }
+    .behavior-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px; background: #101e33; }
+    .behavior-entry strong, .behavior-entry small { display: block; overflow-wrap: anywhere; }
+    .behavior-entry small { color: var(--muted); font-size: 10px; }
+    .behavior-entry-controls { display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
+    .behavior-entry-controls label { display: grid; gap: 2px; color: var(--muted); font-size: 10px; }
+    .behavior-entry-controls input { width: 64px; padding: 5px 6px; font-size: 11px; }
+    .behavior-remove { min-width: 28px; padding: 5px 7px; }
+    .behavior-empty { color: var(--muted); font-size: 11px; }
+    .behavior-roam { display: flex; align-items: flex-start; gap: 7px; color: var(--muted); font-size: 11px; }
+    .behavior-roam input { margin-top: 2px; }
     .mapping-actions button { min-height: 44px; padding: 7px 8px; font-size: 11px; white-space: nowrap; }
     .mapping-actions .assign { border-color: #4381d4; background: #173662; }
     .mapping-actions .clear { background: transparent; }
@@ -196,6 +213,16 @@
     .target-preview img, .target-preview canvas { width: 100%; height: auto; display: block; image-rendering: auto; background-color: #dae5f3; background-image: linear-gradient(45deg,#c6d2e3 25%,transparent 25%),linear-gradient(-45deg,#c6d2e3 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#c6d2e3 75%),linear-gradient(-45deg,transparent 75%,#c6d2e3 75%); background-size: 16px 16px; background-position: 0 0,0 8px,8px -8px,-8px 0; border-radius: 7px; }
     .target-preview .clawd-motion-preview { aspect-ratio: 1; object-fit: contain; }
     .target-preview .cell-preview { max-width: 192px; margin: 0 auto; }
+    .codex-row-preview { grid-column: 1 / -1; display: grid; gap: 9px; }
+    .codex-row-preview-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px; align-items: end; }
+    .codex-row-preview-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+    .codex-row-preview-stage { display: grid; grid-template-columns: minmax(0, 192px) minmax(0, 1fr); gap: 12px; align-items: start; }
+    .codex-row-preview-stage canvas { width: 192px; max-width: 100%; height: auto; image-rendering: auto; }
+    .codex-row-preview-meta { min-height: 38px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    @media (max-width: 560px) {
+      .codex-row-preview-head, .codex-row-preview-stage { grid-template-columns: 1fr; }
+      .codex-row-preview-stage canvas { margin: 0 auto; }
+    }
     .clawd-preview-controls { display: grid; gap: 9px; margin-top: 10px; }
     .clawd-preview-actions { display: flex; flex-wrap: wrap; gap: 7px; }
     .clawd-preview-timeline { max-height: 180px; overflow: auto; margin: 10px 0 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: #0b1628; }
@@ -384,6 +411,7 @@
           </div>
           <div id="mappingSelection" class="mapping-selection" aria-live="polite"></div>
           <div id="mappingTables"></div>
+          <div id="behaviorConfig"></div>
           <div id="validation" class="validation"></div>
           <details class="target-section">
             <summary data-i18n="codex.mappingSummary">Codex Pet mapping</summary>
@@ -441,6 +469,13 @@
       <div id="codexTargetPreview" class="target-preview hidden" aria-live="polite">
         <figure><figcaption data-i18n="preview.codex.atlasCaption">Generated atlas · package preview</figcaption><img id="codexAtlasPreview" data-i18n-alt="preview.codex.atlasAlt" alt="Generated Codex Pet atlas preview"></figure>
         <figure><figcaption data-i18n="preview.codex.cellCaption">First cell · 192 × 208 final size</figcaption><img id="codexCellPreview" class="cell-preview" data-i18n-alt="preview.codex.cellAlt" alt="Generated Codex Pet first cell preview"></figure>
+        <div class="codex-row-preview">
+          <div class="codex-row-preview-head">
+            <label class="field"><span data-i18n="preview.codex.rowLabel">Preview row</span><select id="codexPreviewRow" data-i18n-aria-label="preview.codex.rowLabel"></select></label>
+            <div class="codex-row-preview-actions"><button id="codexRowPlay" class="primary" data-i18n="preview.codex.rowPlay">Play row</button><button id="codexRowStop" data-i18n="preview.codex.rowStop">Stop</button></div>
+          </div>
+          <div class="codex-row-preview-stage"><canvas id="codexRowPreviewCanvas" width="192" height="208" data-i18n-aria-label="preview.codex.rowCanvas"></canvas><div id="codexRowPreviewMeta" class="codex-row-preview-meta" aria-live="polite"></div></div>
+        </div>
       </div>
     </section>
 
@@ -572,6 +607,12 @@
           "preview.codex.atlasAlt": "Generated Codex Pet atlas preview",
           "preview.codex.cellCaption": "First cell · 192 × 208 final size",
           "preview.codex.cellAlt": "Generated Codex Pet first cell preview",
+          "preview.codex.rowLabel": "Preview row at final size",
+          "preview.codex.rowCanvas": "Codex Pet row preview at 192 × 208 final size",
+          "preview.codex.rowPlay": "Play row",
+          "preview.codex.rowStop": "Stop",
+          "preview.codex.rowEmpty": "Build the package to preview captured frames at the final 192 × 208 cell size.",
+          "preview.codex.rowMeta": "{row} · {frames} frames · final cell {width} × {height}",
           "preview.clawd.caption": "Generated Clawd state · animated WebP",
           "preview.clawd.alt": "Generated Clawd state preview",
           "preview.clawd.stateLabel": "Preview state",
@@ -700,6 +741,18 @@
           "mapping.fallback.field": "Fallback target",
           "mapping.aria.assign": "Assign selected Motion to {id}",
           "mapping.aria.clear": "Clear {id} mapping",
+          "mapping.behavior.heading": "Behavior enhancements",
+          "mapping.behavior.description": "Optionally build an idle pool and session tiers from selected Motions.",
+          "mapping.behavior.idle": "Idle animation pool",
+          "mapping.behavior.working": "Working tiers",
+          "mapping.behavior.juggling": "Juggling tiers",
+          "mapping.behavior.add": "Add selected",
+          "mapping.behavior.empty": "No extra Motions configured.",
+          "mapping.behavior.remove": "Remove",
+          "mapping.behavior.duration": "ms",
+          "mapping.behavior.min": "min",
+          "mapping.behavior.max": "max",
+          "mapping.behavior.roamFlip": "Treat the roam Motion as facing left (Clawd mirrors it for rightward travel).",
           "mapping.selected.label": "Selected source Motion",
           "mapping.selected.none": "No Motion selected",
           "mapping.selected.help": "Choose one in the left Motion library, then assign it to a Clawd slot below.",
@@ -921,6 +974,12 @@
           "preview.codex.atlasAlt": "生成的 Codex Pet 图集预览",
           "preview.codex.cellCaption": "第一格 · 192 × 208 最终尺寸",
           "preview.codex.cellAlt": "生成的 Codex Pet 第一格预览",
+          "preview.codex.rowLabel": "以最终尺寸预览行",
+          "preview.codex.rowCanvas": "Codex Pet 行预览，最终尺寸 192 × 208",
+          "preview.codex.rowPlay": "播放此行",
+          "preview.codex.rowStop": "停止",
+          "preview.codex.rowEmpty": "构建资源包后，可用最终 192 × 208 单元尺寸预览捕获的帧。",
+          "preview.codex.rowMeta": "{row} · {frames} 帧 · 最终单元 {width} × {height}",
           "preview.clawd.caption": "生成的 Clawd 状态 · 动画 WebP",
           "preview.clawd.alt": "生成的 Clawd 状态预览",
           "preview.clawd.stateLabel": "预览状态",
@@ -1049,6 +1108,18 @@
           "mapping.fallback.field": "回退目标",
           "mapping.aria.assign": "将选中动作分配到 {id}",
           "mapping.aria.clear": "清除 {id} 映射",
+          "mapping.behavior.heading": "行为增强",
+          "mapping.behavior.description": "可选：使用已选动作配置待机池和会话等级。",
+          "mapping.behavior.idle": "待机动作池",
+          "mapping.behavior.working": "工作等级",
+          "mapping.behavior.juggling": "Juggling 等级",
+          "mapping.behavior.add": "添加选中动作",
+          "mapping.behavior.empty": "尚未配置额外动作。",
+          "mapping.behavior.remove": "移除",
+          "mapping.behavior.duration": "毫秒",
+          "mapping.behavior.min": "最少",
+          "mapping.behavior.max": "最多",
+          "mapping.behavior.roamFlip": "将漫游动作视为朝向左侧（Clawd 会在向右移动时镜像）。",
           "mapping.selected.label": "选中的资源动作",
           "mapping.selected.none": "尚未选择动作",
           "mapping.selected.help": "在左侧动作库选择一个动作，然后分配到下方 Clawd 槽位。",
@@ -1273,9 +1344,27 @@
       ];
       const allStates = groups.flatMap(group => group.states);
       const fallbackAllowed = new Set(["error","attention","notification","sweeping","carrying","sleeping","roam"]);
+      const behaviorFields = ["idleAnimations", "workingTiers", "jugglingTiers"];
+      function emptyBehavior() {
+        return { idleAnimations: [], workingTiers: [], jugglingTiers: [], roamFlipAssets: false };
+      }
+      function normalizeBehavior(value) {
+        const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+        const normalized = emptyBehavior();
+        for (const field of behaviorFields) {
+          if (!Array.isArray(source[field])) continue;
+          normalized[field] = source[field].filter(entry => entry && typeof entry === "object" && typeof entry.motion === "string" && entry.motion.startsWith("motion:")).map(entry => {
+            const next = { motion: entry.motion };
+            for (const key of ["duration", "minSessions", "maxSessions"]) if (entry[key] !== undefined && entry[key] !== null) next[key] = Number(entry[key]);
+            return next;
+          });
+        }
+        normalized.roamFlipAssets = source.roamFlipAssets === true;
+        return normalized;
+      }
 
       function initial() {
-        return { model: null, motions: [], expressions: [], inspection: null, inspectionError: null, selectedMotionId: null, selectedExpressionId: null, mappings: {}, reactionMappings: {}, codexMappings: {}, sleepMode: "direct", clawdRenderPreset: "balanced", codexRenderPreset: "balanced", outputPrefix: "live2pet", projectName: "Untitled Live2Pet Project", projectSourceFingerprint: null, projectRecipeIds: [], sourceReview: null, projectDirty: false, lastChange: "Waiting for a Source Package", scenario: null, scenarioStep: 0 };
+        return { model: null, motions: [], expressions: [], inspection: null, inspectionError: null, selectedMotionId: null, selectedExpressionId: null, mappings: {}, reactionMappings: {}, codexMappings: {}, clawdBehavior: emptyBehavior(), sleepMode: "direct", clawdRenderPreset: "balanced", codexRenderPreset: "balanced", outputPrefix: "live2pet", projectName: "Untitled Live2Pet Project", projectSourceFingerprint: null, projectRecipeIds: [], sourceReview: null, projectDirty: false, lastChange: "Waiting for a Source Package", scenario: null, scenarioStep: 0 };
       }
       function reducer(state, action) {
         if (action.type === "LOAD_MODEL") {
@@ -1301,18 +1390,45 @@
             : sourceChanged
               ? { required: recipes.length > 0, reason: "source-fingerprint-changed", affectedRecipeIds: recipes.map(recipe => recipe.id) }
               : action.project.sourceReview || null;
-          return { ...state, projectName: action.project.name, mappings: { ...(target.mappings || {}) }, reactionMappings: { ...(target.reactions || {}) }, codexMappings: { ...(codexTarget.mappings || {}) }, sleepMode: options.sleepMode === "full" ? "full" : "direct", clawdRenderPreset: validPreset(target.renderPreset || options.renderPreset), codexRenderPreset: validPreset(codexTarget.renderPreset || codexTarget.options?.renderPreset), outputPrefix: typeof options.outputPrefix === "string" && options.outputPrefix.trim() ? options.outputPrefix : "live2pet", selectedMotionId: selected && MotionMapping.motion(state, selected) ? selected : state.selectedMotionId, projectSourceFingerprint: action.project.source?.fingerprint || null, projectRecipeIds: recipes.map(recipe => recipe.id), sourceReview, projectDirty: Boolean(action.dirty), lastChange: `Opened ${action.project.name}` };
+          return { ...state, projectName: action.project.name, mappings: { ...(target.mappings || {}) }, reactionMappings: { ...(target.reactions || {}) }, codexMappings: { ...(codexTarget.mappings || {}) }, clawdBehavior: normalizeBehavior(options.behavior), sleepMode: options.sleepMode === "full" ? "full" : "direct", clawdRenderPreset: validPreset(target.renderPreset || options.renderPreset), codexRenderPreset: validPreset(codexTarget.renderPreset || codexTarget.options?.renderPreset), outputPrefix: typeof options.outputPrefix === "string" && options.outputPrefix.trim() ? options.outputPrefix : "live2pet", selectedMotionId: selected && MotionMapping.motion(state, selected) ? selected : state.selectedMotionId, projectSourceFingerprint: action.project.source?.fingerprint || null, projectRecipeIds: recipes.map(recipe => recipe.id), sourceReview, projectDirty: Boolean(action.dirty), lastChange: `Opened ${action.project.name}` };
         }
         if (action.type === "SELECT_MOTION") return { ...state, selectedMotionId: action.id, lastChange: `Playing ${action.id}` };
         if (action.type === "SELECT_EXPRESSION") return { ...state, selectedExpressionId: action.id, lastChange: action.id === null ? "Expression reset" : `Previewing Expression ${action.id}` };
         if (action.type === "MAP") return { ...state, mappings: { ...state.mappings, [action.key]: action.value }, projectDirty: true, lastChange: `${action.key} → ${action.value || "Unmapped"}` };
         if (action.type === "MAP_REACTION") return { ...state, reactionMappings: { ...state.reactionMappings, [action.key]: action.value }, projectDirty: true, lastChange: `${action.key} → ${action.value || "Unmapped"}` };
+        if (action.type === "ADD_BEHAVIOR_MOTION") {
+          const field = behaviorFields.includes(action.field) ? action.field : null;
+          if (!field || !state.selectedMotionId) return state;
+          const motion = `motion:${state.selectedMotionId}`;
+          if (state.clawdBehavior[field].some(entry => entry.motion === motion)) return state;
+          const entry = field === "idleAnimations" ? { motion } : { motion, minSessions: 1 };
+          return { ...state, clawdBehavior: { ...state.clawdBehavior, [field]: [...state.clawdBehavior[field], entry] }, projectDirty: true, lastChange: `${field} → ${state.selectedMotionId}` };
+        }
+        if (action.type === "REMOVE_BEHAVIOR_ENTRY") {
+          const field = behaviorFields.includes(action.field) ? action.field : null;
+          if (!field || !Number.isInteger(action.index)) return state;
+          return { ...state, clawdBehavior: { ...state.clawdBehavior, [field]: state.clawdBehavior[field].filter((_, index) => index !== action.index) }, projectDirty: true, lastChange: `${field} entry removed` };
+        }
+        if (action.type === "SET_BEHAVIOR_TIER") {
+          const field = ["workingTiers", "jugglingTiers"].includes(action.field) ? action.field : null;
+          if (!field || !Number.isInteger(action.index) || !["minSessions", "maxSessions"].includes(action.key)) return state;
+          const value = action.value === "" || action.value == null ? null : Number(action.value);
+          const entries = state.clawdBehavior[field].map((entry, index) => {
+            if (index !== action.index) return entry;
+            const next = { ...entry };
+            if (value == null || !Number.isFinite(value)) delete next[action.key];
+            else next[action.key] = Math.round(value);
+            return next;
+          });
+          return { ...state, clawdBehavior: { ...state.clawdBehavior, [field]: entries }, projectDirty: true, lastChange: `${field}.${action.key} → ${value == null ? "" : value}` };
+        }
+        if (action.type === "SET_ROAM_FLIP") return { ...state, clawdBehavior: { ...state.clawdBehavior, roamFlipAssets: action.value === true }, projectDirty: true, lastChange: `roamFlipAssets → ${action.value === true}` };
         if (action.type === "MAP_CODEX") return { ...state, codexMappings: { ...state.codexMappings, [action.key]: action.value }, projectDirty: true, lastChange: `Codex ${action.key} → ${action.value || "Unmapped"}` };
         if (action.type === "SET_SLEEP") return { ...state, sleepMode: action.value, projectDirty: true, lastChange: `sleepSequence.mode → ${action.value}` };
         if (action.type === "SET_RENDER_PRESET") return { ...state, [`${action.target}RenderPreset`]: action.value, projectDirty: true, lastChange: `${action.target} Render Preset → ${action.value}` };
         if (action.type === "SET_PREFIX") return { ...state, outputPrefix: action.value, projectDirty: true, lastChange: `Output prefix → ${action.value}` };
-        if (action.type === "CLEAR") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, projectDirty: true, lastChange: "Mappings cleared" };
-        if (action.type === "START_SCENARIO") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, sleepMode: "direct", scenario: action.id, scenarioStep: 0, projectDirty: true, lastChange: `Started scenario ${action.id}` };
+        if (action.type === "CLEAR") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, clawdBehavior: emptyBehavior(), projectDirty: true, lastChange: "Mappings cleared" };
+        if (action.type === "START_SCENARIO") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, clawdBehavior: emptyBehavior(), sleepMode: "direct", scenario: action.id, scenarioStep: 0, projectDirty: true, lastChange: `Started scenario ${action.id}` };
         if (action.type === "ACK_SOURCE_REVIEW") {
           const fingerprint = state.inspection?.source?.fingerprint || null;
           if (!fingerprint) return state;
@@ -1336,6 +1452,13 @@
           if (!fallbackAllowed.has(id)) out.push({ level: "error", text: `${id} does not allow fallbackTo.` });
           const target = value.slice(9);
           if (!state.mappings[target]) out.push({ level: "error", text: `${id} fallback target ${target} is not mapped yet.` });
+        }
+        const behavior = normalizeBehavior(state.clawdBehavior);
+        for (const field of behaviorFields) for (const [index, entry] of behavior[field].entries()) {
+          if (!state.motions.some(motion => entry.motion === `motion:${motion.id}`)) out.push({ level: "error", text: `${field}[${index}] references a Motion that is not loaded.` });
+          if (field !== "idleAnimations" && (!Number.isSafeInteger(entry.minSessions) || entry.minSessions < 1)) out.push({ level: "error", text: `${field}[${index}].minSessions must be at least 1.` });
+          if (field !== "idleAnimations" && entry.maxSessions != null && (!Number.isSafeInteger(entry.maxSessions) || entry.maxSessions < entry.minSessions)) out.push({ level: "error", text: `${field}[${index}].maxSessions must be >= minSessions.` });
+          if (field === "idleAnimations" && entry.duration != null && (!Number.isSafeInteger(entry.duration) || entry.duration <= 0)) out.push({ level: "error", text: `${field}[${index}].duration must be positive.` });
         }
         if (!out.length) out.push({ level: "ok", text: "Core mapping is valid and ready to save." });
         return out;
@@ -1371,10 +1494,11 @@
           render: { preset: state.clawdRenderPreset, width: state.clawdRenderPreset === "compact" ? 512 : state.clawdRenderPreset === "high" ? 1024 : 768, height: state.clawdRenderPreset === "compact" ? 512 : state.clawdRenderPreset === "high" ? 1024 : 768, fps: state.clawdRenderPreset === "compact" ? 18 : state.clawdRenderPreset === "high" ? 30 : 24, quality: state.clawdRenderPreset === "compact" ? 76 : state.clawdRenderPreset === "high" ? 88 : 82, format: "animated-webp" },
           sleepSequence: { mode: state.sleepMode },
           states,
-          reactions: reactionOut
+          reactions: reactionOut,
+          behavior: normalizeBehavior(state.clawdBehavior)
         };
       }
-      return { groups, reactions, codexRows, allStates, initial, reducer, motion, validate, output };
+      return { groups, reactions, codexRows, allStates, behaviorFields, emptyBehavior, normalizeBehavior, initial, reducer, motion, validate, output };
     })();
 
     let state = MotionMapping.initial();
@@ -1432,7 +1556,8 @@
       return slug || "live2pet-project";
     }
     function projectRecipes() {
-      const motionIds = [...Object.values(state.mappings), ...Object.values(state.reactionMappings)]
+      const behaviorValues = MotionMapping.behaviorFields.flatMap(field => (state.clawdBehavior?.[field] || []).map(entry => entry.motion));
+      const motionIds = [...Object.values(state.mappings), ...Object.values(state.reactionMappings), ...behaviorValues]
         .filter(value => value?.startsWith("motion:"))
         .map(value => value.slice(7));
       const seen = new Set();
@@ -1463,7 +1588,7 @@
             mappings: { ...state.mappings },
             reactions: { ...state.reactionMappings },
             renderPreset: state.clawdRenderPreset,
-            options: { sleepMode: state.sleepMode, outputPrefix: state.outputPrefix },
+            options: { sleepMode: state.sleepMode, outputPrefix: state.outputPrefix, behavior: MotionMapping.normalizeBehavior(state.clawdBehavior) },
           },
           "codex-pet": { profile: "codex-pet", mappings: { ...state.codexMappings }, reactions: {}, renderPreset: state.codexRenderPreset, options: {} },
         },
@@ -2140,6 +2265,32 @@
       return `<div class="mapping-assignment"><div class="mapping-current" title="${escapeHtml(details.meta)}"><strong class="${details.unmapped ? "unmapped" : ""}">${escapeHtml(details.title)}</strong><span>${escapeHtml(details.meta)}</span></div><div class="mapping-actions"><button class="assign" aria-label="${escapeHtml(I18n.t("mapping.aria.assign", { id: def.id }))}" ${assignAttribute} ${state.selectedMotionId ? "" : "disabled"}>${escapeHtml(I18n.t("mapping.useSelected"))}</button><button class="clear" aria-label="${escapeHtml(I18n.t("mapping.aria.clear", { id: def.id }))}" ${clearAttribute} ${current ? "" : "disabled"}>${escapeHtml(I18n.t("mapping.clear"))}</button></div>${fallback}</div>`;
     }
 
+    function renderBehaviorConfig() {
+      const behavior = MotionMapping.normalizeBehavior(state.clawdBehavior);
+      const selected = state.selectedMotionId ? `motion:${state.selectedMotionId}` : "";
+      const titleFor = entry => mappingDetails(entry.motion).title;
+      const sourceFor = entry => mappingDetails(entry.motion).meta;
+      const renderEntries = (field, tier) => {
+        const entries = behavior[field] || [];
+        const rows = entries.length
+          ? entries.map((entry, index) => {
+            const controls = tier
+              ? `<label><span>${escapeHtml(I18n.t("mapping.behavior.min"))}</span><input type="number" min="1" step="1" value="${Number.isSafeInteger(entry.minSessions) ? entry.minSessions : ""}" data-behavior-field="${field}" data-behavior-index="${index}" data-behavior-key="minSessions"></label><label><span>${escapeHtml(I18n.t("mapping.behavior.max"))}</span><input type="number" min="1" step="1" value="${Number.isSafeInteger(entry.maxSessions) ? entry.maxSessions : ""}" data-behavior-field="${field}" data-behavior-index="${index}" data-behavior-key="maxSessions"></label>`
+              : `<label><span>${escapeHtml(I18n.t("mapping.behavior.duration"))}</span><input type="number" min="1" step="1" value="${Number.isSafeInteger(entry.duration) ? entry.duration : ""}" data-behavior-field="${field}" data-behavior-index="${index}" data-behavior-key="duration"></label>`;
+            return `<div class="behavior-entry"><div><strong>${escapeHtml(titleFor(entry))}</strong><small>${escapeHtml(sourceFor(entry))}</small></div><div class="behavior-entry-controls">${controls}<button class="behavior-remove" type="button" data-behavior-remove="${field}" data-behavior-index="${index}" aria-label="${escapeHtml(I18n.t("mapping.behavior.remove"))}">×</button></div></div>`;
+          }).join("")
+          : `<div class="behavior-empty">${escapeHtml(I18n.t("mapping.behavior.empty"))}</div>`;
+        const label = field === "idleAnimations" ? "mapping.behavior.idle" : field === "workingTiers" ? "mapping.behavior.working" : "mapping.behavior.juggling";
+        return `<section class="behavior-config-section"><div class="section-head"><strong>${escapeHtml(I18n.t(label))}</strong><button type="button" data-behavior-add="${field}" ${selected ? "" : "disabled"}>${escapeHtml(I18n.t("mapping.behavior.add"))}</button></div><div class="behavior-entries">${rows}</div></section>`;
+      };
+      $("behaviorConfig").innerHTML = `<div class="behavior-config"><div class="behavior-config-head"><h3>${escapeHtml(I18n.t("mapping.behavior.heading"))}</h3><span class="muted">${escapeHtml(I18n.t("mapping.behavior.description"))}</span></div>${renderEntries("idleAnimations", false)}${renderEntries("workingTiers", true)}${renderEntries("jugglingTiers", true)}<label class="behavior-roam"><input type="checkbox" data-roam-flip ${behavior.roamFlipAssets ? "checked" : ""}><span>${escapeHtml(I18n.t("mapping.behavior.roamFlip"))}</span></label></div>`;
+      document.querySelectorAll("[data-behavior-add]").forEach(button => button.addEventListener("click", () => dispatch({ type: "ADD_BEHAVIOR_MOTION", field: button.dataset.behaviorAdd })));
+      document.querySelectorAll("[data-behavior-remove]").forEach(button => button.addEventListener("click", () => dispatch({ type: "REMOVE_BEHAVIOR_ENTRY", field: button.dataset.behaviorRemove, index: Number(button.dataset.behaviorIndex) })));
+      document.querySelectorAll("[data-behavior-field]").forEach(input => input.addEventListener("change", () => dispatch({ type: "SET_BEHAVIOR_TIER", field: input.dataset.behaviorField, index: Number(input.dataset.behaviorIndex), key: input.dataset.behaviorKey, value: input.value })));
+      const roamFlip = document.querySelector("[data-roam-flip]");
+      if (roamFlip) roamFlip.addEventListener("change", () => dispatch({ type: "SET_ROAM_FLIP", value: roamFlip.checked }));
+    }
+
     function renderMetrics() {
       const errors = MotionMapping.validate(state).filter(x => x.level === "error").length;
       const current = selectedMotion();
@@ -2176,6 +2327,7 @@
       document.querySelectorAll("[data-clear-reaction]").forEach(button => button.addEventListener("click",()=>dispatch({type:"MAP_REACTION",key:button.dataset.clearReaction,value:""})));
       document.querySelectorAll("[data-fallback-state]").forEach(select => select.addEventListener("change",()=>dispatch({type:"MAP",key:select.dataset.fallbackState,value:select.value ? `fallback:${select.value}` : ""})));
       $("quickState").innerHTML = MotionMapping.allStates.map(def => `<option value="${def.id}">${def.id} · ${escapeHtml(I18n.t(def.meaningKey) || def.meaning)}</option>`).join("");
+      renderBehaviorConfig();
       renderCodexMappings();
     }
 
@@ -2227,6 +2379,102 @@
         return `<div class="codex-row"><code>${escapeHtml(row.id)}</code><strong class="${motion ? "" : "unmapped"}" title="${escapeHtml(motion?.sourceFile || I18n.t("codex.motion.title"))}">${escapeHtml(motion?.name || I18n.t("codex.row.unmapped"))}</strong><button data-codex-assign="${escapeHtml(row.id)}" aria-label="${escapeHtml(I18n.t("codex.row.assign", { id: row.id }))}" ${state.selectedMotionId ? "" : "disabled"}>${escapeHtml(I18n.t("mapping.useSelected"))}</button></div>`;
       }).join("");
       document.querySelectorAll("[data-codex-assign]").forEach(button => button.addEventListener("click", () => dispatch({ type: "MAP_CODEX", key: button.dataset.codexAssign, value: state.selectedMotionId ? `motion:${state.selectedMotionId}` : "" })));
+    }
+
+    function codexRowFrames(rowId) {
+      const frames = codexArtifact?.rowFrames?.[rowId];
+      return Array.isArray(frames) ? frames : [];
+    }
+
+    function stopCodexRowPlayback() {
+      if (codexRowPlayback.timer !== null) clearTimeout(codexRowPlayback.timer);
+      codexRowPlayback.timer = null;
+      codexRowPlayback.playing = false;
+    }
+
+    function drawCodexRowFrame(rowId, frameIndex) {
+      const canvas = $("codexRowPreviewCanvas");
+      if (!canvas) return;
+      const context = canvas.getContext("2d");
+      context.clearRect(0, 0, CODEX_ATLAS.cellWidth, CODEX_ATLAS.cellHeight);
+      const frames = codexRowFrames(rowId);
+      const frame = frames.length ? frames[Math.max(0, Math.min(frameIndex, frames.length - 1))] : null;
+      if (!frame) return;
+      if (typeof ImageData !== "undefined" && frame instanceof ImageData) {
+        context.putImageData(frame, 0, 0);
+        return;
+      }
+      if (frame.data && Number(frame.width) === CODEX_ATLAS.cellWidth && Number(frame.height) === CODEX_ATLAS.cellHeight) {
+        context.putImageData(new ImageData(new Uint8ClampedArray(frame.data), CODEX_ATLAS.cellWidth, CODEX_ATLAS.cellHeight), 0, 0);
+      }
+    }
+
+    function renderCodexRowPreview() {
+      const select = $("codexPreviewRow");
+      const canvas = $("codexRowPreviewCanvas");
+      const meta = $("codexRowPreviewMeta");
+      const play = $("codexRowPlay");
+      const stop = $("codexRowStop");
+      if (!select || !canvas || !meta || !play || !stop) return;
+      const rows = MotionMapping.codexRows.filter(row => codexRowFrames(row.id).length > 0);
+      if (!rows.length) {
+        stopCodexRowPlayback();
+        select.innerHTML = "";
+        select.disabled = true;
+        play.disabled = true;
+        stop.disabled = true;
+        meta.textContent = I18n.t("preview.codex.rowEmpty");
+        canvas.getContext("2d").clearRect(0, 0, CODEX_ATLAS.cellWidth, CODEX_ATLAS.cellHeight);
+        return;
+      }
+      if (!rows.some(row => row.id === codexRowPlayback.rowId)) {
+        codexRowPlayback.rowId = rows[0].id;
+        codexRowPlayback.frameIndex = 0;
+      }
+      select.innerHTML = rows.map(row => `<option value="${escapeHtml(row.id)}">${escapeHtml(row.id)}</option>`).join("");
+      select.value = codexRowPlayback.rowId;
+      select.disabled = false;
+      const frames = codexRowFrames(codexRowPlayback.rowId);
+      codexRowPlayback.frameIndex = frames.length ? codexRowPlayback.frameIndex % frames.length : 0;
+      drawCodexRowFrame(codexRowPlayback.rowId, codexRowPlayback.frameIndex);
+      const row = rows.find(item => item.id === codexRowPlayback.rowId) || rows[0];
+      meta.textContent = I18n.t("preview.codex.rowMeta", { row: row.id, frames: frames.length, width: CODEX_ATLAS.cellWidth, height: CODEX_ATLAS.cellHeight });
+      play.disabled = !frames.length;
+      stop.disabled = !codexRowPlayback.playing;
+      select.onchange = () => {
+        stopCodexRowPlayback();
+        codexRowPlayback.rowId = select.value;
+        codexRowPlayback.frameIndex = 0;
+        renderCodexRowPreview();
+      };
+      play.onclick = () => playCodexRowPreview(select.value);
+      stop.onclick = () => {
+        stopCodexRowPlayback();
+        renderCodexRowPreview();
+      };
+    }
+
+    function playCodexRowPreview(rowId) {
+      const frames = codexRowFrames(rowId);
+      if (!frames.length) return;
+      stopCodexRowPlayback();
+      codexRowPlayback.rowId = rowId;
+      codexRowPlayback.frameIndex = 0;
+      codexRowPlayback.playing = true;
+      const tick = () => {
+        if (!codexRowPlayback.playing) return;
+        const currentFrames = codexRowFrames(codexRowPlayback.rowId);
+        if (!currentFrames.length) {
+          stopCodexRowPlayback();
+          renderCodexRowPreview();
+          return;
+        }
+        drawCodexRowFrame(codexRowPlayback.rowId, codexRowPlayback.frameIndex);
+        codexRowPlayback.frameIndex = (codexRowPlayback.frameIndex + 1) % currentFrames.length;
+        codexRowPlayback.timer = setTimeout(tick, 1000 / 12);
+      };
+      renderCodexRowPreview();
+      tick();
     }
 
     const scenarios = [
@@ -2307,6 +2555,7 @@
         $("codexAtlasPreview").removeAttribute("src");
         $("codexCellPreview").removeAttribute("src");
       }
+      renderCodexRowPreview();
       renderClawdTargetPreview();
     }
 
@@ -2768,6 +3017,7 @@
     const CLAWD_PACKAGE_VERSION = "1.0.0";
     let codexBuildBusy = false;
     let codexArtifact = null;
+    const codexRowPlayback = { rowId: null, frameIndex: 0, timer: null, playing: false };
     const codexCaptureMemory = new Map();
     let codexCaptureMemoryBytes = 0;
     const CODEX_CAPTURE_MEMORY_LIMIT = 256 * 1024 * 1024;
@@ -3496,7 +3746,8 @@
     }
 
     function clawdMappedMotionIds() {
-      const values = [...Object.values(state.mappings), ...Object.values(state.reactionMappings)];
+      const behaviorValues = MotionMapping.behaviorFields.flatMap(field => (state.clawdBehavior?.[field] || []).map(entry => entry.motion));
+      const values = [...Object.values(state.mappings), ...Object.values(state.reactionMappings), ...behaviorValues];
       const seen = new Set();
       return values.filter(value => value?.startsWith("motion:"))
         .map(value => value.slice(7))
@@ -3834,6 +4085,7 @@
     }
 
     function releaseCodexPreview() {
+      stopCodexRowPlayback();
       if (!codexArtifact) return;
       for (const key of ["previewUrl", "cellPreviewUrl"]) if (codexArtifact[key]) URL.revokeObjectURL(codexArtifact[key]);
     }
@@ -3884,6 +4136,10 @@
           }
         }
         setBuildProgressCapture("codex", captureMotionIds.length, captureMotionIds.length);
+        const rowPreviewFrames = Object.fromEntries(MotionMapping.codexRows.map(row => {
+          const motionId = state.codexMappings[row.id].slice(7);
+          return [row.id, (captures.get(motionId) || []).slice(0, row.frames)];
+        }));
         const atlas = document.createElement("canvas");
         atlas.width = CODEX_ATLAS.width;
         atlas.height = CODEX_ATLAS.height;
@@ -3916,7 +4172,7 @@
         const project = buildProjectDocument();
         const desktopArtifact = await buildCodexThroughDesktop(project, captures);
         if (desktopArtifact) {
-          codexArtifact = { ...desktopArtifact, previewUrl: atlasPreviewUrl, cellPreviewUrl };
+          codexArtifact = { ...desktopArtifact, previewUrl: atlasPreviewUrl, cellPreviewUrl, rowFrames: rowPreviewFrames };
           previewUrls.length = 0;
           setBuildStatus(I18n.t("build.status.codexApp", { filename: desktopArtifact.filename, size: Math.round(desktopArtifact.blob.size / 1024) }), "good");
           completeBuildProgress("codex");
@@ -3941,7 +4197,7 @@
         await writer.add("spritesheet.webp", new zipApi.BlobReader(spritesheet));
         const blob = await writer.close();
         const filename = `${projectId(state.projectName || "live2pet-codex")}-codex-pet-${CODEX_PACKAGE_VERSION}.zip`;
-        codexArtifact = { blob, filename, manifest, previewUrl: atlasPreviewUrl, cellPreviewUrl };
+        codexArtifact = { blob, filename, manifest, previewUrl: atlasPreviewUrl, cellPreviewUrl, rowFrames: rowPreviewFrames };
         previewUrls.length = 0;
         setBuildStatus(I18n.t("build.status.codexBrowser", { filename, size: Math.round(blob.size / 1024), cells: manifestRows.reduce((sum, row) => sum + row.frameCount, 0) }), "good");
         setBuildProgressStage("codex", "package", "completed");

@@ -174,6 +174,57 @@ test('derives guide tier metadata and a dedicated roam behavior from mapped Moti
   assert.equal(result.preview.ready, true);
 });
 
+test('converts project behavior Motion references into generated Clawd asset names', async () => {
+  const result = await buildClawdTheme({
+    mapping: clawdMapping(),
+    framesByMotion: clawdFrames(),
+    behavior: {
+      idleAnimations: [{ motion: 'motion:attention', duration: 2400 }],
+      workingTiers: [{ minSessions: 3, motion: 'motion:error' }, { minSessions: 1, motion: 'motion:working' }],
+      jugglingTiers: [{ minSessions: 1, maxSessions: 2, motion: 'motion:attention' }],
+      roamFlipAssets: true,
+    },
+    metadata: { id: 'configured-theme', name: 'Configured Theme' },
+  }, { sharpFactory: clawdSharpFactory() });
+  assert.deepEqual(result.manifest.idleAnimations, [{ file: 'configured-theme-attention.webp', duration: 2400 }]);
+  assert.deepEqual(result.manifest.workingTiers, [
+    { minSessions: 3, file: 'configured-theme-error.webp' },
+    { minSessions: 1, file: 'configured-theme-working.webp' },
+  ]);
+  assert.deepEqual(result.manifest.jugglingTiers, [{ minSessions: 1, maxSessions: 2, file: 'configured-theme-attention.webp' }]);
+  assert.equal(result.manifest.roamFlipAssets, true);
+  assert.equal(result.preview.behavior.roam.flipAssets, true);
+  assert.equal(result.preview.ready, true);
+});
+
+test('buildProjectTargets forwards Clawd behavior configuration from target options', async () => {
+  const project = createProject({
+    projectId: 'behavior-project',
+    appVersion: '0.1.0',
+    name: 'Behavior project',
+    source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'sha256:behavior' },
+    targets: {
+      clawd: {
+        profile: 'clawd',
+        mappings: clawdMapping().states,
+        reactions: clawdMapping().reactions,
+        options: {
+          sleepMode: 'direct',
+          behavior: {
+            idleAnimations: [{ motion: 'motion:attention', duration: 1600 }],
+            workingTiers: [{ minSessions: 2, motion: 'motion:error' }],
+            roamFlipAssets: true,
+          },
+        },
+      },
+    },
+  });
+  const result = await buildProjectTargets({ project, targets: ['clawd'], inputsByTarget: { clawd: { framesByMotion: clawdFrames() } }, optionsByTarget: { clawd: { sharpFactory: clawdSharpFactory() } } });
+  assert.deepEqual(result.builds.clawd.manifest.idleAnimations, [{ file: 'live2pet-theme-attention.webp', duration: 1600 }]);
+  assert.deepEqual(result.builds.clawd.manifest.workingTiers, [{ minSessions: 2, file: 'live2pet-theme-error.webp' }]);
+  assert.equal(result.builds.clawd.manifest.roamFlipAssets, true);
+});
+
 test('builds Clawd themes from deflate-compressed RGBA frame transport', async () => {
   const rawFrames = clawdFrames();
   const compressedFrames = Object.fromEntries(Object.entries(rawFrames).map(([motionId, frameSet]) => [motionId, {
@@ -367,6 +418,9 @@ test('builds a deterministic Codex atlas handoff with progress stages', async ()
   assert.equal(first.provenance.renderPreset, 'balanced');
   assert.equal(first.preview.source, 'generated-assets');
   assert.equal(first.preview.spritesheet.cellWidth, 192);
+  assert.deepEqual(first.preview.frameSize, { width: 192, height: 208 });
+  assert.deepEqual(first.preview.rows.find((row) => row.id === 'idle').frameSize, { width: 192, height: 208 });
+  assert.equal(first.preview.rows.find((row) => row.id === 'idle').playback.finalSize, true);
   assert.equal(first.preview.rows.find((row) => row.id === 'running-right').frames[0].cell.x, 0);
   assert.equal(first.artifactName, 'live2pet-codex-pet-codex-pet-1.0.0.zip');
   assert.equal(first.report.output.package, null);

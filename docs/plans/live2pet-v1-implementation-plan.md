@@ -194,7 +194,7 @@ Exit gate:
 
 Current slice: `packages/clawd-target/` now validates guide-shaped theme manifests, state/reaction bindings, fallbacks, referenced WebP assets, and the 80-MiB size limit. It is exercised against a real Sharp/zip.js Clawd build; richer user-authored configuration, install UX, and clean-machine acceptance remain.
 
-Current implementation update: the App-host seam now exercises a synthetic Clawd build end to end, and Mapper can preview generated WebP state/reaction assets with manifest fallback resolution. The Package Build preview now also models the guide's idle pool, working/juggling tier selection, direct/full sleep transitions, reactions, and free-roam fallback/orientation semantics; generated themes derive baseline tier metadata from mapped `working`, `juggling`, and `roam` Motions and validate every referenced behavior asset. The Mapper now persists selected local runtime source text in a bounded browser-profile store and restores it at startup; its strict-CSP Pixi preview uses the version-matched `@pixi/unsafe-eval` static uniform uploader and allows only generated `blob:` resource URLs. The remaining WP5 work is richer user-authored tier/idle configuration, install UX, and real clean-machine acceptance.
+Current implementation update: the App-host seam now exercises a synthetic Clawd build end to end, and Mapper can preview generated WebP state/reaction assets with manifest fallback resolution. The Package Build preview now also models the guide's idle pool, working/juggling tier selection, direct/full sleep transitions, reactions, and free-roam fallback/orientation semantics; generated themes derive baseline tier metadata from mapped `working`, `juggling`, and `roam` Motions and validate every referenced behavior asset. The Mapper now persists selected local runtime source text in a bounded browser-profile store and restores it at startup; its strict-CSP Pixi preview uses the version-matched `@pixi/unsafe-eval` static uniform uploader and allows only generated `blob:` resource URLs. Users can now add selected Motions to Clawd idle pools and working/juggling tiers, edit tier thresholds or idle durations, and opt into roam asset mirroring; those references are captured, converted to generated asset names, and persisted in `.live2pet` projects. The remaining WP5 work is install UX and real clean-machine acceptance.
 
 ### WP6 — Codex Pet V1 Target Profile
 
@@ -216,7 +216,7 @@ Exit gate:
 - selected frames are deterministic, ordered, preserve endpoints and major motion extrema, and keep the full character visible; and
 - the generated package loads through the current documented Codex custom-pet installation flow.
 
-Current slice: `packages/codex-target/` now validates the official `pet.json` fields, exact atlas geometry, static WebP dimensions, package inventory, and byte-level WebP headers. It is exercised against a real Sharp/zip.js Codex build; final-size preview and installation remain.
+Current slice: `packages/codex-target/` now validates the official `pet.json` fields, exact atlas geometry, static WebP dimensions, package inventory, and byte-level WebP headers. It is exercised against a real Sharp/zip.js Codex build. The generated preview contract exposes the 192 × 208 final cell size, and the Mapper can play each captured atlas row at that target size after a build; installation and host-compatibility acceptance remain.
 
 ### WP7 — CLI, Codex skill, Mapper Session, export, and installation
 

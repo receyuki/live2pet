@@ -469,12 +469,13 @@ function createCodexPreview({ manifest } = {}) {
       id: row.id,
       row: row.row,
       frameCount: row.frames.length,
+      frameSize: { width: ATLAS.cellWidth, height: ATLAS.cellHeight },
       frames: row.frames.map((frame, index) => ({
         ...frame,
         index,
         cell: { x: index * ATLAS.cellWidth, y: row.row * ATLAS.cellHeight, width: ATLAS.cellWidth, height: ATLAS.cellHeight },
       })),
-      playback: { loop: true, timing: 'target-default' },
+      playback: { loop: true, timing: 'target-default', finalSize: true },
     };
   });
   return {
@@ -491,6 +492,7 @@ function createCodexPreview({ manifest } = {}) {
       columns: ATLAS.columns,
       rows: ATLAS.rows,
     },
+    frameSize: { width: ATLAS.cellWidth, height: ATLAS.cellHeight },
     rows,
   };
 }
