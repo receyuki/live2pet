@@ -669,6 +669,7 @@ function normalizeClawdBehaviorInput(input, assetsByMotion) {
   for (const field of ['idleAnimations', 'workingTiers', 'jugglingTiers']) {
     if (input[field] === undefined) continue;
     if (!Array.isArray(input[field])) fail('INVALID_CLAWD_METADATA', `behavior.${field} must be an array.`);
+    if (input[field].length === 0) continue;
     result[field] = input[field].map((entry, index) => {
       if (!entry || typeof entry !== 'object' || Array.isArray(entry) || typeof entry.motion !== 'string' || !entry.motion.startsWith('motion:') || !entry.motion.slice(7)) {
         fail('INVALID_CLAWD_METADATA', `behavior.${field}[${index}] must reference a Motion as motion:<id>.`);

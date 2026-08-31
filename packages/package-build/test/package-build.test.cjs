@@ -197,6 +197,31 @@ test('converts project behavior Motion references into generated Clawd asset nam
   assert.equal(result.preview.ready, true);
 });
 
+test('keeps derived Clawd tiers when a project carries an empty behavior configuration', async () => {
+  const mapping = clawdMapping();
+  mapping.states = { ...mapping.states, juggling: 'motion:juggling' };
+  const frames = {
+    ...clawdFrames(),
+    juggling: {
+      frames: [0, 1].map((index) => ({
+        width: 2,
+        height: 2,
+        rgba: Uint8Array.from([25, index, 0, 255, 25, index, 1, 255, 25, index, 2, 255, 25, index, 3, 255]),
+      })),
+      fps: 10,
+    },
+  };
+  const result = await buildClawdTheme({
+    mapping,
+    framesByMotion: frames,
+    behavior: { idleAnimations: [], workingTiers: [], jugglingTiers: [], roamFlipAssets: false },
+    metadata: { id: 'empty-behavior-theme', name: 'Empty Behavior Theme' },
+  }, { sharpFactory: clawdSharpFactory() });
+  assert.deepEqual(result.manifest.workingTiers, [{ minSessions: 1, file: 'empty-behavior-theme-working.webp' }]);
+  assert.deepEqual(result.manifest.jugglingTiers, [{ minSessions: 1, file: 'empty-behavior-theme-juggling.webp' }]);
+  assert.equal(Object.hasOwn(result.manifest, 'idleAnimations'), false);
+});
+
 test('buildProjectTargets forwards Clawd behavior configuration from target options', async () => {
   const project = createProject({
     projectId: 'behavior-project',
