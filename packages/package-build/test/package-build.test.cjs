@@ -153,6 +153,27 @@ test('builds a guide-shaped Clawd theme package from captured Motion frames', as
   await reader.close();
 });
 
+test('derives guide tier metadata and a dedicated roam behavior from mapped Motions', async () => {
+  const mapping = clawdMapping();
+  mapping.states = { ...mapping.states, juggling: 'motion:juggling', roam: 'motion:roam' };
+  const frames = { ...clawdFrames(), ...Object.fromEntries(['juggling', 'roam'].map((motionId, motionIndex) => [motionId, {
+    frames: [0, 1].map((index) => ({
+      width: 2,
+      height: 2,
+      rgba: Uint8Array.from([motionIndex + 20, index, 0, 255, motionIndex + 20, index, 1, 255, motionIndex + 20, index, 2, 255, motionIndex + 20, index, 3, 255]),
+    })),
+    fps: 10,
+  }])) };
+  const result = await buildClawdTheme({ mapping, framesByMotion: frames, metadata: { id: 'tiered-theme', name: 'Tiered Theme' } }, { sharpFactory: clawdSharpFactory() });
+  assert.deepEqual(result.manifest.workingTiers, [{ minSessions: 1, file: 'tiered-theme-working.webp' }]);
+  assert.deepEqual(result.manifest.jugglingTiers, [{ minSessions: 1, file: 'tiered-theme-juggling.webp' }]);
+  assert.equal(result.preview.behavior.roam.dedicated, true);
+  assert.equal(result.preview.behavior.roam.artFacing, 'right');
+  assert.deepEqual(result.preview.behavior.scenarios.working.steps[0].tier, { id: 'working-tier-1', minSessions: 1 });
+  assert.deepEqual(result.preview.behavior.scenarios.juggling.steps[0].tier, { id: 'juggling-tier-1', minSessions: 1 });
+  assert.equal(result.preview.ready, true);
+});
+
 test('builds Clawd themes from deflate-compressed RGBA frame transport', async () => {
   const rawFrames = clawdFrames();
   const compressedFrames = Object.fromEntries(Object.entries(rawFrames).map(([motionId, frameSet]) => [motionId, {

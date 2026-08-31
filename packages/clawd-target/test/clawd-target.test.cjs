@@ -155,3 +155,43 @@ test('warns when packaged assets are not referenced by theme.json', () => {
   assert.equal(result.ok, true);
   assert.ok(result.warnings.some((warning) => warning.code === 'UNUSED_CLAWD_ASSET' && warning.asset === 'unused.webp'));
 });
+
+test('validates working and juggling tiers, idle pools, roam orientation, and richer reactions', () => {
+  const input = validThemePackage();
+  input.manifest.states.roam = ['demo-roam.webp'];
+  input.manifest.workingTiers = [
+    { minSessions: 2, file: 'demo-working-2.webp' },
+    { minSessions: 1, file: 'demo-working.webp' },
+  ];
+  input.manifest.jugglingTiers = [{ minSessions: 1, maxSessions: 3, file: 'demo-juggle.webp' }];
+  input.manifest.idleAnimations = [{ file: 'demo-idle-look.webp', duration: 1200 }];
+  input.manifest.roamFlipAssets = true;
+  input.manifest.reactions = {
+    drag: { file: 'demo-drag.webp', fileLeft: 'demo-drag-left.webp', fileRight: 'demo-drag-right.webp' },
+    double: { files: ['demo-double-a.webp', 'demo-double-b.webp'], duration: 900 },
+  };
+  for (const name of [
+    'demo-roam.webp', 'demo-working-2.webp', 'demo-working.webp', 'demo-juggle.webp',
+    'demo-idle-look.webp', 'demo-drag-left.webp', 'demo-drag-right.webp',
+    'demo-double-a.webp', 'demo-double-b.webp',
+  ]) input.assets[name] = Uint8Array.from([7]);
+  const result = validateClawdThemePackage(input);
+  assert.equal(result.ok, true);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.referencedAssetCount, 13);
+});
+
+test('rejects malformed tier metadata and non-boolean roam orientation', () => {
+  const input = validThemePackage();
+  input.manifest.workingTiers = [{ minSessions: 0, maxSessions: 1, file: '../unsafe.webp' }];
+  input.manifest.jugglingTiers = [{ minSessions: 2, maxSessions: 1, file: 'demo-juggle.webp' }];
+  input.manifest.idleAnimations = [{ file: 'demo-idle.webp', duration: 0 }];
+  input.manifest.roamFlipAssets = 'yes';
+  const result = validateClawdThemePackage(input);
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some((error) => error.field === 'workingTiers[0].minSessions'));
+  assert.ok(result.errors.some((error) => error.code === 'INVALID_CLAWD_ASSET' && String(error.asset).includes('unsafe')));
+  assert.ok(result.errors.some((error) => error.field === 'jugglingTiers[0].maxSessions'));
+  assert.ok(result.errors.some((error) => error.field === 'idleAnimations[0].duration'));
+  assert.ok(result.errors.some((error) => error.field === 'roamFlipAssets'));
+});

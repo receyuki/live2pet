@@ -181,6 +181,64 @@ function validateThemeFallbacks(states, stateKinds, errors) {
   }
 }
 
+function validatePositiveInteger(value, field, errors, { minimum = 1 } = {}) {
+  if (!Number.isSafeInteger(value) || value < minimum) {
+    errors.push({ code: 'INVALID_CLAWD_METADATA', field, message: `${field} must be an integer >= ${minimum}.` });
+    return false;
+  }
+  return true;
+}
+
+function validateAnimationPool(field, value, errors, referencedAssets) {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    errors.push({ code: 'INVALID_CLAWD_METADATA', field, message: `${field} must be an array.` });
+    return;
+  }
+  for (const [index, entry] of value.entries()) {
+    const prefix = `${field}[${index}]`;
+    if (!isRecord(entry) || typeof entry.file !== 'string' || !entry.file.trim()) {
+      errors.push({ code: 'INVALID_CLAWD_METADATA', field: prefix, message: `${prefix} must provide a file basename.` });
+      continue;
+    }
+    if (validateAssetName(entry.file.trim(), errors, `${prefix}.file`)) referencedAssets.add(entry.file.trim());
+    if (entry.duration !== undefined && (!Number.isSafeInteger(entry.duration) || entry.duration <= 0)) {
+      errors.push({ code: 'INVALID_CLAWD_METADATA', field: `${prefix}.duration`, message: `${prefix}.duration must be a positive integer in milliseconds.` });
+    }
+  }
+}
+
+function validateTierList(field, value, errors, referencedAssets) {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) {
+    errors.push({ code: 'INVALID_CLAWD_METADATA', field, message: `${field} must be an array.` });
+    return;
+  }
+  for (const [index, entry] of value.entries()) {
+    const prefix = `${field}[${index}]`;
+    if (!isRecord(entry) || typeof entry.file !== 'string' || !entry.file.trim()) {
+      errors.push({ code: 'INVALID_CLAWD_METADATA', field: prefix, message: `${prefix} must provide a file basename.` });
+      continue;
+    }
+    if (validateAssetName(entry.file.trim(), errors, `${prefix}.file`)) referencedAssets.add(entry.file.trim());
+    validatePositiveInteger(entry.minSessions, `${prefix}.minSessions`, errors);
+    if (entry.maxSessions !== undefined && validatePositiveInteger(entry.maxSessions, `${prefix}.maxSessions`, errors)) {
+      if (Number.isSafeInteger(entry.minSessions) && entry.maxSessions < entry.minSessions) {
+        errors.push({ code: 'INVALID_CLAWD_METADATA', field: `${prefix}.maxSessions`, message: `${prefix}.maxSessions must be >= minSessions.` });
+      }
+    }
+  }
+}
+
+function validateClawdBehaviorMetadata(manifest, errors, referencedAssets) {
+  if (manifest.roamFlipAssets !== undefined && typeof manifest.roamFlipAssets !== 'boolean') {
+    errors.push({ code: 'INVALID_CLAWD_METADATA', field: 'roamFlipAssets', message: 'roamFlipAssets must be a boolean when provided.' });
+  }
+  validateAnimationPool('idleAnimations', manifest.idleAnimations, errors, referencedAssets);
+  validateTierList('workingTiers', manifest.workingTiers, errors, referencedAssets);
+  validateTierList('jugglingTiers', manifest.jugglingTiers, errors, referencedAssets);
+}
+
 function normalizeThemeAssets(input, errors) {
   if (input == null) {
     errors.push({ code: 'INVALID_CLAWD_ASSET', message: 'Clawd assets must be provided as an object keyed by basenames or an array of asset entries.' });
@@ -270,6 +328,8 @@ function validateClawdThemePackage(input = {}) {
       }
     }
 
+    validateClawdBehaviorMetadata(manifest, errors, referencedAssets);
+
     if (manifest.reactions === undefined) normalizedReactions = {};
     else if (!isRecord(manifest.reactions)) errors.push({ code: 'INVALID_CLAWD_THEME_MANIFEST', field: 'reactions', message: 'theme.json reactions must be an object.' });
     else {
@@ -279,11 +339,24 @@ function validateClawdThemePackage(input = {}) {
           errors.push({ code: 'UNKNOWN_CLAWD_SLOT', slot, message: `theme.json reactions contain unsupported slot: ${slot}` });
           continue;
         }
-        if (!isRecord(value) || Object.keys(value).length !== 1 || typeof value.file !== 'string' || !value.file.trim()) {
-          errors.push({ code: 'INVALID_CLAWD_REACTION', slot, message: `${slot} reaction must be an object with a single file field.` });
+        if (!isRecord(value)) {
+          errors.push({ code: 'INVALID_CLAWD_REACTION', slot, message: `${slot} reaction must be an object with a file or files field.` });
           continue;
         }
-        if (validateAssetName(value.file, errors, `${slot} reaction`)) referencedAssets.add(value.file);
+        const allowedKeys = slot === 'drag'
+          ? new Set(['file', 'fileLeft', 'fileRight'])
+          : new Set(['file', 'files', 'duration']);
+        for (const key of Object.keys(value)) if (!allowedKeys.has(key)) errors.push({ code: 'INVALID_CLAWD_REACTION', slot, field: key, message: `${slot} reaction contains unsupported field ${key}.` });
+        const files = slot === 'double' && Array.isArray(value.files) ? value.files : (typeof value.file === 'string' ? [value.file] : []);
+        const directional = slot === 'drag' ? ['file', 'fileLeft', 'fileRight'].filter((key) => value[key] !== undefined).map((key) => value[key]) : [];
+        const candidates = [...files, ...directional];
+        if ((slot === 'drag' && (typeof value.file !== 'string' || !value.file.trim())) || !candidates.length || candidates.some((file) => typeof file !== 'string' || !file.trim())) {
+          errors.push({ code: 'INVALID_CLAWD_REACTION', slot, message: `${slot} reaction must provide at least one non-empty file.` });
+          continue;
+        }
+        for (const file of candidates) if (validateAssetName(file.trim(), errors, `${slot} reaction`)) referencedAssets.add(file.trim());
+        if (slot === 'double' && value.files !== undefined && (!Array.isArray(value.files) || !value.files.length)) errors.push({ code: 'INVALID_CLAWD_REACTION', slot, message: 'double reaction files must be a non-empty array.' });
+        if (value.duration !== undefined && (!Number.isSafeInteger(value.duration) || value.duration <= 0)) errors.push({ code: 'INVALID_CLAWD_REACTION', slot, field: 'duration', message: `${slot} reaction duration must be a positive integer in milliseconds.` });
       }
     }
   }

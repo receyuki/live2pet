@@ -152,6 +152,56 @@ function clonePreviewStep(plan, overrides = {}) {
   };
 }
 
+function normalizeTierEntries(entries, kind, assetReports) {
+  if (!Array.isArray(entries)) return [];
+  const reports = new Set(assetReports.map((asset) => asset.file));
+  return entries.flatMap((entry, index) => {
+    if (!isRecord(entry) || typeof entry.file !== 'string' || !entry.file.trim()) return [];
+    const file = assetPath(entry.file.trim());
+    const minSessions = Number.isSafeInteger(entry.minSessions) && entry.minSessions >= 1 ? entry.minSessions : null;
+    if (minSessions === null) return [];
+    const maxSessions = Number.isSafeInteger(entry.maxSessions) && entry.maxSessions >= minSessions ? entry.maxSessions : null;
+    const missingFiles = reports.has(file) ? [] : [file];
+    return [{
+      id: `${kind}-tier-${index + 1}`,
+      kind,
+      file,
+      files: [file],
+      minSessions,
+      ...(maxSessions === null ? {} : { maxSessions }),
+      missingFiles,
+      available: missingFiles.length === 0,
+      assetDurationMs: assetDurationMs([file], assetReports),
+      durationMs: assetDurationMs([file], assetReports),
+      loop: true,
+      returnTo: null,
+    }];
+  }).sort((left, right) => right.minSessions - left.minSessions || left.id.localeCompare(right.id));
+}
+
+function tierPreviewStep(tier, statePlan) {
+  return {
+    logicalState: tier.kind,
+    visualState: tier.kind,
+    resolvedState: tier.kind,
+    fallbackChain: [tier.kind],
+    files: [...tier.files],
+    missingFiles: [...tier.missingFiles],
+    available: tier.available,
+    assetDurationMs: tier.assetDurationMs,
+    durationMs: tier.durationMs,
+    loop: true,
+    minDisplayMs: statePlan ? statePlan.minDisplayMs : 0,
+    autoReturnMs: null,
+    returnTo: null,
+    tier: {
+      id: tier.id,
+      minSessions: tier.minSessions,
+      ...(tier.maxSessions === undefined ? {} : { maxSessions: tier.maxSessions }),
+    },
+  };
+}
+
 function createClawdBehaviorPreview({ manifest, states, assets }) {
   const assetReports = Array.isArray(assets) ? assets : [];
   const timings = normalizeClawdPreviewTimings(manifest);
@@ -217,6 +267,34 @@ function createClawdBehaviorPreview({ manifest, states, assets }) {
     })));
   }
 
+  const workingTiers = normalizeTierEntries(manifest?.workingTiers, 'working', assetReports);
+  const jugglingTiers = normalizeTierEntries(manifest?.jugglingTiers, 'juggling', assetReports);
+  const workingTierSteps = workingTiers.map((tier) => tierPreviewStep(tier, statePlans.working));
+  const jugglingTierSteps = jugglingTiers.map((tier) => tierPreviewStep(tier, statePlans.juggling));
+
+  const hasDedicatedRoam = statePlans.roam.available && statePlans.roam.resolvedState === 'roam';
+  const roamStep = hasDedicatedRoam
+    ? clonePreviewStep(statePlans.roam, { loop: true, returnTo: null })
+    : clonePreviewStep(statePlans.idle, {
+      logicalState: 'roam',
+      visualState: statePlans.idle.visualState,
+      resolvedState: statePlans.idle.resolvedState,
+      fallbackChain: ['roam', ...statePlans.idle.fallbackChain],
+      loop: true,
+      returnTo: null,
+    });
+  const roam = {
+    available: roamStep.available,
+    dedicated: hasDedicatedRoam,
+    fallback: !hasDedicatedRoam,
+    files: [...roamStep.files],
+    missingFiles: [...roamStep.missingFiles],
+    step: roamStep,
+    mirrorForLeft: true,
+    flipAssets: manifest?.roamFlipAssets === true,
+    artFacing: manifest?.roamFlipAssets === true ? 'left' : 'right',
+  };
+
   const reactionPlans = {};
   for (const slot of REACTIONS) {
     const value = manifest?.reactions?.[slot];
@@ -268,7 +346,10 @@ function createClawdBehaviorPreview({ manifest, states, assets }) {
     idle: { id: 'idle', loop: true, steps: idlePool.map((entry) => ({ ...entry })) },
     sleep: { id: 'sleep', mode: sleepMode, loop: false, steps: sleepEnter, wake: [wakePlan] },
     wake: { id: 'wake', loop: false, steps: [wakePlan] },
+    roam: { id: 'roam', loop: true, mode: 'free-roam', mirrorForLeft: true, flipAssets: roam.flipAssets, steps: [roamStep] },
   };
+  if (workingTierSteps.length) scenarios.working = { id: 'working', loop: true, mode: 'working-tiers', selection: 'highest-min-sessions-first', steps: workingTierSteps };
+  if (jugglingTierSteps.length) scenarios.juggling = { id: 'juggling', loop: true, mode: 'juggling-tiers', selection: 'highest-min-sessions-first', steps: jugglingTierSteps };
   for (const [slot, reaction] of Object.entries(reactionPlans)) {
     const reactionFiles = Array.isArray(reaction.files) ? reaction.files : Object.values(reaction.files).filter(Boolean);
     const base = statePlans.idle;
@@ -298,6 +379,8 @@ function createClawdBehaviorPreview({ manifest, states, assets }) {
     timings,
     states: statePlans,
     idlePool,
+    tiers: { working: workingTiers, juggling: jugglingTiers },
+    roam,
     sleepSequence: { mode: sleepMode, enter: sleepEnter, wake: wakePlan },
     reactions: reactionPlans,
     scenarios,
@@ -343,18 +426,27 @@ function createClawdPreview({ manifest, assets = [] } = {}) {
     reactions[slot] = { kind: 'asset', ...(files.length ? { file: files[0], files } : {}), ...(directional ? directional : {}), missing: missingFiles.length > 0, missingFiles };
     if (missingFiles.length) missingReactions.push(slot);
   }
+  const behavior = createClawdBehaviorPreview({ manifest, states, assets: assetReports });
+  const behaviorMissingFiles = [
+    ...behavior.idlePool.flatMap((entry) => entry.missingFiles || []),
+    ...behavior.tiers.working.flatMap((entry) => entry.missingFiles || []),
+    ...behavior.tiers.juggling.flatMap((entry) => entry.missingFiles || []),
+    ...(behavior.roam.missingFiles || []),
+  ];
+  const missingBehaviorAssets = [...new Set(behaviorMissingFiles)];
   return {
     contractVersion: PREVIEW_CONTRACT_VERSION,
     target: 'clawd',
     source: 'generated-assets',
-    ready: missingStates.length === 0 && missingReactions.length === 0,
+    ready: missingStates.length === 0 && missingReactions.length === 0 && missingBehaviorAssets.length === 0,
     missingStates,
     missingReactions,
+    missingBehaviorAssets,
     assets: assetReports,
     states,
     reactions,
     sleepSequence: isRecord(manifest.sleepSequence) ? { ...manifest.sleepSequence } : { mode: 'direct' },
-    behavior: createClawdBehaviorPreview({ manifest, states, assets: assetReports }),
+    behavior,
   };
 }
 

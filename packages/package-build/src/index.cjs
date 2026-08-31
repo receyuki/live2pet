@@ -637,6 +637,23 @@ function clawdThemeBindings(target, assetsByMotion) {
   return { states, reactions };
 }
 
+function clawdMotionId(value) {
+  return typeof value === 'string' && value.startsWith('motion:') ? value.slice('motion:'.length) : null;
+}
+
+function deriveClawdBehaviorMetadata(metadata, target, assetsByMotion) {
+  const result = { ...metadata };
+  const workingMotion = clawdMotionId(target.states?.working);
+  const jugglingMotion = clawdMotionId(target.states?.juggling);
+  if (workingMotion && assetsByMotion[workingMotion] && result.workingTiers === undefined) {
+    result.workingTiers = [{ minSessions: 1, file: assetsByMotion[workingMotion] }];
+  }
+  if (jugglingMotion && assetsByMotion[jugglingMotion] && result.jugglingTiers === undefined) {
+    result.jugglingTiers = [{ minSessions: 1, file: assetsByMotion[jugglingMotion] }];
+  }
+  return result;
+}
+
 function normalizeCodexMetadata(input = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) fail('INVALID_CODEX_METADATA', 'Codex pet metadata must be an object.');
   const displayName = typeof input.displayName === 'string' && input.displayName.trim()
@@ -783,7 +800,8 @@ async function buildClawdTheme(input = {}, options = {}) {
 
   progress(onProgress, CLAWD_STAGES[2], 'started');
   const bindings = clawdThemeBindings(target, assetsByMotion);
-  const manifest = { ...metadata, states: bindings.states, sleepSequence: { mode: target.sleepSequence.mode }, reactions: bindings.reactions };
+  const behaviorMetadata = deriveClawdBehaviorMetadata(metadata, target, assetsByMotion);
+  const manifest = { ...behaviorMetadata, states: bindings.states, sleepSequence: { mode: target.sleepSequence.mode }, reactions: bindings.reactions };
   progress(onProgress, CLAWD_STAGES[2], 'completed', { states: Object.keys(bindings.states).length, reactions: Object.keys(bindings.reactions).length });
   checkCancelled(signal);
 

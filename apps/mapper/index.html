@@ -579,10 +579,15 @@
           "preview.clawd.scenario.idle": "Idle pool",
           "preview.clawd.scenario.sleep": "Sleep sequence",
           "preview.clawd.scenario.wake": "Wake from sleep",
+          "preview.clawd.scenario.working": "Working tiers",
+          "preview.clawd.scenario.juggling": "Juggling tiers",
+          "preview.clawd.scenario.roam": "Free roam",
           "preview.clawd.scenario.reaction": "Reaction · {slot}",
           "preview.clawd.play": "Play behavior",
           "preview.clawd.stop": "Stop",
           "preview.clawd.step": "{state} · {duration}",
+          "preview.clawd.step.tierMin": "from {min} sessions",
+          "preview.clawd.step.tierRange": "{min}–{max} sessions",
           "preview.clawd.step.loop": "loop",
           "preview.clawd.step.hold": "hold",
           "preview.clawd.step.missing": "missing asset",
@@ -923,10 +928,15 @@
           "preview.clawd.scenario.idle": "待机动作池",
           "preview.clawd.scenario.sleep": "睡眠序列",
           "preview.clawd.scenario.wake": "从睡眠唤醒",
+          "preview.clawd.scenario.working": "工作等级",
+          "preview.clawd.scenario.juggling": "Juggling 等级",
+          "preview.clawd.scenario.roam": "自由漫游",
           "preview.clawd.scenario.reaction": "反应 · {slot}",
           "preview.clawd.play": "播放行为",
           "preview.clawd.stop": "停止",
           "preview.clawd.step": "{state} · {duration}",
+          "preview.clawd.step.tierMin": "从 {min} 个会话起",
+          "preview.clawd.step.tierRange": "{min}–{max} 个会话",
           "preview.clawd.step.loop": "循环",
           "preview.clawd.step.hold": "保持",
           "preview.clawd.step.missing": "缺少资源",
@@ -3078,7 +3088,12 @@
       const duration = Number.isFinite(Number(step.durationMs)) && Number(step.durationMs) > 0
         ? `${Math.round(Number(step.durationMs))} ms`
         : step.loop ? I18n.t("preview.clawd.step.loop") : I18n.t("preview.clawd.step.hold");
-      return I18n.t("preview.clawd.step", { state: step.logicalState || step.visualState || "—", duration });
+      const tier = step.tier
+        ? Number.isSafeInteger(step.tier.maxSessions)
+          ? I18n.t("preview.clawd.step.tierRange", { min: step.tier.minSessions, max: step.tier.maxSessions })
+          : I18n.t("preview.clawd.step.tierMin", { min: step.tier.minSessions })
+        : "";
+      return [I18n.t("preview.clawd.step", { state: step.logicalState || step.visualState || "—", duration }), tier].filter(Boolean).join(" · ");
     }
 
     function renderClawdBehaviorTimeline(preview) {

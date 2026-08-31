@@ -192,9 +192,9 @@ Exit gate:
 - unsupported capabilities are omitted rather than advertised; and
 - oversized output fails before export with enough information to choose a lower Render Preset.
 
-Current slice: `packages/clawd-target/` now validates guide-shaped theme manifests, state/reaction bindings, fallbacks, referenced WebP assets, and the 80-MiB size limit. It is exercised against a real Sharp/zip.js Clawd build; final behavior preview and App integration remain.
+Current slice: `packages/clawd-target/` now validates guide-shaped theme manifests, state/reaction bindings, fallbacks, referenced WebP assets, and the 80-MiB size limit. It is exercised against a real Sharp/zip.js Clawd build; richer user-authored configuration, install UX, and clean-machine acceptance remain.
 
-Current implementation update: the App-host seam now exercises a synthetic Clawd build end to end, and Mapper can preview generated WebP state/reaction assets with manifest fallback resolution. The Mapper now persists selected local runtime source text in a bounded browser-profile store and restores it at startup; its strict-CSP Pixi preview uses the version-matched `@pixi/unsafe-eval` static uniform uploader and allows only generated `blob:` resource URLs. The remaining WP5 work is full target behavior simulation, install UX, and real clean-machine acceptance.
+Current implementation update: the App-host seam now exercises a synthetic Clawd build end to end, and Mapper can preview generated WebP state/reaction assets with manifest fallback resolution. The Package Build preview now also models the guide's idle pool, working/juggling tier selection, direct/full sleep transitions, reactions, and free-roam fallback/orientation semantics; generated themes derive baseline tier metadata from mapped `working`, `juggling`, and `roam` Motions and validate every referenced behavior asset. The Mapper now persists selected local runtime source text in a bounded browser-profile store and restores it at startup; its strict-CSP Pixi preview uses the version-matched `@pixi/unsafe-eval` static uniform uploader and allows only generated `blob:` resource URLs. The remaining WP5 work is richer user-authored tier/idle configuration, install UX, and real clean-machine acceptance.
 
 ### WP6 — Codex Pet V1 Target Profile
 
