@@ -169,6 +169,7 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, buildP
       if (normalized.method === 'buildProject') {
         if (!buildProjectService) fail('APP_BUILD_UNAVAILABLE', 'The App Package Build service is not configured.');
         const input = normalizeBuildRequest(normalized.args[0]);
+        buildArtifacts = new Map();
         const progress = [];
         const built = await buildProjectService({ ...input, onProgress: (event) => progress.push(event) });
         const artifacts = collectBuildArtifacts(built);

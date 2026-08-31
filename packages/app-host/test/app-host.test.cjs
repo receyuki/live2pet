@@ -1,6 +1,9 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
+const { createProject } = require('../../project/src/index.cjs');
+const { buildProjectTargets } = require('../../package-build/src/index.cjs');
+
 const {
   APP_IPC_CHANNEL,
   APP_IPC_METHODS,
@@ -113,6 +116,40 @@ test('rejects malformed or unavailable App Package Build requests with typed err
   const malformed = await router({ protocolVersion: 1, method: 'buildProject', args: [{ project: {}, renderer: 'not-allowed' }] });
   assert.equal(malformed.ok, false);
   assert.equal(malformed.error.code, 'INVALID_BUILD_REQUEST');
+});
+
+test('routes a real synthetic Codex build through the App seam and returns a downloadable artifact handle', async () => {
+  const project = createProject({
+    projectId: 'app-real-build',
+    name: 'App real build',
+    source: { kind: 'synthetic', name: 'synthetic-source', fingerprint: 'b'.repeat(64) },
+    targets: { 'codex-pet': { profile: 'codex-pet', mappings: Object.fromEntries(['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review'].map((id) => [id, 'motion:fixture'])) } },
+  });
+  const rgba = new Uint8Array(192 * 208 * 4);
+  for (let index = 3; index < rgba.length; index += 4) rgba[index] = 255;
+  const rowFrames = (count) => Array.from({ length: count }, (_, index) => ({ id: `fixture-${index}`, index, time: count > 1 ? index / (count - 1) : 0, visualChange: index === 0 || index === count - 1 ? 0 : 1, bounds: { x: 0, y: 0, width: 1, height: 1 }, width: 192, height: 208, rgba }));
+  const candidatesByRow = Object.fromEntries([['idle', 6], ['running-right', 8], ['running-left', 8], ['waving', 4], ['jumping', 5], ['failed', 8], ['waiting', 6], ['running', 6], ['review', 6]].map(([id, count]) => [id, rowFrames(count)]));
+  const router = createAppIpcRouter({ mapperHostFactory: async () => fakeHost(), buildProjectService: buildProjectTargets });
+  const response = await router({
+    protocolVersion: 1,
+    method: 'buildProject',
+    args: [{
+      project,
+      targets: ['codex-pet'],
+      inputsByTarget: { 'codex-pet': { candidatesByRow } },
+      metadataByTarget: { 'codex-pet': { id: 'app-real-build', displayName: 'App real build', description: 'Synthetic App integration build.', version: '1.0.0' } },
+      optionsByTarget: { 'codex-pet': { package: true, quality: 76 } },
+    }],
+  });
+  assert.equal(response.ok, true);
+  assert.equal(response.result.targets[0], 'codex-pet');
+  assert.equal(response.result.builds['codex-pet'].validation.ok, true);
+  assert.equal(response.result.builds['codex-pet'].package.buffer, undefined);
+  assert.equal(response.result.artifacts.length, 1);
+  const artifact = await router({ protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: response.result.artifacts[0].artifactId }] });
+  assert.equal(artifact.ok, true);
+  assert.ok(artifact.result.bytes.byteLength > 0);
+  assert.equal(artifact.result.filename, 'app-real-build-codex-pet-1.0.0.zip');
 });
 
 test('preload exposes only typed methods and the window options keep Electron sandbox defaults', async () => {
