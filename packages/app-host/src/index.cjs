@@ -7,6 +7,7 @@ const APP_IPC_METHODS = Object.freeze([
   'startMapperSession',
   'getMapperProject',
   'updateMapperProject',
+  'buildProject',
   'closeMapperSession',
 ]);
 
@@ -21,6 +22,66 @@ class AppHostError extends Error {
 
 function fail(code, message, details = {}) {
   throw new AppHostError(code, message, details);
+}
+
+function isRecord(value) {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function normalizeBuildRequest(value) {
+  if (!isRecord(value)) fail('INVALID_BUILD_REQUEST', 'App Package Build input must be an object.');
+  const allowed = new Set(['project', 'inputsByTarget', 'targets', 'metadataByTarget', 'optionsByTarget']);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) fail('INVALID_BUILD_REQUEST', `App Package Build input contains unsupported fields: ${unknown.join(', ')}.`);
+  if (!isRecord(value.project)) fail('INVALID_BUILD_REQUEST', 'App Package Build input requires a project object.');
+  if (value.inputsByTarget !== undefined && !isRecord(value.inputsByTarget)) fail('INVALID_BUILD_REQUEST', 'inputsByTarget must be an object keyed by Target Profile.');
+  if (value.targets !== undefined && (!Array.isArray(value.targets) || value.targets.some((target) => typeof target !== 'string' || !target.trim()))) fail('INVALID_BUILD_REQUEST', 'targets must be an array of non-empty Target Profile ids.');
+  if (value.metadataByTarget !== undefined && !isRecord(value.metadataByTarget)) fail('INVALID_BUILD_REQUEST', 'metadataByTarget must be an object keyed by Target Profile.');
+  if (value.optionsByTarget !== undefined && !isRecord(value.optionsByTarget)) fail('INVALID_BUILD_REQUEST', 'optionsByTarget must be an object keyed by Target Profile.');
+  return {
+    project: value.project,
+    inputsByTarget: value.inputsByTarget || {},
+    ...(value.targets ? { targets: [...value.targets] } : {}),
+    metadataByTarget: value.metadataByTarget || {},
+    optionsByTarget: value.optionsByTarget || {},
+  };
+}
+
+function summarizeBuild(build = {}) {
+  const packageInfo = build.package ? {
+    format: build.package.format,
+    byteLength: build.package.byteLength,
+    files: Array.isArray(build.package.files) ? [...build.package.files] : [],
+    ...(build.package.artifactName ? { artifactName: build.package.artifactName } : {}),
+  } : null;
+  const atlas = build.atlas && typeof build.atlas === 'object' ? Object.fromEntries(Object.entries(build.atlas).filter(([key, value]) => key !== 'rgba' && !ArrayBuffer.isView(value) && !(value instanceof ArrayBuffer))) : undefined;
+  return {
+    ...(build.buildContractVersion !== undefined ? { buildContractVersion: build.buildContractVersion } : {}),
+    target: build.target,
+    ...(build.targetContractVersion !== undefined ? { targetContractVersion: build.targetContractVersion } : {}),
+    ...(build.themeId ? { themeId: build.themeId } : {}),
+    ...(build.artifactName ? { artifactName: build.artifactName } : {}),
+    manifest: build.manifest || null,
+    assets: Array.isArray(build.assets) ? build.assets : [],
+    validation: build.validation || null,
+    encoding: build.encoding || null,
+    provenance: build.provenance || null,
+    preview: build.preview || null,
+    cache: build.cache || null,
+    report: build.report || null,
+    ...(atlas ? { atlas } : {}),
+    package: packageInfo,
+  };
+}
+
+function summarizeBuildTargets(built = {}) {
+  return {
+    ...(built.buildContractVersion !== undefined ? { buildContractVersion: built.buildContractVersion } : {}),
+    projectId: built.projectId,
+    targets: Array.isArray(built.targets) ? [...built.targets] : [],
+    builds: Object.fromEntries(Object.entries(built.builds || {}).map(([target, build]) => [target, summarizeBuild(build)])),
+    warnings: Array.isArray(built.warnings) ? built.warnings : [],
+  };
 }
 
 function normalizeRequest(request) {
@@ -40,8 +101,9 @@ function typedError(error) {
   };
 }
 
-function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, appVersion = '0.1.0' } = {}) {
+function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, buildProjectService = null, appVersion = '0.1.0' } = {}) {
   if (typeof mapperHostFactory !== 'function') fail('INVALID_APP_ROUTER', 'mapperHostFactory must be a function.');
+  if (buildProjectService !== null && typeof buildProjectService !== 'function') fail('INVALID_APP_ROUTER', 'buildProjectService must be a function when provided.');
   if (typeof appVersion !== 'string' || !appVersion.trim()) fail('INVALID_APP_ROUTER', 'appVersion must be a non-empty string.');
   let activeHost = null;
   let activeClient = null;
@@ -78,6 +140,13 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, appVer
         const [project] = normalized.args;
         return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: await activeClient.updateProject(project) };
       }
+      if (normalized.method === 'buildProject') {
+        if (!buildProjectService) fail('APP_BUILD_UNAVAILABLE', 'The App Package Build service is not configured.');
+        const input = normalizeBuildRequest(normalized.args[0]);
+        const progress = [];
+        const built = await buildProjectService({ ...input, onProgress: (event) => progress.push(event) });
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, progress, result: summarizeBuildTargets(built) };
+      }
       if (normalized.method === 'closeMapperSession') return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: await closeActive() };
       fail('UNKNOWN_APP_METHOD', `App method is not allowed: ${normalized.method}.`);
     } catch (error) {
@@ -95,6 +164,7 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL } = {}) {
     startMapperSession: (options) => invoke('startMapperSession', options),
     getMapperProject: () => invoke('getMapperProject'),
     updateMapperProject: (project) => invoke('updateMapperProject', project),
+    buildProject: (input) => invoke('buildProject', input),
     closeMapperSession: () => invoke('closeMapperSession'),
   });
 }
@@ -130,4 +200,7 @@ module.exports = {
   createAppPreloadApi,
   createAppWindowOptions,
   normalizeRequest,
+  normalizeBuildRequest,
+  summarizeBuild,
+  summarizeBuildTargets,
 };

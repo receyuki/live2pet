@@ -4,7 +4,9 @@ This Electron shell is the first desktop host for the shared mapper. It loads th
 
 The main process owns the Mapper Session host and resolves either the repository
 Mapper during development or the staged Mapper bundle from `process.resourcesPath`
-in a packaged build. Renderer requests cannot choose arbitrary mapper files,
+in a packaged build. It also injects the shared Package Build service into the
+typed `buildProject` IPC method; that response is a binary-free summary and does
+not implicitly export or install anything. Renderer requests cannot choose arbitrary mapper files,
 invoke shell commands, or access the bearer token. Forge makers/signing are not
 configured until the macOS source-release gates pass. `forge.config.cjs` records
 the future packager resource path, but the Forge CLI is not a workspace
