@@ -310,7 +310,7 @@ The development Electron shell loads the shared Mapper from a fixed repository p
 - Bundling, redistributing, or silently downloading Cubism Core or legacy runtimes.
 - Publishing official ready-to-run installers before the Live2D Expandable Application release position is resolved.
 - Linux packaging in the initial product scope.
-- A Chinese UI in V1; the interface is English with an i18n-ready message system.
+- The Mapper defaults to English and ships a lightweight English/Chinese (`zh-CN`) message layer from the first UI slice; additional languages can extend the same key set without changing target contracts.
 - Shipping example models or generated character themes without explicit redistribution permission.
 - Providing legal advice or asserting that user-provided Core alone resolves Publication License Agreement obligations.
 

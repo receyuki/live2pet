@@ -41,6 +41,9 @@
     code { color: #bdd7ff; }
     .shell { width: min(1540px, calc(100% - 44px)); margin: 0 auto; padding: 30px 0 58px; }
     .top { display: flex; justify-content: space-between; gap: 20px; align-items: start; }
+    .top-tools { display: flex; gap: 10px; align-items: start; }
+    .language-picker { display: grid; gap: 4px; min-width: 112px; color: var(--muted); font-size: 11px; }
+    .language-picker select { min-height: 44px; padding: 6px 8px; }
     h1 { margin: 4px 0 5px; font-size: 30px; }
     h2 { margin: 0 0 10px; font-size: 18px; }
     h3 { margin: 0; font-size: 15px; }
@@ -197,6 +200,7 @@
     @media (max-width: 680px) {
       .shell { width: min(100% - 24px, 1540px); padding-top: 20px; }
       .top { display: grid; }
+      .top-tools { justify-content: space-between; }
       h1 { font-size: 25px; }
       .loadbar { align-items: stretch; flex-direction: column; }
       .projectbar { grid-template-columns: 1fr; }
@@ -222,42 +226,45 @@
   <main class="shell">
     <header class="top">
       <div>
-        <div class="eyebrow">Live2Pet Source Inspector</div>
-        <h1>Inspect a Live2D Source Package</h1>
-        <p class="muted">Choose a standard Cubism directory or a supported Destiny Child PCK to inspect its model, Motions, Expressions, and referenced resources locally.</p>
+        <div class="eyebrow" data-i18n="app.eyebrow">Live2Pet Source Inspector</div>
+        <h1 data-i18n="app.heading">Inspect a Live2D Source Package</h1>
+        <p class="muted" data-i18n="app.description">Choose a standard Cubism directory or a supported Destiny Child PCK to inspect its model, Motions, Expressions, and referenced resources locally.</p>
       </div>
-      <div class="badge">ALPHA · LOCAL ONLY</div>
+      <div class="top-tools">
+        <label class="language-picker"><span data-i18n="language.label">Language</span><select id="languageSelect" aria-label="Language" data-i18n-aria-label="language.label"><option value="en" data-i18n="language.en">English</option><option value="zh-CN" data-i18n="language.zh">中文</option></select></label>
+        <div class="badge" data-i18n="app.badge">ALPHA · LOCAL ONLY</div>
+      </div>
     </header>
 
-    <section class="question"><strong>Current seam:</strong> inspection is complete before preview or mapping. Unsupported or incomplete input is reported with a recovery path instead of being treated as a valid Source Package.</section>
+    <section class="question"><strong data-i18n="question.label">Current seam:</strong> <span data-i18n="question.copy">inspection is complete before preview or mapping. Unsupported or incomplete input is reported with a recovery path instead of being treated as a valid Source Package.</span></section>
 
     <section class="loadbar">
-      <button id="chooseFolder" class="primary">Choose Source Package directory</button>
+      <button id="chooseFolder" class="primary" data-i18n="source.chooseFolder">Choose Source Package directory</button>
       <input id="folderInput" class="hidden" type="file" webkitdirectory multiple>
-      <button id="choosePck">Choose Destiny Child PCK</button>
+      <button id="choosePck" data-i18n="source.choosePck">Choose Destiny Child PCK</button>
       <input id="pckInput" class="hidden" type="file" accept=".pck,application/octet-stream">
-      <span id="loadHint" class="muted" aria-live="polite">Supports .pck, .model3.json, or Cubism 2 model.json</span>
+      <span id="loadHint" class="muted" aria-live="polite" data-i18n="source.loadHint">Supports .pck, .model3.json, or Cubism 2 model.json</span>
     </section>
 
     <section class="runtimebar" aria-labelledby="runtimeHeading">
-      <span id="runtimeHeading" class="runtime-label">Local Cubism runtime</span>
-      <button id="chooseModernRuntime">Choose modern Core</button>
+      <span id="runtimeHeading" class="runtime-label" data-i18n="runtime.heading">Local Cubism runtime</span>
+      <button id="chooseModernRuntime" data-i18n="runtime.modern">Choose modern Core</button>
       <input id="modernRuntimeInput" class="hidden" type="file" accept=".js,.wasm,application/javascript,application/wasm">
-      <button id="chooseLegacyRuntime">Choose Cubism 2 runtime</button>
+      <button id="chooseLegacyRuntime" data-i18n="runtime.legacy">Choose Cubism 2 runtime</button>
       <input id="legacyRuntimeInput" class="hidden" type="file" accept=".js,application/javascript">
-      <span id="runtimeStatus" class="runtime-status" role="status" aria-live="polite">Modern Core is optional for inspection; Cubism 2 preview requires a local runtime.</span>
+      <span id="runtimeStatus" class="runtime-status" role="status" aria-live="polite" data-i18n="runtime.status">Modern Core is optional for inspection; Cubism 2 preview requires a local runtime.</span>
     </section>
 
     <section class="projectbar" aria-labelledby="projectHeading">
       <div>
-        <div class="eyebrow">Live2Pet Project</div>
-        <h2 id="projectHeading">Save your mapping</h2>
-        <p class="muted">Projects keep source references and Motion Mappings, never model bytes or runtime files.</p>
+        <div class="eyebrow" data-i18n="project.eyebrow">Live2Pet Project</div>
+        <h2 id="projectHeading" data-i18n="project.heading">Save your mapping</h2>
+        <p class="muted" data-i18n="project.description">Projects keep source references and Motion Mappings, never model bytes or runtime files.</p>
       </div>
       <div class="project-actions">
-        <button id="openProject">Open .live2pet</button>
+        <button id="openProject" data-i18n="project.open">Open .live2pet</button>
         <input id="projectInput" class="hidden" type="file" accept=".live2pet,application/json">
-        <button id="saveProject" class="primary" disabled>Save .live2pet</button>
+        <button id="saveProject" class="primary" disabled data-i18n="project.save">Save .live2pet</button>
       </div>
       <div id="projectStatus" class="project-status" role="status" aria-live="polite">No project loaded.</div>
       <div id="sessionStatus" class="session-status" role="status" aria-live="polite"></div>
@@ -265,19 +272,19 @@
 
     <section class="panel inspection-panel" aria-labelledby="inspectionHeading">
       <div class="panel-head">
-        <div><div class="eyebrow">Source Package</div><h2 id="inspectionHeading">Inspection summary</h2></div>
+        <div><div class="eyebrow" data-i18n="inspection.eyebrow">Source Package</div><h2 id="inspectionHeading" data-i18n="inspection.heading">Inspection summary</h2></div>
         <div id="inspectionStatus" class="inspection-status" role="status" aria-live="polite">Waiting for a local Source Package.</div>
       </div>
-      <div id="inspectionEmpty" class="empty-state">Choose a directory or PCK to see the normalized manifest. No model files leave this browser session.</div>
+      <div id="inspectionEmpty" class="empty-state" data-i18n="inspection.empty">Choose a directory or PCK to see the normalized manifest. No model files leave this browser session.</div>
       <div id="inspectionContent" class="hidden">
         <dl id="inspectionSummary" class="inspection-summary"></dl>
         <div class="inspection-grid">
           <section class="inspection-subpanel" aria-labelledby="modelDetailsHeading">
-            <h3 id="modelDetailsHeading">Model configuration</h3>
+            <h3 id="modelDetailsHeading" data-i18n="inspection.model">Model configuration</h3>
             <dl id="inspectionModel" class="inspection-details"></dl>
           </section>
           <section class="inspection-subpanel" aria-labelledby="resourceDetailsHeading">
-            <h3 id="resourceDetailsHeading">Referenced resources</h3>
+            <h3 id="resourceDetailsHeading" data-i18n="inspection.resources">Referenced resources</h3>
             <div id="inspectionResources" class="resource-list"></div>
           </section>
         </div>
@@ -289,43 +296,43 @@
 
     <div class="workspace">
       <section class="panel library-panel">
-        <div class="panel-head"><div><div class="eyebrow">Source library</div><h2>Motion library</h2><p class="muted">Select a Motion or Expression to preview it in the center.</p></div></div>
-        <div class="group-title"><h3>Browse Motions</h3><span id="motionCount" class="muted">0</span></div>
+        <div class="panel-head"><div><div class="eyebrow" data-i18n="library.eyebrow">Source library</div><h2 data-i18n="library.heading">Motion library</h2><p class="muted" data-i18n="library.description">Select a Motion or Expression to preview it in the center.</p></div></div>
+        <div class="group-title"><h3 data-i18n="library.motions">Browse Motions</h3><span id="motionCount" class="muted">0</span></div>
         <div id="motionList" class="motion-list"></div>
-        <div class="group-title group"><h3>Browse Expressions</h3><span id="expressionCount" class="muted">0</span></div>
-        <div class="controls"><button id="resetExpression" disabled>Reset Expression</button></div>
+        <div class="group-title group"><h3 data-i18n="library.expressions">Browse Expressions</h3><span id="expressionCount" class="muted">0</span></div>
+        <div class="controls"><button id="resetExpression" disabled data-i18n="library.resetExpression">Reset Expression</button></div>
         <div id="expressionList" class="expression-list"></div>
       </section>
 
       <section class="panel preview-panel">
-        <div class="panel-head"><div><div class="eyebrow">Source preview</div><h2>Live2D preview</h2><p class="muted">Preview the selected source Motion before mapping it.</p></div></div>
+        <div class="panel-head"><div><div class="eyebrow" data-i18n="preview.eyebrow">Source preview</div><h2 data-i18n="preview.heading">Live2D preview</h2><p class="muted" data-i18n="preview.description">Preview the selected source Motion before mapping it.</p></div></div>
         <div id="stage" class="stage">
           <canvas id="live2dCanvas"></canvas>
-          <div id="stageMessage" class="stage-message">Choose a Source Package to begin.</div>
+          <div id="stageMessage" class="stage-message" data-i18n="source.stage.empty">Choose a Source Package to begin.</div>
         </div>
         <div id="nowPlaying" class="now"><strong>No Motion selected</strong><span class="muted">—</span></div>
         <div class="controls">
-          <button id="replay" disabled>Replay selected Motion</button>
-          <button id="playIdle" disabled>Play idle</button>
+          <button id="replay" disabled data-i18n="preview.replay">Replay selected Motion</button>
+          <button id="playIdle" disabled data-i18n="preview.playIdle">Play idle</button>
         </div>
         <div class="quick-map">
-          <label class="field">Quick target state
-            <select id="quickState" aria-label="Quick target state"></select>
+          <label class="field"><span data-i18n="mapping.quickState">Quick target state</span>
+            <select id="quickState" aria-label="Quick target state" data-i18n-aria-label="mapping.quickState"></select>
           </label>
-          <button id="assignCurrent" disabled>Assign selected Motion</button>
+          <button id="assignCurrent" disabled data-i18n="mapping.assignSelected">Assign selected Motion</button>
         </div>
       </section>
 
       <section class="panel mapping-panel">
-        <div class="panel-head"><div><div class="eyebrow">Target profile</div><h2>Clawd mapping</h2><p class="muted">Assign the selected Motion to guide-defined behavior slots.</p></div></div>
+        <div class="panel-head"><div><div class="eyebrow" data-i18n="mapping.eyebrow">Target profile</div><h2 data-i18n="mapping.heading">Clawd mapping</h2><p class="muted" data-i18n="mapping.description">Assign the selected Motion to guide-defined behavior slots.</p></div></div>
         <div class="mapping-controls">
-          <label class="field">Sleep sequence
-            <select id="sleepMode"><option value="direct">direct</option><option value="full">full</option></select>
+          <label class="field"><span data-i18n="mapping.sleepSequence">Sleep sequence</span>
+            <select id="sleepMode"><option value="direct" data-i18n="mapping.sleep.direct">direct</option><option value="full" data-i18n="mapping.sleep.full">full</option></select>
           </label>
-          <label class="field">Clawd Render Preset
-            <select id="clawdRenderPreset"><option value="compact">compact · 512px · 18fps</option><option value="balanced">balanced · 768px · 24fps</option><option value="high">high · 1024px · 30fps</option></select>
+          <label class="field"><span data-i18n="mapping.clawdPreset">Clawd Render Preset</span>
+            <select id="clawdRenderPreset"><option value="compact" data-i18n="mapping.preset.compact">compact · 512px · 18fps</option><option value="balanced" data-i18n="mapping.preset.balanced">balanced · 768px · 24fps</option><option value="high" data-i18n="mapping.preset.high">high · 1024px · 30fps</option></select>
           </label>
-          <label class="field">Output file prefix
+          <label class="field"><span data-i18n="mapping.outputPrefix">Output file prefix</span>
             <input id="outputPrefix" type="text" value="live2pet">
           </label>
         </div>
@@ -333,10 +340,10 @@
         <div id="mappingTables"></div>
         <div id="validation" class="validation"></div>
         <details class="target-section">
-          <summary>Codex Pet mapping</summary>
-          <p class="target-copy">Codex uses its own nine-row atlas contract. Select a source Motion in the left library, then assign it directly to each row.</p>
-          <label class="field">Codex Render Preset
-            <select id="codexRenderPreset"><option value="compact">compact · 32 samples/s</option><option value="balanced">balanced · 64 samples/s</option><option value="high">high · 96 samples/s</option></select>
+          <summary data-i18n="codex.mappingSummary">Codex Pet mapping</summary>
+          <p class="target-copy" data-i18n="codex.mappingDescription">Codex uses its own nine-row atlas contract. Select a source Motion in the left library, then assign it directly to each row.</p>
+          <label class="field"><span data-i18n="codex.renderPreset">Codex Render Preset</span>
+            <select id="codexRenderPreset"><option value="compact" data-i18n="codex.preset.compact">compact · 32 samples/s</option><option value="balanced" data-i18n="codex.preset.balanced">balanced · 64 samples/s</option><option value="high" data-i18n="codex.preset.high">high · 96 samples/s</option></select>
           </label>
           <div id="codexMapping" class="codex-map"></div>
         </details>
@@ -344,26 +351,26 @@
     </div>
 
     <section class="panel walkthrough">
-      <div class="panel-head"><div><h2>Guided mapping</h2><p class="muted">Start with an empty mapping and confirm each relationship after preview.</p></div></div>
+      <div class="panel-head"><div><h2 data-i18n="walkthrough.heading">Guided mapping</h2><p class="muted" data-i18n="walkthrough.description">Start with an empty mapping and confirm each relationship after preview.</p></div></div>
       <div id="scenarioTabs" class="tabs"></div>
       <div id="scenario" class="scenario"></div>
     </section>
 
     <section class="panel output">
       <div class="panel-head">
-        <div><h2>Mapping manifest</h2><p class="muted">The mapping manifest will drive later Package Builds.</p></div>
-        <div class="output-actions"><button id="copyJson">Copy JSON</button><button id="downloadJson" class="primary">Download motion-map.json</button></div>
+        <div><h2 data-i18n="output.heading">Mapping manifest</h2><p class="muted" data-i18n="output.description">The mapping manifest will drive later Package Builds.</p></div>
+        <div class="output-actions"><button id="copyJson" data-i18n="output.copy">Copy JSON</button><button id="downloadJson" class="primary" data-i18n="output.download">Download motion-map.json</button></div>
       </div>
       <pre id="jsonOutput"></pre>
     </section>
 
     <section class="panel build-panel" aria-labelledby="buildHeading">
       <div class="panel-head">
-        <div><div class="eyebrow">Codex Pet Package</div><h2 id="buildHeading">Build a local ZIP</h2><p class="muted">Captures the selected Codex mappings into a transparent 1536 × 1872 atlas, then creates <code>pet.json</code> and <code>spritesheet.webp</code>. This prototype validates the atlas and package shape; host-compatibility validation remains a later gate.</p></div>
+        <div><div class="eyebrow" data-i18n="build.codex.eyebrow">Codex Pet Package</div><h2 id="buildHeading" data-i18n="build.codex.heading">Build a local ZIP</h2><p class="muted" data-i18n="build.codex.description">Captures the selected Codex mappings into a transparent 1536 × 1872 atlas, then creates <code>pet.json</code> and <code>spritesheet.webp</code>. This prototype validates the atlas and package shape; host-compatibility validation remains a later gate.</p></div>
       </div>
       <div class="build-actions">
-        <button id="buildCodex" class="primary" disabled>Build Codex Pet ZIP</button>
-        <button id="downloadCodex" disabled>Download last ZIP</button>
+        <button id="buildCodex" class="primary" disabled data-i18n="build.codex.build">Build Codex Pet ZIP</button>
+        <button id="downloadCodex" disabled data-i18n="build.codex.download">Download last ZIP</button>
       </div>
       <div id="buildReadiness" class="build-readiness" role="status" aria-live="polite">Load a Source Package and map all nine Codex rows to enable building.</div>
       <div id="buildStatus" class="build-status" role="status" aria-live="polite">No Codex package has been built yet.</div>
@@ -373,43 +380,556 @@
       </div>
     </section>
 
-    <footer>Clawd state semantics follow the <a href="https://github.com/rullerzhou-afk/clawd-on-desk/blob/main/docs/guides/guide-theme-creation.md">Clawd Theme Creation Guide</a>. Source assets stay local; refreshing clears unsaved session state.</footer>
+    <section class="panel build-panel" aria-labelledby="clawdBuildHeading">
+      <div class="panel-head">
+        <div><div class="eyebrow" data-i18n="build.clawd.eyebrow">Clawd Theme Package</div><h2 id="clawdBuildHeading" data-i18n="build.clawd.heading">Build a Clawd Theme ZIP</h2><p class="muted" data-i18n="build.clawd.description">Captures the guide-defined Clawd states and reactions as transparent animated WebP assets, then packages theme.json and a README through the desktop App build service.</p></div>
+      </div>
+      <div class="build-actions">
+        <button id="buildClawd" class="primary" disabled data-i18n="build.clawd.build">Build Clawd Theme ZIP</button>
+        <button id="downloadClawd" disabled data-i18n="build.clawd.download">Download last ZIP</button>
+      </div>
+      <div id="clawdBuildReadiness" class="build-readiness" role="status" aria-live="polite">Load a Source Package and complete the required Clawd mapping to enable building.</div>
+      <div id="clawdBuildStatus" class="build-status" role="status" aria-live="polite">No Clawd theme has been built yet.</div>
+      <div id="clawdBuildSummary" class="target-copy hidden" aria-live="polite"></div>
+    </section>
+
+    <footer><span data-i18n="footer.clawd">Clawd state semantics follow the</span> <a href="https://github.com/rullerzhou-afk/clawd-on-desk/blob/main/docs/guides/guide-theme-creation.md" data-i18n="footer.guide">Clawd Theme Creation Guide</a><span data-i18n="footer.local">. Source assets stay local; refreshing clears unsaved session state.</span></footer>
   </main>
 
   <script src="../../packages/live2d-exporter/node_modules/pixi.js/dist/browser/pixi.min.js"></script>
   <script src="../../packages/live2d-exporter/node_modules/pixi-live2d-display/dist/cubism4.min.js"></script>
   <script src="../../node_modules/.pnpm/@zip.js+zip.js@2.7.57/node_modules/@zip.js/zip.js/dist/zip-no-worker.min.js"></script>
   <script>
+    const I18n = (() => {
+      const STORAGE_KEY = "live2pet.mapper.locale";
+      const supported = ["en", "zh-CN"];
+      const messages = {
+        en: {
+          "app.title": "Live2Pet Mapper",
+          "app.eyebrow": "Live2Pet Source Inspector",
+          "app.heading": "Inspect a Live2D Source Package",
+          "app.description": "Choose a standard Cubism directory or a supported Destiny Child PCK to inspect its model, Motions, Expressions, and referenced resources locally.",
+          "app.badge": "ALPHA · LOCAL ONLY",
+          "language.label": "Language",
+          "language.en": "English",
+          "language.zh": "中文",
+          "question.label": "Current seam:",
+          "question.copy": "inspection is complete before preview or mapping. Unsupported or incomplete input is reported with a recovery path instead of being treated as a valid Source Package.",
+          "source.chooseFolder": "Choose Source Package directory",
+          "source.choosePck": "Choose Destiny Child PCK",
+          "source.loadHint": "Supports .pck, .model3.json, or Cubism 2 model.json",
+          "runtime.heading": "Local Cubism runtime",
+          "runtime.modern": "Choose modern Core",
+          "runtime.legacy": "Choose Cubism 2 runtime",
+          "runtime.status": "Modern Core is optional for inspection; Cubism 2 preview requires a local runtime.",
+          "runtime.name.modern": "Modern Core",
+          "runtime.name.legacy": "Cubism 2 runtime",
+          "runtime.loading": "Loading {runtime} {name}…",
+          "runtime.loaded": "{runtime} loaded: {name}",
+          "runtime.refreshing": "{runtime} loaded; refreshing preview…",
+          "project.eyebrow": "Live2Pet Project",
+          "project.heading": "Save your mapping",
+          "project.description": "Projects keep source references and Motion Mappings, never model bytes or runtime files.",
+          "project.open": "Open .live2pet",
+          "project.save": "Save .live2pet",
+          "project.status.empty": "No project loaded.",
+          "inspection.eyebrow": "Source Package",
+          "inspection.heading": "Inspection summary",
+          "inspection.status.waiting": "Waiting for a local Source Package.",
+          "inspection.empty": "Choose a directory or PCK to see the normalized manifest. No model files leave this browser session.",
+          "inspection.failed": "Inspection failed. Choose another Source Package or fix the reported resource. No files were uploaded.",
+          "inspection.model": "Model configuration",
+          "inspection.resources": "Referenced resources",
+          "library.eyebrow": "Source library",
+          "library.heading": "Motion library",
+          "library.description": "Select a Motion or Expression to preview it in the center.",
+          "library.motions": "Browse Motions",
+          "library.expressions": "Browse Expressions",
+          "library.resetExpression": "Reset Expression",
+          "preview.eyebrow": "Source preview",
+          "preview.heading": "Live2D preview",
+          "preview.description": "Preview the selected source Motion before mapping it.",
+          "preview.replay": "Replay selected Motion",
+          "preview.playIdle": "Play idle",
+          "mapping.quickState": "Quick target state",
+          "mapping.assignSelected": "Assign selected Motion",
+          "mapping.eyebrow": "Target profile",
+          "mapping.heading": "Clawd mapping",
+          "mapping.description": "Assign the selected Motion to guide-defined behavior slots.",
+          "mapping.sleepSequence": "Sleep sequence",
+          "mapping.clawdPreset": "Clawd Render Preset",
+          "mapping.outputPrefix": "Output file prefix",
+          "mapping.sleep.direct": "direct",
+          "mapping.sleep.full": "full",
+          "mapping.preset.compact": "compact · 512px · 18fps",
+          "mapping.preset.balanced": "balanced · 768px · 24fps",
+          "mapping.preset.high": "high · 1024px · 30fps",
+          "codex.mappingSummary": "Codex Pet mapping",
+          "codex.mappingDescription": "Codex uses its own nine-row atlas contract. Select a source Motion in the left library, then assign it directly to each row.",
+          "codex.renderPreset": "Codex Render Preset",
+          "codex.preset.compact": "compact · 32 samples/s",
+          "codex.preset.balanced": "balanced · 64 samples/s",
+          "codex.preset.high": "high · 96 samples/s",
+          "walkthrough.heading": "Guided mapping",
+          "walkthrough.description": "Start with an empty mapping and confirm each relationship after preview.",
+          "output.heading": "Mapping manifest",
+          "output.description": "The mapping manifest will drive later Package Builds.",
+          "output.copy": "Copy JSON",
+          "output.download": "Download motion-map.json",
+          "build.codex.eyebrow": "Codex Pet Package",
+          "build.codex.heading": "Build a local ZIP",
+          "build.codex.description": "Captures the selected Codex mappings into a transparent 1536 × 1872 atlas, then creates pet.json and spritesheet.webp. This prototype validates the atlas and package shape; host-compatibility validation remains a later gate.",
+          "build.codex.build": "Build Codex Pet ZIP",
+          "build.codex.building": "Building Codex Pet ZIP…",
+          "build.codex.download": "Download last ZIP",
+          "build.codex.readiness": "Load a Source Package and map all nine Codex rows to enable building.",
+          "build.codex.status.empty": "No Codex package has been built yet.",
+          "build.clawd.eyebrow": "Clawd Theme Package",
+          "build.clawd.heading": "Build a Clawd Theme ZIP",
+          "build.clawd.description": "Captures the guide-defined Clawd states and reactions as transparent animated WebP assets, then packages theme.json and a README through the desktop App build service.",
+          "build.clawd.build": "Build Clawd Theme ZIP",
+          "build.clawd.building": "Building Clawd Theme ZIP…",
+          "build.clawd.download": "Download last ZIP",
+          "build.clawd.readiness": "Load a Source Package and complete the required Clawd mapping to enable building.",
+          "build.clawd.status.empty": "No Clawd theme has been built yet.",
+          "footer.clawd": "Clawd state semantics follow the",
+          "footer.guide": "Clawd Theme Creation Guide",
+          "footer.local": ". Source assets stay local; refreshing clears unsaved session state.",
+          "mapping.group.core": "Core states",
+          "mapping.group.core.hint": "validator/runtime baseline",
+          "mapping.group.optional": "Common optional states",
+          "mapping.group.optional.hint": "Exported when mapped",
+          "mapping.group.sleep": "Full sleep sequence",
+          "mapping.group.sleep.hint": "Every slot needs a Motion in full mode",
+          "mapping.group.reactions": "Interaction reactions",
+          "mapping.group.reactions.hint": "Separate from Agent states",
+          "mapping.meaning.idle": "No Agent activity",
+          "mapping.meaning.thinking": "User prompt submitted",
+          "mapping.meaning.working": "Agent is using a tool",
+          "mapping.meaning.sleeping": "After a sleep sequence",
+          "mapping.meaning.error": "Tool execution failed",
+          "mapping.meaning.attention": "Task complete",
+          "mapping.meaning.notification": "Permission request or reminder",
+          "mapping.meaning.sweeping": "Context compaction",
+          "mapping.meaning.carrying": "Worktree created",
+          "mapping.meaning.juggling": "Subagent active",
+          "mapping.meaning.roam": "Free roam (asset faces right)",
+          "mapping.meaning.yawning": "Starting sleep",
+          "mapping.meaning.dozing": "After yawning",
+          "mapping.meaning.collapsing": "Falling asleep",
+          "mapping.meaning.waking": "Woken by the user",
+          "mapping.meaning.drag": "Loop while dragging",
+          "mapping.meaning.clickLeft": "Double-click left side",
+          "mapping.meaning.clickRight": "Double-click right side",
+          "mapping.meaning.annoyed": "50% double-click alternative",
+          "mapping.meaning.double": "Rapid four-click",
+          "mapping.table.state": "Clawd state",
+          "mapping.table.field": "Field",
+          "mapping.table.assignment": "Assignment",
+          "mapping.required": "Required",
+          "mapping.useSelected": "Use selected",
+          "mapping.clear": "Clear",
+          "mapping.fallback.none": "No fallback",
+          "mapping.fallback.label": "fallbackTo: {id}",
+          "mapping.fallback.field": "Fallback target",
+          "mapping.aria.assign": "Assign selected Motion to {id}",
+          "mapping.aria.clear": "Clear {id} mapping",
+          "mapping.selected.label": "Selected source Motion",
+          "mapping.selected.none": "No Motion selected",
+          "mapping.selected.help": "Choose one in the left Motion library, then assign it to a Clawd slot below.",
+          "mapping.assigned.one": "{count} slot currently assigned",
+          "mapping.assigned.many": "{count} slots currently assigned",
+          "mapping.unmapped": "Unmapped",
+          "mapping.unmapped.help": "Choose a Motion in the left library.",
+          "mapping.fallback.help": "Uses the mapped target state.",
+          "mapping.unavailable": "Motion unavailable",
+          "mapping.unavailable.help": "Reload the Source Package to restore this Motion.",
+          "mapping.unknown": "Unknown assignment",
+          "mapping.unknown.help": "Clear this slot and assign a source Motion again.",
+          "mapping.durationUnknown": "Duration unknown",
+          "metrics.notLoaded": "Not loaded",
+          "metrics.selected.none": "—",
+          "metrics.model": "Model",
+          "metrics.motions": "Motions",
+          "metrics.selected": "Selected Motion",
+          "metrics.mapped": "Mapped states",
+          "metrics.validation": "Guide validation",
+          "metrics.validation.pending": "{count} pending",
+          "metrics.validation.ready": "Ready",
+          "build.status.app": "Building through the shared App Package Build service…",
+          "build.status.capture": "Capturing {slot} from {motion} ({count} frames)…",
+          "build.status.codexApp": "Built {filename} through the App · {size} KiB · shared Package Build.",
+          "build.status.codexBrowser": "Built {filename} · {size} KiB · {cells} occupied cells.",
+          "build.status.encode": "Encoding transparent WebP atlas…",
+          "build.status.zip": "Creating ZIP package…",
+          "build.status.clawdCapture": "Capturing {count} Clawd Motion assets at {width}px…",
+          "build.status.clawdApp": "Built {filename} through the App · {size} KiB · {motions} Motion assets.",
+          "build.status.clawdSummary": "Guide validation passed · {states} state bindings · {reactions} reactions · {motions} animated WebP assets.",
+          "build.browserOnly": "Open this Mapper in Live2Pet Desktop to build a Clawd Theme ZIP through the shared App service.",
+          "build.sourceRequired": "Load and inspect a Source Package first.",
+          "build.previewRequired": "Source inspected, but the Live2D preview is not ready. Wait for the preview to load or reload the Mapper.",
+          "build.codexMapped": "Codex mapping: {mapped}/{total} rows assigned. Assign: {missing}.",
+          "build.codexReady": "Codex mapping: {total}/{total} rows assigned. Ready to build.",
+          "build.clawdMapped": "Clawd mapping: {mapped}/{total} required slots assigned. Assign: {missing}.",
+          "build.clawdReady": "Clawd mapping is valid. Ready to build through Live2Pet Desktop.",
+          "build.clawdNoApp": "Clawd builds require the Live2Pet Desktop App; browser-only preview is still available.",
+          "build.downloadFirst.codex": "Build a Codex Pet ZIP first.",
+          "build.downloadFirst.clawd": "Build a Clawd Theme ZIP first.",
+          "inspection.source.destiny": "Destiny Child PCK",
+          "inspection.source.directory": "Standard directory",
+          "inspection.resource.present": "Present",
+          "inspection.resource.missing": "Missing",
+          "inspection.resource.none": "No referenced resources were declared.",
+          "inspection.status.missing.one": "1 referenced resource needs attention.",
+          "inspection.status.missing.many": "{count} referenced resources need attention.",
+          "inspection.status.complete": "Inspection complete. All referenced resources are present.",
+          "inspection.label.source": "Source",
+          "inspection.label.cubism": "Cubism",
+          "inspection.generation": "Generation {version}",
+          "inspection.label.motions": "Motions",
+          "inspection.label.expressions": "Expressions",
+          "inspection.label.resources": "Resources",
+          "inspection.label.package": "Package",
+          "inspection.label.modelConfig": "Model config",
+          "inspection.label.fingerprint": "Fingerprint",
+          "inspection.label.modelBinary": "Model binary",
+          "inspection.notDeclared": "Not declared",
+          "scenario.core": "Core states",
+          "scenario.completion": "Completion & alerts",
+          "scenario.sleep": "Full sleep",
+          "scenario.core.description": "Preview and assign idle, thinking, and working, then give sleeping a direct fallback.",
+          "scenario.completion.description": "Preview candidates, then assign attention for task completion and notification for permissions or reminders.",
+          "scenario.sleep.description": "Switch to full mode and assign all four sleep sequence slots.",
+          "scenario.start": "Start with an empty mapping",
+          "scenario.step": "{number}. {label}",
+          "scenario.step.core.idle": "Current Motion → idle",
+          "scenario.step.core.thinking": "Current Motion → thinking",
+          "scenario.step.core.working": "Current Motion → working",
+          "scenario.step.core.sleeping": "sleeping fallback → idle",
+          "scenario.step.completion.attention": "Current Motion → attention",
+          "scenario.step.completion.notification": "Current Motion → notification",
+          "scenario.step.sleep.mode": "Switch to full",
+          "scenario.step.sleep.yawning": "Current Motion → yawning",
+          "scenario.step.sleep.dozing": "Current Motion → dozing",
+          "scenario.step.sleep.collapsing": "Current Motion → collapsing",
+          "scenario.step.sleep.waking": "Current Motion → waking",
+          "source.stage.empty": "Choose a Source Package to begin.",
+          "source.stage.inspecting": "Inspecting {name}…",
+          "source.stage.inspectionFailed": "Inspection failed: {message}",
+          "source.stage.previewUnavailable": "Inspection complete. Preview unavailable: {message}",
+          "source.load.inspected": "Inspected {name} · {count} entries · PCK {version}",
+          "source.load.complete": "Inspected {name} · Cubism {version}",
+          "preview.now.none": "No Motion selected",
+          "preview.now.expression": "Expression {name}",
+          "preview.durationUnknown": "Duration unknown",
+          "codex.row.unmapped": "Unmapped",
+          "codex.motion.unassigned": "No Motion assigned",
+          "codex.motion.title": "No Motion assigned",
+          "codex.row.assign": "Assign selected Motion to {id}",
+          "codex.row.clear": "Clear {id} mapping",
+          "project.session.loaded": "Loaded {name} from the Mapper Session.",
+          "project.session.waiting": "The Mapper Session project is waiting for its matching Source Package.",
+          "project.session.ready": "Mapper Session project “{name}” is ready; choose its matching Source Package.",
+          "project.session.connected": "Connected to Mapper Session {id}… · changes sync on Save.",
+          "project.session.saved": "Connected to Mapper Session {id}… · project saved.",
+          "project.saved": "Saved {filename}. Source assets remain on this computer.",
+          "project.open.match": "Opened {filename}. The Source Package fingerprint matches.",
+          "project.open.diff": "Opened {filename}. Source fingerprint differs; review affected mappings before building."
+        },
+        "zh-CN": {
+          "app.title": "Live2Pet 映射器",
+          "app.eyebrow": "Live2Pet 资源检查器",
+          "app.heading": "检查 Live2D 资源包",
+          "app.description": "选择标准 Cubism 目录或受支持的 Destiny Child PCK，在本地检查模型、动作、表情和引用资源。",
+          "app.badge": "内测 · 仅本地",
+          "language.label": "语言",
+          "language.en": "English",
+          "language.zh": "中文",
+          "question.label": "当前边界：",
+          "question.copy": "预览或映射前会先完成资源检查。不支持或不完整的输入会给出恢复路径，不会被当作有效资源包继续处理。",
+          "source.chooseFolder": "选择资源包目录",
+          "source.choosePck": "选择 Destiny Child PCK",
+          "source.loadHint": "支持 .pck、.model3.json 或 Cubism 2 model.json",
+          "runtime.heading": "本地 Cubism 运行时",
+          "runtime.modern": "选择现代 Core",
+          "runtime.legacy": "选择 Cubism 2 运行时",
+          "runtime.status": "检查资源时现代 Core 可选；预览 Cubism 2 需要本地运行时。",
+          "runtime.name.modern": "现代 Core",
+          "runtime.name.legacy": "Cubism 2 运行时",
+          "runtime.loading": "正在加载 {runtime} {name}…",
+          "runtime.loaded": "已加载 {runtime}：{name}",
+          "runtime.refreshing": "已加载 {runtime}；正在刷新预览…",
+          "project.eyebrow": "Live2Pet 项目",
+          "project.heading": "保存映射",
+          "project.description": "项目只保存资源引用和动作映射，不保存模型字节或运行时文件。",
+          "project.open": "打开 .live2pet",
+          "project.save": "保存 .live2pet",
+          "project.status.empty": "尚未加载项目。",
+          "inspection.eyebrow": "资源包",
+          "inspection.heading": "检查摘要",
+          "inspection.status.waiting": "等待本地资源包。",
+          "inspection.empty": "选择目录或 PCK 查看规范化清单。模型文件不会离开当前浏览器会话。",
+          "inspection.failed": "资源检查失败。请选择其他资源包或修复报告的资源。没有文件被上传。",
+          "inspection.model": "模型配置",
+          "inspection.resources": "引用资源",
+          "library.eyebrow": "资源库",
+          "library.heading": "动作库",
+          "library.description": "选择动作或表情，在中间区域预览。",
+          "library.motions": "浏览动作",
+          "library.expressions": "浏览表情",
+          "library.resetExpression": "重置表情",
+          "preview.eyebrow": "资源预览",
+          "preview.heading": "Live2D 预览",
+          "preview.description": "在映射前预览选中的资源动作。",
+          "preview.replay": "重播选中动作",
+          "preview.playIdle": "播放待机",
+          "mapping.quickState": "快速目标状态",
+          "mapping.assignSelected": "分配选中动作",
+          "mapping.eyebrow": "目标配置",
+          "mapping.heading": "Clawd 映射",
+          "mapping.description": "将选中的动作分配到主题指南定义的行为槽位。",
+          "mapping.sleepSequence": "睡眠序列",
+          "mapping.clawdPreset": "Clawd 渲染预设",
+          "mapping.outputPrefix": "输出文件前缀",
+          "mapping.sleep.direct": "直接",
+          "mapping.sleep.full": "完整",
+          "mapping.preset.compact": "紧凑 · 512px · 18fps",
+          "mapping.preset.balanced": "均衡 · 768px · 24fps",
+          "mapping.preset.high": "高质量 · 1024px · 30fps",
+          "codex.mappingSummary": "Codex Pet 映射",
+          "codex.mappingDescription": "Codex 使用独立的九行图集契约。在左侧资源库选择动作，然后直接分配到每一行。",
+          "codex.renderPreset": "Codex 渲染预设",
+          "codex.preset.compact": "紧凑 · 32 samples/s",
+          "codex.preset.balanced": "均衡 · 64 samples/s",
+          "codex.preset.high": "高质量 · 96 samples/s",
+          "walkthrough.heading": "引导式映射",
+          "walkthrough.description": "从空映射开始，在预览后确认每一条关联。",
+          "output.heading": "映射清单",
+          "output.description": "映射清单将驱动后续的资源包构建。",
+          "output.copy": "复制 JSON",
+          "output.download": "下载 motion-map.json",
+          "build.codex.eyebrow": "Codex Pet 资源包",
+          "build.codex.heading": "构建本地 ZIP",
+          "build.codex.description": "将选中的 Codex 映射捕获为透明 1536 × 1872 图集，然后创建 pet.json 和 spritesheet.webp。当前原型会校验图集与资源包结构；宿主兼容性校验仍是后续门槛。",
+          "build.codex.build": "构建 Codex Pet ZIP",
+          "build.codex.building": "正在构建 Codex Pet ZIP…",
+          "build.codex.download": "下载上一次 ZIP",
+          "build.codex.readiness": "加载资源包并映射九个 Codex 行后即可构建。",
+          "build.codex.status.empty": "尚未构建 Codex 资源包。",
+          "build.clawd.eyebrow": "Clawd 主题资源包",
+          "build.clawd.heading": "构建 Clawd 主题 ZIP",
+          "build.clawd.description": "将指南定义的 Clawd 状态和交互捕获为透明动画 WebP，再通过桌面 App 构建服务打包 theme.json 与 README。",
+          "build.clawd.build": "构建 Clawd 主题 ZIP",
+          "build.clawd.building": "正在构建 Clawd 主题 ZIP…",
+          "build.clawd.download": "下载上一次 ZIP",
+          "build.clawd.readiness": "加载资源包并完成必需的 Clawd 映射后即可构建。",
+          "build.clawd.status.empty": "尚未构建 Clawd 主题。",
+          "footer.clawd": "Clawd 状态语义遵循",
+          "footer.guide": "Clawd 主题创建指南",
+          "footer.local": "。资源保持在本机；刷新页面会清除未保存的会话状态。",
+          "mapping.group.core": "核心状态",
+          "mapping.group.core.hint": "校验器/运行时基线",
+          "mapping.group.optional": "常用可选状态",
+          "mapping.group.optional.hint": "映射后导出",
+          "mapping.group.sleep": "完整睡眠序列",
+          "mapping.group.sleep.hint": "完整模式下每个槽位都需要动作",
+          "mapping.group.reactions": "交互反应",
+          "mapping.group.reactions.hint": "与 Agent 状态分开",
+          "mapping.meaning.idle": "没有 Agent 活动",
+          "mapping.meaning.thinking": "提交了用户提示词",
+          "mapping.meaning.working": "Agent 正在使用工具",
+          "mapping.meaning.sleeping": "睡眠序列结束后",
+          "mapping.meaning.error": "工具执行失败",
+          "mapping.meaning.attention": "任务完成",
+          "mapping.meaning.notification": "权限请求或提醒",
+          "mapping.meaning.sweeping": "上下文压缩",
+          "mapping.meaning.carrying": "创建了工作树",
+          "mapping.meaning.juggling": "子 Agent 活跃",
+          "mapping.meaning.roam": "自由漫游（资源朝向右侧）",
+          "mapping.meaning.yawning": "开始睡眠",
+          "mapping.meaning.dozing": "打哈欠后",
+          "mapping.meaning.collapsing": "进入睡眠",
+          "mapping.meaning.waking": "被用户唤醒",
+          "mapping.meaning.drag": "拖动时循环",
+          "mapping.meaning.clickLeft": "双击左侧",
+          "mapping.meaning.clickRight": "双击右侧",
+          "mapping.meaning.annoyed": "双击时 50% 概率触发",
+          "mapping.meaning.double": "快速点击四次",
+          "mapping.table.state": "Clawd 状态",
+          "mapping.table.field": "字段",
+          "mapping.table.assignment": "分配",
+          "mapping.required": "必需",
+          "mapping.useSelected": "使用选中动作",
+          "mapping.clear": "清除",
+          "mapping.fallback.none": "不使用回退",
+          "mapping.fallback.label": "回退到：{id}",
+          "mapping.fallback.field": "回退目标",
+          "mapping.aria.assign": "将选中动作分配到 {id}",
+          "mapping.aria.clear": "清除 {id} 映射",
+          "mapping.selected.label": "选中的资源动作",
+          "mapping.selected.none": "尚未选择动作",
+          "mapping.selected.help": "在左侧动作库选择一个动作，然后分配到下方 Clawd 槽位。",
+          "mapping.assigned.one": "当前已分配 {count} 个槽位",
+          "mapping.assigned.many": "当前已分配 {count} 个槽位",
+          "mapping.unmapped": "未映射",
+          "mapping.unmapped.help": "请在左侧资源库选择动作。",
+          "mapping.fallback.help": "使用已映射的目标状态。",
+          "mapping.unavailable": "动作不可用",
+          "mapping.unavailable.help": "重新加载资源包以恢复此动作。",
+          "mapping.unknown": "未知分配",
+          "mapping.unknown.help": "清除该槽位后重新分配资源动作。",
+          "mapping.durationUnknown": "时长未知",
+          "metrics.notLoaded": "未加载",
+          "metrics.selected.none": "—",
+          "metrics.model": "模型",
+          "metrics.motions": "动作",
+          "metrics.selected": "选中动作",
+          "metrics.mapped": "已映射状态",
+          "metrics.validation": "指南校验",
+          "metrics.validation.pending": "待处理 {count} 项",
+          "metrics.validation.ready": "就绪",
+          "build.status.app": "正在通过共享 App 资源包构建服务处理…",
+          "build.status.capture": "正在从 {motion} 捕获 {slot}（{count} 帧）…",
+          "build.status.codexApp": "已通过 App 构建 {filename} · {size} KiB · 共享资源包构建。",
+          "build.status.codexBrowser": "已构建 {filename} · {size} KiB · {cells} 个有效单元。",
+          "build.status.encode": "正在编码透明 WebP 图集…",
+          "build.status.zip": "正在创建 ZIP 资源包…",
+          "build.status.clawdCapture": "正在捕获 {count} 个 Clawd 动作资源（{width}px）…",
+          "build.status.clawdApp": "已通过 App 构建 {filename} · {size} KiB · {motions} 个动作资源。",
+          "build.status.clawdSummary": "指南校验通过 · {states} 个状态绑定 · {reactions} 个反应 · {motions} 个动画 WebP 资源。",
+          "build.browserOnly": "请在 Live2Pet Desktop 中打开此 Mapper，通过共享 App 服务构建 Clawd 主题 ZIP。",
+          "build.sourceRequired": "请先加载并检查资源包。",
+          "build.previewRequired": "资源检查已完成，但 Live2D 预览尚未就绪。等待预览加载或刷新 Mapper。",
+          "build.codexMapped": "Codex 映射：已分配 {mapped}/{total} 行。请分配：{missing}。",
+          "build.codexReady": "Codex 映射：已分配 {total}/{total} 行，可以构建。",
+          "build.clawdMapped": "Clawd 映射：已分配 {mapped}/{total} 个必需槽位。请分配：{missing}。",
+          "build.clawdReady": "Clawd 映射有效，可以通过 Live2Pet Desktop 构建。",
+          "build.clawdNoApp": "Clawd 构建需要 Live2Pet Desktop App；浏览器预览仍可使用。",
+          "build.downloadFirst.codex": "请先构建 Codex Pet ZIP。",
+          "build.downloadFirst.clawd": "请先构建 Clawd 主题 ZIP。",
+          "inspection.source.destiny": "Destiny Child PCK",
+          "inspection.source.directory": "标准目录",
+          "inspection.resource.present": "存在",
+          "inspection.resource.missing": "缺失",
+          "inspection.resource.none": "没有声明引用资源。",
+          "inspection.status.missing.one": "有 1 个引用资源需要处理。",
+          "inspection.status.missing.many": "有 {count} 个引用资源需要处理。",
+          "inspection.status.complete": "检查完成，所有引用资源都已存在。",
+          "inspection.label.source": "来源",
+          "inspection.label.cubism": "Cubism",
+          "inspection.generation": "第 {version} 代",
+          "inspection.label.motions": "动作",
+          "inspection.label.expressions": "表情",
+          "inspection.label.resources": "资源",
+          "inspection.label.package": "资源包",
+          "inspection.label.modelConfig": "模型配置",
+          "inspection.label.fingerprint": "指纹",
+          "inspection.label.modelBinary": "模型二进制",
+          "inspection.notDeclared": "未声明",
+          "scenario.core": "核心状态",
+          "scenario.completion": "完成与提醒",
+          "scenario.sleep": "完整睡眠",
+          "scenario.core.description": "预览并分配 idle、thinking、working，然后为 sleeping 设置直接回退。",
+          "scenario.completion.description": "预览候选动作，为任务完成分配 attention，为权限或提醒分配 notification。",
+          "scenario.sleep.description": "切换到完整模式并分配四个睡眠序列槽位。",
+          "scenario.start": "从空映射开始",
+          "scenario.step": "{number}. {label}",
+          "scenario.step.core.idle": "当前动作 → idle",
+          "scenario.step.core.thinking": "当前动作 → thinking",
+          "scenario.step.core.working": "当前动作 → working",
+          "scenario.step.core.sleeping": "sleeping 回退 → idle",
+          "scenario.step.completion.attention": "当前动作 → attention",
+          "scenario.step.completion.notification": "当前动作 → notification",
+          "scenario.step.sleep.mode": "切换到完整模式",
+          "scenario.step.sleep.yawning": "当前动作 → yawning",
+          "scenario.step.sleep.dozing": "当前动作 → dozing",
+          "scenario.step.sleep.collapsing": "当前动作 → collapsing",
+          "scenario.step.sleep.waking": "当前动作 → waking",
+          "source.stage.empty": "选择资源包开始。",
+          "source.stage.inspecting": "正在检查 {name}…",
+          "source.stage.inspectionFailed": "资源检查失败：{message}",
+          "source.stage.previewUnavailable": "资源检查完成，但预览不可用：{message}",
+          "source.load.inspected": "已检查 {name} · {count} 个条目 · PCK {version}",
+          "source.load.complete": "已检查 {name} · Cubism {version}",
+          "preview.now.none": "尚未选择动作",
+          "preview.now.expression": "表情 {name}",
+          "preview.durationUnknown": "时长未知",
+          "codex.row.unmapped": "未映射",
+          "codex.motion.unassigned": "未分配动作",
+          "codex.motion.title": "未分配动作",
+          "codex.row.assign": "将选中动作分配到 {id}",
+          "codex.row.clear": "清除 {id} 映射",
+          "project.session.loaded": "已从 Mapper Session 加载 {name}。",
+          "project.session.waiting": "Mapper Session 项目正在等待匹配的资源包。",
+          "project.session.ready": "Mapper Session 项目“{name}”已准备好；请选择匹配的资源包。",
+          "project.session.connected": "已连接 Mapper Session {id}… · 保存时同步变更。",
+          "project.session.saved": "已连接 Mapper Session {id}… · 项目已保存。",
+          "project.saved": "已保存 {filename}。资源仍保留在本机。",
+          "project.open.match": "已打开 {filename}，资源包指纹匹配。",
+          "project.open.diff": "已打开 {filename}，资源指纹不同；构建前请检查受影响的映射。"
+        }
+      };
+      let locale = "en";
+      try {
+        const saved = window.localStorage.getItem(STORAGE_KEY);
+        locale = supported.includes(saved) ? saved : (/^zh(?:-|$)/i.test(navigator.language || "") ? "zh-CN" : "en");
+      } catch {
+        locale = /^zh(?:-|$)/i.test(navigator.language || "") ? "zh-CN" : "en";
+      }
+      function t(key, values = {}) {
+        const table = messages[locale] || messages.en;
+        let text = table[key] ?? messages.en[key] ?? key;
+        for (const [name, value] of Object.entries(values)) text = text.replaceAll(`{${name}}`, String(value));
+        return text;
+      }
+      function apply() {
+        document.documentElement.lang = locale;
+        document.title = t("app.title");
+        document.querySelectorAll("[data-i18n]").forEach(element => { element.textContent = t(element.dataset.i18n); });
+        document.querySelectorAll("[data-i18n-placeholder]").forEach(element => { element.setAttribute("placeholder", t(element.dataset.i18nPlaceholder)); });
+        document.querySelectorAll("[data-i18n-aria-label]").forEach(element => { element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel)); });
+        const selector = document.getElementById("languageSelect");
+        if (selector) selector.value = locale;
+      }
+      function setLocale(next) {
+        locale = supported.includes(next) ? next : "en";
+        try { window.localStorage.setItem(STORAGE_KEY, locale); } catch {}
+        apply();
+        window.dispatchEvent(new CustomEvent("live2pet:locale-changed", { detail: { locale } }));
+      }
+      return { t, apply, setLocale, get locale() { return locale; } };
+    })();
+
     const MotionMapping = (() => {
       const groups = [
-        { label: "Core states", hint: "validator/runtime baseline", states: [
-          { id: "idle", meaning: "No Agent activity", required: true },
-          { id: "thinking", meaning: "User prompt submitted", required: true },
-          { id: "working", meaning: "Agent is using a tool", required: true },
-          { id: "sleeping", meaning: "After a sleep sequence", required: true, fallback: true }
+        { id: "core", label: "Core states", hint: "validator/runtime baseline", states: [
+          { id: "idle", meaning: "No Agent activity", meaningKey: "mapping.meaning.idle", required: true },
+          { id: "thinking", meaning: "User prompt submitted", meaningKey: "mapping.meaning.thinking", required: true },
+          { id: "working", meaning: "Agent is using a tool", meaningKey: "mapping.meaning.working", required: true },
+          { id: "sleeping", meaning: "After a sleep sequence", meaningKey: "mapping.meaning.sleeping", required: true, fallback: true }
         ]},
-        { label: "Common optional states", hint: "Exported when mapped", states: [
-          { id: "error", meaning: "Tool execution failed", fallback: true },
-          { id: "attention", meaning: "Task complete", fallback: true },
-          { id: "notification", meaning: "Permission request or reminder", fallback: true },
-          { id: "sweeping", meaning: "Context compaction", fallback: true },
-          { id: "carrying", meaning: "Worktree created", fallback: true },
-          { id: "juggling", meaning: "Subagent active" },
-          { id: "roam", meaning: "Free roam (asset faces right)", fallback: true }
+        { id: "optional", label: "Common optional states", hint: "Exported when mapped", states: [
+          { id: "error", meaning: "Tool execution failed", meaningKey: "mapping.meaning.error", fallback: true },
+          { id: "attention", meaning: "Task complete", meaningKey: "mapping.meaning.attention", fallback: true },
+          { id: "notification", meaning: "Permission request or reminder", meaningKey: "mapping.meaning.notification", fallback: true },
+          { id: "sweeping", meaning: "Context compaction", meaningKey: "mapping.meaning.sweeping", fallback: true },
+          { id: "carrying", meaning: "Worktree created", meaningKey: "mapping.meaning.carrying", fallback: true },
+          { id: "juggling", meaning: "Subagent active", meaningKey: "mapping.meaning.juggling" },
+          { id: "roam", meaning: "Free roam (asset faces right)", meaningKey: "mapping.meaning.roam", fallback: true }
         ]},
-        { label: "Full sleep sequence", hint: "Every slot needs a Motion in full mode", states: [
-          { id: "yawning", meaning: "Starting sleep", full: true },
-          { id: "dozing", meaning: "After yawning", full: true },
-          { id: "collapsing", meaning: "Falling asleep", full: true },
-          { id: "waking", meaning: "Woken by the user", full: true }
+        { id: "sleep", label: "Full sleep sequence", hint: "Every slot needs a Motion in full mode", states: [
+          { id: "yawning", meaning: "Starting sleep", meaningKey: "mapping.meaning.yawning", full: true },
+          { id: "dozing", meaning: "After yawning", meaningKey: "mapping.meaning.dozing", full: true },
+          { id: "collapsing", meaning: "Falling asleep", meaningKey: "mapping.meaning.collapsing", full: true },
+          { id: "waking", meaning: "Woken by the user", meaningKey: "mapping.meaning.waking", full: true }
         ]}
       ];
       const reactions = [
-        { id: "drag", meaning: "Loop while dragging" },
-        { id: "clickLeft", meaning: "Double-click left side" },
-        { id: "clickRight", meaning: "Double-click right side" },
-        { id: "annoyed", meaning: "50% double-click alternative" },
-        { id: "double", meaning: "Rapid four-click" }
+        { id: "drag", meaning: "Loop while dragging", meaningKey: "mapping.meaning.drag" },
+        { id: "clickLeft", meaning: "Double-click left side", meaningKey: "mapping.meaning.clickLeft" },
+        { id: "clickRight", meaning: "Double-click right side", meaningKey: "mapping.meaning.clickRight" },
+        { id: "annoyed", meaning: "50% double-click alternative", meaningKey: "mapping.meaning.annoyed" },
+        { id: "double", meaning: "Rapid four-click", meaningKey: "mapping.meaning.double" }
       ];
       const codexRows = [
         { id: "idle", label: "Idle", frames: 6 },
@@ -524,9 +1044,9 @@
       if (action.type === "LOAD_MODEL" && sessionProject) {
         if (state.inspection?.source?.fingerprint === sessionProject.source?.fingerprint) {
           state = MotionMapping.reducer(state, { type: "LOAD_PROJECT", project: sessionProject });
-          setProjectStatus(`Loaded ${sessionProject.name} from the Mapper Session.` , "good");
+          setProjectStatus(I18n.t("project.session.loaded", { name: sessionProject.name }), "good");
         } else {
-          setProjectStatus("The Mapper Session project is waiting for its matching Source Package.");
+          setProjectStatus(I18n.t("project.session.waiting"));
         }
       }
       render();
@@ -649,12 +1169,12 @@
         const metadata = await mapperSessionRequest("/session");
         mapperSession.sessionId = metadata.sessionId;
         sessionProject = (await mapperSessionRequest("/project")).project;
-        setSessionStatus(`Connected to Mapper Session ${metadata.sessionId.slice(0, 8)}… · changes sync on Save.`, "good");
+        setSessionStatus(I18n.t("project.session.connected", { id: metadata.sessionId.slice(0, 8) }), "good");
         if (state.inspection?.source?.fingerprint === sessionProject.source?.fingerprint) {
           dispatch({ type: "LOAD_PROJECT", project: sessionProject });
-          setProjectStatus(`Loaded ${sessionProject.name} from the Mapper Session.`, "good");
+          setProjectStatus(I18n.t("project.session.loaded", { name: sessionProject.name }), "good");
         } else {
-          setProjectStatus(`Mapper Session project “${sessionProject.name}” is ready; choose its matching Source Package.`);
+          setProjectStatus(I18n.t("project.session.ready", { name: sessionProject.name }));
         }
       } catch (error) {
         mapperSession = null;
@@ -666,7 +1186,7 @@
       if (!mapperSession) return false;
       await mapperSessionRequest("/project", { method: "PUT", body: JSON.stringify(project) });
       sessionProject = project;
-      setSessionStatus(`Connected to Mapper Session ${mapperSession.sessionId.slice(0, 8)}… · project saved.`, "good");
+      setSessionStatus(I18n.t("project.session.saved", { id: mapperSession.sessionId.slice(0, 8) }), "good");
       return true;
     }
     function normalizedInspectionError(error) {
@@ -707,9 +1227,10 @@
       if (kind === "legacy" && !legacyAdapterLoaded) {
         await loadLegacyAdapter();
       }
-      setRuntimeStatus(`${kind === "legacy" ? "Cubism 2" : "Modern Core"} loaded: ${file.name}`, "good");
+      const runtimeLabel = I18n.t(`runtime.name.${kind === "legacy" ? "legacy" : "modern"}`);
+      setRuntimeStatus(I18n.t("runtime.loaded", { runtime: runtimeLabel, name: file.name }), "good");
       if (activeSourceFiles && state.inspection) {
-        setRuntimeStatus(`${kind === "legacy" ? "Cubism 2" : "Modern Core"} loaded; refreshing preview…`, "good");
+        setRuntimeStatus(I18n.t("runtime.refreshing", { runtime: runtimeLabel }), "good");
         await loadFolder(activeSourceFiles, activeSourceOptions || {});
       }
     }
@@ -734,7 +1255,7 @@
       if (state.inspectionError) {
         empty.classList.remove("hidden");
         content.classList.add("hidden");
-        empty.textContent = "Inspection failed. Choose another Source Package or fix the reported resource. No files were uploaded.";
+        empty.textContent = I18n.t("inspection.failed");
         status.className = "inspection-status bad";
         status.textContent = `${state.inspectionError.code}: ${state.inspectionError.message}`;
         return;
@@ -743,7 +1264,7 @@
         empty.classList.remove("hidden");
         content.classList.add("hidden");
         status.className = "inspection-status";
-        status.textContent = "Waiting for a local Source Package.";
+        status.textContent = I18n.t("inspection.status.waiting");
         return;
       }
       const inspection = state.inspection;
@@ -752,25 +1273,25 @@
       const missing = inspection.resources.filter(resource => !resource.exists).length;
       const stateClass = missing ? "bad" : "good";
       status.className = `inspection-status ${stateClass}`;
-      status.textContent = missing ? `${missing} referenced resource${missing === 1 ? "" : "s"} need attention.` : "Inspection complete. All referenced resources are present.";
-      const sourceLabel = inspection.source.kind === "destiny-child-pck" ? "Destiny Child PCK" : "Standard directory";
+      status.textContent = missing ? I18n.t(missing === 1 ? "inspection.status.missing.one" : "inspection.status.missing.many", { count: missing }) : I18n.t("inspection.status.complete");
+      const sourceLabel = inspection.source.kind === "destiny-child-pck" ? I18n.t("inspection.source.destiny") : I18n.t("inspection.source.directory");
       const summary = [
-        ["Source", sourceLabel],
-        ["Cubism", `Generation ${inspection.model.cubism}`],
-        ["Motions", inspection.motions.length],
-        ["Expressions", inspection.expressions.length],
-        ["Resources", `${inspection.resources.filter(resource => resource.exists).length}/${inspection.resources.length}`],
+        [I18n.t("inspection.label.source"), sourceLabel],
+        [I18n.t("inspection.label.cubism"), I18n.t("inspection.generation", { version: inspection.model.cubism })],
+        [I18n.t("inspection.label.motions"), inspection.motions.length],
+        [I18n.t("inspection.label.expressions"), inspection.expressions.length],
+        [I18n.t("inspection.label.resources"), `${inspection.resources.filter(resource => resource.exists).length}/${inspection.resources.length}`],
       ];
       $("inspectionSummary").innerHTML = summary.map(([label, value]) => `<div class="inspection-card"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("");
       $("inspectionModel").innerHTML = [
-        ["Package", inspection.source.name],
-        ["Model config", inspection.source.modelConfig],
-        ["Fingerprint", inspection.source.fingerprint],
-        ["Model binary", inspection.model.modelFile || "Not declared"],
+        [I18n.t("inspection.label.package"), inspection.source.name],
+        [I18n.t("inspection.label.modelConfig"), inspection.source.modelConfig],
+        [I18n.t("inspection.label.fingerprint"), inspection.source.fingerprint],
+        [I18n.t("inspection.label.modelBinary"), inspection.model.modelFile || I18n.t("inspection.notDeclared")],
       ].map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join("");
       $("inspectionResources").innerHTML = inspection.resources.length
-        ? inspection.resources.map(resource => `<div class="resource-row"><span class="resource-kind">${escapeHtml(resource.kind)}</span><span class="resource-path">${escapeHtml(resource.path)}</span><span class="resource-state ${resource.exists ? "present" : "missing"}">${resource.exists ? "Present" : "Missing"}</span></div>`).join("")
-        : `<div class="empty-state">No referenced resources were declared.</div>`;
+        ? inspection.resources.map(resource => `<div class="resource-row"><span class="resource-kind">${escapeHtml(resource.kind)}</span><span class="resource-path">${escapeHtml(resource.path)}</span><span class="resource-state ${resource.exists ? "present" : "missing"}">${resource.exists ? I18n.t("inspection.resource.present") : I18n.t("inspection.resource.missing")}</span></div>`).join("")
+        : `<div class="empty-state">${escapeHtml(I18n.t("inspection.resource.none"))}</div>`;
       $("inspectionWarnings").innerHTML = inspection.warnings.length
         ? inspection.warnings.map(warning => `<div class="inspection-warning"><strong>${escapeHtml(warning.code)}</strong> · ${escapeHtml(warning.resource || warning.message)}</div>`).join("")
         : "";
@@ -781,24 +1302,24 @@
     }
 
     function mappingDetails(value) {
-      if (!value) return { title: "Unmapped", meta: "Choose a Motion in the left library.", unmapped: true };
-      if (value.startsWith("fallback:")) return { title: `fallbackTo: ${value.slice(9)}`, meta: "Uses the mapped target state." };
+      if (!value) return { title: I18n.t("mapping.unmapped"), meta: I18n.t("mapping.unmapped.help"), unmapped: true };
+      if (value.startsWith("fallback:")) return { title: I18n.t("mapping.fallback.label", { id: value.slice(9) }), meta: I18n.t("mapping.fallback.help") };
       if (value.startsWith("motion:")) {
         const motion = selectedMotionById(value.slice(7));
         return motion
-          ? { title: motion.name, meta: `${motion.sourceFile} · ${motion.duration ? `${motion.duration.toFixed(2)}s` : "Duration unknown"}` }
-          : { title: "Motion unavailable", meta: "Reload the Source Package to restore this Motion." };
+          ? { title: motion.name, meta: `${motion.sourceFile} · ${motion.duration ? `${motion.duration.toFixed(2)}s` : I18n.t("mapping.durationUnknown")}` }
+          : { title: I18n.t("mapping.unavailable"), meta: I18n.t("mapping.unavailable.help") };
       }
-      return { title: "Unknown assignment", meta: "Clear this slot and assign a source Motion again." };
+      return { title: I18n.t("mapping.unknown"), meta: I18n.t("mapping.unknown.help") };
     }
 
     function fallbackOptions(current, self) {
       const currentTarget = current?.startsWith("fallback:") ? current.slice(9) : "";
       const targets = MotionMapping.allStates
         .filter(def => def.id !== self)
-        .map(def => `<option value="${escapeHtml(def.id)}" ${currentTarget === def.id ? "selected" : ""}>fallbackTo: ${escapeHtml(def.id)}</option>`)
+        .map(def => `<option value="${escapeHtml(def.id)}" ${currentTarget === def.id ? "selected" : ""}>${escapeHtml(I18n.t("mapping.fallback.label", { id: def.id }))}</option>`)
         .join("");
-      return `<option value="">No fallback</option>${targets}`;
+      return `<option value="">${escapeHtml(I18n.t("mapping.fallback.none"))}</option>${targets}`;
     }
 
     function renderMappingSelection() {
@@ -809,8 +1330,8 @@
         : 0;
       $("mappingSelection").className = `mapping-selection${current ? " ready" : ""}`;
       $("mappingSelection").innerHTML = current
-        ? `<span class="selection-label">Selected source Motion</span><strong>${escapeHtml(current.name)}</strong><span class="selection-meta">${escapeHtml(current.sourceFile)} · ${current.duration ? `${current.duration.toFixed(2)}s` : "Duration unknown"} · ${targetCount} slot${targetCount === 1 ? "" : "s"} currently assigned</span>`
-        : `<span class="selection-label">Selected source Motion</span><strong>No Motion selected</strong><span class="selection-meta">Choose one in the left Motion library, then assign it to a Clawd slot below.</span>`;
+        ? `<span class="selection-label">${escapeHtml(I18n.t("mapping.selected.label"))}</span><strong>${escapeHtml(current.name)}</strong><span class="selection-meta">${escapeHtml(current.sourceFile)} · ${current.duration ? `${current.duration.toFixed(2)}s` : I18n.t("mapping.durationUnknown")} · ${escapeHtml(I18n.t(targetCount === 1 ? "mapping.assigned.one" : "mapping.assigned.many", { count: targetCount }))}</span>`
+        : `<span class="selection-label">${escapeHtml(I18n.t("mapping.selected.label"))}</span><strong>${escapeHtml(I18n.t("mapping.selected.none"))}</strong><span class="selection-meta">${escapeHtml(I18n.t("mapping.selected.help"))}</span>`;
     }
 
     function assignmentMarkup(def, current, kind) {
@@ -818,16 +1339,16 @@
       const assignAttribute = kind === "state" ? `data-assign-state="${escapeHtml(def.id)}"` : `data-assign-reaction="${escapeHtml(def.id)}"`;
       const clearAttribute = kind === "state" ? `data-clear-state="${escapeHtml(def.id)}"` : `data-clear-reaction="${escapeHtml(def.id)}"`;
       const fallback = kind === "state" && def.fallback
-        ? `<label class="fallback-field">Fallback target<select aria-label="${escapeHtml(def.id)} fallback target" data-fallback-state="${escapeHtml(def.id)}">${fallbackOptions(current, def.id)}</select></label>`
+        ? `<label class="fallback-field"><span>${escapeHtml(I18n.t("mapping.fallback.field"))}</span><select aria-label="${escapeHtml(`${I18n.t("mapping.fallback.field")}: ${def.id}`)}" data-fallback-state="${escapeHtml(def.id)}">${fallbackOptions(current, def.id)}</select></label>`
         : "";
-      return `<div class="mapping-assignment"><div class="mapping-current" title="${escapeHtml(details.meta)}"><strong class="${details.unmapped ? "unmapped" : ""}">${escapeHtml(details.title)}</strong><span>${escapeHtml(details.meta)}</span></div><div class="mapping-actions"><button class="assign" aria-label="Assign selected Motion to ${escapeHtml(def.id)}" ${assignAttribute} ${state.selectedMotionId ? "" : "disabled"}>Use selected</button><button class="clear" aria-label="Clear ${escapeHtml(def.id)} mapping" ${clearAttribute} ${current ? "" : "disabled"}>Clear</button></div>${fallback}</div>`;
+      return `<div class="mapping-assignment"><div class="mapping-current" title="${escapeHtml(details.meta)}"><strong class="${details.unmapped ? "unmapped" : ""}">${escapeHtml(details.title)}</strong><span>${escapeHtml(details.meta)}</span></div><div class="mapping-actions"><button class="assign" aria-label="${escapeHtml(I18n.t("mapping.aria.assign", { id: def.id }))}" ${assignAttribute} ${state.selectedMotionId ? "" : "disabled"}>${escapeHtml(I18n.t("mapping.useSelected"))}</button><button class="clear" aria-label="${escapeHtml(I18n.t("mapping.aria.clear", { id: def.id }))}" ${clearAttribute} ${current ? "" : "disabled"}>${escapeHtml(I18n.t("mapping.clear"))}</button></div>${fallback}</div>`;
     }
 
     function renderMetrics() {
       const errors = MotionMapping.validate(state).filter(x => x.level === "error").length;
       const current = selectedMotion();
-      const modelLabel = state.model ? `${state.model.name} · Cubism ${state.model.cubism}` : "Not loaded";
-      const values = [["Model",modelLabel,""],["Motions",String(state.motions.length),""],["Selected Motion",current?.name || "—",""],["Mapped states",String(Object.values(state.mappings).filter(Boolean).length),""],["Guide validation",errors ? `${errors} pending` : "Ready",errors ? "bad" : "good"]];
+      const modelLabel = state.model ? `${state.model.name} · Cubism ${state.model.cubism}` : I18n.t("metrics.notLoaded");
+      const values = [[I18n.t("metrics.model"),modelLabel,""],[I18n.t("metrics.motions"),String(state.motions.length),""],[I18n.t("metrics.selected"),current?.name || I18n.t("metrics.selected.none"),""],[I18n.t("metrics.mapped"),String(Object.values(state.mappings).filter(Boolean).length),""],[I18n.t("metrics.validation"),errors ? I18n.t("metrics.validation.pending", { count: errors }) : I18n.t("metrics.validation.ready"),errors ? "bad" : "good"]];
       $("metrics").innerHTML = values.map(([label,value,cls]) => `<div class="metric"><span>${label}</span><strong class="${cls}">${escapeHtml(value)}</strong></div>`).join("");
     }
 
@@ -835,7 +1356,7 @@
       const current = selectedMotion();
       const expression = state.expressions.find(item => item.id === state.selectedExpressionId);
       $("motionCount").textContent = String(state.motions.length);
-      $("nowPlaying").innerHTML = current ? `<strong>${escapeHtml(current.name)}</strong><span class="muted">${escapeHtml(current.sourceFile)} · ${current.duration ? current.duration.toFixed(2) + "s" : "Duration unknown"}${expression ? ` · Expression ${escapeHtml(expression.name)}` : ""}</span>` : `<strong>No Motion selected</strong><span class="muted">—</span>`;
+      $("nowPlaying").innerHTML = current ? `<strong>${escapeHtml(current.name)}</strong><span class="muted">${escapeHtml(current.sourceFile)} · ${current.duration ? current.duration.toFixed(2) + "s" : I18n.t("preview.durationUnknown")}${expression ? ` · ${escapeHtml(I18n.t("preview.now.expression", { name: expression.name }))}` : ""}</span>` : `<strong>${escapeHtml(I18n.t("preview.now.none"))}</strong><span class="muted">${escapeHtml(I18n.t("metrics.selected.none"))}</span>`;
       $("motionList").innerHTML = state.motions.map(m => `<button class="motion ${m.id === state.selectedMotionId ? "active" : ""}" data-motion="${escapeHtml(m.id)}"><strong>${escapeHtml(m.name)}</strong><small>${escapeHtml(m.sourceFile)} · ${m.duration ? m.duration.toFixed(2) + "s" : "—"}</small></button>`).join("");
       document.querySelectorAll("[data-motion]").forEach(button => button.addEventListener("click", async () => { dispatch({type:"SELECT_MOTION",id:button.dataset.motion}); await playMotion(button.dataset.motion); }));
       $("replay").disabled = !current;
@@ -852,13 +1373,13 @@
 
     function renderMappings() {
       renderMappingSelection();
-      $("mappingTables").innerHTML = MotionMapping.groups.map(group => `<div class="group"><div class="group-title"><h3>${group.label}</h3><span class="muted">${group.hint}</span></div><table><thead><tr><th>Clawd state</th><th>Assignment</th></tr></thead><tbody>${group.states.map(def => `<tr><td class="key"><code>${def.id}</code>${def.required ? '<span class="required">Required</span>' : ''}<span class="key-meaning">${def.meaning}</span></td><td>${assignmentMarkup(def, state.mappings[def.id] || "", "state")}</td></tr>`).join("")}</tbody></table></div>`).join("") + `<div class="group"><div class="group-title"><h3>Interaction reactions</h3><span class="muted">Separate from Agent states</span></div><table><thead><tr><th>Field</th><th>Assignment</th></tr></thead><tbody>${MotionMapping.reactions.map(def => `<tr><td class="key"><code>${def.id}</code><span class="key-meaning">${def.meaning}</span></td><td>${assignmentMarkup(def, state.reactionMappings[def.id] || "", "reaction")}</td></tr>`).join("")}</tbody></table></div>`;
+      $("mappingTables").innerHTML = MotionMapping.groups.map(group => `<div class="group"><div class="group-title"><h3>${escapeHtml(I18n.t(`mapping.group.${group.id}`))}</h3><span class="muted">${escapeHtml(I18n.t(`mapping.group.${group.id}.hint`))}</span></div><table><thead><tr><th>${escapeHtml(I18n.t("mapping.table.state"))}</th><th>${escapeHtml(I18n.t("mapping.table.assignment"))}</th></tr></thead><tbody>${group.states.map(def => `<tr><td class="key"><code>${def.id}</code>${def.required ? `<span class="required">${escapeHtml(I18n.t("mapping.required"))}</span>` : ''}<span class="key-meaning">${escapeHtml(I18n.t(def.meaningKey) || def.meaning)}</span></td><td>${assignmentMarkup(def, state.mappings[def.id] || "", "state")}</td></tr>`).join("")}</tbody></table></div>`).join("") + `<div class="group"><div class="group-title"><h3>${escapeHtml(I18n.t("mapping.group.reactions"))}</h3><span class="muted">${escapeHtml(I18n.t("mapping.group.reactions.hint"))}</span></div><table><thead><tr><th>${escapeHtml(I18n.t("mapping.table.field"))}</th><th>${escapeHtml(I18n.t("mapping.table.assignment"))}</th></tr></thead><tbody>${MotionMapping.reactions.map(def => `<tr><td class="key"><code>${def.id}</code><span class="key-meaning">${escapeHtml(I18n.t(def.meaningKey) || def.meaning)}</span></td><td>${assignmentMarkup(def, state.reactionMappings[def.id] || "", "reaction")}</td></tr>`).join("")}</tbody></table></div>`;
       document.querySelectorAll("[data-assign-state]").forEach(button => button.addEventListener("click",()=>dispatch({type:"MAP",key:button.dataset.assignState,value:state.selectedMotionId ? `motion:${state.selectedMotionId}` : ""})));
       document.querySelectorAll("[data-clear-state]").forEach(button => button.addEventListener("click",()=>dispatch({type:"MAP",key:button.dataset.clearState,value:""})));
       document.querySelectorAll("[data-assign-reaction]").forEach(button => button.addEventListener("click",()=>dispatch({type:"MAP_REACTION",key:button.dataset.assignReaction,value:state.selectedMotionId ? `motion:${state.selectedMotionId}` : ""})));
       document.querySelectorAll("[data-clear-reaction]").forEach(button => button.addEventListener("click",()=>dispatch({type:"MAP_REACTION",key:button.dataset.clearReaction,value:""})));
       document.querySelectorAll("[data-fallback-state]").forEach(select => select.addEventListener("change",()=>dispatch({type:"MAP",key:select.dataset.fallbackState,value:select.value ? `fallback:${select.value}` : ""})));
-      $("quickState").innerHTML = MotionMapping.allStates.map(def => `<option value="${def.id}">${def.id} · ${def.meaning}</option>`).join("");
+      $("quickState").innerHTML = MotionMapping.allStates.map(def => `<option value="${def.id}">${def.id} · ${escapeHtml(I18n.t(def.meaningKey) || def.meaning)}</option>`).join("");
       renderCodexMappings();
     }
 
@@ -867,12 +1388,37 @@
     }
 
     function codexBuildReadiness() {
-      if (!state.model || !state.inspection) return { ready: false, level: "bad", message: "Load and inspect a Source Package first." };
-      if (!liveModel) return { ready: false, level: "bad", message: "Source inspected, but the Live2D preview is not ready. Wait for the preview to load or reload the Mapper." };
+      if (!state.model || !state.inspection) return { ready: false, level: "bad", message: I18n.t("build.sourceRequired") };
+      if (!liveModel) return { ready: false, level: "bad", message: I18n.t("build.previewRequired") };
       const missing = codexValidation();
       const mapped = MotionMapping.codexRows.length - missing.length;
-      if (missing.length) return { ready: false, level: "bad", message: `Codex mapping: ${mapped}/${MotionMapping.codexRows.length} rows assigned. Assign: ${missing.join(", ")}.` };
-      return { ready: true, level: "good", message: "Codex mapping: 9/9 rows assigned. Ready to build." };
+      if (missing.length) return { ready: false, level: "bad", message: I18n.t("build.codexMapped", { mapped, total: MotionMapping.codexRows.length, missing: missing.join(", ") }) };
+      return { ready: true, level: "good", message: I18n.t("build.codexReady", { total: MotionMapping.codexRows.length }) };
+    }
+
+    function clawdRequiredSlots() {
+      return ["idle", "thinking", "working", "sleeping", ...(state.sleepMode === "full" ? ["yawning", "dozing", "collapsing", "waking"] : [])];
+    }
+
+    function clawdValidation() {
+      const errors = MotionMapping.validate(state).filter(item => item.level === "error").map(item => item.text);
+      for (const [slot, value] of Object.entries(state.reactionMappings)) {
+        if (value && !value.startsWith("motion:")) errors.push(`${slot} reactions must map directly to a Motion.`);
+      }
+      return errors;
+    }
+
+    function clawdBuildReadiness() {
+      if (!state.model || !state.inspection) return { ready: false, level: "bad", message: I18n.t("build.sourceRequired") };
+      if (!liveModel) return { ready: false, level: "bad", message: I18n.t("build.previewRequired") };
+      const required = clawdRequiredSlots();
+      const missing = required.filter(id => !state.mappings[id] || (state.sleepMode === "full" && !state.mappings[id].startsWith("motion:")));
+      const mapped = required.length - missing.length;
+      const errors = clawdValidation();
+      if (missing.length) return { ready: false, level: "bad", message: I18n.t("build.clawdMapped", { mapped, total: required.length, missing: missing.join(", ") }) };
+      if (errors.length) return { ready: false, level: "bad", message: errors[0] };
+      if (!desktopBuildApi()) return { ready: false, level: "bad", message: I18n.t("build.clawdNoApp") };
+      return { ready: true, level: "good", message: I18n.t("build.clawdReady") };
     }
 
     function renderCodexMappings() {
@@ -880,20 +1426,20 @@
       $("codexMapping").innerHTML = rows.map(row => {
         const value = state.codexMappings[row.id] || "";
         const motion = value.startsWith("motion:") ? selectedMotionById(value.slice(7)) : null;
-        return `<div class="codex-row"><code>${escapeHtml(row.id)}</code><strong class="${motion ? "" : "unmapped"}" title="${escapeHtml(motion?.sourceFile || "No Motion assigned")}">${escapeHtml(motion?.name || "Unmapped")}</strong><button data-codex-assign="${escapeHtml(row.id)}" ${state.selectedMotionId ? "" : "disabled"}>Use selected</button></div>`;
+        return `<div class="codex-row"><code>${escapeHtml(row.id)}</code><strong class="${motion ? "" : "unmapped"}" title="${escapeHtml(motion?.sourceFile || I18n.t("codex.motion.title"))}">${escapeHtml(motion?.name || I18n.t("codex.row.unmapped"))}</strong><button data-codex-assign="${escapeHtml(row.id)}" aria-label="${escapeHtml(I18n.t("codex.row.assign", { id: row.id }))}" ${state.selectedMotionId ? "" : "disabled"}>${escapeHtml(I18n.t("mapping.useSelected"))}</button></div>`;
       }).join("");
       document.querySelectorAll("[data-codex-assign]").forEach(button => button.addEventListener("click", () => dispatch({ type: "MAP_CODEX", key: button.dataset.codexAssign, value: state.selectedMotionId ? `motion:${state.selectedMotionId}` : "" })));
     }
 
     const scenarios = [
       { id:"core", label:"Core states", description:"Preview and assign idle, thinking, and working, then give sleeping a direct fallback.", steps:[
-        ["Current Motion → idle",{type:"MAP_CURRENT",key:"idle"}], ["Current Motion → thinking",{type:"MAP_CURRENT",key:"thinking"}], ["Current Motion → working",{type:"MAP_CURRENT",key:"working"}], ["sleeping fallback → idle",{type:"MAP",key:"sleeping",value:"fallback:idle"}]
+        ["Current Motion → idle",{type:"MAP_CURRENT",key:"idle"},"scenario.step.core.idle"], ["Current Motion → thinking",{type:"MAP_CURRENT",key:"thinking"},"scenario.step.core.thinking"], ["Current Motion → working",{type:"MAP_CURRENT",key:"working"},"scenario.step.core.working"], ["sleeping fallback → idle",{type:"MAP",key:"sleeping",value:"fallback:idle"},"scenario.step.core.sleeping"]
       ]},
       { id:"completion", label:"Completion & alerts", description:"Preview candidates, then assign attention for task completion and notification for permissions or reminders.", steps:[
-        ["Current Motion → attention",{type:"MAP_CURRENT",key:"attention"}], ["Current Motion → notification",{type:"MAP_CURRENT",key:"notification"}]
+        ["Current Motion → attention",{type:"MAP_CURRENT",key:"attention"},"scenario.step.completion.attention"], ["Current Motion → notification",{type:"MAP_CURRENT",key:"notification"},"scenario.step.completion.notification"]
       ]},
       { id:"sleep", label:"Full sleep", description:"Switch to full mode and assign all four sleep sequence slots.", steps:[
-        ["Switch to full",{type:"SET_SLEEP",value:"full"}], ["Current Motion → yawning",{type:"MAP_CURRENT",key:"yawning"}], ["Current Motion → dozing",{type:"MAP_CURRENT",key:"dozing"}], ["Current Motion → collapsing",{type:"MAP_CURRENT",key:"collapsing"}], ["Current Motion → waking",{type:"MAP_CURRENT",key:"waking"}]
+        ["Switch to full",{type:"SET_SLEEP",value:"full"},"scenario.step.sleep.mode"], ["Current Motion → yawning",{type:"MAP_CURRENT",key:"yawning"},"scenario.step.sleep.yawning"], ["Current Motion → dozing",{type:"MAP_CURRENT",key:"dozing"},"scenario.step.sleep.dozing"], ["Current Motion → collapsing",{type:"MAP_CURRENT",key:"collapsing"},"scenario.step.sleep.collapsing"], ["Current Motion → waking",{type:"MAP_CURRENT",key:"waking"},"scenario.step.sleep.waking"]
       ]}
     ];
 
@@ -902,10 +1448,10 @@
       return { type:"MAP", key:action.key, value:state.selectedMotionId ? `motion:${state.selectedMotionId}` : "" };
     }
     function renderScenario() {
-      $("scenarioTabs").innerHTML = scenarios.map(s => `<button class="${state.scenario === s.id ? "active" : ""}" data-scenario="${s.id}">${s.label}</button>`).join("");
+      $("scenarioTabs").innerHTML = scenarios.map(s => `<button class="${state.scenario === s.id ? "active" : ""}" data-scenario="${s.id}">${escapeHtml(I18n.t(`scenario.${s.id}`))}</button>`).join("");
       document.querySelectorAll("[data-scenario]").forEach(b=>b.addEventListener("click",()=>dispatch({type:"START_SCENARIO",id:b.dataset.scenario})));
       const scenario = scenarios.find(s=>s.id===state.scenario) || scenarios[0];
-      $("scenario").innerHTML = `<p>${scenario.description}</p><div><button id="startScenario" class="primary">Start with an empty mapping</button></div><div class="steps">${scenario.steps.map(([label],i)=>`<button class="step ${state.scenario===scenario.id && i<state.scenarioStep ? "done" : ""}" data-step="${i}">${i+1}. ${label}</button>`).join("")}</div>`;
+      $("scenario").innerHTML = `<p>${escapeHtml(I18n.t(`scenario.${scenario.id}.description`))}</p><div><button id="startScenario" class="primary">${escapeHtml(I18n.t("scenario.start"))}</button></div><div class="steps">${scenario.steps.map(([label,,key],i)=>`<button class="step ${state.scenario===scenario.id && i<state.scenarioStep ? "done" : ""}" data-step="${i}">${escapeHtml(I18n.t("scenario.step", { number: i + 1, label: I18n.t(key) || label }))}</button>`).join("")}</div>`;
       $("startScenario").addEventListener("click",()=>dispatch({type:"START_SCENARIO",id:scenario.id}));
       document.querySelectorAll("[data-step]").forEach(b=>b.addEventListener("click",()=>{const action=resolveScenarioAction(scenario.steps[Number(b.dataset.step)][1]);dispatch({type:"SCENARIO_STEP",inner:action});}));
     }
@@ -921,12 +1467,20 @@
       $("jsonOutput").textContent = JSON.stringify(MotionMapping.output(state),null,2);
       const readiness = codexBuildReadiness();
       $("buildCodex").disabled = codexBuildBusy || !readiness.ready;
-      $("buildCodex").textContent = codexBuildBusy ? "Building Codex Pet ZIP…" : "Build Codex Pet ZIP";
+      $("buildCodex").textContent = codexBuildBusy ? I18n.t("build.codex.building") : I18n.t("build.codex.build");
       $("buildCodex").title = readiness.message;
       $("buildReadiness").className = `build-readiness ${readiness.level}`;
       $("buildReadiness").textContent = readiness.message;
       $("downloadCodex").disabled = codexBuildBusy || !codexArtifact;
-      $("downloadCodex").title = codexArtifact ? `Download ${codexArtifact.filename}` : "Build a Codex Pet ZIP first.";
+      $("downloadCodex").title = codexArtifact ? `${I18n.t("build.codex.download")} ${codexArtifact.filename}` : I18n.t("build.downloadFirst.codex");
+      const clawdReadiness = clawdBuildReadiness();
+      $("buildClawd").disabled = clawdBuildBusy || !clawdReadiness.ready;
+      $("buildClawd").textContent = clawdBuildBusy ? I18n.t("build.clawd.building") : I18n.t("build.clawd.build");
+      $("buildClawd").title = clawdReadiness.message;
+      $("clawdBuildReadiness").className = `build-readiness ${clawdReadiness.level}`;
+      $("clawdBuildReadiness").textContent = clawdReadiness.message;
+      $("downloadClawd").disabled = clawdBuildBusy || !clawdArtifact;
+      $("downloadClawd").title = clawdArtifact ? `${I18n.t("build.clawd.download")} ${clawdArtifact.filename}` : I18n.t("build.downloadFirst.clawd");
       const targetPreview = $("codexTargetPreview");
       const hasTargetPreview = Boolean(codexArtifact?.previewUrl && codexArtifact?.cellPreviewUrl);
       targetPreview.classList.toggle("hidden", !hasTargetPreview);
@@ -1175,7 +1729,7 @@
     async function loadPck(file) {
       try {
         $("stageMessage").classList.remove("hidden");
-        $("stageMessage").textContent = `Inspecting ${file.name}…`;
+        $("stageMessage").textContent = I18n.t("source.stage.inspecting", { name: file.name });
         const unpacked = await unpackDestinyChildPck(file);
         await loadFolder(unpacked.files,{
           modelName:file.name.replace(/\.pck$/i,""),
@@ -1185,12 +1739,12 @@
           entryCount:unpacked.count,
           version:unpacked.version,
           fingerprint:await fingerprintBrowser([file]),
-          loadMessage:`Inspected ${file.name} · ${unpacked.count} entries · PCK ${unpacked.version.toFixed(1)}`
+          loadMessage:I18n.t("source.load.inspected", { name: file.name, count: unpacked.count, version: unpacked.version.toFixed(1) })
         });
       } catch (error) {
         dispatch({type:"INSPECTION_ERROR",error:normalizedInspectionError(error)});
         $("stageMessage").classList.remove("hidden");
-        $("stageMessage").textContent = `Inspection failed: ${error.message}`;
+        $("stageMessage").textContent = I18n.t("source.stage.inspectionFailed", { message: error.message });
         $("loadHint").textContent = error.message;
       }
     }
@@ -1297,7 +1851,7 @@
           }
         }
         dispatch({type:"LOAD_MODEL",model:{file:options.sourceFile || modelFile.name,name:modelName,cubism,source:options.source || "folder"},motions,expressions,inspection});
-        $("loadHint").textContent = options.loadMessage || `Inspected ${modelFile.name} · Cubism ${cubism}`;
+        $("loadHint").textContent = options.loadMessage || I18n.t("source.load.complete", { name: modelFile.name, version: cubism });
 
         try {
           // Let pixi-live2d-display's FileLoader preserve relative paths for
@@ -1310,14 +1864,14 @@
         } catch (previewError) {
           console.error("Live2Pet preview failed", previewError);
           $("stageMessage").classList.remove("hidden");
-          $("stageMessage").textContent = `Inspection complete. Preview unavailable: ${previewError.message}`;
+          $("stageMessage").textContent = I18n.t("source.stage.previewUnavailable", { message: previewError.message });
         }
       } catch (error) {
         console.error("Live2Pet load failed", error);
         $("stageMessage").classList.remove("hidden");
         $("stageMessage").textContent = inspectionReady
-          ? `Inspection complete. Preview unavailable: ${error.message}`
-          : `Inspection failed: ${error.message}`;
+          ? I18n.t("source.stage.previewUnavailable", { message: error.message })
+          : I18n.t("source.stage.inspectionFailed", { message: error.message });
         $("loadHint").textContent = error.message;
         if (!inspectionReady) dispatch({type:"INSPECTION_ERROR",error:normalizedInspectionError(error)});
       }
@@ -1366,12 +1920,20 @@
 
     const CODEX_ATLAS = { width: 1536, height: 1872, columns: 8, rows: 9, cellWidth: 192, cellHeight: 208 };
     const CODEX_PACKAGE_VERSION = "1.0.0";
+    const CLAWD_PACKAGE_VERSION = "1.0.0";
     let codexBuildBusy = false;
     let codexArtifact = null;
+    let clawdBuildBusy = false;
+    let clawdArtifact = null;
 
     function setBuildStatus(message, level = "") {
       $("buildStatus").className = `build-status${level ? ` ${level}` : ""}`;
       $("buildStatus").textContent = message;
+    }
+
+    function setClawdBuildStatus(message, level = "") {
+      $("clawdBuildStatus").className = `build-status${level ? ` ${level}` : ""}`;
+      $("clawdBuildStatus").textContent = message;
     }
 
     function waitForNextFrame() {
@@ -1427,6 +1989,139 @@
       };
     }
 
+    function clawdRenderSettings() {
+      const preset = state.clawdRenderPreset;
+      if (preset === "compact") return { preset, width: 512, height: 512, fps: 18, quality: 76, maxFrames: 8 };
+      if (preset === "high") return { preset, width: 1024, height: 1024, fps: 30, quality: 88, maxFrames: 12 };
+      return { preset: "balanced", width: 768, height: 768, fps: 24, quality: 82, maxFrames: 10 };
+    }
+
+    function clawdMappedMotionIds() {
+      const values = [...Object.values(state.mappings), ...Object.values(state.reactionMappings)];
+      const seen = new Set();
+      return values.filter(value => value?.startsWith("motion:"))
+        .map(value => value.slice(7))
+        .filter(id => !seen.has(id) && seen.add(id));
+    }
+
+    function captureClawdFrame() {
+      const source = $("live2dCanvas");
+      if (!source.width || !source.height) throw projectError("PREVIEW_NOT_READY", "The Live2D preview has no drawable pixels yet.");
+      const settings = clawdRenderSettings();
+      const canvas = document.createElement("canvas");
+      canvas.width = settings.width;
+      canvas.height = settings.height;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      context.clearRect(0, 0, settings.width, settings.height);
+      const scale = Math.min(settings.width / source.width, settings.height / source.height);
+      const width = source.width * scale;
+      const height = source.height * scale;
+      context.drawImage(source, (settings.width - width) / 2, (settings.height - height) / 2, width, height);
+      const image = context.getImageData(0, 0, settings.width, settings.height);
+      return { width: settings.width, height: settings.height, rgba: Uint8Array.from(image.data) };
+    }
+
+    function clawdFrameCount(motion) {
+      const settings = clawdRenderSettings();
+      const duration = Math.max(0.8, Math.min(8, Number(motion.duration) || 1.2));
+      return Math.max(2, Math.min(settings.maxFrames, Math.round(duration * settings.fps)));
+    }
+
+    async function captureClawdMotion(motion) {
+      const settings = clawdRenderSettings();
+      const count = clawdFrameCount(motion);
+      const duration = Math.max(0.8, Math.min(8, Number(motion.duration) || 1.2));
+      const playback = Promise.resolve(liveModel.motion(motion.group, motion.index, 3)).catch(() => null);
+      const frames = [];
+      for (let index = 0; index < count; index += 1) {
+        await new Promise(resolve => setTimeout(resolve, Math.max(50, Math.round(duration * 1000 / (count + 1)))));
+        await waitForNextFrame();
+        frames.push(captureClawdFrame());
+      }
+      await playback;
+      return { frames, delay: Math.max(40, Math.round(duration * 1000 / count)), loop: 0, quality: settings.quality, alphaQuality: 100, lossless: false };
+    }
+
+    async function buildClawdThroughDesktop(project, framesByMotion) {
+      const api = desktopBuildApi();
+      if (!api) return null;
+      const prefix = state.outputPrefix.trim() || project.projectId;
+      const metadata = {
+        id: projectId(prefix),
+        name: state.projectName || project.name,
+        description: `A Clawd theme generated locally by Live2Pet from ${project.name}.`,
+        version: CLAWD_PACKAGE_VERSION,
+        author: "Live2Pet",
+      };
+      setClawdBuildStatus(I18n.t("build.status.app"), "busy");
+      const response = await api.buildProject({
+        project,
+        targets: ["clawd"],
+        inputsByTarget: { clawd: { framesByMotion } },
+        metadataByTarget: { clawd: metadata },
+        optionsByTarget: { clawd: { package: true, render: { preset: state.clawdRenderPreset } } },
+      });
+      if (!response?.ok) throw projectError(response?.error?.code || "APP_BUILD_FAILED", response?.error?.message || "The App Package Build service rejected the request.");
+      const artifact = response.result?.artifacts?.find(item => item.target === "clawd");
+      if (!artifact?.artifactId) throw projectError("APP_BUILD_ARTIFACT_MISSING", "The App Package Build completed without a downloadable Clawd artifact.");
+      const payload = await api.getBuildArtifact(artifact.artifactId);
+      if (!payload?.ok || !payload.result?.bytes) throw projectError(payload?.error?.code || "APP_BUILD_ARTIFACT_FAILED", payload?.error?.message || "The App could not retrieve the built Clawd artifact.");
+      const build = response.result.builds?.clawd || {};
+      return {
+        blob: new Blob([payload.result.bytes], { type: "application/zip" }),
+        filename: artifact.filename,
+        manifest: build.manifest || null,
+        assets: Array.isArray(build.assets) ? build.assets : [],
+        validation: build.validation || null,
+      };
+    }
+
+    async function buildClawdPackage() {
+      if (clawdBuildBusy) return;
+      const readiness = clawdBuildReadiness();
+      if (!readiness.ready) throw projectError("INVALID_CLAWD_MAPPING", readiness.message);
+      clawdBuildBusy = true;
+      clawdArtifact = null;
+      $("clawdBuildSummary").classList.add("hidden");
+      render();
+      try {
+        const project = buildProjectDocument();
+        const captures = {};
+        const motionIds = clawdMappedMotionIds();
+        const settings = clawdRenderSettings();
+        setClawdBuildStatus(I18n.t("build.status.clawdCapture", { count: motionIds.length, width: settings.width }), "busy");
+        for (const motionId of motionIds) {
+          const motion = selectedMotionById(motionId);
+          if (!motion) throw projectError("INVALID_CLAWD_MAPPING", `${motionId} points to a Motion that is no longer loaded.`);
+          const frameCount = clawdFrameCount(motion);
+          setClawdBuildStatus(I18n.t("build.status.capture", { slot: motionId, motion: motion.name, count: frameCount }), "busy");
+          captures[motionId] = await captureClawdMotion(motion);
+        }
+        const desktopArtifact = await buildClawdThroughDesktop(project, captures);
+        if (!desktopArtifact) throw projectError("APP_BUILD_UNAVAILABLE", I18n.t("build.clawdNoApp"));
+        clawdArtifact = desktopArtifact;
+        const states = Object.keys(desktopArtifact.manifest?.states || {}).length;
+        const reactions = Object.keys(desktopArtifact.manifest?.reactions || {}).length;
+        setClawdBuildStatus(I18n.t("build.status.clawdApp", { filename: desktopArtifact.filename, size: Math.round(desktopArtifact.blob.size / 1024), motions: desktopArtifact.assets.length }), "good");
+        $("clawdBuildSummary").textContent = I18n.t("build.status.clawdSummary", { states, reactions, motions: desktopArtifact.assets.length });
+        $("clawdBuildSummary").classList.remove("hidden");
+      } catch (error) {
+        setClawdBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad");
+      } finally {
+        clawdBuildBusy = false;
+        render();
+      }
+    }
+
+    function downloadClawdPackage() {
+      if (!clawdArtifact) return;
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(clawdArtifact.blob);
+      link.download = clawdArtifact.filename;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    }
+
     async function buildCodexThroughDesktop(project, captures) {
       const api = desktopBuildApi();
       if (!api) return null;
@@ -1437,7 +2132,7 @@
         const frames = captures.get(motion.id) || [];
         candidatesByRow[row.id] = frames.map((frame, index) => appBuildCandidate(frame, motion, index, frames.length));
       }
-      setBuildStatus("Building through the shared App Package Build service…", "busy");
+      setBuildStatus(I18n.t("build.status.app"), "busy");
       const quality = state.codexRenderPreset === "compact" ? 76 : state.codexRenderPreset === "high" ? 88 : 82;
       const response = await api.buildProject({
         project,
@@ -1479,7 +2174,7 @@
           if (!motion) throw projectError("INVALID_CODEX_MAPPING", `${row.id} points to a Motion that is no longer loaded.`);
           const needed = Math.max(row.frames, captures.get(motion.id)?.length || 0);
           if (!captures.has(motion.id) || captures.get(motion.id).length < needed) {
-            setBuildStatus(`Capturing ${row.id} from ${motion.name} (${needed} frames)…`, "busy");
+            setBuildStatus(I18n.t("build.status.capture", { slot: row.id, motion: motion.name, count: needed }), "busy");
             captures.set(motion.id, await captureCodexMotion(motion, needed));
           }
         }
@@ -1509,15 +2204,15 @@
         if (desktopArtifact) {
           codexArtifact = { ...desktopArtifact, previewUrl: atlasPreviewUrl, cellPreviewUrl };
           previewUrls.length = 0;
-          setBuildStatus(`Built ${desktopArtifact.filename} through the App · ${Math.round(desktopArtifact.blob.size / 1024)} KiB · shared Package Build.`, "good");
+          setBuildStatus(I18n.t("build.status.codexApp", { filename: desktopArtifact.filename, size: Math.round(desktopArtifact.blob.size / 1024) }), "good");
           return;
         }
-        setBuildStatus("Encoding transparent WebP atlas…", "busy");
+        setBuildStatus(I18n.t("build.status.encode"), "busy");
         const renderPreset = state.codexRenderPreset;
         const quality = renderPreset === "compact" ? 0.76 : renderPreset === "high" ? 0.88 : 0.82;
         const spritesheet = await canvasToBlob(atlas, "image/webp", quality);
         const manifest = { schemaVersion: 1, target: "codex-pet", contractVersion: 1, version: CODEX_PACKAGE_VERSION, packageFiles: ["pet.json", "spritesheet.webp"], renderPreset, atlas: { ...CODEX_ATLAS }, mappings: { ...state.codexMappings }, rows: manifestRows, assets: { spritesheet: { path: "spritesheet.webp", format: "webp", width: CODEX_ATLAS.width, height: CODEX_ATLAS.height, frameCount: 1 } } };
-        setBuildStatus("Creating ZIP package…", "busy");
+        setBuildStatus(I18n.t("build.status.zip"), "busy");
         if (typeof zipApi.configure === "function") zipApi.configure({ useWebWorkers: false });
         const writer = new zipApi.ZipWriter(new zipApi.BlobWriter("application/zip"));
         await writer.add("pet.json", new zipApi.TextReader(`${JSON.stringify(manifest, null, 2)}\n`));
@@ -1526,7 +2221,7 @@
         const filename = `${projectId(state.projectName || "live2pet-codex")}-codex-pet-${CODEX_PACKAGE_VERSION}.zip`;
         codexArtifact = { blob, filename, manifest, previewUrl: atlasPreviewUrl, cellPreviewUrl };
         previewUrls.length = 0;
-        setBuildStatus(`Built ${filename} · ${Math.round(blob.size / 1024)} KiB · ${manifestRows.reduce((sum, row) => sum + row.frameCount, 0)} occupied cells.`, "good");
+        setBuildStatus(I18n.t("build.status.codexBrowser", { filename, size: Math.round(blob.size / 1024), cells: manifestRows.reduce((sum, row) => sum + row.frameCount, 0) }), "good");
       } catch (error) {
         previewUrls.forEach(url => URL.revokeObjectURL(url));
         setBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad");
@@ -1555,7 +2250,7 @@
         link.download = filename;
         link.click();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
-        setProjectStatus(`Saved ${filename}. Source assets remain on this computer.`, "good");
+        setProjectStatus(I18n.t("project.saved", { filename }), "good");
         if (mapperSession) {
           try { await persistMapperSessionProject(project); }
           catch (error) { setSessionStatus(`${error.code || "SESSION_SAVE_FAILED"}: ${error.message}`, "bad"); }
@@ -1571,8 +2266,8 @@
         const sourceMatches = state.inspection?.source.fingerprint === project.source.fingerprint;
         dispatch({ type: "LOAD_PROJECT", project });
         setProjectStatus(sourceMatches
-          ? `Opened ${file.name}. The Source Package fingerprint matches.`
-          : `Opened ${file.name}. Source fingerprint differs; review affected mappings before building.`, sourceMatches ? "good" : "");
+          ? I18n.t("project.open.match", { filename: file.name })
+          : I18n.t("project.open.diff", { filename: file.name }), sourceMatches ? "good" : "");
       } catch (error) {
         setProjectStatus(`${error.code || "PROJECT_OPEN_FAILED"}: ${error.message}`, "bad");
       }
@@ -1595,7 +2290,7 @@
       const runtimeFile = e.target.files[0];
       if (!runtimeFile) return;
       try {
-        setRuntimeStatus(`Loading modern Core ${runtimeFile.name}…`);
+        setRuntimeStatus(I18n.t("runtime.loading", { runtime: I18n.t("runtime.name.modern"), name: runtimeFile.name }));
         await loadLocalRuntime(runtimeFile, "modern");
       } catch (error) {
         setRuntimeStatus(`${error.code || "RUNTIME_LOAD_FAILED"}: ${error.message}`, "bad");
@@ -1608,7 +2303,7 @@
       const runtimeFile = e.target.files[0];
       if (!runtimeFile) return;
       try {
-        setRuntimeStatus(`Loading Cubism 2 runtime ${runtimeFile.name}…`);
+        setRuntimeStatus(I18n.t("runtime.loading", { runtime: I18n.t("runtime.name.legacy"), name: runtimeFile.name }));
         await loadLocalRuntime(runtimeFile, "legacy");
       } catch (error) {
         setRuntimeStatus(`${error.code || "RUNTIME_LOAD_FAILED"}: ${error.message}`, "bad");
@@ -1634,8 +2329,16 @@
     $("downloadJson").addEventListener("click",downloadJson);
     $("buildCodex").addEventListener("click", async () => { try { await buildCodexPackage(); } catch (error) { setBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad"); } });
     $("downloadCodex").addEventListener("click",downloadCodexPackage);
+    $("buildClawd").addEventListener("click", async () => { try { await buildClawdPackage(); } catch (error) { setClawdBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad"); } });
+    $("downloadClawd").addEventListener("click",downloadClawdPackage);
+    $("languageSelect").addEventListener("change", event => I18n.setLocale(event.target.value));
+    window.addEventListener("live2pet:locale-changed", () => render());
     $("copyJson").addEventListener("click",async()=>{const text=JSON.stringify(MotionMapping.output(state),null,2);try{await navigator.clipboard.writeText(text)}catch{const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove();}});
     new ResizeObserver(()=>{if(app){app.resize();fitModel();}}).observe($("stage"));
+    I18n.apply();
+    setProjectStatus(I18n.t("project.status.empty"));
+    setBuildStatus(I18n.t("build.codex.status.empty"));
+    setClawdBuildStatus(I18n.t("build.clawd.status.empty"));
     render();
     void connectMapperSession();
   </script>

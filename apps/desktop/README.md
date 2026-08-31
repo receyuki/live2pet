@@ -14,6 +14,14 @@ the future packager resource path, but the Forge CLI is not a workspace
 dependency yet because its current rebuild chain is rejected by the repository's
 exotic-subdependency policy.
 
+The shared Mapper exposes both Codex Pet and Clawd Theme build actions. Clawd
+captures mapped Motion frames in the renderer and sends them through the same
+typed `buildProject` service; the returned ZIP is available only through an
+explicit `getBuildArtifact` download. Browser-only Mapper sessions keep the
+Clawd build action disabled because they do not provide the trusted App encoder.
+The UI starts in English and includes a persisted English/Chinese (`zh-CN`)
+locale switch; locale text does not alter project, IPC, or package schemas.
+
 From the repository root, install workspace dependencies and run:
 
 ```text

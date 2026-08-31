@@ -21,3 +21,7 @@ The helper reads only the explicitly supplied Mapper document, enforces the 4 Mi
 The host descriptor contains only the protocol version, session id, loopback API origin, expiry, and launch URL. Keep the returned host handle private to the App main process; use `getClient()` for typed project operations and `close()` when the mapping task ends.
 
 This boundary is intentionally separate from Electron IPC. The eventual App must expose only typed preload methods to the renderer, keep Node integration disabled, and package the Mapper's local dependencies instead of relying on the prototype's development paths.
+
+The Mapper UI includes an English-default, Chinese (`zh-CN`) translation layer. The language selector persists only the locale preference in browser storage; source assets, runtimes, and project contents remain local. Target ids, project schema keys, and generated package metadata stay language-neutral.
+
+When the App preload exposes `buildProject` and `getBuildArtifact`, the Mapper can capture the selected Clawd Motion ids and request a guide-shaped Clawd Theme ZIP through the shared Package Build service. Browser-only sessions intentionally keep this button disabled because the browser fallback is not an equivalent Clawd encoder; preview and mapping remain available.

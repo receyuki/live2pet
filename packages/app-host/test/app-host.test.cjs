@@ -152,6 +152,59 @@ test('routes a real synthetic Codex build through the App seam and returns a dow
   assert.equal(artifact.result.filename, 'app-real-build-codex-pet-1.0.0.zip');
 });
 
+test('routes a real synthetic Clawd build through the App seam and returns a downloadable theme artifact', async () => {
+  const project = createProject({
+    projectId: 'app-real-clawd-build',
+    name: 'App real Clawd build',
+    source: { kind: 'synthetic', name: 'synthetic-source', fingerprint: 'c'.repeat(64) },
+    targets: {
+      clawd: {
+        profile: 'clawd',
+        mappings: {
+          idle: 'motion:fixture-idle',
+          thinking: 'motion:fixture-thinking',
+          working: 'motion:fixture-working',
+          sleeping: 'fallback:idle',
+          attention: 'motion:fixture-attention',
+        },
+        reactions: { drag: 'motion:fixture-attention' },
+        options: { sleepMode: 'direct' },
+      },
+    },
+  });
+  const frameSet = (seed) => ({
+    frames: [0, 1].map((index) => ({
+      id: `${seed}-${index}`,
+      width: 2,
+      height: 2,
+      rgba: Uint8Array.from([seed.length, index, 0, 255, seed.length, index, 1, 255, seed.length, index, 2, 255, seed.length, index, 3, 255]),
+    })),
+    fps: 10,
+  });
+  const router = createAppIpcRouter({ mapperHostFactory: async () => fakeHost(), buildProjectService: buildProjectTargets });
+  const response = await router({
+    protocolVersion: 1,
+    method: 'buildProject',
+    args: [{
+      project,
+      targets: ['clawd'],
+      inputsByTarget: { clawd: { framesByMotion: { 'fixture-idle': frameSet('idle'), 'fixture-thinking': frameSet('thinking'), 'fixture-working': frameSet('working'), 'fixture-attention': frameSet('attention') } } },
+      metadataByTarget: { clawd: { id: 'app-real-clawd-build', name: 'App real Clawd build', description: 'Synthetic App Clawd integration build.', version: '1.0.0' } },
+      optionsByTarget: { clawd: { package: true, render: { preset: 'compact' } } },
+    }],
+  });
+  assert.equal(response.ok, true);
+  assert.equal(response.result.targets[0], 'clawd');
+  assert.equal(response.result.builds.clawd.validation.ok, true);
+  assert.equal(response.result.builds.clawd.package.buffer, undefined);
+  assert.equal(response.result.builds.clawd.manifest.states.sleeping.fallbackTo, 'idle');
+  assert.equal(response.result.artifacts.length, 1);
+  const artifact = await router({ protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: response.result.artifacts[0].artifactId }] });
+  assert.equal(artifact.ok, true);
+  assert.ok(artifact.result.bytes.byteLength > 0);
+  assert.equal(artifact.result.filename, 'app-real-clawd-build-clawd-1.0.0.zip');
+});
+
 test('preload exposes only typed methods and the window options keep Electron sandbox defaults', async () => {
   const calls = [];
   const api = createAppPreloadApi({ ipcRenderer: { invoke: async (...args) => (calls.push(args), { ok: true }) } });

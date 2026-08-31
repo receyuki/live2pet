@@ -44,4 +44,10 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /optionsByTarget: \{ "codex-pet": \{ package: true/);
   assert.match(mapper, /if \(desktopArtifact\) \{/);
   assert.match(mapper, /Encoding transparent WebP atlas/);
+  assert.match(mapper, /function buildClawdThroughDesktop\(project, framesByMotion\)/);
+  assert.match(mapper, /optionsByTarget: \{ clawd: \{ package: true/);
+  assert.match(mapper, /id="buildClawd"/);
+  assert.match(mapper, /id="downloadClawd"/);
+  assert.match(mapper, /const I18n = \(\(\) =>/);
+  assert.match(mapper, /id="languageSelect"/);
 });
