@@ -6,6 +6,7 @@ const { installPackage } = require('../../installation/src/index.cjs');
 const APP_IPC_PROTOCOL_VERSION = 1;
 const APP_IPC_CHANNEL = 'live2pet:app';
 const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';
+const APP_BUILD_ARTIFACT_CHUNK_BYTES = 1024 * 1024;
 const BUILD_PROGRESS_FIELDS = Object.freeze([
   'target',
   'stage',
@@ -324,9 +325,26 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, buildP
       if (normalized.method === 'getBuildArtifact') {
         const [request = {}] = normalized.args;
         if (!isRecord(request) || typeof request.artifactId !== 'string' || !request.artifactId.trim()) fail('INVALID_BUILD_ARTIFACT_REQUEST', 'getBuildArtifact requires an artifactId.');
-        const artifact = buildArtifacts.get(request.artifactId);
+        const offset = request.offset === undefined ? 0 : request.offset;
+        if (!Number.isSafeInteger(offset) || offset < 0) fail('INVALID_BUILD_ARTIFACT_REQUEST', 'getBuildArtifact offset must be a non-negative safe integer.');
+        const artifact = buildArtifacts.get(request.artifactId.trim());
         if (!artifact) fail('BUILD_ARTIFACT_NOT_FOUND', 'The requested build artifact is no longer available. Build the project again.');
-        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: { artifactId: artifact.artifactId, target: artifact.target, filename: artifact.filename, byteLength: artifact.byteLength, bytes: new Uint8Array(artifact.bytes) } };
+        if (offset > artifact.byteLength) fail('INVALID_BUILD_ARTIFACT_REQUEST', 'getBuildArtifact offset exceeds the artifact byte length.');
+        const nextOffset = Math.min(offset + APP_BUILD_ARTIFACT_CHUNK_BYTES, artifact.byteLength);
+        return {
+          protocolVersion: APP_IPC_PROTOCOL_VERSION,
+          ok: true,
+          result: {
+            artifactId: artifact.artifactId,
+            target: artifact.target,
+            filename: artifact.filename,
+            byteLength: artifact.byteLength,
+            offset,
+            nextOffset,
+            done: nextOffset === artifact.byteLength,
+            bytes: new Uint8Array(artifact.bytes.subarray(offset, nextOffset)),
+          },
+        };
       }
       if (normalized.method === 'installArtifact') {
         if (!installPackageService) fail('APP_INSTALL_UNAVAILABLE', 'The App installation service is not configured.');
@@ -377,7 +395,7 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL } = {}) {
     updateMapperProject: (project) => invoke('updateMapperProject', project),
     buildProject: (input) => invoke('buildProject', input),
     onBuildProgress,
-    getBuildArtifact: (artifactId) => invoke('getBuildArtifact', { artifactId }),
+    getBuildArtifact: (artifactId, offset = 0) => invoke('getBuildArtifact', { artifactId, offset }),
     installArtifact: (request) => invoke('installArtifact', request),
     closeMapperSession: () => invoke('closeMapperSession'),
   });
@@ -405,6 +423,7 @@ function createAppWindowOptions({ preload, width = 1280, height = 860, show = fa
 }
 
 module.exports = {
+  APP_BUILD_ARTIFACT_CHUNK_BYTES,
   APP_BUILD_PROGRESS_CHANNEL,
   APP_IPC_CHANNEL,
   APP_IPC_METHODS,

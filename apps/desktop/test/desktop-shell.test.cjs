@@ -31,7 +31,7 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   for (const method of ['getVersion', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'buildProject', 'getBuildArtifact', 'installArtifact', 'closeMapperSession']) {
     assert.match(preload, new RegExp(`invoke\\('${method}'`));
   }
-  assert.match(preload, /getBuildArtifact: \(artifactId\) => invoke\('getBuildArtifact', \{ artifactId \}\)/);
+  assert.match(preload, /getBuildArtifact: \(artifactId, offset = 0\) => invoke\('getBuildArtifact', \{ artifactId, offset \}\)/);
   assert.match(preload, /onBuildProgress/);
   assert.doesNotMatch(preload, /require\(['"]\.\.\/\.\.\/packages\/app-host/);
   assert.doesNotMatch(preload, /exposeInMainWorld\([^,]+,\s*\{\s*ipcRenderer/);
@@ -64,7 +64,10 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /id="installCodex"/);
   assert.match(mapper, /id="installClawd"/);
   assert.match(mapper, /confirmInstall: true/);
-  assert.match(mapper, /function prepareClawdPreview\(artifact\)/);
+  assert.match(mapper, /async function prepareClawdPreview\(artifact, generation\)/);
+  assert.match(mapper, /function startClawdPreview\(artifact\)/);
+  assert.match(mapper, /void prepareClawdPreview\(artifact, generation\)/);
+  assert.doesNotMatch(mapper, /await prepareClawdPreview\(desktopArtifact\)/);
   assert.match(mapper, /id="clawdTargetPreview"/);
   assert.match(mapper, /id="clawdPreviewState"/);
   assert.match(mapper, /data-i18n-alt="preview\.clawd\.alt"/);
@@ -77,6 +80,11 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /function setBuildProgressCapture\(target/);
   assert.match(mapper, /function handleBuildProgress\(event\)/);
   assert.match(mapper, /function compressClawdFrameSet\(frameSet/);
+  assert.match(mapper, /async function retrieveDesktopArtifact\(api, artifact, target, setStatus\)/);
+  assert.match(mapper, /getBuildArtifact\(artifact\.artifactId, offset\)/);
+  assert.match(mapper, /build\.progress\.stage\.transfer/);
+  assert.match(mapper, /new zipApi\.BlobReader\(artifact\.blob\)/);
+  assert.match(mapper, /async function loadClawdPreviewAsset\(preview, file\)/);
   assert.match(mapper, /rgbaDeflate/);
   assert.match(mapper, /motion-completed/);
   assert.match(mapper, /subscribeBuildProgress\(\);/);

@@ -5,6 +5,7 @@ const { createProject } = require('../../project/src/index.cjs');
 const { buildProjectTargets } = require('../../package-build/src/index.cjs');
 
 const {
+  APP_BUILD_ARTIFACT_CHUNK_BYTES,
   APP_BUILD_PROGRESS_CHANNEL,
   APP_IPC_CHANNEL,
   APP_IPC_METHODS,
@@ -102,6 +103,9 @@ test('routes Package Build through the injected shared service and strips binary
   assert.equal(artifact.ok, true);
   assert.deepEqual([...artifact.result.bytes], [6, 7, 8]);
   assert.equal(artifact.result.byteLength, 3);
+  assert.equal(artifact.result.offset, 0);
+  assert.equal(artifact.result.nextOffset, 3);
+  assert.equal(artifact.result.done, true);
   const missingArtifact = await router({ protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'missing' }] });
   assert.equal(missingArtifact.ok, false);
   assert.equal(missingArtifact.error.code, 'BUILD_ARTIFACT_NOT_FOUND');
@@ -110,6 +114,56 @@ test('routes Package Build through the injected shared service and strips binary
   assert.equal(afterClose.ok, false);
   assert.equal(afterClose.error.code, 'BUILD_ARTIFACT_NOT_FOUND');
   assert.deepEqual({ project: calls[0].project, targets: calls[0].targets, inputsByTarget: calls[0].inputsByTarget }, input);
+});
+
+test('returns large build artifacts through bounded sequential IPC chunks', async () => {
+  const bytes = Uint8Array.from({ length: (3 * 1024 * 1024) + 17 }, (_, index) => index % 251);
+  const router = createAppIpcRouter({
+    buildProjectService: async () => ({
+      buildContractVersion: 1,
+      projectId: 'chunked-artifact',
+      targets: ['clawd'],
+      warnings: [],
+      builds: {
+        clawd: {
+          target: 'clawd',
+          artifactName: 'chunked-artifact-clawd-1.0.0.zip',
+          package: { format: 'zip', byteLength: bytes.byteLength, files: ['theme.json'], buffer: bytes },
+        },
+      },
+    }),
+  });
+  const built = await router({ protocolVersion: 1, method: 'buildProject', args: [{ project: { projectId: 'chunked-artifact' }, targets: ['clawd'] }] });
+  assert.equal(built.ok, true);
+  const artifactId = built.result.artifacts[0].artifactId;
+  const chunks = [];
+  let offset = 0;
+  let done = false;
+  while (!done) {
+    const response = await router({ protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId, offset }] });
+    assert.equal(response.ok, true);
+    assert.equal(response.result.offset, offset);
+    assert.ok(response.result.bytes.byteLength <= APP_BUILD_ARTIFACT_CHUNK_BYTES);
+    assert.ok(response.result.nextOffset > offset);
+    chunks.push(response.result.bytes);
+    offset = response.result.nextOffset;
+    done = response.result.done;
+  }
+  assert.equal(offset, bytes.byteLength);
+  assert.deepEqual(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))), Buffer.from(bytes));
+  assert.deepEqual(chunks.map((chunk) => chunk.byteLength), [APP_BUILD_ARTIFACT_CHUNK_BYTES, APP_BUILD_ARTIFACT_CHUNK_BYTES, APP_BUILD_ARTIFACT_CHUNK_BYTES, 17]);
+
+  const eof = await router({ protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId, offset: bytes.byteLength }] });
+  assert.equal(eof.ok, true);
+  assert.equal(eof.result.bytes.byteLength, 0);
+  assert.equal(eof.result.nextOffset, bytes.byteLength);
+  assert.equal(eof.result.done, true);
+
+  for (const invalidOffset of [-1, 0.5, '0', bytes.byteLength + 1]) {
+    const invalid = await router({ protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId, offset: invalidOffset }] });
+    assert.equal(invalid.ok, false);
+    assert.equal(invalid.error.code, 'INVALID_BUILD_ARTIFACT_REQUEST');
+  }
 });
 
 test('forwards safe, sequenced build progress to the App listener without leaking arbitrary values', async () => {
@@ -330,13 +384,15 @@ test('preload exposes only typed methods and the window options keep Electron sa
   await api.startMapperSession({});
   await api.buildProject({ project: { projectId: 'app-fixture' } });
   await api.getBuildArtifact('fixture-artifact');
+  await api.getBuildArtifact('fixture-artifact', 1024);
   await api.installArtifact({ artifactId: 'fixture-artifact', target: 'codex-pet', confirmInstall: true });
   assert.equal(calls[0][0], APP_IPC_CHANNEL);
   assert.deepEqual(calls[0][1], { protocolVersion: 1, method: 'getVersion', args: [] });
   assert.deepEqual(calls[1][1], { protocolVersion: 1, method: 'startMapperSession', args: [{}] });
   assert.deepEqual(calls[2][1], { protocolVersion: 1, method: 'buildProject', args: [{ project: { projectId: 'app-fixture' } }] });
-  assert.deepEqual(calls[3][1], { protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'fixture-artifact' }] });
-  assert.deepEqual(calls[4][1], { protocolVersion: 1, method: 'installArtifact', args: [{ artifactId: 'fixture-artifact', target: 'codex-pet', confirmInstall: true }] });
+  assert.deepEqual(calls[3][1], { protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'fixture-artifact', offset: 0 }] });
+  assert.deepEqual(calls[4][1], { protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'fixture-artifact', offset: 1024 }] });
+  assert.deepEqual(calls[5][1], { protocolVersion: 1, method: 'installArtifact', args: [{ artifactId: 'fixture-artifact', target: 'codex-pet', confirmInstall: true }] });
   assert.equal(Object.hasOwn(api, 'ipcRenderer'), false);
   const options = createAppWindowOptions({ preload: '/app/preload.cjs' });
   assert.equal(options.webPreferences.nodeIntegration, false);

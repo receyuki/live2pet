@@ -6,8 +6,11 @@ The main process owns the Mapper Session host and resolves either the repository
 Mapper during development or the staged Mapper bundle from `process.resourcesPath`
 in a packaged build. It also injects the shared Package Build service into the
 typed `buildProject` IPC method; that response is a binary-free summary with
-short-lived artifact handles, and `getBuildArtifact` is an explicit download
-step. Building does not implicitly install anything. Renderer requests cannot choose arbitrary mapper files,
+short-lived artifact handles, and `getBuildArtifact` retrieves each result in
+validated chunks of at most 1 MiB. The Mapper reports this transfer separately
+from the completed package build, then opens the ZIP through a Blob reader and
+extracts only the currently previewed Clawd WebP. Building does not implicitly
+install anything. Renderer requests cannot choose arbitrary mapper files,
 invoke shell commands, or access the bearer token. Forge makers/signing are not
 configured until the macOS source-release gates pass. `forge.config.cjs` records
 the future packager resource path, but the Forge CLI is not a workspace

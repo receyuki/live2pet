@@ -550,8 +550,10 @@
           "preview.clawd.reaction": "Reaction · {slot}",
           "preview.clawd.fallback": "fallback → {target}",
           "preview.clawd.motion": "Motion asset · {file}",
+          "preview.clawd.loading": "Loading Motion asset · {file}",
           "preview.clawd.empty": "Build a Clawd Theme ZIP to preview its generated WebP assets.",
           "preview.clawd.unavailable": "The built theme did not contain a previewable WebP asset.",
+          "preview.clawd.timeout": "The first generated WebP preview did not load within 15 seconds.",
           "mapping.quickState": "Quick target state",
           "mapping.assignSelected": "Assign selected Motion",
           "mapping.eyebrow": "Target profile",
@@ -674,6 +676,7 @@
           "build.status.app": "Building through the shared App Package Build service…",
           "build.status.capture": "Capturing {slot} from {motion} ({count} frames)…",
           "build.status.captureCompress": "Compressing {motion} for the Desktop App · {current}/{total} frames…",
+          "build.status.transfer": "Receiving {filename} from the Desktop App · {completed} / {total}",
           "build.status.codexApp": "Built {filename} through the App · {size} KiB · shared Package Build.",
           "build.status.codexBrowser": "Built {filename} · {size} KiB · {cells} occupied cells.",
           "build.status.encode": "Encoding transparent WebP atlas…",
@@ -695,6 +698,7 @@
           "build.progress.stage.preview": "Prepare preview",
           "build.progress.stage.package": "Create ZIP",
           "build.progress.stage.report": "Write build report",
+          "build.progress.stage.transfer": "Receive package",
           "build.progress.capture.current": "Capturing Motion {current} of {total}: {motion}",
           "build.progress.capture.done": "Captured {completed} of {total} Motions.",
           "build.progress.stage.started": "{stage} started.",
@@ -702,6 +706,8 @@
           "build.progress.stage.current": "{stage} · {motion}",
           "build.progress.stage.currentCount": "{stage} · {completed}/{total}: {motion}",
           "build.progress.stage.countDone": "{stage} completed · {completed}/{total}.",
+          "build.progress.transfer.current": "Received {completed} of {total}.",
+          "build.progress.transfer.done": "Package transfer completed · {total}.",
           "build.progress.done": "Build complete.",
           "build.progress.failed": "Build failed: {message}",
           "build.progress.unknownFailure": "Unknown build error.",
@@ -856,8 +862,10 @@
           "preview.clawd.reaction": "反应 · {slot}",
           "preview.clawd.fallback": "回退到 → {target}",
           "preview.clawd.motion": "动作资源 · {file}",
+          "preview.clawd.loading": "正在加载动作资源 · {file}",
           "preview.clawd.empty": "构建 Clawd 主题 ZIP 后，可预览生成的 WebP 动画资源。",
           "preview.clawd.unavailable": "生成的主题没有可预览的 WebP 资源。",
+          "preview.clawd.timeout": "首个生成的 WebP 预览未能在 15 秒内加载。",
           "mapping.quickState": "快速目标状态",
           "mapping.assignSelected": "分配选中动作",
           "mapping.eyebrow": "目标配置",
@@ -980,6 +988,7 @@
           "build.status.app": "正在通过共享 App 资源包构建服务处理…",
           "build.status.capture": "正在从 {motion} 捕获 {slot}（{count} 帧）…",
           "build.status.captureCompress": "正在为 Desktop App 压缩 {motion} · {current}/{total} 帧…",
+          "build.status.transfer": "正在从 Desktop App 接收 {filename} · {completed} / {total}",
           "build.status.codexApp": "已通过 App 构建 {filename} · {size} KiB · 共享资源包构建。",
           "build.status.codexBrowser": "已构建 {filename} · {size} KiB · {cells} 个有效单元。",
           "build.status.encode": "正在编码透明 WebP 图集…",
@@ -1001,6 +1010,7 @@
           "build.progress.stage.preview": "准备预览",
           "build.progress.stage.package": "创建 ZIP",
           "build.progress.stage.report": "写入构建报告",
+          "build.progress.stage.transfer": "接收主题包",
           "build.progress.capture.current": "正在捕获动作 {current}/{total}：{motion}",
           "build.progress.capture.done": "已捕获 {completed}/{total} 个动作。",
           "build.progress.stage.started": "{stage} 已开始。",
@@ -1008,6 +1018,8 @@
           "build.progress.stage.current": "{stage} · {motion}",
           "build.progress.stage.currentCount": "{stage} · {completed}/{total}：{motion}",
           "build.progress.stage.countDone": "{stage} 已完成 · {completed}/{total}。",
+          "build.progress.transfer.current": "已接收 {completed} / {total}。",
+          "build.progress.transfer.done": "主题包传输完成 · {total}。",
           "build.progress.done": "构建完成。",
           "build.progress.failed": "构建失败：{message}",
           "build.progress.unknownFailure": "未知构建错误。",
@@ -2396,10 +2408,11 @@
     let clawdArtifact = null;
     let clawdInstallBusy = false;
     let clawdPreview = null;
+    let clawdPreviewGeneration = 0;
 
     const BUILD_PROGRESS_CONFIG = Object.freeze({
-      codex: Object.freeze({ target: "codex-pet", stages: Object.freeze(["capture", "select", "layout", "compose", "encode", "manifest", "preview", "package", "report"]) }),
-      clawd: Object.freeze({ target: "clawd", stages: Object.freeze(["capture", "validate", "encode", "manifest", "preview", "package", "report"]) }),
+      codex: Object.freeze({ target: "codex-pet", stages: Object.freeze(["capture", "select", "layout", "compose", "encode", "manifest", "preview", "package", "report", "transfer"]) }),
+      clawd: Object.freeze({ target: "clawd", stages: Object.freeze(["capture", "validate", "encode", "manifest", "preview", "package", "report", "transfer"]) }),
     });
     const BUILD_PROGRESS_STAGE_ALIASES = Object.freeze({ render: "encode" });
     const BUILD_PROGRESS_STAGE_KEYS = Object.freeze({
@@ -2413,6 +2426,7 @@
       preview: "build.progress.stage.preview",
       package: "build.progress.stage.package",
       report: "build.progress.stage.report",
+      transfer: "build.progress.stage.transfer",
     });
 
     function createBuildProgress(target) {
@@ -2438,10 +2452,22 @@
       return Math.max(0, Math.min(99, Math.round(((stageIndex + fraction) / stageCount) * 100)));
     }
 
+    function formatBuildBytes(value) {
+      const bytes = Math.max(0, Number(value) || 0);
+      if (bytes < 1024) return `${Math.round(bytes)} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KiB`;
+      return `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MiB`;
+    }
+
     function buildProgressDetail(progress) {
       if (progress.status === "bad") return I18n.t("build.progress.failed", { message: progress.error || I18n.t("build.progress.unknownFailure") });
       if (progress.completed) return I18n.t("build.progress.done");
       const stage = progressStageName(progress);
+      if (progress.stage === "transfer" && progress.stageTotal > 0) {
+        const total = formatBuildBytes(progress.stageTotal);
+        if (progress.stageCompleted >= progress.stageTotal) return I18n.t("build.progress.transfer.done", { total });
+        return I18n.t("build.progress.transfer.current", { completed: formatBuildBytes(progress.stageCompleted), total });
+      }
       if (progress.stage === "capture" && progress.captureTotal > 0) {
         if (progress.captureCompleted >= progress.captureTotal) return I18n.t("build.progress.capture.done", { completed: progress.captureCompleted, total: progress.captureTotal });
         return I18n.t("build.progress.capture.current", {
@@ -2549,7 +2575,7 @@
         ? Math.min(1, progress.stageCompleted / progress.stageTotal)
         : status === "completed" ? 1 : 0.05;
       progress.percent = progressPercent(stageIndex, progress.stageCount, fraction);
-      if (canonicalStage === "report" && status === "completed") {
+      if (stageIndex === progress.stageCount - 1 && status === "completed") {
         progress.status = "good";
         progress.completed = true;
         progress.percent = 100;
@@ -2557,12 +2583,12 @@
       renderBuildProgress(target);
     }
 
-    function completeBuildProgress(target) {
+    function completeBuildProgress(target, finalStage = BUILD_PROGRESS_CONFIG[target].stages.at(-1)) {
       const progress = buildProgress[target];
       progress.status = "good";
-      progress.stage = "report";
+      progress.stage = finalStage;
       progress.stageStatus = "completed";
-      progress.stageIndex = progress.stageCount - 1;
+      progress.stageIndex = Math.max(0, BUILD_PROGRESS_CONFIG[target].stages.indexOf(finalStage));
       progress.percent = 100;
       progress.completed = true;
       progress.error = "";
@@ -2619,9 +2645,14 @@
     }
 
     function releaseClawdPreview() {
-      if (!clawdPreview) return;
-      for (const url of clawdPreview.urls?.values?.() || []) URL.revokeObjectURL(url);
+      clawdPreviewGeneration += 1;
+      const preview = clawdPreview;
       clawdPreview = null;
+      if (!preview) return;
+      for (const url of preview.urls?.values?.() || []) URL.revokeObjectURL(url);
+      if (preview.reader && typeof preview.reader.close === "function") {
+        try { void Promise.resolve(preview.reader.close()).catch(() => {}); } catch {}
+      }
     }
 
     function resolveClawdPreviewAsset(manifest, slot, chain = []) {
@@ -2632,12 +2663,12 @@
       return null;
     }
 
-    function clawdPreviewOptions(manifest, urls) {
-      if (!manifest || !urls || typeof urls.has !== "function") return [];
+    function clawdPreviewOptions(manifest, availableFiles) {
+      if (!manifest || !availableFiles || typeof availableFiles.has !== "function") return [];
       const options = [];
       for (const def of MotionMapping.allStates) {
         const resolved = resolveClawdPreviewAsset(manifest, def.id);
-        if (!resolved || !urls.has(resolved.file)) continue;
+        if (!resolved || !availableFiles.has(resolved.file)) continue;
         const original = manifest.states?.[def.id];
         const fallbackTarget = original && typeof original === "object" && typeof original.fallbackTo === "string" ? original.fallbackTo : null;
         options.push({
@@ -2653,7 +2684,7 @@
       for (const def of MotionMapping.reactions) {
         const value = manifest.reactions?.[def.id];
         const file = value && typeof value === "object" && typeof value.file === "string" ? value.file : null;
-        if (!file || !urls.has(file)) continue;
+        if (!file || !availableFiles.has(file)) continue;
         options.push({
           id: `reaction:${def.id}`,
           slot: def.id,
@@ -2664,37 +2695,77 @@
       return options;
     }
 
-    async function prepareClawdPreview(artifact) {
-      releaseClawdPreview();
+    async function loadClawdPreviewAsset(preview, file) {
+      if (!preview || preview.urls.has(file)) return preview?.urls.get(file) || null;
+      if (preview.loading.has(file)) return preview.loading.get(file);
+      const entry = preview.entries.get(file);
+      if (!entry || typeof entry.getData !== "function") throw projectError("PREVIEW_UNAVAILABLE", I18n.t("preview.clawd.unavailable"));
+      const loading = entry.getData(new window.zip.Uint8ArrayWriter()).then(bytes => {
+        if (clawdPreview !== preview) return null;
+        const url = URL.createObjectURL(new Blob([bytes], { type: "image/webp" }));
+        preview.urls.set(file, url);
+        return url;
+      }).finally(() => preview.loading.delete(file));
+      preview.loading.set(file, loading);
+      return loading;
+    }
+
+    async function withClawdPreviewTimeout(promise) {
+      let timeoutId;
+      try {
+        return await Promise.race([
+          promise,
+          new Promise((_, reject) => { timeoutId = setTimeout(() => reject(projectError("PREVIEW_TIMEOUT", I18n.t("preview.clawd.timeout"))), 15000); }),
+        ]);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+
+    async function prepareClawdPreview(artifact, generation) {
       if (!artifact?.blob) throw projectError("PREVIEW_UNAVAILABLE", I18n.t("preview.clawd.unavailable"));
       const zipApi = window.zip;
-      if (!zipApi || typeof zipApi.ZipReader !== "function" || typeof zipApi.Uint8ArrayReader !== "function" || typeof zipApi.Uint8ArrayWriter !== "function") throw projectError("ZIP_READER_UNAVAILABLE", I18n.t("preview.clawd.unavailable"));
-      const reader = new zipApi.ZipReader(new zipApi.Uint8ArrayReader(new Uint8Array(await artifact.blob.arrayBuffer())));
-      const urls = new Map();
+      if (!zipApi || typeof zipApi.ZipReader !== "function" || typeof zipApi.Uint8ArrayWriter !== "function" || (typeof zipApi.BlobReader !== "function" && typeof zipApi.Uint8ArrayReader !== "function")) throw projectError("ZIP_READER_UNAVAILABLE", I18n.t("preview.clawd.unavailable"));
+      const source = typeof zipApi.BlobReader === "function"
+        ? new zipApi.BlobReader(artifact.blob)
+        : new zipApi.Uint8ArrayReader(new Uint8Array(await artifact.blob.arrayBuffer()));
+      const reader = new zipApi.ZipReader(source);
       try {
-        try {
-          const entries = await reader.getEntries();
-          for (const asset of artifact.assets || []) {
-            const basename = typeof asset.file === "string" ? asset.file.replace(/^assets\//, "") : "";
-            if (!basename) continue;
-            const entry = entries.find(candidate => typeof candidate.filename === "string" && (candidate.filename === `assets/${basename}` || candidate.filename.endsWith(`/assets/${basename}`)));
-            if (!entry || typeof entry.getData !== "function") continue;
-            const bytes = await entry.getData(new zipApi.Uint8ArrayWriter());
-            urls.set(basename, URL.createObjectURL(new Blob([bytes], { type: "image/webp" })));
-          }
-        } finally {
-          await reader.close();
+        const archiveEntries = await reader.getEntries();
+        const entries = new Map();
+        for (const asset of artifact.assets || []) {
+          const basename = typeof asset.file === "string" ? asset.file.replace(/^assets\//, "") : "";
+          if (!basename) continue;
+          const entry = archiveEntries.find(candidate => typeof candidate.filename === "string" && (candidate.filename === `assets/${basename}` || candidate.filename.endsWith(`/assets/${basename}`)));
+          if (entry && typeof entry.getData === "function") entries.set(basename, entry);
         }
+        const options = clawdPreviewOptions(artifact.manifest, entries);
+        if (!options.length) throw projectError("PREVIEW_UNAVAILABLE", I18n.t("preview.clawd.unavailable"));
+        if (generation !== clawdPreviewGeneration) {
+          await reader.close();
+          return null;
+        }
+        const preview = { reader, entries, urls: new Map(), loading: new Map(), options, selected: options[0].id };
+        clawdPreview = preview;
+        renderClawdTargetPreview();
+        await withClawdPreviewTimeout(loadClawdPreviewAsset(preview, options[0].file));
+        if (generation === clawdPreviewGeneration && clawdPreview === preview) renderClawdTargetPreview();
+        return preview;
       } catch (error) {
-        for (const url of urls.values()) URL.revokeObjectURL(url);
+        if (clawdPreview?.reader === reader) releaseClawdPreview();
+        else { try { await reader.close(); } catch {} }
         throw error;
       }
-      const options = clawdPreviewOptions(artifact.manifest, urls);
-      if (!options.length) {
-        for (const url of urls.values()) URL.revokeObjectURL(url);
-        throw projectError("PREVIEW_UNAVAILABLE", I18n.t("preview.clawd.unavailable"));
-      }
-      clawdPreview = { urls, options, selected: options[0].id };
+    }
+
+    function startClawdPreview(artifact) {
+      releaseClawdPreview();
+      const generation = clawdPreviewGeneration;
+      void prepareClawdPreview(artifact, generation).catch(error => {
+        if (clawdArtifact?.artifactId !== artifact.artifactId) return;
+        setClawdBuildStatus(I18n.t("build.status.clawdPreviewUnavailable", { filename: artifact.filename, size: Math.round(artifact.blob.size / 1024), message: error.message }), "good");
+        renderClawdTargetPreview();
+      });
     }
 
     function renderClawdTargetPreview() {
@@ -2717,8 +2788,12 @@
       }).join("");
       select.value = clawdPreview.selected;
       const current = clawdPreview.options.find(option => option.id === clawdPreview.selected) || clawdPreview.options[0];
-      $("clawdMotionPreview").src = clawdPreview.urls.get(current.file) || "";
-      $("clawdPreviewMeta").textContent = current.fallbackTarget
+      const previewUrl = clawdPreview.urls.get(current.file);
+      if (previewUrl) $("clawdMotionPreview").src = previewUrl;
+      else $("clawdMotionPreview").removeAttribute("src");
+      $("clawdPreviewMeta").textContent = !previewUrl
+        ? I18n.t("preview.clawd.loading", { file: current.file })
+        : current.fallbackTarget
         ? I18n.t("preview.clawd.fallback", { target: current.fallbackTarget })
         : I18n.t("preview.clawd.motion", { file: current.file });
     }
@@ -2869,6 +2944,48 @@
       return { frames, delay: Math.max(40, Math.round(duration * 1000 / count)), loop: 0, quality: settings.quality, alphaQuality: 100, lossless: false };
     }
 
+    function artifactChunkBytes(value) {
+      if (value instanceof Uint8Array) return value;
+      if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+      if (value instanceof ArrayBuffer) return new Uint8Array(value);
+      throw projectError("APP_BUILD_ARTIFACT_FAILED", "The Desktop App returned an invalid artifact chunk.");
+    }
+
+    async function retrieveDesktopArtifact(api, artifact, target, setStatus) {
+      if (!artifact?.artifactId) throw projectError("APP_BUILD_ARTIFACT_MISSING", "The App build completed without a downloadable artifact.");
+      const chunks = [];
+      let offset = 0;
+      let total = Math.max(0, Number(artifact.byteLength) || 0);
+      let iterations = 0;
+      setBuildProgressStage(target, "transfer", "started", { completed: 0, total });
+      while (true) {
+        const payload = await api.getBuildArtifact(artifact.artifactId, offset);
+        if (!payload?.ok || !payload.result?.bytes) throw projectError(payload?.error?.code || "APP_BUILD_ARTIFACT_FAILED", payload?.error?.message || "The App could not retrieve the built artifact.");
+        const result = payload.result;
+        const bytes = artifactChunkBytes(result.bytes);
+        const legacy = !Number.isInteger(result.offset) || !Number.isInteger(result.nextOffset) || typeof result.done !== "boolean";
+        if (legacy && offset !== 0) throw projectError("APP_BUILD_ARTIFACT_FAILED", "The Desktop App returned an invalid legacy artifact response.");
+        const resultOffset = legacy ? 0 : result.offset;
+        const nextOffset = legacy ? bytes.byteLength : result.nextOffset;
+        const done = legacy ? true : result.done;
+        const reportedTotal = Math.max(0, Number(result.byteLength) || total || nextOffset);
+        if (resultOffset !== offset || nextOffset <= offset || bytes.byteLength !== nextOffset - offset || nextOffset > reportedTotal || (!done && nextOffset >= reportedTotal)) {
+          throw projectError("APP_BUILD_ARTIFACT_FAILED", "The Desktop App returned an invalid artifact chunk sequence.");
+        }
+        total = reportedTotal;
+        chunks.push(bytes);
+        offset = nextOffset;
+        iterations += 1;
+        setBuildProgressStage(target, "transfer", done ? "completed" : "started", { completed: offset, total });
+        if (typeof setStatus === "function") setStatus(I18n.t("build.status.transfer", { filename: artifact.filename, completed: formatBuildBytes(offset), total: formatBuildBytes(total) }), "busy");
+        if (done) break;
+        if (iterations > 4096) throw projectError("APP_BUILD_ARTIFACT_FAILED", "The Desktop App returned too many artifact chunks.");
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+      if (offset !== total) throw projectError("APP_BUILD_ARTIFACT_FAILED", `The Desktop App returned ${offset} of ${total} artifact bytes.`);
+      return new Blob(chunks, { type: "application/zip" });
+    }
+
     async function buildClawdThroughDesktop(project, framesByMotion) {
       const api = desktopBuildApi();
       if (!api) return null;
@@ -2893,11 +3010,10 @@
       consumeBuildProgressEvents(response.progress);
       const artifact = response.result?.artifacts?.find(item => item.target === "clawd");
       if (!artifact?.artifactId) throw projectError("APP_BUILD_ARTIFACT_MISSING", "The App Package Build completed without a downloadable Clawd artifact.");
-      const payload = await api.getBuildArtifact(artifact.artifactId);
-      if (!payload?.ok || !payload.result?.bytes) throw projectError(payload?.error?.code || "APP_BUILD_ARTIFACT_FAILED", payload?.error?.message || "The App could not retrieve the built Clawd artifact.");
+      const blob = await retrieveDesktopArtifact(api, artifact, "clawd", setClawdBuildStatus);
       const build = response.result.builds?.clawd || {};
       return {
-        blob: new Blob([payload.result.bytes], { type: "application/zip" }),
+        blob,
         artifactId: artifact.artifactId,
         filename: artifact.filename,
         themeId: build.themeId || null,
@@ -2941,17 +3057,13 @@
         const desktopArtifact = await buildClawdThroughDesktop(project, captures);
         if (!desktopArtifact) throw projectError("APP_BUILD_UNAVAILABLE", I18n.t("build.clawdNoApp"));
         clawdArtifact = desktopArtifact;
-        let previewError = null;
-        try { await prepareClawdPreview(desktopArtifact); }
-        catch (error) { previewError = error; }
         const states = Object.keys(desktopArtifact.manifest?.states || {}).length;
         const reactions = Object.keys(desktopArtifact.manifest?.reactions || {}).length;
-        setClawdBuildStatus(previewError
-          ? I18n.t("build.status.clawdPreviewUnavailable", { filename: desktopArtifact.filename, size: Math.round(desktopArtifact.blob.size / 1024), message: previewError.message })
-          : I18n.t("build.status.clawdApp", { filename: desktopArtifact.filename, size: Math.round(desktopArtifact.blob.size / 1024), motions: desktopArtifact.assets.length }), "good");
+        setClawdBuildStatus(I18n.t("build.status.clawdApp", { filename: desktopArtifact.filename, size: Math.round(desktopArtifact.blob.size / 1024), motions: desktopArtifact.assets.length }), "good");
         $("clawdBuildSummary").textContent = I18n.t("build.status.clawdSummary", { states, reactions, motions: desktopArtifact.assets.length });
         $("clawdBuildSummary").classList.remove("hidden");
         completeBuildProgress("clawd");
+        startClawdPreview(desktopArtifact);
       } catch (error) {
         setClawdBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad");
         failBuildProgress("clawd", error);
@@ -3034,9 +3146,8 @@
       consumeBuildProgressEvents(response.progress);
       const artifact = response.result?.artifacts?.find(item => item.target === "codex-pet");
       if (!artifact?.artifactId) throw projectError("APP_BUILD_ARTIFACT_MISSING", "The App Package Build completed without a downloadable Codex artifact.");
-      const payload = await api.getBuildArtifact(artifact.artifactId);
-      if (!payload?.ok || !payload.result?.bytes) throw projectError(payload?.error?.code || "APP_BUILD_ARTIFACT_FAILED", payload?.error?.message || "The App could not retrieve the built Codex artifact.");
-      return { blob: new Blob([payload.result.bytes], { type: "application/zip" }), artifactId: artifact.artifactId, filename: artifact.filename, manifest: response.result.builds?.["codex-pet"]?.manifest || null };
+      const blob = await retrieveDesktopArtifact(api, artifact, "codex", setBuildStatus);
+      return { blob, artifactId: artifact.artifactId, filename: artifact.filename, manifest: response.result.builds?.["codex-pet"]?.manifest || null };
     }
 
     function releaseCodexPreview() {
@@ -3137,7 +3248,7 @@
         previewUrls.length = 0;
         setBuildStatus(I18n.t("build.status.codexBrowser", { filename, size: Math.round(blob.size / 1024), cells: manifestRows.reduce((sum, row) => sum + row.frameCount, 0) }), "good");
         setBuildProgressStage("codex", "package", "completed");
-        completeBuildProgress("codex");
+        completeBuildProgress("codex", "package");
       } catch (error) {
         previewUrls.forEach(url => URL.revokeObjectURL(url));
         setBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad");
@@ -3278,7 +3389,20 @@
     $("buildClawd").addEventListener("click", async () => { try { await buildClawdPackage(); } catch (error) { setClawdBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad"); } });
     $("downloadClawd").addEventListener("click",downloadClawdPackage);
     $("installClawd").addEventListener("click", async () => { await installTargetArtifact("clawd"); });
-    $("clawdPreviewState").addEventListener("change", event => { if (clawdPreview) { clawdPreview.selected = event.target.value; render(); } });
+    $("clawdPreviewState").addEventListener("change", async event => {
+      const preview = clawdPreview;
+      if (!preview) return;
+      preview.selected = event.target.value;
+      render();
+      const option = preview.options.find(candidate => candidate.id === preview.selected);
+      if (!option) return;
+      try {
+        await loadClawdPreviewAsset(preview, option.file);
+        if (clawdPreview === preview) render();
+      } catch (error) {
+        if (clawdPreview === preview) $("clawdPreviewMeta").textContent = `${error.code || "PREVIEW_FAILED"}: ${error.message}`;
+      }
+    });
     $("languageSelect").addEventListener("change", event => I18n.setLocale(event.target.value));
     window.addEventListener("live2pet:locale-changed", () => render());
     $("copyJson").addEventListener("click",async()=>{const text=JSON.stringify(MotionMapping.output(state),null,2);try{await navigator.clipboard.writeText(text)}catch{const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove();}});
