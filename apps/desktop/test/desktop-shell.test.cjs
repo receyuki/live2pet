@@ -65,3 +65,21 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /\.mapping-scroll \{ min-height: 0; overflow-y: auto; overflow-x: hidden;/);
   assert.match(mapper, /\.motion-list, \.expression-list \{ display: grid; grid-template-columns: 1fr;/);
 });
+
+test('shared Mapper exposes project recovery, source review, and build-gate seams', () => {
+  const mapper = fs.readFileSync(path.resolve(root, '../mapper/index.html'), 'utf8');
+  assert.match(mapper, /function buildProjectDocument\(\)/);
+  assert.match(mapper, /function parseProjectDocument\(textValue\)/);
+  assert.match(mapper, /autosave/i, 'Mapper should expose an autosave or recovery entrypoint.');
+  assert.match(mapper, /relink/i, 'Mapper should expose a source relink entrypoint.');
+  assert.match(mapper, /sourceReview/i, 'Mapper should carry source-review state into the UI.');
+  assert.match(mapper, /PROJECT_REVIEW_REQUIRED|review[^\n]{0,80}before[^\n]{0,80}build/i, 'Mapper should enforce review before a Package Build.');
+  assert.match(mapper, /const PROJECT_DRAFT_STORAGE_KEY = "live2pet-mapper-project-draft-v1"/);
+  assert.match(mapper, /function restoreProjectDraft\(\)/);
+  assert.match(mapper, /id="recoverProject"/);
+  assert.match(mapper, /id="projectReview"/);
+  assert.match(mapper, /id="ackSourceReview"/);
+  assert.match(mapper, /function relinkSource\(\)/);
+  assert.match(mapper, /window\.addEventListener\("beforeunload"/);
+  assert.match(mapper, /if \(state\.sourceReview\?\.required\) return \{ ready: false/);
+});

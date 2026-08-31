@@ -142,6 +142,44 @@ test('marks changed sources for review and blocks builds until acknowledged', ()
   assert.equal(acknowledged.sourceReview.reviewedFingerprint, 'sha256:changed');
 });
 
+test('persists a required source review across save and reload', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-review-'));
+  const filePath = path.join(directory, 'project.live2pet');
+  const changed = relinkProjectSource(fixture(), { fingerprint: 'sha256:changed', path: '/new/c311_02.pck' });
+
+  saveProjectFile(filePath, changed.project);
+  const reopened = loadProjectFile(filePath);
+  assert.deepEqual(reopened.sourceReview, changed.project.sourceReview);
+  assert.equal(isProjectBuildable(reopened), false);
+  assert.throws(
+    () => assertProjectBuildable(reopened),
+    (error) => error instanceof ProjectValidationError && error.code === 'PROJECT_REVIEW_REQUIRED',
+  );
+
+  const acknowledged = acknowledgeSourceReview(reopened);
+  saveProjectFile(filePath, acknowledged);
+  const reviewed = loadProjectFile(filePath);
+  assert.equal(isProjectBuildable(reviewed), true);
+  assert.equal(reviewed.sourceReview.required, false);
+  assert.equal(reviewed.sourceReview.reviewedFingerprint, 'sha256:changed');
+});
+
+test('does not block a source change when the project has no recipes', () => {
+  const project = createProject({
+    projectId: 'empty-mapping',
+    name: 'Empty mapping',
+    source: { kind: 'standard-directory', name: 'hero', path: '/old/hero', fingerprint: 'sha256:old' },
+  });
+  const result = relinkProjectSource(project, { path: '/new/hero', fingerprint: 'sha256:new' });
+
+  assert.equal(result.status, 'source-changed');
+  assert.equal(result.reviewRequired, false);
+  assert.equal(result.project.sourceReview.required, false);
+  assert.deepEqual(result.project.sourceReview.affectedRecipeIds, []);
+  assert.equal(isProjectBuildable(result.project), true);
+  assert.doesNotThrow(() => assertProjectBuildable(result.project));
+});
+
 test('preserves only affected recipe ids when comparable manifests reveal a missing dependency', () => {
   const project = fixture();
   const result = relinkProjectSource(project, { fingerprint: 'sha256:changed' }, {
@@ -164,4 +202,19 @@ test('offers explicit autosave recovery and cleanup', () => {
   assert.equal(recovery.path, autosave);
   assert.equal(clearAutosaveFile(filePath), autosave);
   assert.equal(recoverAutosaveFile(filePath).available, false);
+});
+
+test('does not offer an autosave that is older than the primary project', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-stale-autosave-'));
+  const filePath = path.join(directory, 'project.live2pet');
+  saveProjectFile(filePath, fixture());
+  const autosave = saveAutosaveFile(filePath, fixture());
+  const now = Date.now();
+  fs.utimesSync(autosave, new Date(now - 5000), new Date(now - 5000));
+  fs.utimesSync(filePath, new Date(now), new Date(now));
+
+  const recovery = recoverAutosaveFile(filePath);
+  assert.equal(recovery.available, false);
+  assert.equal(recovery.reason, 'autosave-not-newer');
+  assert.equal(recovery.path, autosave);
 });

@@ -52,3 +52,10 @@ included in a Project, cache, package, or release artifact.
 
 The package does not include models, examples, or generated packages. Those
 remain user-provided and local.
+
+The Mapper also keeps a bounded, reference-only draft in the browser profile
+while a project is dirty. It offers explicit recovery on the next launch and
+shows the affected recipe ids when a loaded Source Package fingerprint changes;
+both Codex and Clawd builds stay disabled until the source review is
+acknowledged. See [`docs/agents/project-workflow.md`](../../docs/agents/project-workflow.md)
+for the project privacy and relinking contract.

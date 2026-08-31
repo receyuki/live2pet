@@ -65,6 +65,12 @@
     .project-status { grid-column: 1 / -1; min-height: 22px; color: var(--muted); }
     .project-status.good { color: var(--good); }
     .project-status.bad { color: var(--bad); }
+    .project-dirty { grid-column: 1 / -1; color: var(--warn); font-size: 12px; }
+    .project-review { grid-column: 1 / -1; display: grid; gap: 8px; padding: 12px 13px; border: 1px solid var(--warn); border-radius: 10px; background: #211d12; color: #f8df9e; }
+    .project-review strong { color: #fff0bb; }
+    .project-review p { color: #f7deb0; }
+    .project-review ul { display: grid; gap: 3px; margin: 0; padding-left: 20px; color: #f7deb0; font: 12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; }
+    .project-review button { justify-self: start; }
     .session-status { grid-column: 1 / -1; min-height: 18px; color: var(--muted); font-size: 12px; }
     .session-status.good { color: var(--good); }
     .session-status.bad { color: var(--bad); }
@@ -268,9 +274,17 @@
       <div class="project-actions">
         <button id="openProject" data-i18n="project.open">Open .live2pet</button>
         <input id="projectInput" class="hidden" type="file" accept=".live2pet,application/json">
+        <button id="recoverProject" class="hidden" data-i18n="project.recover">Recover autosaved project</button>
         <button id="saveProject" class="primary" disabled data-i18n="project.save">Save .live2pet</button>
       </div>
       <div id="projectStatus" class="project-status" role="status" aria-live="polite">No project loaded.</div>
+      <div id="projectDirty" class="project-dirty hidden" role="status" aria-live="polite" data-i18n="project.dirty">Unsaved project changes</div>
+      <div id="projectReview" class="project-review hidden" role="alert" aria-live="assertive">
+        <strong data-i18n="project.review.heading">Source Package changed</strong>
+        <p id="projectReviewMessage"></p>
+        <ul id="projectReviewList"></ul>
+        <button id="ackSourceReview" class="primary" data-i18n="project.review.acknowledge">Acknowledge source review</button>
+      </div>
       <div id="sessionStatus" class="session-status" role="status" aria-live="polite"></div>
     </section>
 
@@ -669,7 +683,20 @@
           "project.session.saved": "Connected to Mapper Session {id}… · project saved.",
           "project.saved": "Saved {filename}. Source assets remain on this computer.",
           "project.open.match": "Opened {filename}. The Source Package fingerprint matches.",
-          "project.open.diff": "Opened {filename}. Source fingerprint differs; review affected mappings before building."
+          "project.open.diff": "Opened {filename}. Source fingerprint differs; review affected mappings before building.",
+          "project.recover": "Recover autosaved project",
+          "project.dirty": "Unsaved project changes",
+          "project.recovery.available": "Autosaved project found from {time}. Recover it after choosing its Source Package.",
+          "project.recovery.loaded": "Recovered {name} from local autosave. Save the project file to keep it.",
+          "project.recovery.needsSource": "Recovered {name}. Choose its matching Source Package to preview and build.",
+          "project.autosave.failed": "Autosave is unavailable; changes remain in this session.",
+          "project.review.heading": "Source Package changed",
+          "project.review.copy": "The current Source Package differs from the project reference. Review the affected recipes before accepting this source.",
+          "project.review.affected": "Affected recipes",
+          "project.review.none": "No recipe dependency could be matched; review all current mappings.",
+          "project.review.acknowledge": "Acknowledge source review",
+          "project.review.required": "Source Package changed; review affected mappings before building.",
+          "project.review.accepted": "Source review acknowledged for {name}. Builds are enabled."
         },
         "zh-CN": {
           "app.title": "Live2Pet 映射器",
@@ -923,7 +950,20 @@
           "project.session.saved": "已连接 Mapper Session {id}… · 项目已保存。",
           "project.saved": "已保存 {filename}。资源仍保留在本机。",
           "project.open.match": "已打开 {filename}，资源包指纹匹配。",
-          "project.open.diff": "已打开 {filename}，资源指纹不同；构建前请检查受影响的映射。"
+          "project.open.diff": "已打开 {filename}，资源指纹不同；构建前请检查受影响的映射。",
+          "project.recover": "恢复自动保存的项目",
+          "project.dirty": "项目有未保存更改",
+          "project.recovery.available": "发现于 {time} 的自动保存项目。请选择资源包后再恢复。",
+          "project.recovery.loaded": "已从本地自动保存恢复 {name}。请保存项目文件以保留更改。",
+          "project.recovery.needsSource": "已恢复 {name}。请选择匹配的资源包以预览和构建。",
+          "project.autosave.failed": "自动保存不可用；更改仍保留在当前会话中。",
+          "project.review.heading": "资源包已变化",
+          "project.review.copy": "当前资源包与项目引用不同。接受该资源包前，请检查受影响的配方。",
+          "project.review.affected": "受影响的配方",
+          "project.review.none": "无法匹配配方依赖；请检查当前所有映射。",
+          "project.review.acknowledge": "确认已检查资源包",
+          "project.review.required": "资源包已变化；构建前请检查受影响的映射。",
+          "project.review.accepted": "已确认检查 {name} 的资源包。现在可以构建。"
         }
       };
       let locale = "en";
@@ -1004,10 +1044,17 @@
       const fallbackAllowed = new Set(["error","attention","notification","sweeping","carrying","sleeping","roam"]);
 
       function initial() {
-        return { model: null, motions: [], expressions: [], inspection: null, inspectionError: null, selectedMotionId: null, selectedExpressionId: null, mappings: {}, reactionMappings: {}, codexMappings: {}, sleepMode: "direct", clawdRenderPreset: "balanced", codexRenderPreset: "balanced", outputPrefix: "live2pet", projectName: "Untitled Live2Pet Project", lastChange: "Waiting for a Source Package", scenario: null, scenarioStep: 0 };
+        return { model: null, motions: [], expressions: [], inspection: null, inspectionError: null, selectedMotionId: null, selectedExpressionId: null, mappings: {}, reactionMappings: {}, codexMappings: {}, sleepMode: "direct", clawdRenderPreset: "balanced", codexRenderPreset: "balanced", outputPrefix: "live2pet", projectName: "Untitled Live2Pet Project", projectSourceFingerprint: null, projectRecipeIds: [], sourceReview: null, projectDirty: false, lastChange: "Waiting for a Source Package", scenario: null, scenarioStep: 0 };
       }
       function reducer(state, action) {
-        if (action.type === "LOAD_MODEL") return { ...state, model: action.model, motions: action.motions, expressions: action.expressions, inspection: action.inspection || null, inspectionError: null, selectedMotionId: action.motions[0]?.id || null, selectedExpressionId: null, projectName: state.projectName === "Untitled Live2Pet Project" ? action.model.name : state.projectName, lastChange: `Loaded ${action.motions.length} Motions and ${action.expressions.length} Expressions` };
+        if (action.type === "LOAD_MODEL") {
+          const fingerprint = action.inspection?.source?.fingerprint || null;
+          const sourceChanged = Boolean(state.projectSourceFingerprint && fingerprint && state.projectSourceFingerprint !== fingerprint);
+          const sourceReview = sourceChanged
+            ? { required: state.projectRecipeIds.length > 0, reason: "source-fingerprint-changed", affectedRecipeIds: [...state.projectRecipeIds] }
+            : state.sourceReview;
+          return { ...state, model: action.model, motions: action.motions, expressions: action.expressions, inspection: action.inspection || null, inspectionError: null, selectedMotionId: action.motions[0]?.id || null, selectedExpressionId: null, projectName: state.projectName === "Untitled Live2Pet Project" ? action.model.name : state.projectName, sourceReview, projectDirty: state.projectDirty || sourceChanged, lastChange: `Loaded ${action.motions.length} Motions and ${action.expressions.length} Expressions` };
+        }
         if (action.type === "INSPECTION_ERROR") return { ...state, inspection: null, inspectionError: action.error, lastChange: action.error.message };
         if (action.type === "LOAD_PROJECT") {
           const target = action.project.targets?.clawd || {};
@@ -1015,18 +1062,32 @@
           const options = target.options || {};
           const validPreset = value => ["compact", "balanced", "high"].includes(String(value || "").toLowerCase()) ? String(value).toLowerCase() : "balanced";
           const selected = Object.values(target.mappings || {}).find(value => value?.startsWith("motion:"))?.slice(7);
-          return { ...state, projectName: action.project.name, mappings: { ...(target.mappings || {}) }, reactionMappings: { ...(target.reactions || {}) }, codexMappings: { ...(codexTarget.mappings || {}) }, sleepMode: options.sleepMode === "full" ? "full" : "direct", clawdRenderPreset: validPreset(target.renderPreset || options.renderPreset), codexRenderPreset: validPreset(codexTarget.renderPreset || codexTarget.options?.renderPreset), outputPrefix: typeof options.outputPrefix === "string" && options.outputPrefix.trim() ? options.outputPrefix : "live2pet", selectedMotionId: selected && MotionMapping.motion(state, selected) ? selected : state.selectedMotionId, lastChange: `Opened ${action.project.name}` };
+          const recipes = Array.isArray(action.project.recipes) ? action.project.recipes : [];
+          const currentFingerprint = state.inspection?.source?.fingerprint || null;
+          const sourceChanged = Boolean(currentFingerprint && action.project.source?.fingerprint && currentFingerprint !== action.project.source.fingerprint);
+          const sourceReview = action.project.sourceReview?.required
+              ? { ...action.project.sourceReview, affectedRecipeIds: [...(action.project.sourceReview.affectedRecipeIds || recipes.map(recipe => recipe.id))] }
+            : sourceChanged
+              ? { required: recipes.length > 0, reason: "source-fingerprint-changed", affectedRecipeIds: recipes.map(recipe => recipe.id) }
+              : action.project.sourceReview || null;
+          return { ...state, projectName: action.project.name, mappings: { ...(target.mappings || {}) }, reactionMappings: { ...(target.reactions || {}) }, codexMappings: { ...(codexTarget.mappings || {}) }, sleepMode: options.sleepMode === "full" ? "full" : "direct", clawdRenderPreset: validPreset(target.renderPreset || options.renderPreset), codexRenderPreset: validPreset(codexTarget.renderPreset || codexTarget.options?.renderPreset), outputPrefix: typeof options.outputPrefix === "string" && options.outputPrefix.trim() ? options.outputPrefix : "live2pet", selectedMotionId: selected && MotionMapping.motion(state, selected) ? selected : state.selectedMotionId, projectSourceFingerprint: action.project.source?.fingerprint || null, projectRecipeIds: recipes.map(recipe => recipe.id), sourceReview, projectDirty: Boolean(action.dirty), lastChange: `Opened ${action.project.name}` };
         }
         if (action.type === "SELECT_MOTION") return { ...state, selectedMotionId: action.id, lastChange: `Playing ${action.id}` };
         if (action.type === "SELECT_EXPRESSION") return { ...state, selectedExpressionId: action.id, lastChange: action.id === null ? "Expression reset" : `Previewing Expression ${action.id}` };
-        if (action.type === "MAP") return { ...state, mappings: { ...state.mappings, [action.key]: action.value }, lastChange: `${action.key} → ${action.value || "Unmapped"}` };
-        if (action.type === "MAP_REACTION") return { ...state, reactionMappings: { ...state.reactionMappings, [action.key]: action.value }, lastChange: `${action.key} → ${action.value || "Unmapped"}` };
-        if (action.type === "MAP_CODEX") return { ...state, codexMappings: { ...state.codexMappings, [action.key]: action.value }, lastChange: `Codex ${action.key} → ${action.value || "Unmapped"}` };
-        if (action.type === "SET_SLEEP") return { ...state, sleepMode: action.value, lastChange: `sleepSequence.mode → ${action.value}` };
-        if (action.type === "SET_RENDER_PRESET") return { ...state, [`${action.target}RenderPreset`]: action.value, lastChange: `${action.target} Render Preset → ${action.value}` };
-        if (action.type === "SET_PREFIX") return { ...state, outputPrefix: action.value, lastChange: `Output prefix → ${action.value}` };
-        if (action.type === "CLEAR") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, lastChange: "Mappings cleared" };
-        if (action.type === "START_SCENARIO") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, sleepMode: "direct", scenario: action.id, scenarioStep: 0, lastChange: `Started scenario ${action.id}` };
+        if (action.type === "MAP") return { ...state, mappings: { ...state.mappings, [action.key]: action.value }, projectDirty: true, lastChange: `${action.key} → ${action.value || "Unmapped"}` };
+        if (action.type === "MAP_REACTION") return { ...state, reactionMappings: { ...state.reactionMappings, [action.key]: action.value }, projectDirty: true, lastChange: `${action.key} → ${action.value || "Unmapped"}` };
+        if (action.type === "MAP_CODEX") return { ...state, codexMappings: { ...state.codexMappings, [action.key]: action.value }, projectDirty: true, lastChange: `Codex ${action.key} → ${action.value || "Unmapped"}` };
+        if (action.type === "SET_SLEEP") return { ...state, sleepMode: action.value, projectDirty: true, lastChange: `sleepSequence.mode → ${action.value}` };
+        if (action.type === "SET_RENDER_PRESET") return { ...state, [`${action.target}RenderPreset`]: action.value, projectDirty: true, lastChange: `${action.target} Render Preset → ${action.value}` };
+        if (action.type === "SET_PREFIX") return { ...state, outputPrefix: action.value, projectDirty: true, lastChange: `Output prefix → ${action.value}` };
+        if (action.type === "CLEAR") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, projectDirty: true, lastChange: "Mappings cleared" };
+        if (action.type === "START_SCENARIO") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, sleepMode: "direct", scenario: action.id, scenarioStep: 0, projectDirty: true, lastChange: `Started scenario ${action.id}` };
+        if (action.type === "ACK_SOURCE_REVIEW") {
+          const fingerprint = state.inspection?.source?.fingerprint || null;
+          if (!fingerprint) return state;
+          return { ...state, projectSourceFingerprint: fingerprint, sourceReview: { required: false, reason: "source-fingerprint-changed", reviewedFingerprint: fingerprint, affectedRecipeIds: [...(state.sourceReview?.affectedRecipeIds || state.projectRecipeIds)] }, projectDirty: true, lastChange: "Source review acknowledged" };
+        }
+        if (action.type === "MARK_PROJECT_SAVED") return { ...state, projectDirty: false };
         if (action.type === "SCENARIO_STEP") {
           const next = reducer(state, action.inner);
           return { ...next, scenario: state.scenario, scenarioStep: state.scenarioStep + 1 };
@@ -1100,6 +1161,10 @@
     let modernAdapterLoaded = false;
     let mapperSession = null;
     let sessionProject = null;
+    const PROJECT_DRAFT_STORAGE_KEY = "live2pet-mapper-project-draft-v1";
+    const PROJECT_DRAFT_MAX_BYTES = 1024 * 1024;
+    let pendingProjectDraft = null;
+    let projectDraftTimer = null;
     const $ = id => document.getElementById(id);
 
     function dispatch(action) {
@@ -1117,6 +1182,7 @@
         }
       }
       render();
+      if (state.projectDirty && state.model && state.inspection) scheduleProjectDraft();
     }
     function escapeHtml(value) { return String(value ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"})[c]); }
     function selectedMotion() { return MotionMapping.motion(state, state.selectedMotionId); }
@@ -1132,9 +1198,14 @@
       const seen = new Set();
       return motionIds.filter(id => !seen.has(id) && seen.add(id)).map((motionId, index) => ({ id: `recipe-${String(index + 1).padStart(3, "0")}-${projectId(motionId)}`, motionId, expressionId: null }));
     }
+    function currentProjectReview() {
+      if (!state.sourceReview) return null;
+      const affectedRecipeIds = Array.isArray(state.sourceReview.affectedRecipeIds) ? [...new Set(state.sourceReview.affectedRecipeIds)] : [];
+      return { ...state.sourceReview, affectedRecipeIds };
+    }
     function buildProjectDocument() {
       if (!state.model || !state.inspection) throw projectError("SOURCE_REQUIRED", "Choose and inspect a Source Package before saving a project.");
-      return {
+      const project = {
         schemaVersion: 1,
         projectId: projectId(state.projectName || state.model.name),
         appVersion: "0.1.0",
@@ -1157,6 +1228,9 @@
           "codex-pet": { profile: "codex-pet", mappings: { ...state.codexMappings }, reactions: {}, renderPreset: state.codexRenderPreset, options: {} },
         },
       };
+      const review = currentProjectReview();
+      if (review) project.sourceReview = review;
+      return project;
     }
     function parseProjectDocument(textValue) {
       if (typeof textValue !== "string" || new TextEncoder().encode(textValue).length > 2 * 1024 * 1024) throw projectError("PROJECT_TOO_LARGE", "The .live2pet file exceeds the 2 MiB limit.");
@@ -1189,7 +1263,79 @@
           if (typeof value !== "string" || !/^motion:[^\s:][^\s]{0,255}$/.test(value)) throw projectError("INVALID_PROJECT_MAPPING", `Codex mappings.${key} must point directly to a Motion.`);
         }
       }
+      if (project.sourceReview != null) {
+        if (typeof project.sourceReview !== "object" || Array.isArray(project.sourceReview) || typeof project.sourceReview.required !== "boolean") throw projectError("INVALID_PROJECT_REVIEW", "The project's source review is invalid.");
+        if (!Array.isArray(project.sourceReview.affectedRecipeIds) || project.sourceReview.affectedRecipeIds.some(id => typeof id !== "string" || !id.trim() || id.length > 128)) throw projectError("INVALID_PROJECT_REVIEW", "The project's affected recipe ids are invalid.");
+        if (project.sourceReview.reviewedFingerprint != null && typeof project.sourceReview.reviewedFingerprint !== "string") throw projectError("INVALID_PROJECT_REVIEW", "The project's reviewed source fingerprint is invalid.");
+      }
       return project;
+    }
+    function clearProjectDraft() {
+      if (projectDraftTimer !== null) {
+        window.clearTimeout(projectDraftTimer);
+        projectDraftTimer = null;
+      }
+      pendingProjectDraft = null;
+      try { window.localStorage.removeItem(PROJECT_DRAFT_STORAGE_KEY); } catch {}
+    }
+    function saveProjectDraft() {
+      projectDraftTimer = null;
+      if (!state.model || !state.inspection || !state.projectDirty) return false;
+      try {
+        const project = buildProjectDocument();
+        const envelope = { version: 1, savedAt: new Date().toISOString(), project };
+        const payload = JSON.stringify(envelope);
+        if (new TextEncoder().encode(payload).byteLength > PROJECT_DRAFT_MAX_BYTES) throw projectError("PROJECT_DRAFT_TOO_LARGE", "The local project draft exceeds the 1 MiB limit.");
+        window.localStorage.setItem(PROJECT_DRAFT_STORAGE_KEY, payload);
+        pendingProjectDraft = { savedAt: envelope.savedAt, project };
+        return true;
+      } catch (error) {
+        console.warn("Live2Pet project autosave failed", error);
+        setProjectStatus(I18n.t("project.autosave.failed"), "bad");
+        return false;
+      }
+    }
+    function scheduleProjectDraft() {
+      if (!state.model || !state.inspection || !state.projectDirty) return;
+      if (projectDraftTimer !== null) window.clearTimeout(projectDraftTimer);
+      projectDraftTimer = window.setTimeout(() => saveProjectDraft(), 400);
+    }
+    function restoreProjectDraft() {
+      try {
+        const raw = window.localStorage.getItem(PROJECT_DRAFT_STORAGE_KEY);
+        if (!raw) return null;
+        const envelope = JSON.parse(raw);
+        if (!envelope || envelope.version !== 1 || typeof envelope.savedAt !== "string") throw new Error("invalid draft envelope");
+        const project = parseProjectDocument(JSON.stringify(envelope.project));
+        pendingProjectDraft = { savedAt: envelope.savedAt, project };
+        return pendingProjectDraft;
+      } catch (error) {
+        console.warn("Live2Pet project autosave could not be restored", error);
+        try { window.localStorage.removeItem(PROJECT_DRAFT_STORAGE_KEY); } catch {}
+        pendingProjectDraft = null;
+        return null;
+      }
+    }
+    function projectDraftTime(value) {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? "recently" : date.toLocaleString();
+    }
+    function renderProjectWorkflow() {
+      const recover = $("recoverProject");
+      const hasDraft = Boolean(pendingProjectDraft?.project) && !state.projectDirty;
+      recover.classList.toggle("hidden", !hasDraft);
+      recover.disabled = !hasDraft;
+      $("projectDirty").classList.toggle("hidden", !state.projectDirty);
+      const review = state.sourceReview?.required ? state.sourceReview : null;
+      const reviewPanel = $("projectReview");
+      reviewPanel.classList.toggle("hidden", !review);
+      if (!review) return;
+      const ids = Array.isArray(review.affectedRecipeIds) ? [...new Set(review.affectedRecipeIds)] : [];
+      $("projectReviewMessage").textContent = I18n.t("project.review.copy");
+      $("projectReviewList").innerHTML = ids.length
+        ? `<li>${escapeHtml(I18n.t("project.review.affected"))}: ${ids.map(escapeHtml).join(", ")}</li>`
+        : `<li>${escapeHtml(I18n.t("project.review.none"))}</li>`;
+      $("ackSourceReview").disabled = !state.inspection;
     }
     function setProjectStatus(message, level = "") {
       $("projectStatus").className = `project-status${level ? ` ${level}` : ""}`;
@@ -1556,6 +1702,7 @@
 
     function codexBuildReadiness() {
       if (!state.model || !state.inspection) return { ready: false, level: "bad", message: I18n.t("build.sourceRequired") };
+      if (state.sourceReview?.required) return { ready: false, level: "bad", message: I18n.t("project.review.required") };
       if (!liveModel) return { ready: false, level: "bad", message: I18n.t("build.previewRequired") };
       const missing = codexValidation();
       const mapped = MotionMapping.codexRows.length - missing.length;
@@ -1577,6 +1724,7 @@
 
     function clawdBuildReadiness() {
       if (!state.model || !state.inspection) return { ready: false, level: "bad", message: I18n.t("build.sourceRequired") };
+      if (state.sourceReview?.required) return { ready: false, level: "bad", message: I18n.t("project.review.required") };
       if (!liveModel) return { ready: false, level: "bad", message: I18n.t("build.previewRequired") };
       const required = clawdRequiredSlots();
       const missing = required.filter(id => !state.mappings[id] || (state.sleepMode === "full" && !state.mappings[id].startsWith("motion:")));
@@ -1624,7 +1772,7 @@
     }
 
     function render() {
-      renderInspection(); renderMetrics(); renderMotions(); renderExpressions(); renderMappings(); renderScenario();
+      renderProjectWorkflow(); renderInspection(); renderMetrics(); renderMotions(); renderExpressions(); renderMappings(); renderScenario();
       $("sleepMode").value = state.sleepMode;
       $("clawdRenderPreset").value = state.clawdRenderPreset;
       $("codexRenderPreset").value = state.codexRenderPreset;
@@ -2367,7 +2515,7 @@
     async function buildClawdPackage() {
       if (clawdBuildBusy) return;
       const readiness = clawdBuildReadiness();
-      if (!readiness.ready) throw projectError("INVALID_CLAWD_MAPPING", readiness.message);
+      if (!readiness.ready) throw projectError(state.sourceReview?.required ? "PROJECT_REVIEW_REQUIRED" : "INVALID_CLAWD_MAPPING", readiness.message);
       clawdBuildBusy = true;
       clawdArtifact = null;
       releaseClawdPreview();
@@ -2451,6 +2599,7 @@
     async function buildCodexPackage() {
       if (codexBuildBusy) return;
       if (!liveModel || !state.inspection) throw projectError("SOURCE_REQUIRED", "Load and preview a Source Package before building.");
+      if (state.sourceReview?.required) throw projectError("PROJECT_REVIEW_REQUIRED", I18n.t("project.review.required"));
       const missing = codexValidation();
       if (missing.length) throw projectError("INVALID_CODEX_MAPPING", `Map all Codex rows before building: ${missing.join(", ")}.`);
       const zipApi = window.zip;
@@ -2544,6 +2693,8 @@
         link.download = filename;
         link.click();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
+        clearProjectDraft();
+        dispatch({ type: "MARK_PROJECT_SAVED" });
         setProjectStatus(I18n.t("project.saved", { filename }), "good");
         if (mapperSession) {
           try { await persistMapperSessionProject(project); }
@@ -2558,13 +2709,23 @@
       try {
         const project = parseProjectDocument(await file.text());
         const sourceMatches = state.inspection?.source.fingerprint === project.source.fingerprint;
-        dispatch({ type: "LOAD_PROJECT", project });
+        clearProjectDraft();
+        dispatch({ type: "LOAD_PROJECT", project, dirty: false });
         setProjectStatus(sourceMatches
           ? I18n.t("project.open.match", { filename: file.name })
           : I18n.t("project.open.diff", { filename: file.name }), sourceMatches ? "good" : "");
       } catch (error) {
         setProjectStatus(`${error.code || "PROJECT_OPEN_FAILED"}: ${error.message}`, "bad");
       }
+    }
+    function recoverProjectDraft() {
+      if (!pendingProjectDraft?.project) return;
+      const project = pendingProjectDraft.project;
+      pendingProjectDraft = null;
+      dispatch({ type: "LOAD_PROJECT", project, dirty: true });
+      setProjectStatus(state.inspection?.source?.fingerprint === project.source.fingerprint
+        ? I18n.t("project.recovery.loaded", { name: project.name })
+        : I18n.t("project.recovery.needsSource", { name: project.name }), state.inspection?.source?.fingerprint === project.source.fingerprint ? "good" : "");
     }
 
     $("chooseFolder").addEventListener("click",()=>$("folderInput").click());
@@ -2615,12 +2776,19 @@
       }
     });
     $("openProject").addEventListener("click",()=>$("projectInput").click());
+    $("recoverProject").addEventListener("click", recoverProjectDraft);
     $("projectInput").addEventListener("change",async e=>{
       const projectFile = e.target.files[0];
       if (!projectFile) return;
       try { await openProject(projectFile); } finally { e.target.value = ""; }
     });
     $("saveProject").addEventListener("click",downloadProject);
+    function relinkSource() {
+      if (!state.sourceReview?.required) return;
+      dispatch({ type: "ACK_SOURCE_REVIEW" });
+      setProjectStatus(I18n.t("project.review.accepted", { name: state.projectName }), "good");
+    }
+    $("ackSourceReview").addEventListener("click", relinkSource);
     $("replay").addEventListener("click",()=>playMotion(state.selectedMotionId));
     $("playIdle").addEventListener("click",()=>{const idle=state.motions.find(m=>/idle/i.test(m.name))||state.motions[0];if(idle)playMotion(idle.id);});
     $("resetExpression").addEventListener("click",resetExpression);
@@ -2638,12 +2806,19 @@
     $("languageSelect").addEventListener("change", event => I18n.setLocale(event.target.value));
     window.addEventListener("live2pet:locale-changed", () => render());
     $("copyJson").addEventListener("click",async()=>{const text=JSON.stringify(MotionMapping.output(state),null,2);try{await navigator.clipboard.writeText(text)}catch{const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove();}});
+    window.addEventListener("beforeunload", event => {
+      if (!state.projectDirty) return;
+      event.preventDefault();
+      event.returnValue = "";
+    });
     new ResizeObserver(()=>{if(app){app.resize();fitModel();}}).observe($("stage"));
     I18n.apply();
+    const recoveredDraft = restoreProjectDraft();
     setProjectStatus(I18n.t("project.status.empty"));
     setBuildStatus(I18n.t("build.codex.status.empty"));
     setClawdBuildStatus(I18n.t("build.clawd.status.empty"));
     render();
+    if (recoveredDraft) setProjectStatus(I18n.t("project.recovery.available", { time: projectDraftTime(recoveredDraft.savedAt) }));
     void restorePersistedRuntimes();
     void connectMapperSession();
   </script>
