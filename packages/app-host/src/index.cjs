@@ -1,3 +1,5 @@
+const crypto = require('node:crypto');
+
 const { MapperSessionError, startMapperSessionHost } = require('../../mapper-session/src/index.cjs');
 
 const APP_IPC_PROTOCOL_VERSION = 1;
@@ -8,6 +10,7 @@ const APP_IPC_METHODS = Object.freeze([
   'getMapperProject',
   'updateMapperProject',
   'buildProject',
+  'getBuildArtifact',
   'closeMapperSession',
 ]);
 
@@ -84,6 +87,24 @@ function summarizeBuildTargets(built = {}) {
   };
 }
 
+function collectBuildArtifacts(built = {}) {
+  const artifacts = [];
+  for (const [target, build] of Object.entries(built.builds || {})) {
+    const value = build && build.package && build.package.buffer;
+    if (!value || !(Buffer.isBuffer(value) || value instanceof Uint8Array || value instanceof ArrayBuffer)) continue;
+    const bytes = Buffer.from(value);
+    if (!bytes.length) continue;
+    artifacts.push({
+      artifactId: crypto.randomUUID(),
+      target,
+      filename: build.package.artifactName || build.artifactName || `${target}.zip`,
+      byteLength: bytes.byteLength,
+      bytes,
+    });
+  }
+  return artifacts;
+}
+
 function normalizeRequest(request) {
   if (!request || typeof request !== 'object' || Array.isArray(request)) fail('INVALID_APP_REQUEST', 'App IPC request must be an object.');
   if (request.protocolVersion !== APP_IPC_PROTOCOL_VERSION) fail('UNSUPPORTED_APP_PROTOCOL', 'App IPC protocol version is not supported.');
@@ -107,12 +128,17 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, buildP
   if (typeof appVersion !== 'string' || !appVersion.trim()) fail('INVALID_APP_ROUTER', 'appVersion must be a non-empty string.');
   let activeHost = null;
   let activeClient = null;
+  let buildArtifacts = new Map();
 
   const closeActive = async () => {
-    if (!activeHost) return { closed: false };
+    if (!activeHost) {
+      buildArtifacts = new Map();
+      return { closed: false };
+    }
     const host = activeHost;
     activeHost = null;
     activeClient = null;
+    buildArtifacts = new Map();
     await host.close();
     return { closed: true, sessionId: host.sessionId };
   };
@@ -145,7 +171,24 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, buildP
         const input = normalizeBuildRequest(normalized.args[0]);
         const progress = [];
         const built = await buildProjectService({ ...input, onProgress: (event) => progress.push(event) });
-        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, progress, result: summarizeBuildTargets(built) };
+        const artifacts = collectBuildArtifacts(built);
+        buildArtifacts = new Map(artifacts.map((artifact) => [artifact.artifactId, artifact]));
+        return {
+          protocolVersion: APP_IPC_PROTOCOL_VERSION,
+          ok: true,
+          progress,
+          result: {
+            ...summarizeBuildTargets(built),
+            artifacts: artifacts.map(({ bytes, ...metadata }) => metadata),
+          },
+        };
+      }
+      if (normalized.method === 'getBuildArtifact') {
+        const [request = {}] = normalized.args;
+        if (!isRecord(request) || typeof request.artifactId !== 'string' || !request.artifactId.trim()) fail('INVALID_BUILD_ARTIFACT_REQUEST', 'getBuildArtifact requires an artifactId.');
+        const artifact = buildArtifacts.get(request.artifactId);
+        if (!artifact) fail('BUILD_ARTIFACT_NOT_FOUND', 'The requested build artifact is no longer available. Build the project again.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: { artifactId: artifact.artifactId, target: artifact.target, filename: artifact.filename, byteLength: artifact.byteLength, bytes: new Uint8Array(artifact.bytes) } };
       }
       if (normalized.method === 'closeMapperSession') return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: await closeActive() };
       fail('UNKNOWN_APP_METHOD', `App method is not allowed: ${normalized.method}.`);
@@ -165,6 +208,7 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL } = {}) {
     getMapperProject: () => invoke('getMapperProject'),
     updateMapperProject: (project) => invoke('updateMapperProject', project),
     buildProject: (input) => invoke('buildProject', input),
+    getBuildArtifact: (artifactId) => invoke('getBuildArtifact', { artifactId }),
     closeMapperSession: () => invoke('closeMapperSession'),
   });
 }
@@ -203,4 +247,5 @@ module.exports = {
   normalizeBuildRequest,
   summarizeBuild,
   summarizeBuildTargets,
+  collectBuildArtifacts,
 };

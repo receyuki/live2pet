@@ -29,6 +29,7 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.throws(() => normalizeRequest({ protocolVersion: 1, method: 'shell', args: [] }), (error) => error instanceof AppHostError && error.code === 'UNKNOWN_APP_METHOD');
   assert.equal(APP_IPC_METHODS.includes('startMapperSession'), true);
   assert.equal(APP_IPC_METHODS.includes('buildProject'), true);
+  assert.equal(APP_IPC_METHODS.includes('getBuildArtifact'), true);
 });
 
 test('routes a single Mapper Session without exposing its client or token in the launch descriptor', async () => {
@@ -85,6 +86,20 @@ test('routes Package Build through the injected shared service and strips binary
   assert.equal(response.result.builds['codex-pet'].spritesheet, undefined);
   assert.equal(response.result.builds['codex-pet'].atlas.rgba, undefined);
   assert.deepEqual(response.result.builds['codex-pet'].package.files, ['pet.json', 'spritesheet.webp']);
+  assert.equal(response.result.artifacts.length, 1);
+  assert.equal(response.result.artifacts[0].byteLength, 3);
+  assert.equal(response.result.artifacts[0].filename, 'app-fixture-codex-pet-1.0.0.zip');
+  const artifact = await router({ protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: response.result.artifacts[0].artifactId }] });
+  assert.equal(artifact.ok, true);
+  assert.deepEqual([...artifact.result.bytes], [6, 7, 8]);
+  assert.equal(artifact.result.byteLength, 3);
+  const missingArtifact = await router({ protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'missing' }] });
+  assert.equal(missingArtifact.ok, false);
+  assert.equal(missingArtifact.error.code, 'BUILD_ARTIFACT_NOT_FOUND');
+  await router({ protocolVersion: 1, method: 'closeMapperSession', args: [] });
+  const afterClose = await router({ protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: response.result.artifacts[0].artifactId }] });
+  assert.equal(afterClose.ok, false);
+  assert.equal(afterClose.error.code, 'BUILD_ARTIFACT_NOT_FOUND');
   assert.deepEqual({ project: calls[0].project, targets: calls[0].targets, inputsByTarget: calls[0].inputsByTarget }, input);
 });
 
@@ -106,10 +121,12 @@ test('preload exposes only typed methods and the window options keep Electron sa
   await api.getVersion();
   await api.startMapperSession({});
   await api.buildProject({ project: { projectId: 'app-fixture' } });
+  await api.getBuildArtifact('fixture-artifact');
   assert.equal(calls[0][0], APP_IPC_CHANNEL);
   assert.deepEqual(calls[0][1], { protocolVersion: 1, method: 'getVersion', args: [] });
   assert.deepEqual(calls[1][1], { protocolVersion: 1, method: 'startMapperSession', args: [{}] });
   assert.deepEqual(calls[2][1], { protocolVersion: 1, method: 'buildProject', args: [{ project: { projectId: 'app-fixture' } }] });
+  assert.deepEqual(calls[3][1], { protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'fixture-artifact' }] });
   assert.equal(Object.hasOwn(api, 'ipcRenderer'), false);
   const options = createAppWindowOptions({ preload: '/app/preload.cjs' });
   assert.equal(options.webPreferences.nodeIntegration, false);
