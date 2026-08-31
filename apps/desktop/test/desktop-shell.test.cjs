@@ -94,6 +94,10 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /@pixi\/unsafe-eval\/dist\/browser\/unsafe-eval\.min\.js/);
   assert.match(mapper, /connect-src 'self' blob: http:\/\/127\.0\.0\.1:\*/);
   assert.match(mapper, /function buildPreviewFiles\(files, modelFile, cubism, modelJson\)/);
+  assert.match(mapper, /let activeLive2dAdapter = null/);
+  assert.match(mapper, /function activateLive2dAdapter\(kind\)/);
+  assert.match(mapper, /function ensureLive2dAdapter\(kind\)/);
+  assert.match(mapper, /await ensureLive2dAdapter\(cubism === 2 \? "legacy" : "modern"\)/);
   assert.match(mapper, /function restorePersistedRuntimes\(\)/);
   assert.match(mapper, /function subscribeBuildProgress\(\)/);
   assert.match(mapper, /function beginBuildProgress\(target/);

@@ -1368,6 +1368,8 @@
     const RUNTIME_PERSIST_MAX_BYTES = 16 * 1024 * 1024;
     let legacyAdapterLoaded = false;
     let modernAdapterLoaded = false;
+    let activeLive2dAdapter = null;
+    const live2dAdapterNamespaces = new Map();
     let mapperSession = null;
     let sessionProject = null;
     let rendererPreviewSessionId = null;
@@ -1864,12 +1866,7 @@
       runtimeScripts.set(kind, { element, url, name });
       const available = kind === "legacy" ? Boolean(window.Live2D) : Boolean(window.Live2DCubismCore);
       if (!available) throw projectError("UNKNOWN_RUNTIME", `The selected file does not expose a usable ${kind === "legacy" ? "Cubism 2" : "modern Cubism"} runtime.`);
-      if (kind === "legacy" && !legacyAdapterLoaded) {
-        await loadLegacyAdapter();
-      }
-      if (kind !== "legacy" && !modernAdapterLoaded) {
-        await loadModernAdapter();
-      }
+      await ensureLive2dAdapter(kind === "legacy" ? "legacy" : "modern");
       const runtimeLabel = I18n.t(`runtime.name.${kind === "legacy" ? "legacy" : "modern"}`);
       let persistence = { saved: false, reason: "session" };
       if (persist) {
@@ -1916,8 +1913,29 @@
       }
     }
 
+    // Cubism 2 and Cubism 4 adapters expose the same PIXI.live2d namespace.
+    // Keep each namespace snapshot so persisted runtimes can coexist without
+    // the last adapter loaded taking over modern model previews.
+    function snapshotLive2dAdapter(kind) {
+      const namespace = window.PIXI?.live2d;
+      if (!namespace?.Live2DModel) throw projectError("RENDERER_ADAPTER_UNAVAILABLE", "The Live2D Pixi adapter did not expose a model loader.");
+      live2dAdapterNamespaces.set(kind, Object.fromEntries(Object.entries(namespace)));
+    }
+
+    function activateLive2dAdapter(kind) {
+      if (activeLive2dAdapter === kind) return;
+      const namespace = window.PIXI?.live2d;
+      const snapshot = live2dAdapterNamespaces.get(kind);
+      if (!namespace || !snapshot) throw projectError("RENDERER_ADAPTER_UNAVAILABLE", `The ${kind === "legacy" ? "Cubism 2" : "modern Cubism"} Pixi adapter is not available.`);
+      Object.assign(namespace, snapshot);
+      activeLive2dAdapter = kind;
+    }
+
     async function loadLegacyAdapter() {
-      if (legacyAdapterLoaded) return;
+      if (legacyAdapterLoaded) {
+        activateLive2dAdapter("legacy");
+        return;
+      }
       const element = document.createElement("script");
       element.async = false;
       element.src = "../../packages/live2d-exporter/node_modules/pixi-live2d-display/dist/cubism2.min.js";
@@ -1927,10 +1945,15 @@
         document.head.appendChild(element);
       });
       legacyAdapterLoaded = true;
+      snapshotLive2dAdapter("legacy");
+      activateLive2dAdapter("legacy");
     }
 
     async function loadModernAdapter() {
-      if (modernAdapterLoaded) return;
+      if (modernAdapterLoaded) {
+        activateLive2dAdapter("modern");
+        return;
+      }
       const element = document.createElement("script");
       element.async = false;
       element.src = "../../packages/live2d-exporter/node_modules/pixi-live2d-display/dist/cubism4.min.js";
@@ -1940,6 +1963,13 @@
         document.head.appendChild(element);
       });
       modernAdapterLoaded = true;
+      snapshotLive2dAdapter("modern");
+      activateLive2dAdapter("modern");
+    }
+
+    async function ensureLive2dAdapter(kind) {
+      if (kind === "legacy") return loadLegacyAdapter();
+      return loadModernAdapter();
     }
 
     function renderInspection() {
@@ -2576,6 +2606,7 @@
           // both directory uploads and reconstructed PCK entries.
           if (cubism === 2 && !window.Live2D) throw browserInspectionError("RUNTIME_UNAVAILABLE", "Inspection is complete, but Cubism 2 preview needs a local live2d.min.js. Use Choose Cubism 2 runtime above.");
           if (cubism !== 2 && !window.Live2DCubismCore) throw browserInspectionError("RUNTIME_UNAVAILABLE", "Inspection is complete, but modern preview needs a local Cubism Core JavaScript file.");
+          await ensureLive2dAdapter(cubism === 2 ? "legacy" : "modern");
           await mountModel(buildPreviewFiles(list, modelFile, cubism, original));
           $("stageMessage").classList.add("hidden");
           if (motions[0]) await playMotion(motions[0].id);
