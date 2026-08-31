@@ -9,6 +9,10 @@ const SUPPORT_FILES = Object.freeze([
     source: path.resolve(__dirname, '../../mapper/clawd-capture-plan.js'),
     target: 'clawd-capture-plan.js',
   },
+  {
+    source: path.resolve(__dirname, '../renderer/index.html'),
+    target: 'renderer.html',
+  },
 ]);
 
 const ASSETS = Object.freeze([
@@ -85,6 +89,16 @@ function copyFile(source, destination) {
   fs.copyFileSync(source, destination);
 }
 
+function writeSupportFile(source, destination, target) {
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  if (target === 'renderer.html') {
+    const html = fs.readFileSync(source, 'utf8').replaceAll('../mapper-dist/vendor', './vendor');
+    fs.writeFileSync(destination, html, 'utf8');
+    return;
+  }
+  copyFile(source, destination);
+}
+
 function stageMapperAssets(output = DEFAULT_OUTPUT) {
   if (!path.isAbsolute(output)) fail('Mapper staging output must be an absolute path.');
   if (!fs.statSync(SOURCE_MAPPER).isFile()) fail('The shared Mapper document is missing.');
@@ -114,7 +128,7 @@ function stageMapperAssets(output = DEFAULT_OUTPUT) {
       fail('Cubism Core must remain user-provided and cannot be staged.');
     }
     fs.writeFileSync(path.join(staging, 'index.html'), mapperHtml, 'utf8');
-    for (const file of SUPPORT_FILES) copyFile(file.source, path.join(staging, file.target));
+    for (const file of SUPPORT_FILES) writeSupportFile(file.source, path.join(staging, file.target), file.target);
 
     const manifest = {
       schemaVersion: 1,

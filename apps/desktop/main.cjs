@@ -12,6 +12,7 @@ const { startMapperSessionHost } = require('../../packages/mapper-session/src/in
 const { CacheStore, buildProjectTargets } = require('../../packages/package-build/src/index.cjs');
 const { installPackage } = require('../../packages/installation/src/index.cjs');
 const { inspectSourcePackage } = require('../../packages/source-inspector/src/index.cjs');
+const { createRendererWindowHost } = require('./renderer-host.cjs');
 const {
   clearRuntimeSettings,
   loadRuntimeSettings,
@@ -21,14 +22,44 @@ const {
 
 const DEVELOPMENT_MAPPER_PATH = path.resolve(__dirname, '../mapper/index.html');
 const PACKAGED_MAPPER_PATH = path.join(process.resourcesPath, 'mapper-dist', 'index.html');
+const DEVELOPMENT_RENDERER_PATH = path.resolve(__dirname, 'renderer/index.html');
+const PACKAGED_RENDERER_PATH = path.join(process.resourcesPath, 'mapper-dist', 'renderer.html');
 const SOURCE_CACHE_LIMIT = 1024 * 1024 * 1024;
 let mainWindow = null;
 let route = null;
 let sourceCache = null;
 let runtimeSettingsFile = null;
+let rendererWindowHost = null;
 
 function mapperPath() {
   return app.isPackaged ? PACKAGED_MAPPER_PATH : DEVELOPMENT_MAPPER_PATH;
+}
+
+function rendererPath() {
+  return app.isPackaged ? PACKAGED_RENDERER_PATH : DEVELOPMENT_RENDERER_PATH;
+}
+
+/**
+ * Create the isolated Live2D renderer only for an explicit preview operation.
+ * The main Mapper window never receives model/runtime bytes; this host owns a
+ * separate sandboxed BrowserWindow and a loopback asset server instead.
+ */
+function createRendererPreviewHost(options = {}) {
+  if (rendererWindowHost) return rendererWindowHost;
+  rendererWindowHost = createRendererWindowHost({
+    ...options,
+    BrowserWindow,
+    rendererDocument: rendererPath(),
+    preload: path.join(__dirname, 'renderer-preload.cjs'),
+  });
+  return rendererWindowHost;
+}
+
+async function closeRendererPreviewHost() {
+  if (!rendererWindowHost) return;
+  const host = rendererWindowHost;
+  rendererWindowHost = null;
+  await host.close();
 }
 
 function mapperHostFactory(options = {}) {
@@ -117,5 +148,5 @@ app.whenReady().then(async () => {
   app.on('activate', async () => { if (!mainWindow) await createMainWindow(); });
 });
 
-app.on('before-quit', () => { void closeActiveSession(); });
+app.on('before-quit', () => { void closeActiveSession(); void closeRendererPreviewHost(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

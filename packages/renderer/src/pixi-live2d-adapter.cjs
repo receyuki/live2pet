@@ -490,12 +490,32 @@ class LegacyPixiLive2dAdapter extends PixiLive2dAdapter {
   }
 }
 
+function selectPixiLive2dAdapter(cubismVersion) {
+  const version = Number(cubismVersion);
+  if (version === 2) return { kind: 'legacy-cubism2', Adapter: LegacyPixiLive2dAdapter };
+  if ([3, 4, 5].includes(version)) return { kind: 'modern-cubism', Adapter: PixiLive2dAdapter };
+  fail('UNSUPPORTED_CUBISM_VERSION', `No Pixi Live2D adapter is registered for Cubism generation ${String(cubismVersion)}.`, { cubismVersion });
+}
+
+/**
+ * Select the replaceable adapter from the inspected Source Package rather
+ * than guessing from Motion or file names. Callers that do not provide a
+ * source must pass the inspected generation as `cubismVersion`.
+ */
+function createPixiLive2dAdapter({ source, cubismVersion, ...options } = {}) {
+  const version = source && typeof source === 'object' ? source.cubismVersion : cubismVersion;
+  const { Adapter } = selectPixiLive2dAdapter(version);
+  return new Adapter(options);
+}
+
 module.exports = {
   DEFAULT_OPTIONS,
   LegacyPixiLive2dAdapter,
   PixiLive2dAdapter,
+  createPixiLive2dAdapter,
   normalizePixiSource,
   pixiSourceFromManifest,
+  selectPixiLive2dAdapter,
   pageBounds,
   pageCapture,
   pageLoad,

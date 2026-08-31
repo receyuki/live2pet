@@ -34,6 +34,20 @@ bounded browser-profile copy so a selected runtime can refresh the in-session
 preview; that copy is not part of a project, cache artifact, package, or
 release.
 
+The desktop shell also includes a separate renderer-realm host for the next
+preview path. It creates a transparent BrowserWindow with Node integration off,
+context isolation, sandboxing, strict CSP, and a loopback-only asset server for
+the selected Source Package plus runtime file. Adapter selection follows the
+inspected Cubism generation (legacy Cubism 2 versus modern Cubism 3–5). If the
+model, runtime, page bootstrap, or renderer process fails, the host unloads the
+adapter and destroys that window; the main Mapper window remains available and
+an explicit restart creates a fresh realm. Its `loadSource()` helper accepts the
+inspection manifest's relative `modelConfig`, resolves it through the same
+loopback server, and rejects a mismatched Cubism generation before touching the
+renderer. The host is a reusable seam today;
+the full official modern Web Framework adapter and user-facing preview command
+remain gated work.
+
 The shared Mapper exposes both Codex Pet and Clawd Theme build actions. Clawd
 captures mapped Motion frames in the renderer and sends them through the same
 typed `buildProject` service; the returned ZIP is available only through an

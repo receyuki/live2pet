@@ -2,15 +2,22 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const { EventEmitter } = require('node:events');
 
 const root = path.resolve(__dirname, '..');
+const { cubismAdapter, createRendererWindowHost, hardenRendererWindow, waitForRendererReady } = require('../renderer-host.cjs');
 
 test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narrow', () => {
   const main = fs.readFileSync(path.join(root, 'main.cjs'), 'utf8');
   const preload = fs.readFileSync(path.join(root, 'preload.cjs'), 'utf8');
   assert.match(main, /const DEVELOPMENT_MAPPER_PATH = path\.resolve\(__dirname, '\.\.\/mapper\/index\.html'\);/);
   assert.match(main, /const PACKAGED_MAPPER_PATH = path\.join\(process\.resourcesPath, 'mapper-dist', 'index\.html'\);/);
+  assert.match(main, /const DEVELOPMENT_RENDERER_PATH = path\.resolve\(__dirname, 'renderer\/index\.html'\);/);
+  assert.match(main, /const PACKAGED_RENDERER_PATH = path\.join\(process\.resourcesPath, 'mapper-dist', 'renderer\.html'\);/);
   assert.match(main, /return app\.isPackaged \? PACKAGED_MAPPER_PATH : DEVELOPMENT_MAPPER_PATH;/);
+  assert.match(main, /return app\.isPackaged \? PACKAGED_RENDERER_PATH : DEVELOPMENT_RENDERER_PATH;/);
+  assert.match(main, /createRendererPreviewHost/);
+  assert.match(main, /closeRendererPreviewHost/);
   assert.match(main, /mapperAssetRoot: app\.isPackaged \? path\.dirname\(documentPath\) : undefined,/);
   assert.match(main, /buildProjectService: buildProjectTargets/);
   assert.match(main, /APP_BUILD_PROGRESS_CHANNEL/);
@@ -35,6 +42,18 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(preload, /onBuildProgress/);
   assert.doesNotMatch(preload, /require\(['"]\.\.\/\.\.\/packages\/app-host/);
   assert.doesNotMatch(preload, /exposeInMainWorld\([^,]+,\s*\{\s*ipcRenderer/);
+});
+
+test('desktop renderer page and preload remain capability-limited', () => {
+  const renderer = fs.readFileSync(path.join(root, 'renderer', 'index.html'), 'utf8');
+  const rendererPreload = fs.readFileSync(path.join(root, 'renderer-preload.cjs'), 'utf8');
+  assert.match(renderer, /Content-Security-Policy/);
+  assert.match(renderer, /nonce-live2pet-renderer-bootstrap/);
+  assert.match(renderer, /127\.0\.0\.1/);
+  assert.match(renderer, /__live2petRendererReady/);
+  assert.doesNotMatch(rendererPreload, /ipcRenderer/);
+  assert.doesNotMatch(rendererPreload, /require\(['"]node:/);
+  assert.match(rendererPreload, /contextBridge\.exposeInMainWorld\('__live2petRenderer'/);
 });
 
 test('desktop package keeps Electron and future Forge settings explicit', () => {
@@ -130,4 +149,96 @@ test('shared Mapper exposes project recovery, source review, and build-gate seam
   assert.match(mapper, /function relinkSource\(\)/);
   assert.match(mapper, /window\.addEventListener\("beforeunload"/);
   assert.match(mapper, /if \(state\.sourceReview\?\.required\) return \{ ready: false/);
+});
+
+test('desktop renderer host selects an adapter by inspected Cubism generation', () => {
+  assert.equal(cubismAdapter(2).kind, 'legacy-cubism2');
+  assert.equal(cubismAdapter(4).kind, 'modern-cubism');
+  assert.throws(
+    () => cubismAdapter(1),
+    (error) => error.code === 'UNSUPPORTED_CUBISM_VERSION',
+  );
+});
+
+test('desktop renderer host owns a loopback asset server and isolated window lifecycle', async () => {
+  const sourceRoot = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'live2pet-desktop-source-'));
+  const runtimeRoot = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'live2pet-desktop-runtime-'));
+  fs.writeFileSync(path.join(sourceRoot, 'model.json'), '{}');
+  const runtimePath = path.join(runtimeRoot, 'live2dcubismcore.min.js');
+  fs.writeFileSync(runtimePath, 'runtime');
+
+  class FakeWindow extends EventEmitter {
+    constructor(options) {
+      super();
+      this.options = options;
+      this.destroyed = false;
+      this.webContents = new EventEmitter();
+      this.webContents.setWindowOpenHandler = (handler) => { this.windowOpenHandler = handler; };
+      this.webContents.executeJavaScript = async (sourceText) => {
+        if (sourceText.includes('__live2petRendererReady')) return { ready: true, error: null };
+        return undefined;
+      };
+    }
+
+    async loadURL(url) { this.url = url; }
+
+    isDestroyed() { return this.destroyed; }
+
+    destroy() {
+      if (this.destroyed) return;
+      this.destroyed = true;
+      this.emit('closed');
+    }
+  }
+
+  const host = createRendererWindowHost({
+    BrowserWindow: FakeWindow,
+    sourceRoot,
+    runtimePath,
+    cubismVersion: 2,
+    rendererDocument: path.join(root, 'renderer', 'index.html'),
+    preload: path.join(root, 'renderer-preload.cjs'),
+  });
+  await host.start();
+  assert.equal(host.getStatus().state, 'ready');
+  assert.equal(host.kind, 'legacy-cubism2');
+  assert.deepEqual(host.getStatus().state, 'ready');
+  assert.deepEqual(host.getStatus().hasWindow, true);
+  assert.match(host.getAssetDescriptor().runtimeUrl, /^http:\/\/127\.0\.0\.1:\d+\/runtime\//);
+  assert.match(host.modelUrl('model.json'), /^http:\/\/127\.0\.0\.1:\d+\/model\/model\.json$/);
+  await host.loadSource({
+    modelConfig: 'model.json',
+    cubismVersion: 2,
+    motions: [{ id: 'idle:0', group: 'idle', index: 0, duration: 1 }],
+    expressions: [],
+  });
+  await assert.rejects(
+    () => host.loadSource({ modelConfig: 'model.json', cubismVersion: 4, motions: [], expressions: [] }),
+    (error) => error.code === 'RENDERER_RUNTIME_MISMATCH',
+  );
+  await host.close();
+  assert.equal(host.getStatus().state, 'closed');
+  assert.equal(host.getAssetDescriptor(), null);
+});
+
+test('renderer window hardening denies navigation, webviews, and new windows', () => {
+  const window = new EventEmitter();
+  window.webContents = new EventEmitter();
+  window.webContents.setWindowOpenHandler = (handler) => { window.openHandler = handler; };
+  const documentPath = path.join(root, 'renderer', 'index.html');
+  hardenRendererWindow(window, documentPath);
+  assert.deepEqual(window.openHandler(), { action: 'deny' });
+  let prevented = false;
+  window.webContents.emit('will-navigate', { preventDefault: () => { prevented = true; } }, 'https://example.invalid/');
+  assert.equal(prevented, true);
+  prevented = false;
+  window.webContents.emit('will-attach-webview', { preventDefault: () => { prevented = true; } });
+  assert.equal(prevented, true);
+});
+
+test('renderer ready helper returns a typed timeout instead of hanging', async () => {
+  await assert.rejects(
+    () => waitForRendererReady({ executeJavaScript: async () => ({ ready: false, error: null }) }, { timeoutMs: 100, pollMs: 5 }),
+    (error) => error.code === 'RENDERER_PAGE_BOOT_TIMEOUT',
+  );
 });

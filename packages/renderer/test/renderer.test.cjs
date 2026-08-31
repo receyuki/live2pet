@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -10,17 +11,22 @@ const {
   RendererContractError,
   LegacyPixiLive2dAdapter,
   PixiLive2dAdapter,
+  createPixiLive2dAdapter,
   SyntheticRenderer,
   assertRenderer,
   createRendererCsp,
   createRendererCspMeta,
+  createElectronWebContentsPage,
   createRendererIpcRouter,
   createRendererPreloadApi,
+  createRendererRealmHost,
+  RENDERER_REALM_STATES,
   createRendererWindowOptions,
   createRendererAssetServer,
   safeRelativePath,
   normalizePixiSource,
   pixiSourceFromManifest,
+  selectPixiLive2dAdapter,
   sampleMotionCandidates,
 } = require('../src/index.cjs');
 
@@ -234,6 +240,20 @@ test('Cubism 2 adapter keeps the legacy boundary explicit and preserves expressi
   assert.equal(page.calls.find((call) => call.name === 'pageSetExpression').args[0], 0);
 });
 
+test('adapter selection follows the inspected Cubism generation', () => {
+  assert.equal(selectPixiLive2dAdapter(2).kind, 'legacy-cubism2');
+  assert.equal(selectPixiLive2dAdapter(3).kind, 'modern-cubism');
+  assert.equal(selectPixiLive2dAdapter(5).Adapter, PixiLive2dAdapter);
+  assert.throws(
+    () => selectPixiLive2dAdapter(1),
+    (error) => error instanceof RendererContractError && error.code === 'UNSUPPORTED_CUBISM_VERSION',
+  );
+  const legacy = createPixiLive2dAdapter({ source: { cubismVersion: 2 }, page: new FakePixiPage() });
+  const modern = createPixiLive2dAdapter({ cubismVersion: 4, page: new FakePixiPage() });
+  assert.ok(legacy instanceof LegacyPixiLive2dAdapter);
+  assert.ok(modern instanceof PixiLive2dAdapter);
+});
+
 test('renderer host helpers enforce sandbox defaults, CSP, and a narrow IPC surface', async () => {
   const options = createRendererWindowOptions({ preload: '/app/renderer-preload.cjs', width: 320, height: 240 });
   assert.equal(options.webPreferences.nodeIntegration, false);
@@ -302,4 +322,114 @@ test('renderer asset server exposes only the selected source root and runtime fi
   } finally {
     await server.close();
   }
+});
+
+test('renderer realm host destroys a failed window and recreates a fresh realm', async () => {
+  const windows = [];
+  let rendererUnloads = 0;
+  let loadCount = 0;
+  function createWindow() {
+    const current = new EventEmitter();
+    current.webContents = new EventEmitter();
+    current.destroyed = false;
+    current.isDestroyed = () => current.destroyed;
+    current.destroy = () => {
+      current.destroyed = true;
+      current.emit('closed');
+    };
+    windows.push(current);
+    return current;
+  }
+  const host = createRendererRealmHost({
+    createWindow,
+    loadWindow: async () => { loadCount += 1; },
+    createRenderer: async () => {
+      const renderer = new SyntheticRenderer();
+      const unload = renderer.unload.bind(renderer);
+      renderer.unload = async () => { rendererUnloads += 1; return unload(); };
+      renderer.playMotion = async () => { throw new Error('model crashed while playing'); };
+      return renderer;
+    },
+    windowOptions: { width: 320, height: 240 },
+  });
+  assert.equal(host.getStatus().state, RENDERER_REALM_STATES.idle);
+  await host.start();
+  assert.equal(host.getStatus().state, RENDERER_REALM_STATES.ready);
+  await host.invoke('load', source());
+  await assert.rejects(
+    () => host.invoke('playMotion', 'missing'),
+    (error) => error instanceof RendererContractError && error.code === 'RENDERER_REALM_FAILED',
+  );
+  assert.equal(host.getStatus().state, RENDERER_REALM_STATES.failed);
+  assert.equal(host.getStatus().hasWindow, false);
+  assert.equal(windows[0].destroyed, true);
+  assert.equal(rendererUnloads, 1);
+
+  await host.restart();
+  assert.equal(host.getStatus().state, RENDERER_REALM_STATES.ready);
+  assert.equal(host.getStatus().generation, 2);
+  assert.equal(loadCount, 2);
+  assert.notEqual(windows[0], windows[1]);
+  await host.close();
+  assert.equal(host.getStatus().state, RENDERER_REALM_STATES.closed);
+  assert.equal(windows[1].destroyed, true);
+  assert.equal(rendererUnloads, 2);
+});
+
+test('renderer realm host treats an isolated process exit as a recoverable failure', async () => {
+  const window = new EventEmitter();
+  window.webContents = new EventEmitter();
+  window.destroyed = false;
+  window.isDestroyed = () => window.destroyed;
+  window.destroy = () => { window.destroyed = true; window.emit('closed'); };
+  const host = createRendererRealmHost({
+    createWindow: () => window,
+    createRenderer: () => new SyntheticRenderer(),
+  });
+  await host.start();
+  window.webContents.emit('render-process-gone', {}, { reason: 'crashed' });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(host.getStatus().state, RENDERER_REALM_STATES.failed);
+  assert.equal(host.getStatus().error.code, 'RENDERER_PROCESS_GONE');
+  assert.equal(window.destroyed, true);
+});
+
+test('renderer realm host keeps typed user command errors inside a healthy realm', async () => {
+  const window = new EventEmitter();
+  window.webContents = new EventEmitter();
+  window.destroyed = false;
+  window.isDestroyed = () => window.destroyed;
+  window.destroy = () => { window.destroyed = true; window.emit('closed'); };
+  const host = createRendererRealmHost({ createWindow: () => window, createRenderer: () => new SyntheticRenderer() });
+  await host.start();
+  await host.invoke('load', source());
+  await assert.rejects(
+    () => host.invoke('playMotion', 'missing'),
+    (error) => error instanceof RendererContractError && error.code === 'MOTION_NOT_FOUND',
+  );
+  assert.equal(host.getStatus().state, RENDERER_REALM_STATES.ready);
+  assert.equal(window.destroyed, false);
+  await host.close();
+});
+
+test('Electron webContents page serializes only fixed function calls and JSON arguments', async () => {
+  const calls = [];
+  const page = createElectronWebContentsPage({
+    webContents: {
+      executeJavaScript: async (sourceText, userGesture) => {
+        calls.push({ sourceText, userGesture });
+        return { ok: true };
+      },
+    },
+  });
+  const result = await page.evaluate(function fixedEvaluation(value) { return value; }, 'hello', 3);
+  assert.deepEqual(result, { ok: true });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].userGesture, true);
+  assert.match(calls[0].sourceText, /fixedEvaluation/);
+  assert.match(calls[0].sourceText, /"hello"/);
+  assert.throws(
+    () => createElectronWebContentsPage({ webContents: {} }),
+    (error) => error instanceof RendererContractError && error.code === 'INVALID_RENDERER_HOST',
+  );
 });
