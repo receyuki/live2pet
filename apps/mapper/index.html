@@ -196,6 +196,12 @@
     .target-preview img, .target-preview canvas { width: 100%; height: auto; display: block; image-rendering: auto; background-color: #dae5f3; background-image: linear-gradient(45deg,#c6d2e3 25%,transparent 25%),linear-gradient(-45deg,#c6d2e3 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#c6d2e3 75%),linear-gradient(-45deg,transparent 75%,#c6d2e3 75%); background-size: 16px 16px; background-position: 0 0,0 8px,8px -8px,-8px 0; border-radius: 7px; }
     .target-preview .clawd-motion-preview { aspect-ratio: 1; object-fit: contain; }
     .target-preview .cell-preview { max-width: 192px; margin: 0 auto; }
+    .clawd-preview-controls { display: grid; gap: 9px; margin-top: 10px; }
+    .clawd-preview-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+    .clawd-preview-timeline { max-height: 180px; overflow: auto; margin: 10px 0 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: #0b1628; }
+    .clawd-preview-step { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: baseline; padding: 4px 0; color: var(--muted); font-size: 12px; }
+    .clawd-preview-step.active { color: var(--text); }
+    .clawd-preview-step.done { color: var(--good); }
     pre { max-height: 430px; overflow: auto; padding: 13px; margin: 10px 0 0; background: #06101c; border: 1px solid var(--line); border-radius: 10px; color: #cfe1ff; font: 12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
     .inspection-panel { margin-bottom: 18px; }
     .inspection-status { min-height: 28px; max-width: 60ch; color: var(--muted); }
@@ -467,7 +473,12 @@
       <div id="clawdTargetPreview" class="target-preview hidden" aria-live="polite">
         <figure><figcaption data-i18n="preview.clawd.caption">Generated Clawd state · animated WebP</figcaption><img id="clawdMotionPreview" class="clawd-motion-preview" data-i18n-alt="preview.clawd.alt" alt="Generated Clawd state preview"></figure>
         <div class="inspection-subpanel">
-          <label class="field"><span data-i18n="preview.clawd.stateLabel">Preview state</span><select id="clawdPreviewState" data-i18n-aria-label="preview.clawd.stateLabel"></select></label>
+          <div class="clawd-preview-controls">
+            <label class="field"><span data-i18n="preview.clawd.scenarioLabel">Behavior scenario</span><select id="clawdPreviewScenario" data-i18n-aria-label="preview.clawd.scenarioLabel"></select></label>
+            <label class="field"><span data-i18n="preview.clawd.stateLabel">Preview state</span><select id="clawdPreviewState" data-i18n-aria-label="preview.clawd.stateLabel"></select></label>
+            <div class="clawd-preview-actions"><button id="clawdPreviewPlay" class="primary" data-i18n="preview.clawd.play">Play behavior</button><button id="clawdPreviewStop" data-i18n="preview.clawd.stop">Stop</button></div>
+          </div>
+          <div id="clawdPreviewTimeline" class="clawd-preview-timeline" aria-live="polite"></div>
           <div id="clawdPreviewMeta" class="target-copy" aria-live="polite"></div>
         </div>
       </div>
@@ -547,6 +558,21 @@
           "preview.clawd.caption": "Generated Clawd state · animated WebP",
           "preview.clawd.alt": "Generated Clawd state preview",
           "preview.clawd.stateLabel": "Preview state",
+          "preview.clawd.scenarioLabel": "Behavior scenario",
+          "preview.clawd.scenario.idle": "Idle pool",
+          "preview.clawd.scenario.sleep": "Sleep sequence",
+          "preview.clawd.scenario.wake": "Wake from sleep",
+          "preview.clawd.scenario.reaction": "Reaction · {slot}",
+          "preview.clawd.play": "Play behavior",
+          "preview.clawd.stop": "Stop",
+          "preview.clawd.step": "{state} · {duration}",
+          "preview.clawd.step.loop": "loop",
+          "preview.clawd.step.hold": "hold",
+          "preview.clawd.step.missing": "missing asset",
+          "preview.clawd.behavior.ready": "Generated-asset behavior preview · {steps} steps",
+          "preview.clawd.behavior.fallback": "Logical state {logical} uses visual fallback {visual}; state semantics remain unchanged.",
+          "preview.clawd.behavior.reaction": "{trigger} · returns to idle after {duration} ms",
+          "preview.clawd.behavior.drag": "Drag reaction · direction-aware asset · release returns to idle",
           "preview.clawd.state": "{slot} · {meaning}",
           "preview.clawd.reaction": "Reaction · {slot}",
           "preview.clawd.fallback": "fallback → {target}",
@@ -859,6 +885,21 @@
           "preview.clawd.caption": "生成的 Clawd 状态 · 动画 WebP",
           "preview.clawd.alt": "生成的 Clawd 状态预览",
           "preview.clawd.stateLabel": "预览状态",
+          "preview.clawd.scenarioLabel": "行为场景",
+          "preview.clawd.scenario.idle": "待机动作池",
+          "preview.clawd.scenario.sleep": "睡眠序列",
+          "preview.clawd.scenario.wake": "从睡眠唤醒",
+          "preview.clawd.scenario.reaction": "反应 · {slot}",
+          "preview.clawd.play": "播放行为",
+          "preview.clawd.stop": "停止",
+          "preview.clawd.step": "{state} · {duration}",
+          "preview.clawd.step.loop": "循环",
+          "preview.clawd.step.hold": "保持",
+          "preview.clawd.step.missing": "缺少资源",
+          "preview.clawd.behavior.ready": "生成资源行为预览 · {steps} 个步骤",
+          "preview.clawd.behavior.fallback": "逻辑状态 {logical} 使用视觉回退 {visual}；状态语义保持不变。",
+          "preview.clawd.behavior.reaction": "{trigger} · {duration} ms 后回到待机",
+          "preview.clawd.behavior.drag": "拖拽反应 · 按方向选择资源 · 松开后回到待机",
           "preview.clawd.state": "{slot} · {meaning}",
           "preview.clawd.reaction": "反应 · {slot}",
           "preview.clawd.fallback": "回退到 → {target}",
@@ -2650,6 +2691,9 @@
       const preview = clawdPreview;
       clawdPreview = null;
       if (!preview) return;
+      preview.playing = false;
+      if (preview.timer) clearTimeout(preview.timer);
+      preview.timer = null;
       for (const url of preview.urls?.values?.() || []) URL.revokeObjectURL(url);
       if (preview.reader && typeof preview.reader.close === "function") {
         try { void Promise.resolve(preview.reader.close()).catch(() => {}); } catch {}
@@ -2660,6 +2704,7 @@
       if (chain.includes(slot)) return null;
       const value = manifest?.states?.[slot];
       if (Array.isArray(value) && value.length && typeof value[0] === "string") return { file: value[0], chain: [...chain, slot] };
+      if (value && typeof value === "object" && Array.isArray(value.files) && value.files.length && typeof value.files[0] === "string") return { file: value.files[0], chain: [...chain, slot] };
       if (value && typeof value === "object" && typeof value.fallbackTo === "string" && value.fallbackTo.trim()) return resolveClawdPreviewAsset(manifest, value.fallbackTo.trim(), [...chain, slot]);
       return null;
     }
@@ -2684,7 +2729,11 @@
       }
       for (const def of MotionMapping.reactions) {
         const value = manifest.reactions?.[def.id];
-        const file = value && typeof value === "object" && typeof value.file === "string" ? value.file : null;
+        const file = value && typeof value === "object" && typeof value.file === "string"
+          ? value.file
+          : value && typeof value === "object" && Array.isArray(value.files) && typeof value.files[0] === "string"
+            ? value.files[0]
+            : null;
         if (!file || !availableFiles.has(file)) continue;
         options.push({
           id: `reaction:${def.id}`,
@@ -2696,18 +2745,57 @@
       return options;
     }
 
+    function clawdBehaviorFileList(step) {
+      if (!step || !step.files) return [];
+      const values = Array.isArray(step.files) ? step.files : Object.values(step.files);
+      return [...new Set(values.filter(file => typeof file === "string" && file.trim()))];
+    }
+
+    function clawdBehaviorScenarios(preview) {
+      const scenarios = preview?.behavior?.scenarios;
+      if (!scenarios || typeof scenarios !== "object") return [];
+      return Object.entries(scenarios).filter(([, scenario]) => scenario && Array.isArray(scenario.steps) && scenario.steps.length).map(([id, scenario]) => ({ id, scenario }));
+    }
+
+    function clawdBehaviorStepLabel(step) {
+      if (!step) return "";
+      const duration = Number.isFinite(Number(step.durationMs)) && Number(step.durationMs) > 0
+        ? `${Math.round(Number(step.durationMs))} ms`
+        : step.loop ? I18n.t("preview.clawd.step.loop") : I18n.t("preview.clawd.step.hold");
+      return I18n.t("preview.clawd.step", { state: step.logicalState || step.visualState || "—", duration });
+    }
+
+    function renderClawdBehaviorTimeline(preview) {
+      const timeline = $("clawdPreviewTimeline");
+      if (!timeline) return;
+      const scenarioEntry = clawdBehaviorScenarios(preview).find(({ id }) => id === preview?.scenarioId);
+      if (!scenarioEntry) {
+        timeline.replaceChildren();
+        return;
+      }
+      const activeIndex = Number.isInteger(preview.stepIndex) ? preview.stepIndex : -1;
+      timeline.innerHTML = scenarioEntry.scenario.steps.map((step, index) => {
+        const classes = ["clawd-preview-step"];
+        if (index === activeIndex) classes.push("active");
+        if (index < activeIndex) classes.push("done");
+        const missing = step.available === false || (Array.isArray(step.missingFiles) && step.missingFiles.length);
+        return `<div class="${classes.join(" ")}"><span>${escapeHtml(clawdBehaviorStepLabel(step))}</span>${missing ? `<small>${escapeHtml(I18n.t("preview.clawd.step.missing"))}</small>` : ""}</div>`;
+      }).join("");
+    }
+
     async function loadClawdPreviewAsset(preview, file) {
-      if (!preview || preview.urls.has(file)) return preview?.urls.get(file) || null;
-      if (preview.loading.has(file)) return preview.loading.get(file);
-      const entry = preview.entries.get(file);
+      const key = typeof file === "string" ? file.replace(/^assets\//, "") : "";
+      if (!preview || preview.urls.has(key)) return preview?.urls.get(key) || null;
+      if (preview.loading.has(key)) return preview.loading.get(key);
+      const entry = preview.entries.get(key);
       if (!entry || typeof entry.getData !== "function") throw projectError("PREVIEW_UNAVAILABLE", I18n.t("preview.clawd.unavailable"));
       const loading = entry.getData(new window.zip.Uint8ArrayWriter()).then(bytes => {
         if (clawdPreview !== preview) return null;
         const url = URL.createObjectURL(new Blob([bytes], { type: "image/webp" }));
-        preview.urls.set(file, url);
+        preview.urls.set(key, url);
         return url;
-      }).finally(() => preview.loading.delete(file));
-      preview.loading.set(file, loading);
+      }).finally(() => preview.loading.delete(key));
+      preview.loading.set(key, loading);
       return loading;
     }
 
@@ -2746,7 +2834,24 @@
           await reader.close();
           return null;
         }
-        const preview = { reader, entries, urls: new Map(), loading: new Map(), options, selected: options[0].id };
+        const behavior = artifact.preview && typeof artifact.preview === "object" && artifact.preview.behavior && typeof artifact.preview.behavior === "object"
+          ? artifact.preview.behavior
+          : null;
+        const scenarioEntries = behavior ? Object.entries(behavior.scenarios || {}).filter(([, scenario]) => scenario && Array.isArray(scenario.steps) && scenario.steps.length) : [];
+        const preview = {
+          reader,
+          entries,
+          urls: new Map(),
+          loading: new Map(),
+          options,
+          behavior,
+          scenarioId: scenarioEntries[0]?.[0] || "",
+          selected: options[0].id,
+          playing: false,
+          stepIndex: -1,
+          currentFile: null,
+          timer: null,
+        };
         clawdPreview = preview;
         renderClawdTargetPreview();
         await withClawdPreviewTimeout(loadClawdPreviewAsset(preview, options[0].file));
@@ -2769,6 +2874,69 @@
       });
     }
 
+    function stopClawdBehaviorPreview(preview = clawdPreview) {
+      if (!preview) return;
+      preview.playing = false;
+      if (preview.timer) clearTimeout(preview.timer);
+      preview.timer = null;
+      preview.stepIndex = -1;
+      preview.currentFile = null;
+      renderClawdTargetPreview();
+    }
+
+    async function playClawdBehaviorScenario(scenarioId = clawdPreview?.scenarioId) {
+      const preview = clawdPreview;
+      if (!preview?.behavior) return;
+      const scenario = preview.behavior.scenarios?.[scenarioId];
+      if (!scenario || !Array.isArray(scenario.steps) || !scenario.steps.length) return;
+      if (preview.timer) clearTimeout(preview.timer);
+      preview.scenarioId = scenarioId;
+      preview.playing = true;
+      preview.stepIndex = 0;
+
+      const advance = async () => {
+        if (clawdPreview !== preview || !preview.playing) return;
+        if (preview.stepIndex >= scenario.steps.length) {
+          if (scenario.loop) {
+            preview.stepIndex = 0;
+          } else {
+            preview.playing = false;
+            preview.timer = null;
+            preview.currentFile = null;
+            renderClawdTargetPreview();
+            return;
+          }
+        }
+        const step = scenario.steps[preview.stepIndex];
+        const files = clawdBehaviorFileList(step);
+        const available = files.filter(file => preview.entries.has(file.replace(/^assets\//, "")));
+        const file = available[0] || files[0] || null;
+        preview.currentFile = file;
+        renderClawdTargetPreview();
+        if (file) {
+          try {
+            await withClawdPreviewTimeout(loadClawdPreviewAsset(preview, file));
+          } catch (error) {
+            if (clawdPreview === preview) $("clawdPreviewMeta").textContent = (error.code || "PREVIEW_FAILED") + ": " + error.message;
+          }
+          if (clawdPreview !== preview || !preview.playing) return;
+          renderClawdTargetPreview();
+        }
+        const duration = Number(step.durationMs);
+        if (Number.isFinite(duration) && duration > 0) {
+          preview.timer = setTimeout(() => {
+            preview.stepIndex += 1;
+            void advance();
+          }, Math.max(100, Math.round(duration)));
+        } else {
+          // A looping/holding asset has no deterministic transition point. Keep
+          // it on screen until the user selects another scenario or stops it.
+          preview.timer = null;
+        }
+      };
+      await advance();
+    }
+
     function renderClawdTargetPreview() {
       const targetPreview = $("clawdTargetPreview");
       const hasTargetPreview = Boolean(clawdPreview?.options?.length);
@@ -2776,6 +2944,10 @@
       if (!hasTargetPreview) {
         $("clawdMotionPreview").removeAttribute("src");
         $("clawdPreviewState").replaceChildren();
+        $("clawdPreviewScenario").replaceChildren();
+        $("clawdPreviewTimeline").replaceChildren();
+        $("clawdPreviewPlay").disabled = true;
+        $("clawdPreviewStop").disabled = true;
         $("clawdPreviewMeta").textContent = I18n.t("preview.clawd.empty");
         return;
       }
@@ -2785,18 +2957,51 @@
         const label = option.kind === "state"
           ? I18n.t("preview.clawd.state", { slot: option.slot, meaning: I18n.t(option.meaningKey) || option.meaning })
           : I18n.t("preview.clawd.reaction", { slot: option.slot });
-        return `<option value="${escapeHtml(option.id)}">${escapeHtml(label)}</option>`;
+        return "<option value=\"" + escapeHtml(option.id) + "\">" + escapeHtml(label) + "</option>";
       }).join("");
       select.value = clawdPreview.selected;
       const current = clawdPreview.options.find(option => option.id === clawdPreview.selected) || clawdPreview.options[0];
-      const previewUrl = clawdPreview.urls.get(current.file);
+      const scenarioEntries = clawdBehaviorScenarios(clawdPreview);
+      const scenarioSelect = $("clawdPreviewScenario");
+      scenarioSelect.innerHTML = scenarioEntries.map(({ id }) => {
+        const label = id.startsWith("reaction:")
+          ? I18n.t("preview.clawd.scenario.reaction", { slot: id.slice("reaction:".length) })
+          : I18n.t("preview.clawd.scenario." + id) || id;
+        return "<option value=\"" + escapeHtml(id) + "\">" + escapeHtml(label) + "</option>";
+      }).join("");
+      if (scenarioEntries.some(({ id }) => id === clawdPreview.scenarioId)) scenarioSelect.value = clawdPreview.scenarioId;
+      else if (scenarioEntries.length) {
+        clawdPreview.scenarioId = scenarioEntries[0].id;
+        scenarioSelect.value = clawdPreview.scenarioId;
+      }
+      const activeScenario = scenarioEntries.find(({ id }) => id === clawdPreview.scenarioId)?.scenario;
+      const activeStep = clawdPreview.playing && activeScenario?.steps?.[clawdPreview.stepIndex];
+      const activeFile = clawdPreview.playing ? clawdPreview.currentFile : current.file;
+      const previewUrl = activeFile ? clawdPreview.urls.get(activeFile.replace(/^assets\//, "")) : null;
       if (previewUrl) $("clawdMotionPreview").src = previewUrl;
       else $("clawdMotionPreview").removeAttribute("src");
-      $("clawdPreviewMeta").textContent = !previewUrl
-        ? I18n.t("preview.clawd.loading", { file: current.file })
+      $("clawdPreviewPlay").disabled = !scenarioEntries.length;
+      $("clawdPreviewStop").disabled = !clawdPreview.playing;
+      renderClawdBehaviorTimeline(clawdPreview);
+      const behavior = clawdPreview.behavior;
+      const statePlan = behavior?.states?.[current.slot];
+      const activeStatePlan = activeStep && behavior?.states?.[activeStep.logicalState];
+      const fallback = activeStatePlan && activeStatePlan.resolvedState && activeStatePlan.resolvedState !== activeStatePlan.logicalState;
+      const reactionPlan = activeStep && behavior?.reactions?.[activeStep.logicalState];
+      const behaviorMeta = activeStep && fallback
+        ? I18n.t("preview.clawd.behavior.fallback", { logical: activeStep.logicalState, visual: activeStatePlan.resolvedState })
+        : reactionPlan && reactionPlan.trigger === "drag"
+          ? I18n.t("preview.clawd.behavior.drag")
+          : reactionPlan
+            ? I18n.t("preview.clawd.behavior.reaction", { trigger: reactionPlan.trigger, duration: reactionPlan.durationMs })
+            : null;
+      $("clawdPreviewMeta").textContent = behaviorMeta || (!previewUrl
+        ? I18n.t("preview.clawd.loading", { file: activeFile || current.file })
         : current.fallbackTarget
-        ? I18n.t("preview.clawd.fallback", { target: current.fallbackTarget })
-        : I18n.t("preview.clawd.motion", { file: current.file });
+          ? I18n.t("preview.clawd.fallback", { target: current.fallbackTarget })
+          : behavior
+            ? I18n.t("preview.clawd.behavior.ready", { steps: activeScenario?.steps?.length || 0 })
+            : I18n.t("preview.clawd.motion", { file: current.file }));
     }
 
     function waitForNextFrame() {
@@ -3023,6 +3228,7 @@
         manifest: build.manifest || null,
         assets: Array.isArray(build.assets) ? build.assets : [],
         validation: build.validation || null,
+        preview: build.preview || null,
       };
     }
 
@@ -3393,6 +3599,7 @@
     $("clawdPreviewState").addEventListener("change", async event => {
       const preview = clawdPreview;
       if (!preview) return;
+      stopClawdBehaviorPreview(preview);
       preview.selected = event.target.value;
       render();
       const option = preview.options.find(candidate => candidate.id === preview.selected);
@@ -3404,6 +3611,17 @@
         if (clawdPreview === preview) $("clawdPreviewMeta").textContent = `${error.code || "PREVIEW_FAILED"}: ${error.message}`;
       }
     });
+    $("clawdPreviewScenario").addEventListener("change", event => {
+      if (!clawdPreview) return;
+      stopClawdBehaviorPreview(clawdPreview);
+      clawdPreview.scenarioId = event.target.value;
+      renderClawdTargetPreview();
+    });
+    $("clawdPreviewPlay").addEventListener("click", async () => {
+      try { await playClawdBehaviorScenario($("clawdPreviewScenario").value); }
+      catch (error) { if (clawdPreview) $("clawdPreviewMeta").textContent = (error.code || "PREVIEW_FAILED") + ": " + error.message; }
+    });
+    $("clawdPreviewStop").addEventListener("click", () => stopClawdBehaviorPreview());
     $("languageSelect").addEventListener("change", event => I18n.setLocale(event.target.value));
     window.addEventListener("live2pet:locale-changed", () => render());
     $("copyJson").addEventListener("click",async()=>{const text=JSON.stringify(MotionMapping.output(state),null,2);try{await navigator.clipboard.writeText(text)}catch{const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove();}});

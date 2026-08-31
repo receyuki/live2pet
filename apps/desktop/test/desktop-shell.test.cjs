@@ -93,6 +93,11 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /build\.progress\.stage\.transfer/);
   assert.match(mapper, /new zipApi\.BlobReader\(artifact\.blob\)/);
   assert.match(mapper, /async function loadClawdPreviewAsset\(preview, file\)/);
+  assert.match(mapper, /preview: build\.preview \|\| null/);
+  assert.match(mapper, /function playClawdBehaviorScenario/);
+  assert.match(mapper, /id="clawdPreviewScenario"/);
+  assert.match(mapper, /id="clawdPreviewTimeline"/);
+  assert.match(mapper, /preview\.behavior\.scenarios/);
   assert.match(mapper, /rgbaDeflate/);
   assert.match(mapper, /motion-completed/);
   assert.match(mapper, /subscribeBuildProgress\(\);/);

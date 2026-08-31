@@ -592,6 +592,62 @@ test('target previews reject malformed generated output and dispatch by target',
   assert.equal(createClawdPreview({ manifest: clawd.manifest, assets: clawd.assets }).ready, true);
 });
 
+test('Clawd generated previews expose a deterministic behavior plan', () => {
+  const manifest = {
+    states: {
+      idle: ['idle.webp'],
+      thinking: ['thinking.webp'],
+      working: ['working.webp'],
+      sleeping: { fallbackTo: 'idle' },
+      yawning: ['yawning.webp'],
+      dozing: ['dozing.webp'],
+      collapsing: ['collapsing.webp'],
+      waking: ['waking.webp'],
+      error: { fallbackTo: 'thinking' },
+      attention: ['attention.webp'],
+    },
+    sleepSequence: { mode: 'full' },
+    timings: {
+      yawnDuration: 1234,
+      wakeDuration: 567,
+      minDisplay: { attention: 3210 },
+      autoReturn: { attention: 6543 },
+    },
+    idleAnimations: [{ file: 'idle-look.webp', duration: 4444 }],
+    reactions: {
+      drag: { file: 'drag.webp', fileLeft: 'drag-left.webp' },
+      clickLeft: { file: 'click.webp', duration: 2222 },
+      double: { files: ['double.webp'], duration: 3333 },
+    },
+  };
+  const assets = [
+    'idle', 'thinking', 'working', 'yawning', 'dozing', 'collapsing', 'waking', 'attention',
+    'idle-look', 'drag', 'drag-left', 'click', 'double',
+  ].map((name) => ({ file: `${name}.webp`, frameCount: 2, delays: [100, 150] }));
+  const preview = createClawdPreview({ manifest, assets });
+  assert.equal(preview.ready, true);
+  assert.deepEqual(preview.behavior.sleepSequence.enter.map((step) => step.logicalState), ['yawning', 'dozing', 'collapsing', 'sleeping']);
+  assert.deepEqual(preview.behavior.states.sleeping.fallbackChain, ['sleeping', 'idle']);
+  assert.equal(preview.behavior.states.sleeping.resolvedState, 'idle');
+  assert.equal(preview.behavior.states.sleeping.visualState, 'idle');
+  assert.equal(preview.behavior.sleepSequence.enter.at(-1).durationMs, null);
+  assert.equal(preview.behavior.states.attention.minDisplayMs, 3210);
+  assert.equal(preview.behavior.states.attention.autoReturnMs, 6543);
+  assert.equal(preview.behavior.sleepSequence.enter[0].durationMs, 1234);
+  assert.equal(preview.behavior.sleepSequence.wake.durationMs, 567);
+  assert.deepEqual(preview.behavior.reactions.drag.files, {
+    default: 'assets/drag.webp',
+    left: 'assets/drag-left.webp',
+    right: 'assets/drag.webp',
+  });
+  assert.equal(preview.behavior.reactions.drag.loop, true);
+  assert.equal(preview.behavior.reactions.clickLeft.durationMs, 2222);
+  assert.equal(preview.behavior.reactions.double.durationMs, 3333);
+  assert.equal(preview.behavior.idlePool[0].durationMs, 4444);
+  assert.deepEqual(preview.behavior.scenarios.sleep.steps.map((step) => step.logicalState), ['yawning', 'dozing', 'collapsing', 'sleeping']);
+  assert.deepEqual(preview.behavior.scenarios.wake.steps.map((step) => step.logicalState), ['waking']);
+});
+
 test('build reports stay concise and never include RGBA buffers or source paths', async () => {
   const build = { target: 'codex-pet', buildContractVersion: 1, targetContractVersion: 1, provenance: { renderPreset: 'balanced' }, encoding: { status: 'pending' }, package: null, preview: { target: 'codex-pet', source: 'generated-assets', ready: true }, warnings: [], validation: { ok: true, errors: [], warnings: [] }, atlas: { rgba: new Uint8Array([1, 2, 3]) } };
   const report = createBuildReport({ build, projectId: 'demo', source: { kind: 'standard-directory', path: '/private/model', fingerprint: 'not-a-hash' } });
