@@ -48,6 +48,10 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /optionsByTarget: \{ clawd: \{ package: true/);
   assert.match(mapper, /id="buildClawd"/);
   assert.match(mapper, /id="downloadClawd"/);
+  assert.match(mapper, /function prepareClawdPreview\(artifact\)/);
+  assert.match(mapper, /id="clawdTargetPreview"/);
+  assert.match(mapper, /id="clawdPreviewState"/);
+  assert.match(mapper, /data-i18n-alt="preview\.clawd\.alt"/);
   assert.match(mapper, /const I18n = \(\(\) =>/);
   assert.match(mapper, /id="languageSelect"/);
 });

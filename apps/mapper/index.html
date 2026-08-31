@@ -167,6 +167,7 @@
     .target-preview figure { margin: 0; padding: 10px; background: #0b1628; border: 1px solid var(--line); border-radius: 10px; }
     .target-preview figcaption { margin-bottom: 8px; color: var(--muted); font-size: 12px; }
     .target-preview img, .target-preview canvas { width: 100%; height: auto; display: block; image-rendering: auto; background-color: #dae5f3; background-image: linear-gradient(45deg,#c6d2e3 25%,transparent 25%),linear-gradient(-45deg,#c6d2e3 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#c6d2e3 75%),linear-gradient(-45deg,transparent 75%,#c6d2e3 75%); background-size: 16px 16px; background-position: 0 0,0 8px,8px -8px,-8px 0; border-radius: 7px; }
+    .target-preview .clawd-motion-preview { aspect-ratio: 1; object-fit: contain; }
     .target-preview .cell-preview { max-width: 192px; margin: 0 auto; }
     pre { max-height: 430px; overflow: auto; padding: 13px; margin: 10px 0 0; background: #06101c; border: 1px solid var(--line); border-radius: 10px; color: #cfe1ff; font: 12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
     .inspection-panel { margin-bottom: 18px; }
@@ -375,8 +376,8 @@
       <div id="buildReadiness" class="build-readiness" role="status" aria-live="polite">Load a Source Package and map all nine Codex rows to enable building.</div>
       <div id="buildStatus" class="build-status" role="status" aria-live="polite">No Codex package has been built yet.</div>
       <div id="codexTargetPreview" class="target-preview hidden" aria-live="polite">
-        <figure><figcaption>Generated atlas · package preview</figcaption><img id="codexAtlasPreview" alt="Generated Codex Pet atlas preview"></figure>
-        <figure><figcaption>First cell · 192 × 208 final size</figcaption><img id="codexCellPreview" class="cell-preview" alt="Generated Codex Pet first cell preview"></figure>
+        <figure><figcaption data-i18n="preview.codex.atlasCaption">Generated atlas · package preview</figcaption><img id="codexAtlasPreview" data-i18n-alt="preview.codex.atlasAlt" alt="Generated Codex Pet atlas preview"></figure>
+        <figure><figcaption data-i18n="preview.codex.cellCaption">First cell · 192 × 208 final size</figcaption><img id="codexCellPreview" class="cell-preview" data-i18n-alt="preview.codex.cellAlt" alt="Generated Codex Pet first cell preview"></figure>
       </div>
     </section>
 
@@ -391,6 +392,13 @@
       <div id="clawdBuildReadiness" class="build-readiness" role="status" aria-live="polite">Load a Source Package and complete the required Clawd mapping to enable building.</div>
       <div id="clawdBuildStatus" class="build-status" role="status" aria-live="polite">No Clawd theme has been built yet.</div>
       <div id="clawdBuildSummary" class="target-copy hidden" aria-live="polite"></div>
+      <div id="clawdTargetPreview" class="target-preview hidden" aria-live="polite">
+        <figure><figcaption data-i18n="preview.clawd.caption">Generated Clawd state · animated WebP</figcaption><img id="clawdMotionPreview" class="clawd-motion-preview" data-i18n-alt="preview.clawd.alt" alt="Generated Clawd state preview"></figure>
+        <div class="inspection-subpanel">
+          <label class="field"><span data-i18n="preview.clawd.stateLabel">Preview state</span><select id="clawdPreviewState" data-i18n-aria-label="preview.clawd.stateLabel"></select></label>
+          <div id="clawdPreviewMeta" class="target-copy" aria-live="polite"></div>
+        </div>
+      </div>
     </section>
 
     <footer><span data-i18n="footer.clawd">Clawd state semantics follow the</span> <a href="https://github.com/rullerzhou-afk/clawd-on-desk/blob/main/docs/guides/guide-theme-creation.md" data-i18n="footer.guide">Clawd Theme Creation Guide</a><span data-i18n="footer.local">. Source assets stay local; refreshing clears unsaved session state.</span></footer>
@@ -451,6 +459,19 @@
           "preview.description": "Preview the selected source Motion before mapping it.",
           "preview.replay": "Replay selected Motion",
           "preview.playIdle": "Play idle",
+          "preview.codex.atlasCaption": "Generated atlas · package preview",
+          "preview.codex.atlasAlt": "Generated Codex Pet atlas preview",
+          "preview.codex.cellCaption": "First cell · 192 × 208 final size",
+          "preview.codex.cellAlt": "Generated Codex Pet first cell preview",
+          "preview.clawd.caption": "Generated Clawd state · animated WebP",
+          "preview.clawd.alt": "Generated Clawd state preview",
+          "preview.clawd.stateLabel": "Preview state",
+          "preview.clawd.state": "{slot} · {meaning}",
+          "preview.clawd.reaction": "Reaction · {slot}",
+          "preview.clawd.fallback": "fallback → {target}",
+          "preview.clawd.motion": "Motion asset · {file}",
+          "preview.clawd.empty": "Build a Clawd Theme ZIP to preview its generated WebP assets.",
+          "preview.clawd.unavailable": "The built theme did not contain a previewable WebP asset.",
           "mapping.quickState": "Quick target state",
           "mapping.assignSelected": "Assign selected Motion",
           "mapping.eyebrow": "Target profile",
@@ -564,6 +585,7 @@
           "build.status.zip": "Creating ZIP package…",
           "build.status.clawdCapture": "Capturing {count} Clawd Motion assets at {width}px…",
           "build.status.clawdApp": "Built {filename} through the App · {size} KiB · {motions} Motion assets.",
+          "build.status.clawdPreviewUnavailable": "Built {filename} through the App · {size} KiB. Preview unavailable: {message}",
           "build.status.clawdSummary": "Guide validation passed · {states} state bindings · {reactions} reactions · {motions} animated WebP assets.",
           "build.browserOnly": "Open this Mapper in Live2Pet Desktop to build a Clawd Theme ZIP through the shared App service.",
           "build.sourceRequired": "Load and inspect a Source Package first.",
@@ -683,6 +705,19 @@
           "preview.description": "在映射前预览选中的资源动作。",
           "preview.replay": "重播选中动作",
           "preview.playIdle": "播放待机",
+          "preview.codex.atlasCaption": "生成图集 · 资源包预览",
+          "preview.codex.atlasAlt": "生成的 Codex Pet 图集预览",
+          "preview.codex.cellCaption": "第一格 · 192 × 208 最终尺寸",
+          "preview.codex.cellAlt": "生成的 Codex Pet 第一格预览",
+          "preview.clawd.caption": "生成的 Clawd 状态 · 动画 WebP",
+          "preview.clawd.alt": "生成的 Clawd 状态预览",
+          "preview.clawd.stateLabel": "预览状态",
+          "preview.clawd.state": "{slot} · {meaning}",
+          "preview.clawd.reaction": "反应 · {slot}",
+          "preview.clawd.fallback": "回退到 → {target}",
+          "preview.clawd.motion": "动作资源 · {file}",
+          "preview.clawd.empty": "构建 Clawd 主题 ZIP 后，可预览生成的 WebP 动画资源。",
+          "preview.clawd.unavailable": "生成的主题没有可预览的 WebP 资源。",
           "mapping.quickState": "快速目标状态",
           "mapping.assignSelected": "分配选中动作",
           "mapping.eyebrow": "目标配置",
@@ -796,6 +831,7 @@
           "build.status.zip": "正在创建 ZIP 资源包…",
           "build.status.clawdCapture": "正在捕获 {count} 个 Clawd 动作资源（{width}px）…",
           "build.status.clawdApp": "已通过 App 构建 {filename} · {size} KiB · {motions} 个动作资源。",
+          "build.status.clawdPreviewUnavailable": "已通过 App 构建 {filename} · {size} KiB，但预览不可用：{message}",
           "build.status.clawdSummary": "指南校验通过 · {states} 个状态绑定 · {reactions} 个反应 · {motions} 个动画 WebP 资源。",
           "build.browserOnly": "请在 Live2Pet Desktop 中打开此 Mapper，通过共享 App 服务构建 Clawd 主题 ZIP。",
           "build.sourceRequired": "请先加载并检查资源包。",
@@ -888,6 +924,7 @@
         document.querySelectorAll("[data-i18n]").forEach(element => { element.textContent = t(element.dataset.i18n); });
         document.querySelectorAll("[data-i18n-placeholder]").forEach(element => { element.setAttribute("placeholder", t(element.dataset.i18nPlaceholder)); });
         document.querySelectorAll("[data-i18n-aria-label]").forEach(element => { element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel)); });
+        document.querySelectorAll("[data-i18n-alt]").forEach(element => { element.setAttribute("alt", t(element.dataset.i18nAlt)); });
         const selector = document.getElementById("languageSelect");
         if (selector) selector.value = locale;
       }
@@ -1040,6 +1077,10 @@
     const $ = id => document.getElementById(id);
 
     function dispatch(action) {
+      if (action.type === "LOAD_MODEL" || action.type === "INSPECTION_ERROR") {
+        releaseClawdPreview();
+        clawdArtifact = null;
+      }
       state = MotionMapping.reducer(state, action);
       if (action.type === "LOAD_MODEL" && sessionProject) {
         if (state.inspection?.source?.fingerprint === sessionProject.source?.fingerprint) {
@@ -1491,6 +1532,7 @@
         $("codexAtlasPreview").removeAttribute("src");
         $("codexCellPreview").removeAttribute("src");
       }
+      renderClawdTargetPreview();
     }
 
     function cubism2MotionDuration(text) {
@@ -1925,6 +1967,7 @@
     let codexArtifact = null;
     let clawdBuildBusy = false;
     let clawdArtifact = null;
+    let clawdPreview = null;
 
     function setBuildStatus(message, level = "") {
       $("buildStatus").className = `build-status${level ? ` ${level}` : ""}`;
@@ -1934,6 +1977,111 @@
     function setClawdBuildStatus(message, level = "") {
       $("clawdBuildStatus").className = `build-status${level ? ` ${level}` : ""}`;
       $("clawdBuildStatus").textContent = message;
+    }
+
+    function releaseClawdPreview() {
+      if (!clawdPreview) return;
+      for (const url of clawdPreview.urls?.values?.() || []) URL.revokeObjectURL(url);
+      clawdPreview = null;
+    }
+
+    function resolveClawdPreviewAsset(manifest, slot, chain = []) {
+      if (chain.includes(slot)) return null;
+      const value = manifest?.states?.[slot];
+      if (Array.isArray(value) && value.length && typeof value[0] === "string") return { file: value[0], chain: [...chain, slot] };
+      if (value && typeof value === "object" && typeof value.fallbackTo === "string" && value.fallbackTo.trim()) return resolveClawdPreviewAsset(manifest, value.fallbackTo.trim(), [...chain, slot]);
+      return null;
+    }
+
+    function clawdPreviewOptions(manifest, urls) {
+      if (!manifest || !urls || typeof urls.has !== "function") return [];
+      const options = [];
+      for (const def of MotionMapping.allStates) {
+        const resolved = resolveClawdPreviewAsset(manifest, def.id);
+        if (!resolved || !urls.has(resolved.file)) continue;
+        const original = manifest.states?.[def.id];
+        const fallbackTarget = original && typeof original === "object" && typeof original.fallbackTo === "string" ? original.fallbackTo : null;
+        options.push({
+          id: `state:${def.id}`,
+          slot: def.id,
+          kind: "state",
+          file: resolved.file,
+          meaningKey: def.meaningKey,
+          meaning: def.meaning,
+          fallbackTarget,
+        });
+      }
+      for (const def of MotionMapping.reactions) {
+        const value = manifest.reactions?.[def.id];
+        const file = value && typeof value === "object" && typeof value.file === "string" ? value.file : null;
+        if (!file || !urls.has(file)) continue;
+        options.push({
+          id: `reaction:${def.id}`,
+          slot: def.id,
+          kind: "reaction",
+          file,
+        });
+      }
+      return options;
+    }
+
+    async function prepareClawdPreview(artifact) {
+      releaseClawdPreview();
+      if (!artifact?.blob) throw projectError("PREVIEW_UNAVAILABLE", I18n.t("preview.clawd.unavailable"));
+      const zipApi = window.zip;
+      if (!zipApi || typeof zipApi.ZipReader !== "function" || typeof zipApi.Uint8ArrayReader !== "function" || typeof zipApi.Uint8ArrayWriter !== "function") throw projectError("ZIP_READER_UNAVAILABLE", I18n.t("preview.clawd.unavailable"));
+      const reader = new zipApi.ZipReader(new zipApi.Uint8ArrayReader(new Uint8Array(await artifact.blob.arrayBuffer())));
+      const urls = new Map();
+      try {
+        try {
+          const entries = await reader.getEntries();
+          for (const asset of artifact.assets || []) {
+            const basename = typeof asset.file === "string" ? asset.file.replace(/^assets\//, "") : "";
+            if (!basename) continue;
+            const entry = entries.find(candidate => typeof candidate.filename === "string" && (candidate.filename === `assets/${basename}` || candidate.filename.endsWith(`/assets/${basename}`)));
+            if (!entry || typeof entry.getData !== "function") continue;
+            const bytes = await entry.getData(new zipApi.Uint8ArrayWriter());
+            urls.set(basename, URL.createObjectURL(new Blob([bytes], { type: "image/webp" })));
+          }
+        } finally {
+          await reader.close();
+        }
+      } catch (error) {
+        for (const url of urls.values()) URL.revokeObjectURL(url);
+        throw error;
+      }
+      const options = clawdPreviewOptions(artifact.manifest, urls);
+      if (!options.length) {
+        for (const url of urls.values()) URL.revokeObjectURL(url);
+        throw projectError("PREVIEW_UNAVAILABLE", I18n.t("preview.clawd.unavailable"));
+      }
+      clawdPreview = { urls, options, selected: options[0].id };
+    }
+
+    function renderClawdTargetPreview() {
+      const targetPreview = $("clawdTargetPreview");
+      const hasTargetPreview = Boolean(clawdPreview?.options?.length);
+      targetPreview.classList.toggle("hidden", !hasTargetPreview);
+      if (!hasTargetPreview) {
+        $("clawdMotionPreview").removeAttribute("src");
+        $("clawdPreviewState").replaceChildren();
+        $("clawdPreviewMeta").textContent = I18n.t("preview.clawd.empty");
+        return;
+      }
+      const select = $("clawdPreviewState");
+      if (!clawdPreview.options.some(option => option.id === clawdPreview.selected)) clawdPreview.selected = clawdPreview.options[0].id;
+      select.innerHTML = clawdPreview.options.map(option => {
+        const label = option.kind === "state"
+          ? I18n.t("preview.clawd.state", { slot: option.slot, meaning: I18n.t(option.meaningKey) || option.meaning })
+          : I18n.t("preview.clawd.reaction", { slot: option.slot });
+        return `<option value="${escapeHtml(option.id)}">${escapeHtml(label)}</option>`;
+      }).join("");
+      select.value = clawdPreview.selected;
+      const current = clawdPreview.options.find(option => option.id === clawdPreview.selected) || clawdPreview.options[0];
+      $("clawdMotionPreview").src = clawdPreview.urls.get(current.file) || "";
+      $("clawdPreviewMeta").textContent = current.fallbackTarget
+        ? I18n.t("preview.clawd.fallback", { target: current.fallbackTarget })
+        : I18n.t("preview.clawd.motion", { file: current.file });
     }
 
     function waitForNextFrame() {
@@ -2070,6 +2218,7 @@
       return {
         blob: new Blob([payload.result.bytes], { type: "application/zip" }),
         filename: artifact.filename,
+        themeId: build.themeId || null,
         manifest: build.manifest || null,
         assets: Array.isArray(build.assets) ? build.assets : [],
         validation: build.validation || null,
@@ -2082,6 +2231,7 @@
       if (!readiness.ready) throw projectError("INVALID_CLAWD_MAPPING", readiness.message);
       clawdBuildBusy = true;
       clawdArtifact = null;
+      releaseClawdPreview();
       $("clawdBuildSummary").classList.add("hidden");
       render();
       try {
@@ -2100,9 +2250,14 @@
         const desktopArtifact = await buildClawdThroughDesktop(project, captures);
         if (!desktopArtifact) throw projectError("APP_BUILD_UNAVAILABLE", I18n.t("build.clawdNoApp"));
         clawdArtifact = desktopArtifact;
+        let previewError = null;
+        try { await prepareClawdPreview(desktopArtifact); }
+        catch (error) { previewError = error; }
         const states = Object.keys(desktopArtifact.manifest?.states || {}).length;
         const reactions = Object.keys(desktopArtifact.manifest?.reactions || {}).length;
-        setClawdBuildStatus(I18n.t("build.status.clawdApp", { filename: desktopArtifact.filename, size: Math.round(desktopArtifact.blob.size / 1024), motions: desktopArtifact.assets.length }), "good");
+        setClawdBuildStatus(previewError
+          ? I18n.t("build.status.clawdPreviewUnavailable", { filename: desktopArtifact.filename, size: Math.round(desktopArtifact.blob.size / 1024), message: previewError.message })
+          : I18n.t("build.status.clawdApp", { filename: desktopArtifact.filename, size: Math.round(desktopArtifact.blob.size / 1024), motions: desktopArtifact.assets.length }), "good");
         $("clawdBuildSummary").textContent = I18n.t("build.status.clawdSummary", { states, reactions, motions: desktopArtifact.assets.length });
         $("clawdBuildSummary").classList.remove("hidden");
       } catch (error) {
@@ -2331,6 +2486,7 @@
     $("downloadCodex").addEventListener("click",downloadCodexPackage);
     $("buildClawd").addEventListener("click", async () => { try { await buildClawdPackage(); } catch (error) { setClawdBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad"); } });
     $("downloadClawd").addEventListener("click",downloadClawdPackage);
+    $("clawdPreviewState").addEventListener("change", event => { if (clawdPreview) { clawdPreview.selected = event.target.value; render(); } });
     $("languageSelect").addEventListener("change", event => I18n.setLocale(event.target.value));
     window.addEventListener("live2pet:locale-changed", () => render());
     $("copyJson").addEventListener("click",async()=>{const text=JSON.stringify(MotionMapping.output(state),null,2);try{await navigator.clipboard.writeText(text)}catch{const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove();}});

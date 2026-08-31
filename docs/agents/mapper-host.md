@@ -25,3 +25,5 @@ This boundary is intentionally separate from Electron IPC. The eventual App must
 The Mapper UI includes an English-default, Chinese (`zh-CN`) translation layer. The language selector persists only the locale preference in browser storage; source assets, runtimes, and project contents remain local. Target ids, project schema keys, and generated package metadata stay language-neutral.
 
 When the App preload exposes `buildProject` and `getBuildArtifact`, the Mapper can capture the selected Clawd Motion ids and request a guide-shaped Clawd Theme ZIP through the shared Package Build service. Browser-only sessions intentionally keep this button disabled because the browser fallback is not an equivalent Clawd encoder; preview and mapping remain available.
+
+After a successful App build, the Mapper reads only the returned ZIP artifact in memory, extracts the generated WebP assets with the staged zip.js reader, and offers a state/reaction picker for the target preview. The preview is derived from packaged assets and manifest fallbacks rather than replaying the source Live2D Motion; object URLs are revoked when a new source or build replaces it.

@@ -21,6 +21,10 @@ explicit `getBuildArtifact` download. Browser-only Mapper sessions keep the
 Clawd build action disabled because they do not provide the trusted App encoder.
 The UI starts in English and includes a persisted English/Chinese (`zh-CN`)
 locale switch; locale text does not alter project, IPC, or package schemas.
+After a successful App build, the Mapper can preview the generated Clawd WebP
+assets by state or reaction directly from the in-memory ZIP artifact. This
+preview follows manifest fallbacks; it does not yet replace a full Clawd runtime
+behavior simulation.
 
 From the repository root, install workspace dependencies and run:
 
