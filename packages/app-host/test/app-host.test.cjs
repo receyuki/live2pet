@@ -20,6 +20,7 @@ const {
   createAppPreloadApi,
   createAppWindowOptions,
   normalizeInspectRequest,
+  normalizeRuntimeRequest,
   normalizeInstallRequest,
   normalizeBuildProgressEvent,
   normalizeRequest,
@@ -48,8 +49,55 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.equal(APP_IPC_METHODS.includes('inspectSource'), true);
   assert.deepEqual(normalizeInspectRequest({ inputPath: '/tmp/source', projectId: 'fixture' }), { inputPath: '/tmp/source', projectId: 'fixture' });
   assert.throws(() => normalizeInspectRequest({ inputPath: '/tmp/source', shell: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_INSPECT_REQUEST');
+  assert.deepEqual(normalizeRuntimeRequest({ inputPath: '/tmp/live2d.min.js' }), { inputPath: '/tmp/live2d.min.js' });
+  assert.throws(() => normalizeRuntimeRequest({ inputPath: '/tmp/runtime', shell: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_RUNTIME_REQUEST');
   assert.deepEqual(normalizeInstallRequest({ artifactId: 'artifact', target: 'codex-pet', confirmInstall: true }), { artifactId: 'artifact', target: 'codex-pet', conflict: 'cancel', confirmInstall: true });
   assert.throws(() => normalizeInstallRequest({ artifactId: 'artifact', target: 'codex-pet' }), (error) => error instanceof AppHostError && error.code === 'INSTALL_AUTHORIZATION_REQUIRED');
+});
+
+test('routes runtime settings without exposing the selected path and marks changes restart-required', async () => {
+  const calls = [];
+  const available = {
+    schemaVersion: 1,
+    configured: true,
+    runtimeName: 'live2d.min.js',
+    sourceType: 'file',
+    runtimeKind: 'legacy-cubism2',
+    cubismGenerations: [2],
+    fingerprint: 'a'.repeat(64),
+    restartRequired: true,
+    available: true,
+  };
+  const router = createAppIpcRouter({
+    runtimeSettingsService: {
+      get: async () => available,
+      configure: async (input) => { calls.push(input); return available; },
+      clear: async () => ({ schemaVersion: 1, configured: false, restartRequired: false }),
+    },
+  });
+  const current = await router({ protocolVersion: 1, method: 'getRuntimeSettings', args: [] });
+  assert.deepEqual(current.result, available);
+  const configured = await router({ protocolVersion: 1, method: 'configureRuntime', args: [{ inputPath: '/Users/RY/Downloads/live2d.min.js' }] });
+  assert.equal(configured.ok, true);
+  assert.deepEqual(configured.progress, [{ stage: 'runtime', status: 'completed' }]);
+  assert.deepEqual(calls, [{ inputPath: '/Users/RY/Downloads/live2d.min.js' }]);
+  assert.equal(JSON.stringify(configured).includes('/Users/RY/Downloads'), false);
+  const cleared = await router({ protocolVersion: 1, method: 'clearRuntimeSettings', args: [] });
+  assert.deepEqual(cleared.result, { schemaVersion: 1, configured: false, restartRequired: false });
+  const malformed = await router({ protocolVersion: 1, method: 'configureRuntime', args: [{ inputPath: '/tmp/runtime', extra: true }] });
+  assert.equal(malformed.ok, false);
+  assert.equal(malformed.error.code, 'INVALID_RUNTIME_REQUEST');
+});
+
+test('rejects runtime services that return raw paths or incomplete metadata', async () => {
+  const incomplete = createAppIpcRouter({ runtimeSettingsService: { get: async () => ({}), configure: async () => ({}), clear: async () => ({}) } });
+  const incompleteResponse = await incomplete({ protocolVersion: 1, method: 'getRuntimeSettings', args: [] });
+  assert.equal(incompleteResponse.ok, false);
+  assert.equal(incompleteResponse.error.code, 'INVALID_RUNTIME_RESULT');
+  const router = createAppIpcRouter({ runtimeSettingsService: { get: async () => ({ schemaVersion: 1, configured: true, restartRequired: true, runtimePath: '/tmp/runtime' }), configure: async () => ({}), clear: async () => ({ schemaVersion: 1, configured: false, restartRequired: false }) } });
+  const response = await router({ protocolVersion: 1, method: 'getRuntimeSettings', args: [] });
+  assert.equal(response.ok, false);
+  assert.equal(response.error.code, 'INVALID_RUNTIME_RESULT');
 });
 
 test('routes the same normalized synthetic Source Package manifest as the CLI and caches App-side PCK extraction', async () => {
@@ -432,6 +480,9 @@ test('preload exposes only typed methods and the window options keep Electron sa
   await api.getBuildArtifact('fixture-artifact', 1024);
   await api.installArtifact({ artifactId: 'fixture-artifact', target: 'codex-pet', confirmInstall: true });
   await api.inspectSource({ inputPath: '/tmp/source' });
+  await api.getRuntimeSettings();
+  await api.configureRuntime({ inputPath: '/tmp/live2d.min.js' });
+  await api.clearRuntimeSettings();
   assert.equal(calls[0][0], APP_IPC_CHANNEL);
   assert.deepEqual(calls[0][1], { protocolVersion: 1, method: 'getVersion', args: [] });
   assert.deepEqual(calls[1][1], { protocolVersion: 1, method: 'startMapperSession', args: [{}] });
@@ -440,6 +491,9 @@ test('preload exposes only typed methods and the window options keep Electron sa
   assert.deepEqual(calls[4][1], { protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'fixture-artifact', offset: 1024 }] });
   assert.deepEqual(calls[5][1], { protocolVersion: 1, method: 'installArtifact', args: [{ artifactId: 'fixture-artifact', target: 'codex-pet', confirmInstall: true }] });
   assert.deepEqual(calls[6][1], { protocolVersion: 1, method: 'inspectSource', args: [{ inputPath: '/tmp/source' }] });
+  assert.deepEqual(calls[7][1], { protocolVersion: 1, method: 'getRuntimeSettings', args: [] });
+  assert.deepEqual(calls[8][1], { protocolVersion: 1, method: 'configureRuntime', args: [{ inputPath: '/tmp/live2d.min.js' }] });
+  assert.deepEqual(calls[9][1], { protocolVersion: 1, method: 'clearRuntimeSettings', args: [] });
   assert.equal(Object.hasOwn(api, 'ipcRenderer'), false);
   const options = createAppWindowOptions({ preload: '/app/preload.cjs' });
   assert.equal(options.webPreferences.nodeIntegration, false);

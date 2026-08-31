@@ -7,9 +7,12 @@ const test = require('node:test');
 
 const {
   RuntimeValidationError,
+  clearRuntimeSettings,
   createRuntimeSettings,
   inspectRuntime,
+  loadRuntimeSettings,
   redactRuntimeSettings,
+  saveRuntimeSettings,
 } = require('../src/index.cjs');
 
 function temporaryDirectory() {
@@ -79,4 +82,37 @@ test('CLI emits a stable, path-redacted runtime diagnosis', () => {
   assert.equal(response.ok, true);
   assert.deepEqual(response.progress, [{ stage: 'runtime-diagnose', status: 'completed' }]);
   assert.equal(output.includes(root), false);
+});
+
+test('persists only runtime settings metadata and revalidates the selected path after restart', async () => {
+  const root = modernFixture();
+  const settingsRoot = temporaryDirectory();
+  const settingsPath = path.join(settingsRoot, 'settings', 'runtime.json');
+  const saved = await saveRuntimeSettings(settingsPath, root);
+  assert.equal(saved.configured, true);
+  assert.equal(saved.available, true);
+  const raw = fs.readFileSync(settingsPath, 'utf8');
+  assert.equal(raw.includes('Live2DCubismCore'), false);
+  assert.equal(raw.includes('wasm-fixture'), false);
+  const loaded = await loadRuntimeSettings(settingsPath);
+  const redacted = redactRuntimeSettings(loaded);
+  assert.equal(redacted.configured, true);
+  assert.equal(redacted.available, true);
+  assert.equal(redacted.restartRequired, true);
+  assert.equal(JSON.stringify(redacted).includes(settingsPath), false);
+  fs.rmSync(root, { recursive: true, force: true });
+  const unavailable = await loadRuntimeSettings(settingsPath);
+  const unavailableRedacted = redactRuntimeSettings(unavailable);
+  assert.equal(unavailableRedacted.configured, true);
+  assert.equal(unavailableRedacted.available, false);
+  assert.equal(unavailableRedacted.error.code, 'RUNTIME_NOT_FOUND');
+  assert.equal(JSON.stringify(unavailableRedacted).includes(root), false);
+  assert.deepEqual(clearRuntimeSettings(settingsPath), { schemaVersion: 1, configured: false, restartRequired: false });
+  fs.rmSync(settingsRoot, { recursive: true, force: true });
+});
+
+test('returns an empty runtime setting when no App setting exists', async () => {
+  const settingsPath = path.join(temporaryDirectory(), 'runtime.json');
+  assert.deepEqual(await loadRuntimeSettings(settingsPath), { schemaVersion: 1, configured: false, restartRequired: false });
+  assert.deepEqual(clearRuntimeSettings(settingsPath), { schemaVersion: 1, configured: false, restartRequired: false });
 });

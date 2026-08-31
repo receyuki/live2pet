@@ -1,6 +1,6 @@
 # Pixi Live2D renderer adapter
 
-`PixiLive2dAdapter` is the temporary browser bridge for the shared renderer contract. It reuses the Pixi and `pixi-live2d-display` versions already used by the prototype, but it does **not** bundle Cubism Core, a legacy runtime, a model, or a texture.
+`PixiLive2dAdapter` is the temporary browser bridge for the shared renderer contract. `LegacyPixiLive2dAdapter` is an explicit Cubism 2 boundary over the same bridge; it accepts only `cubismVersion: 2` sources and preserves legacy Expression indexes. Both adapters reuse the Pixi and `pixi-live2d-display` versions already used by the prototype, but they do **not** bundle Cubism Core, a legacy runtime, a model, or a texture.
 
 The same package exports host helpers for the next Electron integration: `createRendererWindowOptions` applies the required `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, and web-security defaults; `createRendererCsp` produces the restrictive document policy; and `createRendererIpcRouter`/`createRendererPreloadApi` expose only the 13 renderer-contract methods over the `live2pet:renderer` channel. `createRendererAssetServer` serves only the selected Source Package root plus one explicitly selected runtime file over loopback, with real-path containment checks.
 
@@ -30,4 +30,17 @@ const frame = await renderer.captureRgba({ width: 256, height: 256, motionId: 'B
 
 The host is responsible for serving `modelUrl` and its referenced files. Keep that server loopback-only and path-confined to the user-selected Source Package. A production App must put the page in an isolated renderer realm and destroy/recreate it when model or runtime code fails; this adapter deliberately leaves that policy to the host.
 
-The adapter currently targets modern Cubism through the existing Pixi prototype. Cubism 2 remains a separate compatibility adapter and is not silently mixed into this path.
+The adapter currently targets modern Cubism through the existing Pixi prototype. Cubism 2 remains a separate compatibility adapter and is not silently mixed into this path. The opt-in integration test in `test/legacy-runtime.integration.test.cjs` exercises the real adapter against user-provided files when `LIVE2PET_CUBISM2_RUNTIME` and `LIVE2PET_CUBISM2_SOURCE` are set; it is skipped in clean CI and never downloads or copies those files.
+
+For a local compatibility check (using a separately licensed runtime and
+model directory), run:
+
+```sh
+LIVE2PET_CUBISM2_RUNTIME=/path/to/live2d.min.js \
+LIVE2PET_CUBISM2_SOURCE=/path/to/c311_02 \
+pnpm --filter @live2pet/renderer test
+```
+
+The test starts a loopback-only asset server, verifies Motion/Expression
+playback, captures transparent RGBA, checks bounds, and unloads the adapter.
+It does not add either input to the repository or any build/cache artifact.

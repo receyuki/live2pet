@@ -1,6 +1,6 @@
 # Live2Pet V1 Implementation Plan
 
-Status: planning complete; WP1 source-inspection frontier and WP4 cache slice implemented; implementation continues in dependency order
+Status: planning complete; WP1 source-inspection/runtime-settings and WP4 cache slices implemented; the Cubism 2 legacy contract is now opt-in qualified; implementation continues in dependency order
 
 This plan turns the accepted architecture decisions and the V1 product specification into an executable delivery sequence. It is intentionally more operational than the ADRs and less repetitive than the specification.
 
@@ -26,11 +26,11 @@ The first WP1 source-inspection slice is now captured in `packages/source-inspec
 
 The headless CLI now supports portable export and explicitly authorized installation through the conflict-aware `packages/installation/` service; the installation package resolves documented Clawd/Codex user-data roots on macOS, Windows, and Linux when an explicit target root is not supplied.
 
-The project service now also provides explicit autosave recovery, source relinking, and review gating when a source fingerprint changes. The shared Mapper now connects those operations to a bounded browser-profile draft, dirty-state/exit protection, an explicit recovery action, a source-review panel, and build-readiness gates; the future Electron host can move the same reference-only draft envelope to its project service. The desktop shell now has a repeatable `prepare:mapper` staging step that rewrites workspace-relative browser dependencies into a local bundle for future packaging; Core and legacy runtimes remain user-provided.
+The project service now also provides explicit autosave recovery, source relinking, and review gating when a source fingerprint changes. The shared Mapper now connects those operations to a bounded browser-profile draft, dirty-state/exit protection, an explicit recovery action, a source-review panel, and build-readiness gates; the future Electron host can move the same reference-only draft envelope to its project service. The desktop shell now has a repeatable `prepare:mapper` staging step that rewrites workspace-relative browser dependencies into a local bundle for future packaging; Core and legacy runtimes remain user-provided. The App host now persists runtime paths and fingerprints under user data without exposing paths or bytes over IPC, and the Mapper reports a selected runtime to that service when a local file path is available.
 
 ### Current implementation update (2026-08-31)
 
-The Mapper now exposes a shared-App Clawd Theme ZIP path that captures mapped Motion frames, produces a guide-shaped `theme.json`, validates the package, returns an explicit artifact download handle, and can preview generated Clawd WebP assets by state or reaction from that artifact. It also ships the first English/Chinese (`zh-CN`) i18n key layer and locale selector. Browser-only sessions keep the Clawd build action disabled because they do not provide the trusted shared encoder; full target behavior simulation and installation remain downstream.
+The Mapper now exposes a shared-App Clawd Theme ZIP path that captures mapped Motion frames, produces a guide-shaped `theme.json`, validates the package, returns an explicit artifact download handle, and can preview generated Clawd WebP assets by state or reaction from that artifact. It also ships the first English/Chinese (`zh-CN`) i18n key layer and locale selector. Browser-only sessions keep the Clawd build action disabled because they do not provide the trusted shared encoder; full target behavior simulation and installation remain downstream. The Cubism 2 renderer boundary is now explicit (`LegacyPixiLive2dAdapter`), preserves legacy Expression indexes, and has an opt-in Puppeteer contract test that rendered the local `c311_02` Destiny Child fixture with a user-provided `live2d.min.js`; no fixture or runtime is checked in.
 
 ## V1 success definition
 
@@ -119,13 +119,13 @@ Deliverables:
 - sandboxed render-window host with Node integration disabled, context isolation, strict CSP, and narrow typed IPC;
 - shared renderer contract for load, unload, Motion playback, Expression control, loop, speed, bounds analysis, deterministic stepping, and RGBA capture;
 - official Cubism Web Framework adapter for Cubism 3, 4, and 5 (the current temporary Pixi/Cubism browser bridge is an integration seam, not the final adapter); and
-- a time-boxed Cubism 2 compatibility spike followed by a replaceable legacy adapter only if the candidate passes the same contract.
+- a time-boxed Cubism 2 compatibility spike followed by the replaceable `LegacyPixiLive2dAdapter`; its opt-in contract test runs only with user-provided runtime/source paths.
 
 Exit gate:
 
 - the deterministic renderer passes the contract suite in CI;
 - a user-provided modern runtime and local fixture pass the opt-in contract suite on macOS;
-- the tested Destiny Child fixture passes the legacy suite or the exact unresolved incompatibility is promoted to a release blocker; and
+- the tested Destiny Child fixture passes the legacy suite when the opt-in local runtime/source variables are provided; and
 - model or renderer failure destroys the isolated realm without terminating the main App.
 
 ### WP3 — Live2Pet Project and shared mapper

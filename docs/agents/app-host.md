@@ -4,6 +4,18 @@
 
 `inspectSource` accepts only a selected local `inputPath` and an optional filename-safe `projectId`. The injected main-process service calls the shared Source Package inspector and may provide an App-owned bounded cache. The response is the same versioned, binary-free normalized manifest returned by the CLI, with a short `inspect` progress event and warnings. Absolute paths and binary values are rejected or redacted at the App boundary; the renderer never receives PCK resource bytes through this method.
 
+`getRuntimeSettings`, `configureRuntime`, and `clearRuntimeSettings` are the
+runtime provisioning boundary. The main process injects a service backed by the
+App user-data directory; `configureRuntime` validates a user-selected local
+Cubism Core or Cubism 2 runtime and stores only its absolute path plus a
+diagnostic descriptor. The typed response deliberately omits that path and all
+runtime bytes, and marks a change `restartRequired: true`. On the next App
+launch the service revalidates the saved path and reports `available: false`
+with a typed, path-redacted error when the user moved or removed the runtime.
+The Mapper may still keep its existing browser-profile copy for the current
+prototype, but the App setting is the source of truth for the future isolated
+renderer host.
+
 The main process creates one router and registers it on the fixed `live2pet:app` channel:
 
 ```js

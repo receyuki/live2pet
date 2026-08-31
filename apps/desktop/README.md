@@ -24,6 +24,16 @@ resources are retained only in an App-owned bounded cache under the Electron
 user-data directory; the renderer receives metadata and warnings, never source
 or runtime bytes.
 
+Runtime provisioning is exposed through `getRuntimeSettings`,
+`configureRuntime`, and `clearRuntimeSettings`. Selecting a local modern Core
+or Cubism 2 runtime validates it in the main process and persists only its path
+and diagnostic fingerprint under the App user-data directory. The renderer
+receives metadata, never runtime bytes or the path, and a changed setting is
+explicitly marked restart-required. The current prototype also keeps its
+bounded browser-profile copy so a selected runtime can refresh the in-session
+preview; that copy is not part of a project, cache artifact, package, or
+release.
+
 The shared Mapper exposes both Codex Pet and Clawd Theme build actions. Clawd
 captures mapped Motion frames in the renderer and sends them through the same
 typed `buildProject` service; the returned ZIP is available only through an
@@ -65,12 +75,6 @@ compatibility bundle, the Pixi Live2D adapter, and zip.js. It
 rewrites the shared Mapper to use local `vendor/` paths and emits hashes and
 third-party license notices. Cubism Core and legacy runtimes are never staged;
 they remain user-provided and local.
-
-When a user selects a Cubism Core or legacy runtime, the Mapper stores its
-source text in a browser-profile IndexedDB store (bounded to 16 MiB per runtime)
-so the next launch can restore it without another file-picker step. The stored
-copy is local-only and can be removed with **Clear saved runtimes**; it is never
-included in a Project, cache, package, or release artifact.
 
 The package does not include models, examples, or generated packages. Those
 remain user-provided and local.

@@ -7,6 +7,8 @@ const MAX_RUNTIME_BYTES = 128 * 1024 * 1024;
 const MAX_RUNTIME_FILES = 512;
 const MAX_RUNTIME_DEPTH = 5;
 const MAX_SCAN_BYTES = 2 * 1024 * 1024;
+const RUNTIME_SETTINGS_SCHEMA_VERSION = 1;
+const MAX_RUNTIME_SETTINGS_BYTES = 64 * 1024;
 
 class RuntimeValidationError extends Error {
   constructor(code, message, details = {}) {
@@ -130,8 +132,107 @@ async function createRuntimeSettings(inputPath) {
   };
 }
 
+function emptyRuntimeSettings() {
+  return {
+    schemaVersion: RUNTIME_SETTINGS_SCHEMA_VERSION,
+    configured: false,
+    restartRequired: false,
+  };
+}
+
+function normalizeSettingsPath(settingsPath) {
+  if (typeof settingsPath !== 'string' || !settingsPath.trim()) fail('INVALID_RUNTIME_SETTINGS_PATH', 'A runtime settings file path is required.');
+  const absolute = path.resolve(settingsPath);
+  if (path.parse(absolute).root === absolute) fail('INVALID_RUNTIME_SETTINGS_PATH', 'The runtime settings file cannot be a filesystem root.');
+  return absolute;
+}
+
+function writeRuntimeSettings(settingsPath, settings) {
+  const absolute = normalizeSettingsPath(settingsPath);
+  const serialized = `${JSON.stringify(settings, null, 2)}\n`;
+  if (Buffer.byteLength(serialized, 'utf8') > MAX_RUNTIME_SETTINGS_BYTES) fail('RUNTIME_SETTINGS_TOO_LARGE', `Runtime settings exceed the ${MAX_RUNTIME_SETTINGS_BYTES}-byte limit.`);
+  fs.mkdirSync(path.dirname(absolute), { recursive: true, mode: 0o700 });
+  const temporary = `${absolute}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  try {
+    fs.writeFileSync(temporary, serialized, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    fs.renameSync(temporary, absolute);
+  } catch (error) {
+    try { fs.unlinkSync(temporary); } catch {}
+    fail('RUNTIME_SETTINGS_WRITE_FAILED', 'Runtime settings could not be saved.', { cause: error && error.code ? error.code : String(error && error.message ? error.message : error) });
+  }
+  return absolute;
+}
+
+function parseRuntimeSettings(settingsPath) {
+  const absolute = normalizeSettingsPath(settingsPath);
+  let text;
+  try {
+    const stat = fs.statSync(absolute);
+    if (!stat.isFile()) fail('INVALID_RUNTIME_SETTINGS', 'Runtime settings must be a regular file.');
+    if (stat.size > MAX_RUNTIME_SETTINGS_BYTES) fail('RUNTIME_SETTINGS_TOO_LARGE', `Runtime settings exceed the ${MAX_RUNTIME_SETTINGS_BYTES}-byte limit.`);
+    text = fs.readFileSync(absolute, 'utf8');
+  } catch (error) {
+    if (error instanceof RuntimeValidationError) throw error;
+    if (error && error.code === 'ENOENT') return null;
+    fail('RUNTIME_SETTINGS_READ_FAILED', 'Runtime settings could not be read.', { cause: error && error.code ? error.code : String(error && error.message ? error.message : error) });
+  }
+  let parsed;
+  try { parsed = JSON.parse(text); } catch (error) {
+    fail('INVALID_RUNTIME_SETTINGS', 'Runtime settings are not valid JSON.', { cause: String(error && error.message ? error.message : error) });
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || parsed.schemaVersion !== RUNTIME_SETTINGS_SCHEMA_VERSION || typeof parsed.runtimePath !== 'string' || !parsed.runtimePath.trim() || !parsed.descriptor || typeof parsed.descriptor !== 'object') {
+    fail('INVALID_RUNTIME_SETTINGS', `Runtime settings must use schema version ${RUNTIME_SETTINGS_SCHEMA_VERSION} and contain a runtimePath and descriptor.`);
+  }
+  return { ...parsed, runtimePath: path.resolve(parsed.runtimePath) };
+}
+
+async function saveRuntimeSettings(settingsPath, inputPath) {
+  const descriptor = await inspectRuntime(inputPath);
+  const settings = {
+    schemaVersion: RUNTIME_SETTINGS_SCHEMA_VERSION,
+    runtimePath: path.resolve(inputPath),
+    descriptor,
+    restartRequired: true,
+  };
+  writeRuntimeSettings(settingsPath, settings);
+  return { ...settings, configured: true, available: true };
+}
+
+async function loadRuntimeSettings(settingsPath) {
+  const stored = parseRuntimeSettings(settingsPath);
+  if (!stored) return emptyRuntimeSettings();
+  try {
+    const descriptor = await inspectRuntime(stored.runtimePath);
+    return { ...stored, descriptor, configured: true, available: true, restartRequired: true };
+  } catch (error) {
+    if (!(error instanceof RuntimeValidationError)) throw error;
+    return {
+      ...stored,
+      configured: true,
+      available: false,
+      restartRequired: true,
+      error: { code: error.code, message: error.message },
+    };
+  }
+}
+
+function clearRuntimeSettings(settingsPath) {
+  const absolute = normalizeSettingsPath(settingsPath);
+  try { fs.unlinkSync(absolute); } catch (error) {
+    if (error && error.code !== 'ENOENT') fail('RUNTIME_SETTINGS_CLEAR_FAILED', 'Runtime settings could not be cleared.', { cause: error.code || String(error.message || error) });
+  }
+  return emptyRuntimeSettings();
+}
+
 function redactRuntimeSettings(settings) {
   if (!settings || typeof settings !== 'object') fail('INVALID_RUNTIME_SETTINGS', 'Runtime settings must be an object.');
+  if (settings.configured === false || !settings.runtimePath) {
+    return {
+      schemaVersion: RUNTIME_SETTINGS_SCHEMA_VERSION,
+      configured: false,
+      restartRequired: false,
+    };
+  }
   if (!settings.descriptor || typeof settings.descriptor !== 'object') fail('INVALID_RUNTIME_SETTINGS', 'Runtime settings are missing a validated descriptor.');
   return {
     schemaVersion: settings.schemaVersion,
@@ -142,15 +243,22 @@ function redactRuntimeSettings(settings) {
     cubismGenerations: settings.descriptor.cubismGenerations,
     fingerprint: settings.descriptor.fingerprint,
     restartRequired: settings.restartRequired !== false,
+    available: settings.available !== false,
+    ...(settings.error && typeof settings.error === 'object' && typeof settings.error.code === 'string' ? { error: { code: settings.error.code, message: String(settings.error.message || 'Runtime is unavailable.').replace(/(?:[A-Za-z]:[\\/]|\/(?:Users|home|private|tmp)\/)[^\s'"`]+/g, '<redacted-path>') } } : {}),
   };
 }
 
 module.exports = {
   MAX_RUNTIME_BYTES,
   MAX_RUNTIME_FILES,
+  MAX_RUNTIME_SETTINGS_BYTES,
   RuntimeValidationError,
+  RUNTIME_SETTINGS_SCHEMA_VERSION,
+  clearRuntimeSettings,
   createRuntimeSettings,
   inspectRuntime,
+  loadRuntimeSettings,
   redactRuntimeSettings,
+  saveRuntimeSettings,
   SCHEMA_VERSION,
 };

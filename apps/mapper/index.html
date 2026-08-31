@@ -1595,6 +1595,10 @@
       return window.live2pet && typeof window.live2pet.inspectSource === "function" ? window.live2pet : null;
     }
 
+    function desktopRuntimeApi() {
+      return window.live2pet && typeof window.live2pet.configureRuntime === "function" ? window.live2pet : null;
+    }
+
     function localFilePath(file) {
       const value = file?.path;
       return typeof value === "string" && /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value) ? value : null;
@@ -1734,6 +1738,14 @@
 
     async function loadLocalRuntime(file, kind) {
       if (!file) return;
+      const api = desktopRuntimeApi();
+      const inputPath = localFilePath(file);
+      if (api && inputPath) {
+        const response = await api.configureRuntime({ inputPath });
+        if (!response || response.ok !== true || !response.result) {
+          throw projectError(response?.error?.code || "RUNTIME_SETTINGS_FAILED", response?.error?.message || "The Desktop App could not save the selected runtime setting.");
+        }
+      }
       const source = await file.text();
       await loadRuntimeSource(source, file.name, kind);
     }
@@ -3598,8 +3610,13 @@
     $("clearSavedRuntimes").addEventListener("click", async () => {
       try {
         setRuntimeStatus(I18n.t("runtime.clearing"), "busy");
+        const api = desktopRuntimeApi();
+        if (api && typeof api.clearRuntimeSettings === "function") {
+          const response = await api.clearRuntimeSettings();
+          if (!response || response.ok !== true) throw projectError(response?.error?.code || "RUNTIME_SETTINGS_CLEAR_FAILED", response?.error?.message || "The Desktop App could not clear the saved runtime setting.");
+        }
         const cleared = await clearPersistedRuntimes();
-        setRuntimeStatus(I18n.t(cleared ? "runtime.cleared" : "runtime.storageUnavailable"), cleared ? "good" : "");
+        setRuntimeStatus(I18n.t(cleared || api ? "runtime.cleared" : "runtime.storageUnavailable"), cleared || api ? "good" : "");
       } catch (error) {
         setRuntimeStatus(`${error.code || "RUNTIME_STORAGE_CLEAR_FAILED"}: ${error.message}`, "bad");
       }

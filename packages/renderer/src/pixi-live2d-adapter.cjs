@@ -63,7 +63,8 @@ function normalizePixiSource(source) {
       if (!expression || typeof expression !== 'object') fail('INVALID_RENDER_SOURCE', `Expression ${index} must be an object.`);
       const id = nonEmptyString(expression.id, `Expression ${index} id`);
       const name = typeof expression.name === 'string' && expression.name ? expression.name : id;
-      const runtimeId = typeof expression.runtimeId === 'string' && expression.runtimeId ? expression.runtimeId : name;
+      const runtimeId = (typeof expression.runtimeId === 'string' && expression.runtimeId)
+        || (Number.isInteger(expression.runtimeId) && expression.runtimeId >= 0 ? expression.runtimeId : name);
       return { id, name, runtimeId };
     })
     : [];
@@ -89,7 +90,11 @@ function pixiSourceFromManifest(manifest, { baseUrl = '' } = {}) {
       index: motion.index,
       duration: motion.duration == null ? 0 : motion.duration,
     })) : [],
-    expressions: Array.isArray(manifest.expressions) ? manifest.expressions.map((expression) => ({ id: expression.id, name: expression.name, runtimeId: expression.name })) : [],
+    expressions: Array.isArray(manifest.expressions) ? manifest.expressions.map((expression) => ({
+      id: expression.id,
+      name: expression.name,
+      runtimeId: Number(manifest.model && manifest.model.cubism) === 2 && Number.isInteger(expression.index) ? expression.index : (expression.runtimeId || expression.name),
+    })) : [],
   });
 }
 
@@ -472,8 +477,22 @@ class PixiLive2dAdapter {
   }
 }
 
+/**
+ * Cubism 2 is deliberately exposed as a separate adapter boundary. It reuses
+ * the temporary Pixi host mechanics, but refuses modern Source Packages so a
+ * future legacy engine can replace it without changing the application
+ * renderer contract.
+ */
+class LegacyPixiLive2dAdapter extends PixiLive2dAdapter {
+  async load(source) {
+    if (!source || Number(source.cubismVersion) !== 2) fail('LEGACY_SOURCE_REQUIRED', 'The Cubism 2 adapter accepts only Cubism 2 Source Packages.');
+    return super.load(source);
+  }
+}
+
 module.exports = {
   DEFAULT_OPTIONS,
+  LegacyPixiLive2dAdapter,
   PixiLive2dAdapter,
   normalizePixiSource,
   pixiSourceFromManifest,

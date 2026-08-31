@@ -52,6 +52,9 @@ const onBuildProgress = (listener) => {
 contextBridge.exposeInMainWorld('live2pet', Object.freeze({
   getVersion: () => invoke('getVersion'),
   inspectSource: (input) => invoke('inspectSource', input),
+  getRuntimeSettings: () => invoke('getRuntimeSettings'),
+  configureRuntime: (input) => invoke('configureRuntime', input),
+  clearRuntimeSettings: () => invoke('clearRuntimeSettings'),
   startMapperSession: (options) => invoke('startMapperSession', options),
   getMapperProject: () => invoke('getMapperProject'),
   updateMapperProject: (project) => invoke('updateMapperProject', project),

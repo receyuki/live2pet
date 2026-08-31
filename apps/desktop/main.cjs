@@ -12,6 +12,12 @@ const { startMapperSessionHost } = require('../../packages/mapper-session/src/in
 const { CacheStore, buildProjectTargets } = require('../../packages/package-build/src/index.cjs');
 const { installPackage } = require('../../packages/installation/src/index.cjs');
 const { inspectSourcePackage } = require('../../packages/source-inspector/src/index.cjs');
+const {
+  clearRuntimeSettings,
+  loadRuntimeSettings,
+  redactRuntimeSettings,
+  saveRuntimeSettings,
+} = require('../../packages/runtime/src/index.cjs');
 
 const DEVELOPMENT_MAPPER_PATH = path.resolve(__dirname, '../mapper/index.html');
 const PACKAGED_MAPPER_PATH = path.join(process.resourcesPath, 'mapper-dist', 'index.html');
@@ -19,6 +25,7 @@ const SOURCE_CACHE_LIMIT = 1024 * 1024 * 1024;
 let mainWindow = null;
 let route = null;
 let sourceCache = null;
+let runtimeSettingsFile = null;
 
 function mapperPath() {
   return app.isPackaged ? PACKAGED_MAPPER_PATH : DEVELOPMENT_MAPPER_PATH;
@@ -46,10 +53,22 @@ function sourceInspectionService({ inputPath, projectId } = {}) {
   return inspectSourcePackage(inputPath, { cache: sourceCache, projectId });
 }
 
+function runtimeSettingsPath() {
+  if (!runtimeSettingsFile) runtimeSettingsFile = path.join(app.getPath('userData'), 'settings', 'runtime.json');
+  return runtimeSettingsFile;
+}
+
+const runtimeSettingsService = Object.freeze({
+  get: async () => redactRuntimeSettings(await loadRuntimeSettings(runtimeSettingsPath())),
+  configure: async ({ inputPath } = {}) => redactRuntimeSettings(await saveRuntimeSettings(runtimeSettingsPath(), inputPath)),
+  clear: async () => redactRuntimeSettings(clearRuntimeSettings(runtimeSettingsPath())),
+});
+
 function registerIpc() {
   route = createAppIpcRouter({
     mapperHostFactory,
     sourceInspectionService,
+    runtimeSettingsService,
     buildProjectService: buildProjectTargets,
     installPackageService: installPackage,
     onBuildProgress: (event) => {

@@ -8,6 +8,7 @@ const APP_IPC_CHANNEL = 'live2pet:app';
 const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';
 const APP_BUILD_ARTIFACT_CHUNK_BYTES = 1024 * 1024;
 const APP_SOURCE_INSPECTION_PROGRESS_STAGE = 'inspect';
+const APP_RUNTIME_PROGRESS_STAGE = 'runtime';
 const BUILD_PROGRESS_FIELDS = Object.freeze([
   'target',
   'stage',
@@ -49,6 +50,9 @@ const BUILD_PROGRESS_FIELDS = Object.freeze([
 const APP_IPC_METHODS = Object.freeze([
   'getVersion',
   'inspectSource',
+  'getRuntimeSettings',
+  'configureRuntime',
+  'clearRuntimeSettings',
   'startMapperSession',
   'getMapperProject',
   'updateMapperProject',
@@ -167,6 +171,35 @@ function summarizeSourceInspection(result) {
   return sanitized;
 }
 
+function normalizeRuntimeRequest(value) {
+  if (!isRecord(value)) fail('INVALID_RUNTIME_REQUEST', 'App runtime configuration input must be an object.');
+  const allowed = new Set(['inputPath']);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) fail('INVALID_RUNTIME_REQUEST', `App runtime configuration contains unsupported fields: ${unknown.join(', ')}.`);
+  if (typeof value.inputPath !== 'string' || !value.inputPath.trim() || value.inputPath.length > 4096 || value.inputPath.includes('\0')) fail('INVALID_RUNTIME_REQUEST', 'App runtime configuration requires a valid local inputPath.');
+  return { inputPath: value.inputPath.trim() };
+}
+
+function summarizeRuntimeSettings(result) {
+  const sanitized = sanitizeInspectionValue(result);
+  if (!isRecord(sanitized) || sanitized.schemaVersion !== 1 || typeof sanitized.configured !== 'boolean' || typeof sanitized.restartRequired !== 'boolean') fail('INVALID_RUNTIME_RESULT', 'App runtime settings did not return the supported versioned contract.');
+  if (!sanitized.configured) return { schemaVersion: 1, configured: false, restartRequired: false };
+  if (Object.hasOwn(sanitized, 'runtimePath')) fail('INVALID_RUNTIME_RESULT', 'App runtime settings must not expose a runtime path.');
+  if (typeof sanitized.runtimeName !== 'string' || !sanitized.runtimeName || typeof sanitized.runtimeKind !== 'string' || !sanitized.runtimeKind || !Array.isArray(sanitized.cubismGenerations) || !sanitized.cubismGenerations.every((generation) => Number.isInteger(generation) && generation >= 2 && generation <= 5) || typeof sanitized.fingerprint !== 'string' || !/^[a-f0-9]{64}$/i.test(sanitized.fingerprint) || typeof sanitized.available !== 'boolean') fail('INVALID_RUNTIME_RESULT', 'App runtime settings are missing validated runtime metadata.');
+  return {
+    schemaVersion: 1,
+    configured: true,
+    runtimeName: sanitized.runtimeName,
+    ...(typeof sanitized.sourceType === 'string' ? { sourceType: sanitized.sourceType } : {}),
+    runtimeKind: sanitized.runtimeKind,
+    cubismGenerations: [...sanitized.cubismGenerations],
+    fingerprint: sanitized.fingerprint,
+    restartRequired: sanitized.restartRequired,
+    available: sanitized.available,
+    ...(sanitized.error && isRecord(sanitized.error) && typeof sanitized.error.code === 'string' ? { error: { code: sanitized.error.code, message: typeof sanitized.error.message === 'string' ? sanitized.error.message : 'Runtime is unavailable.' } } : {}),
+  };
+}
+
 function normalizeInstallRequest(value) {
   if (!isRecord(value)) fail('INVALID_INSTALL_REQUEST', 'App installation input must be an object.');
   const allowed = new Set(['artifactId', 'target', 'conflict', 'confirmInstall']);
@@ -272,9 +305,10 @@ function typedError(error) {
   };
 }
 
-function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, sourceInspectionService = null, buildProjectService = null, installPackageService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
+function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, sourceInspectionService = null, runtimeSettingsService = null, buildProjectService = null, installPackageService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
   if (typeof mapperHostFactory !== 'function') fail('INVALID_APP_ROUTER', 'mapperHostFactory must be a function.');
   if (sourceInspectionService !== null && typeof sourceInspectionService !== 'function') fail('INVALID_APP_ROUTER', 'sourceInspectionService must be a function when provided.');
+  if (runtimeSettingsService !== null && (!isRecord(runtimeSettingsService) || typeof runtimeSettingsService.get !== 'function' || typeof runtimeSettingsService.configure !== 'function' || typeof runtimeSettingsService.clear !== 'function')) fail('INVALID_APP_ROUTER', 'runtimeSettingsService must expose get, configure, and clear functions when provided.');
   if (buildProjectService !== null && typeof buildProjectService !== 'function') fail('INVALID_APP_ROUTER', 'buildProjectService must be a function when provided.');
   if (installPackageService !== null && typeof installPackageService !== 'function') fail('INVALID_APP_ROUTER', 'installPackageService must be a function when provided.');
   if (onBuildProgress !== null && typeof onBuildProgress !== 'function') fail('INVALID_APP_ROUTER', 'onBuildProgress must be a function when provided.');
@@ -311,6 +345,20 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, source
           warnings: inspected.warnings,
           result: inspected,
         };
+      }
+      if (normalized.method === 'getRuntimeSettings') {
+        if (!runtimeSettingsService) fail('APP_RUNTIME_UNAVAILABLE', 'The App runtime settings service is not configured.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRuntimeSettings(await runtimeSettingsService.get()) };
+      }
+      if (normalized.method === 'configureRuntime') {
+        if (!runtimeSettingsService) fail('APP_RUNTIME_UNAVAILABLE', 'The App runtime settings service is not configured.');
+        const input = normalizeRuntimeRequest(normalized.args[0]);
+        const result = summarizeRuntimeSettings(await runtimeSettingsService.configure(input));
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, progress: [{ stage: APP_RUNTIME_PROGRESS_STAGE, status: 'completed' }], result };
+      }
+      if (normalized.method === 'clearRuntimeSettings') {
+        if (!runtimeSettingsService) fail('APP_RUNTIME_UNAVAILABLE', 'The App runtime settings service is not configured.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRuntimeSettings(await runtimeSettingsService.clear()) };
       }
       if (normalized.method === 'startMapperSession') {
         if (activeHost) fail('MAPPER_SESSION_ACTIVE', 'A Mapper Session is already active. Close it before starting another session.');
@@ -440,6 +488,9 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL } = {}) {
   return Object.freeze({
     getVersion: () => invoke('getVersion'),
     inspectSource: (input) => invoke('inspectSource', input),
+    getRuntimeSettings: () => invoke('getRuntimeSettings'),
+    configureRuntime: (input) => invoke('configureRuntime', input),
+    clearRuntimeSettings: () => invoke('clearRuntimeSettings'),
     startMapperSession: (options) => invoke('startMapperSession', options),
     getMapperProject: () => invoke('getMapperProject'),
     updateMapperProject: (project) => invoke('updateMapperProject', project),
@@ -476,6 +527,7 @@ module.exports = {
   APP_BUILD_ARTIFACT_CHUNK_BYTES,
   APP_BUILD_PROGRESS_CHANNEL,
   APP_SOURCE_INSPECTION_PROGRESS_STAGE,
+  APP_RUNTIME_PROGRESS_STAGE,
   APP_IPC_CHANNEL,
   APP_IPC_METHODS,
   APP_IPC_PROTOCOL_VERSION,
@@ -486,6 +538,7 @@ module.exports = {
   createAppWindowOptions,
   normalizeRequest,
   normalizeInspectRequest,
+  normalizeRuntimeRequest,
   normalizeBuildRequest,
   normalizeInstallRequest,
   normalizeBuildProgressEvent,
@@ -495,4 +548,5 @@ module.exports = {
   summarizeInstall,
   collectBuildArtifacts,
   summarizeSourceInspection,
+  summarizeRuntimeSettings,
 };

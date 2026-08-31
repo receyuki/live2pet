@@ -8,6 +8,7 @@ const {
   CONTRACT_METHODS,
   RENDERER_IPC_CHANNEL,
   RendererContractError,
+  LegacyPixiLive2dAdapter,
   PixiLive2dAdapter,
   SyntheticRenderer,
   assertRenderer,
@@ -212,6 +213,25 @@ test('Pixi Live2D adapter bridges the shared contract without bundling a runtime
   assert.equal(renderer.getState().loaded, false);
   assert.ok(page.calls.some((call) => call.name === 'pageLoad'));
   assert.ok(page.calls.some((call) => call.name === 'pageCapture'));
+});
+
+test('Cubism 2 adapter keeps the legacy boundary explicit and preserves expression indexes', async () => {
+  const page = new FakePixiPage();
+  const renderer = new LegacyPixiLive2dAdapter({ page });
+  await assert.rejects(
+    () => renderer.load(pixiSource()),
+    (error) => error instanceof RendererContractError && error.code === 'LEGACY_SOURCE_REQUIRED',
+  );
+  const source = pixiSourceFromManifest({
+    source: { modelConfig: 'model.json' },
+    model: { cubism: 2 },
+    motions: [{ id: 'idle:0', name: 'Idle', group: 'idle', index: 0, duration: 1 }],
+    expressions: [{ id: '0', index: 0, name: 'angry' }],
+  });
+  assert.equal(source.expressions[0].runtimeId, 0);
+  await renderer.load(source);
+  await renderer.setExpression('0');
+  assert.equal(page.calls.find((call) => call.name === 'pageSetExpression').args[0], 0);
 });
 
 test('renderer host helpers enforce sandbox defaults, CSP, and a narrow IPC surface', async () => {
