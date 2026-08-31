@@ -133,6 +133,41 @@ test('serves an optional mapper document and performs a one-time browser bootstr
   }
 });
 
+test('serves only explicitly allowlisted Mapper assets with typed content and Origin checks', async () => {
+  const session = await startMapperSession({
+    project: project(),
+    mapperHtml: '<!doctype html><html><body><script src="vendor/test.js"></script></body></html>',
+    mapperAssets: { 'vendor/test.js': 'window.__live2petFixture = true;' },
+    idleTimeoutMs: 1000,
+  });
+  try {
+    const asset = await fetch(`${session.origin}/vendor/test.js`, { headers: { Origin: session.origin } });
+    assert.equal(asset.status, 200);
+    assert.equal(asset.headers.get('content-type'), 'text/javascript; charset=utf-8');
+    assert.equal(asset.headers.get('access-control-allow-origin'), session.origin);
+    assert.equal(await asset.text(), 'window.__live2petFixture = true;');
+
+    const missing = await fetch(`${session.origin}/vendor/missing.js`, { headers: { Origin: session.origin, Authorization: `Bearer ${session.token}` } });
+    assert.equal(missing.status, 404);
+    assert.equal((await missing.json()).error.code, 'NOT_FOUND');
+
+    const wrongOrigin = await fetch(`${session.origin}/vendor/test.js`, { headers: { Origin: 'http://evil.invalid' } });
+    assert.equal(wrongOrigin.status, 403);
+    assert.equal((await wrongOrigin.json()).error.code, 'ORIGIN_NOT_ALLOWED');
+  } finally {
+    await session.close();
+  }
+});
+
+test('rejects unsafe or empty Mapper asset declarations before opening a session', async () => {
+  for (const mapperAssets of [{ '../escape.js': 'x' }, { 'empty.js': '' }, { '/absolute.js': 'x' }]) {
+    await assert.rejects(
+      () => startMapperSession({ project: project(), mapperAssets }),
+      (error) => error instanceof MapperSessionError && error.code === 'INVALID_MAPPER_ASSET',
+    );
+  }
+});
+
 test('rejects oversized mapper documents before opening a session', async () => {
   await assert.rejects(
     () => startMapperSession({ project: project(), mapperHtml: 'x'.repeat(MAX_MAPPER_HTML_BYTES + 1) }),
@@ -152,6 +187,25 @@ test('creates a token-free launch descriptor for a file-based Mapper host and ke
     assert.equal(Object.hasOwn(descriptor, 'token'), false);
     const client = host.getClient();
     assert.equal((await client.getProject()).project.projectId, 'session-fixture');
+  } finally {
+    await host.close();
+  }
+});
+
+test('loads a bounded asset bundle for a Mapper host without exposing the source directory', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-mapper-assets-'));
+  const mapperPath = path.join(root, 'index.html');
+  const vendorPath = path.join(root, 'vendor');
+  fs.mkdirSync(vendorPath);
+  fs.writeFileSync(mapperPath, '<!doctype html><html><body>host</body></html>');
+  fs.writeFileSync(path.join(vendorPath, 'test.js'), 'window.__hostFixture = true;');
+  const host = await startMapperSessionHost({ project: project(), mapperPath, mapperUrl: `file://${mapperPath}`, mapperAssetRoot: root, idleTimeoutMs: 1000 });
+  try {
+    const asset = await fetch(`${host.origin}/vendor/test.js`, { headers: { Origin: host.origin } });
+    assert.equal(asset.status, 200);
+    assert.equal(await asset.text(), 'window.__hostFixture = true;');
+    const source = await fetch(`${host.origin}/package.json`, { headers: { Origin: host.origin } });
+    assert.equal(source.status, 401);
   } finally {
     await host.close();
   }

@@ -240,7 +240,7 @@ All model processing remains local. Cubism Core and legacy runtimes are selected
 - Structured output includes protocol version, operation id, progress events, result, warnings, and typed error codes. Human-readable output is a presentation layer over the same result.
 - The App installs or updates the matching Codex skill only after explicit confirmation and reports the installed skill and CLI protocol versions.
 - The skill uses the CLI for nonvisual work. It does not bundle Electron, renderers, codecs, Core, or a second copy of the build pipeline.
-- Visual work starts a Mapper Session bound only to loopback. Each session receives an unguessable bearer token, one project allowlist, Origin validation, strict Content Security Policy, no general filesystem API, an explicit close action, and a short idle expiry.
+- Visual work starts a Mapper Session bound only to loopback. Each session receives an unguessable bearer token, one project allowlist, Origin validation, strict Content Security Policy, no general filesystem API, an explicit close action, and a short idle expiry. A packaged Mapper may provide a pre-staged asset root; the host snapshots a bounded allowlist of regular files and serves only those exact paths, never the source directory as a general file server.
 - The browser mapper writes through typed project operations and cannot invoke arbitrary shell commands or read paths outside the selected project and Source Package.
 - If the Codex in-app browser cannot open the Mapper Session, the skill opens the same project in the Electron App and continues headless work after the project is saved.
 

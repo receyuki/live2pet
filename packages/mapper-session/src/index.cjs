@@ -10,6 +10,9 @@ const PROTOCOL_VERSION = 1;
 const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_MAPPER_HTML_BYTES = 4 * 1024 * 1024;
+const MAX_MAPPER_ASSETS = 128;
+const MAX_MAPPER_ASSET_BYTES = 16 * 1024 * 1024;
+const MAX_MAPPER_ASSET_TOTAL_BYTES = 64 * 1024 * 1024;
 const LOOPBACK_HOST = '127.0.0.1';
 const MAPPER_PATH = '/mapper';
 
@@ -93,13 +96,87 @@ function htmlResponse(html, status = 200, headers = {}) {
     headers: {
       'content-type': 'text/html; charset=utf-8',
       'cache-control': 'no-store',
-      'content-security-policy': "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+      'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'self' data:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
       'x-content-type-options': 'nosniff',
       'content-length': String(body.length),
       ...headers,
     },
     body,
   };
+}
+
+function normalizeMapperAssetPath(value) {
+  if (typeof value !== 'string' || !value.trim()) fail('INVALID_MAPPER_ASSET', 'Mapper asset paths must be non-empty strings.');
+  const replaced = value.replaceAll('\\', '/');
+  if (replaced.includes('\0') || replaced.startsWith('/') || /^[a-z]:\//i.test(replaced)) fail('INVALID_MAPPER_ASSET', `Mapper asset path is not safely relative: ${value}`);
+  const normalized = path.posix.normalize(replaced);
+  if (!normalized || normalized === '.' || normalized === '..' || normalized.startsWith('../')) fail('INVALID_MAPPER_ASSET', `Mapper asset path escapes its bundle: ${value}`);
+  return normalized;
+}
+
+function mapperAssetContentType(relativePath) {
+  const extension = path.posix.extname(relativePath).toLowerCase();
+  return {
+    '.js': 'text/javascript; charset=utf-8',
+    '.mjs': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.txt': 'text/plain; charset=utf-8',
+    '.html': 'text/html; charset=utf-8',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
+    '.wasm': 'application/wasm',
+  }[extension] || 'application/octet-stream';
+}
+
+function normalizeMapperAssets(input) {
+  if (input == null) return new Map();
+  const entries = input instanceof Map ? [...input.entries()] : input && typeof input === 'object' && !Array.isArray(input) ? Object.entries(input) : null;
+  if (!entries) fail('INVALID_MAPPER_ASSET', 'Mapper assets must be a Map or an object keyed by relative paths.');
+  if (entries.length > MAX_MAPPER_ASSETS) fail('MAPPER_ASSET_LIMIT', `Mapper assets cannot contain more than ${MAX_MAPPER_ASSETS} files.`);
+  const assets = new Map();
+  let total = 0;
+  for (const [rawName, rawValue] of entries) {
+    const name = normalizeMapperAssetPath(rawName);
+    if (assets.has(name)) fail('DUPLICATE_MAPPER_ASSET', `Mapper asset is declared more than once: ${name}`);
+    const body = typeof rawValue === 'string' ? Buffer.from(rawValue, 'utf8') : Buffer.isBuffer(rawValue) ? Buffer.from(rawValue) : rawValue instanceof Uint8Array ? Buffer.from(rawValue) : null;
+    if (!body || !body.length) fail('INVALID_MAPPER_ASSET', `Mapper asset cannot be empty: ${name}`);
+    if (body.length > MAX_MAPPER_ASSET_BYTES) fail('MAPPER_ASSET_TOO_LARGE', `Mapper asset exceeds the ${MAX_MAPPER_ASSET_BYTES}-byte limit: ${name}`);
+    total += body.length;
+    if (total > MAX_MAPPER_ASSET_TOTAL_BYTES) fail('MAPPER_ASSET_TOTAL_TOO_LARGE', `Mapper assets exceed the ${MAX_MAPPER_ASSET_TOTAL_BYTES}-byte total limit.`);
+    assets.set(name, { body, contentType: mapperAssetContentType(name) });
+  }
+  return assets;
+}
+
+function readMapperAssets(root) {
+  if (typeof root !== 'string' || !root.trim()) throw new MapperSessionError('MAPPER_ASSET_ROOT_REQUIRED', 'mapperAssetRoot must be a non-empty directory path.');
+  let stat;
+  try { stat = fs.statSync(root); } catch (error) { throw new MapperSessionError('MAPPER_ASSET_ROOT_READ_FAILED', 'The Mapper asset directory could not be read.', { cause: error && error.code ? error.code : 'UNKNOWN' }); }
+  if (!stat.isDirectory()) throw new MapperSessionError('MAPPER_ASSET_ROOT_READ_FAILED', 'The Mapper asset root is not a directory.');
+  const entries = [];
+  function visit(directory, relativeDirectory) {
+    const children = fs.readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name));
+    for (const child of children) {
+      const absolute = path.join(directory, child.name);
+      const relative = relativeDirectory ? `${relativeDirectory}/${child.name}` : child.name;
+      if (child.isSymbolicLink()) throw new MapperSessionError('UNSUPPORTED_MAPPER_ASSET', `Mapper asset bundle contains a symbolic link: ${relative}`);
+      if (child.isDirectory()) { visit(absolute, relative); continue; }
+      if (!child.isFile()) throw new MapperSessionError('UNSUPPORTED_MAPPER_ASSET', `Mapper asset bundle entry is not a regular file: ${relative}`);
+      entries.push({ relative: normalizeMapperAssetPath(relative), absolute });
+      if (entries.length > MAX_MAPPER_ASSETS) throw new MapperSessionError('MAPPER_ASSET_LIMIT', `Mapper assets cannot contain more than ${MAX_MAPPER_ASSETS} files.`);
+    }
+  }
+  visit(root, '');
+  const assets = new Map();
+  for (const entry of entries) {
+    const data = fs.readFileSync(entry.absolute);
+    assets.set(entry.relative, data);
+  }
+  return assets;
 }
 
 function resolveMapperUrl(value, fallback) {
@@ -169,7 +246,7 @@ function readJsonBody(request) {
   });
 }
 
-function startMapperSession({ project, allowedOrigins, mapperHtml, host = LOOPBACK_HOST, port = 0, idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS } = {}) {
+function startMapperSession({ project, allowedOrigins, mapperHtml, mapperAssets, host = LOOPBACK_HOST, port = 0, idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS } = {}) {
   if (host !== LOOPBACK_HOST) return Promise.reject(new MapperSessionError('NON_LOOPBACK_BINDING', 'Mapper Sessions can bind only to 127.0.0.1.'));
   if (!Number.isInteger(port) || port < 0 || port > 65535) return Promise.reject(new MapperSessionError('INVALID_PORT', 'Mapper Session port must be an integer between 0 and 65535.'));
   if (!Number.isInteger(idleTimeoutMs) || idleTimeoutMs < 1000 || idleTimeoutMs > 24 * 60 * 60 * 1000) return Promise.reject(new MapperSessionError('INVALID_IDLE_TIMEOUT', 'Mapper Session idleTimeoutMs must be between 1000 and 86400000.'));
@@ -178,9 +255,11 @@ function startMapperSession({ project, allowedOrigins, mapperHtml, host = LOOPBA
   if (mapperHtml !== undefined && (typeof mapperHtml !== 'string' || Buffer.byteLength(mapperHtml, 'utf8') > MAX_MAPPER_HTML_BYTES)) {
     return Promise.reject(new MapperSessionError('INVALID_MAPPER_HTML', `mapperHtml must be a UTF-8 string no larger than ${MAX_MAPPER_HTML_BYTES} bytes.`));
   }
+  let normalizedAssets;
   try {
     currentProject = normalizeProject(project);
     origins = normalizeOrigins(allowedOrigins);
+    normalizedAssets = normalizeMapperAssets(mapperAssets);
   } catch (error) {
     return Promise.reject(error);
   }
@@ -223,6 +302,9 @@ function startMapperSession({ project, allowedOrigins, mapperHtml, host = LOOPBA
     if (origins === null && origin) origins = new Set([origin]);
     const requestPath = new URL(request.url || '/', origin || `http://${LOOPBACK_HOST}`).pathname;
     const isMapperDocument = request.method === 'GET' && requestPath === MAPPER_PATH && mapperHtml !== undefined;
+    const assetName = requestPath.startsWith('/') ? requestPath.slice(1) : requestPath;
+    const mapperAsset = request.method === 'GET' ? normalizedAssets.get(assetName) : null;
+    const isMapperAsset = Boolean(mapperAsset);
     if (!isMapperDocument && !isAllowedOrigin(requestOrigin)) {
       failRequest(response, new MapperSessionError('ORIGIN_NOT_ALLOWED', 'The request Origin is not allowed for this Mapper Session.'), 403);
       return;
@@ -230,6 +312,14 @@ function startMapperSession({ project, allowedOrigins, mapperHtml, host = LOOPBA
     const corsHeaders = { 'access-control-allow-origin': requestOrigin, vary: 'Origin' };
     if (isMapperDocument) {
       writeResponse(response, htmlResponse(mapperHtml, 200));
+      return;
+    }
+    if (isMapperAsset) {
+      writeResponse(response, {
+        status: 200,
+        headers: { 'content-type': mapperAsset.contentType, 'cache-control': 'no-store', 'content-length': String(mapperAsset.body.length), 'x-content-type-options': 'nosniff', ...corsHeaders },
+        body: mapperAsset.body,
+      });
       return;
     }
     if (request.method === 'OPTIONS') {
@@ -323,15 +413,16 @@ function startMapperSession({ project, allowedOrigins, mapperHtml, host = LOOPBA
   });
 }
 
-async function startMapperSessionHost({ project, mapperHtml, mapperPath, mapperUrl, allowedOrigins, host = LOOPBACK_HOST, port = 0, idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS } = {}) {
+async function startMapperSessionHost({ project, mapperHtml, mapperPath, mapperUrl, mapperAssetRoot, mapperAssets, allowedOrigins, host = LOOPBACK_HOST, port = 0, idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS } = {}) {
   const document = mapperHtml === undefined ? readMapperHtml(mapperPath) : mapperHtml;
+  const assets = mapperAssets === undefined && mapperAssetRoot !== undefined ? readMapperAssets(mapperAssetRoot) : mapperAssets;
   const resolvedMapperUrl = mapperUrl === undefined && mapperPath ? resolveMapperUrl(pathToFileURL(path.resolve(mapperPath)).href) : mapperUrl === undefined ? undefined : resolveMapperUrl(mapperUrl);
   let origins = allowedOrigins;
   if (origins === undefined && resolvedMapperUrl) {
     const parsed = new URL(resolvedMapperUrl);
     origins = parsed.protocol === 'file:' ? ['null'] : [parsed.origin];
   }
-  const session = await startMapperSession({ project, mapperHtml: document, allowedOrigins: origins, host, port, idleTimeoutMs });
+  const session = await startMapperSession({ project, mapperHtml: document, mapperAssets: assets, allowedOrigins: origins, host, port, idleTimeoutMs });
   const launchUrl = () => session.getMapperUrl({ mapperUrl: resolvedMapperUrl || `${session.origin}${MAPPER_PATH}` });
   return Object.freeze({
     protocolVersion: session.protocolVersion,
@@ -355,6 +446,9 @@ module.exports = {
   PROTOCOL_VERSION,
   createMapperSessionClient,
   readMapperHtml,
+  readMapperAssets,
+  normalizeMapperAssetPath,
+  normalizeMapperAssets,
   resolveMapperUrl,
   startMapperSession,
   startMapperSessionHost,

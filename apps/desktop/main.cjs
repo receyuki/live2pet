@@ -25,6 +25,7 @@ function mapperHostFactory(options = {}) {
     project: options.project,
     mapperPath: documentPath,
     mapperUrl: pathToFileURL(documentPath).href,
+    mapperAssetRoot: app.isPackaged ? path.dirname(documentPath) : undefined,
     idleTimeoutMs: options.idleTimeoutMs,
   });
 }

@@ -9,13 +9,14 @@ const host = await startMapperSessionHost({
   project,
   mapperPath: '/path/to/apps/mapper/index.html',
   mapperUrl: 'file:///path/to/apps/mapper/index.html',
+  mapperAssetRoot: '/path/to/apps/mapper-dist',
 });
 
 const launch = host.getLaunchDescriptor();
 // Pass launch.mapperUrl to the trusted browser host. Do not serialize a token.
 ```
 
-The helper reads only the explicitly supplied Mapper document, enforces the 4 MiB document limit, and accepts only a `file:` URL or a loopback `http:` URL. For a `file:` Mapper, it automatically allowlists the browser's opaque `null` Origin and still permits the session's own loopback origin for trusted programmatic clients. The URL fragment contains a one-time bootstrap code, not the bearer token. The Mapper exchanges it at `POST /bootstrap`, removes the fragment from its history entry, and keeps the returned token in memory.
+The helper reads only the explicitly supplied Mapper document, enforces the 4 MiB document limit, and accepts only a `file:` URL or a loopback `http:` URL. `mapperAssetRoot` is optional and is intended for a packaged, pre-staged Mapper bundle: it recursively snapshots at most 128 regular files (16 MiB per file, 64 MiB total), rejects symlinks and traversal, and serves only those exact relative paths from the loopback session. It is an allowlisted asset map, not a general filesystem server. For a `file:` Mapper, it automatically allowlists the browser's opaque `null` Origin and still permits the session's own loopback origin for trusted programmatic clients. The URL fragment contains a one-time bootstrap code, not the bearer token. The Mapper exchanges it at `POST /bootstrap`, removes the fragment from its history entry, and keeps the returned token in memory.
 
 The host descriptor contains only the protocol version, session id, loopback API origin, expiry, and launch URL. Keep the returned host handle private to the App main process; use `getClient()` for typed project operations and `close()` when the mapping task ends.
 
