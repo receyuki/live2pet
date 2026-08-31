@@ -60,4 +60,8 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /const RUNTIME_DB_NAME = "live2pet-mapper-runtime"/);
   assert.match(mapper, /const I18n = \(\(\) =>/);
   assert.match(mapper, /id="languageSelect"/);
+  assert.match(mapper, /class="mapping-scroll"/);
+  assert.match(mapper, /\.mapping-panel \{ display: flex; flex-direction: column; max-height: min\(820px, calc\(100dvh - 190px\)\); \}/);
+  assert.match(mapper, /\.mapping-scroll \{ min-height: 0; overflow-y: auto; overflow-x: hidden;/);
+  assert.match(mapper, /\.motion-list, \.expression-list \{ display: grid; grid-template-columns: 1fr;/);
 });

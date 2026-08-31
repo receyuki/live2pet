@@ -80,6 +80,8 @@
     .workspace > .panel { min-width: 0; }
     .library-panel, .preview-panel, .mapping-panel { min-height: 620px; }
     .library-panel, .mapping-panel { overflow: hidden; }
+    .mapping-panel { display: flex; flex-direction: column; max-height: min(820px, calc(100dvh - 190px)); }
+    .mapping-scroll { min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-gutter: stable; padding-right: 6px; }
     .panel { padding: 17px; }
     .panel-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 12px; }
     .stage {
@@ -100,7 +102,7 @@
     .now { margin: 10px 0 13px; padding: 10px 12px; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; }
     .now strong { display: block; font-size: 16px; }
     .quick-map { display: grid; grid-template-columns: 1fr 160px; gap: 8px; align-items: end; margin-bottom: 13px; }
-    .motion-list, .expression-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; max-height: 430px; overflow: auto; padding-right: 4px; }
+    .motion-list, .expression-list { display: grid; grid-template-columns: 1fr; gap: 7px; max-height: 430px; overflow: auto; padding-right: 4px; }
     .expression-list { max-height: 210px; margin-top: 7px; }
     .motion, .expression { text-align: left; padding: 9px 10px; }
     .motion strong, .motion small, .expression strong, .expression small { display: block; }
@@ -327,28 +329,30 @@
 
       <section class="panel mapping-panel">
         <div class="panel-head"><div><div class="eyebrow" data-i18n="mapping.eyebrow">Target profile</div><h2 data-i18n="mapping.heading">Clawd mapping</h2><p class="muted" data-i18n="mapping.description">Assign the selected Motion to guide-defined behavior slots.</p></div></div>
-        <div class="mapping-controls">
-          <label class="field"><span data-i18n="mapping.sleepSequence">Sleep sequence</span>
-            <select id="sleepMode"><option value="direct" data-i18n="mapping.sleep.direct">direct</option><option value="full" data-i18n="mapping.sleep.full">full</option></select>
-          </label>
-          <label class="field"><span data-i18n="mapping.clawdPreset">Clawd Render Preset</span>
-            <select id="clawdRenderPreset"><option value="compact" data-i18n="mapping.preset.compact">compact · 512px · 18fps</option><option value="balanced" data-i18n="mapping.preset.balanced">balanced · 768px · 24fps</option><option value="high" data-i18n="mapping.preset.high">high · 1024px · 30fps</option></select>
-          </label>
-          <label class="field"><span data-i18n="mapping.outputPrefix">Output file prefix</span>
-            <input id="outputPrefix" type="text" value="live2pet">
-          </label>
+        <div class="mapping-scroll">
+          <div class="mapping-controls">
+            <label class="field"><span data-i18n="mapping.sleepSequence">Sleep sequence</span>
+              <select id="sleepMode"><option value="direct" data-i18n="mapping.sleep.direct">direct</option><option value="full" data-i18n="mapping.sleep.full">full</option></select>
+            </label>
+            <label class="field"><span data-i18n="mapping.clawdPreset">Clawd Render Preset</span>
+              <select id="clawdRenderPreset"><option value="compact" data-i18n="mapping.preset.compact">compact · 512px · 18fps</option><option value="balanced" data-i18n="mapping.preset.balanced">balanced · 768px · 24fps</option><option value="high" data-i18n="mapping.preset.high">high · 1024px · 30fps</option></select>
+            </label>
+            <label class="field"><span data-i18n="mapping.outputPrefix">Output file prefix</span>
+              <input id="outputPrefix" type="text" value="live2pet">
+            </label>
+          </div>
+          <div id="mappingSelection" class="mapping-selection" aria-live="polite"></div>
+          <div id="mappingTables"></div>
+          <div id="validation" class="validation"></div>
+          <details class="target-section">
+            <summary data-i18n="codex.mappingSummary">Codex Pet mapping</summary>
+            <p class="target-copy" data-i18n="codex.mappingDescription">Codex uses its own nine-row atlas contract. Select a source Motion in the left library, then assign it directly to each row.</p>
+            <label class="field"><span data-i18n="codex.renderPreset">Codex Render Preset</span>
+              <select id="codexRenderPreset"><option value="compact" data-i18n="codex.preset.compact">compact · 32 samples/s</option><option value="balanced" data-i18n="codex.preset.balanced">balanced · 64 samples/s</option><option value="high" data-i18n="codex.preset.high">high · 96 samples/s</option></select>
+            </label>
+            <div id="codexMapping" class="codex-map"></div>
+          </details>
         </div>
-        <div id="mappingSelection" class="mapping-selection" aria-live="polite"></div>
-        <div id="mappingTables"></div>
-        <div id="validation" class="validation"></div>
-        <details class="target-section">
-          <summary data-i18n="codex.mappingSummary">Codex Pet mapping</summary>
-          <p class="target-copy" data-i18n="codex.mappingDescription">Codex uses its own nine-row atlas contract. Select a source Motion in the left library, then assign it directly to each row.</p>
-          <label class="field"><span data-i18n="codex.renderPreset">Codex Render Preset</span>
-            <select id="codexRenderPreset"><option value="compact" data-i18n="codex.preset.compact">compact · 32 samples/s</option><option value="balanced" data-i18n="codex.preset.balanced">balanced · 64 samples/s</option><option value="high" data-i18n="codex.preset.high">high · 96 samples/s</option></select>
-          </label>
-          <div id="codexMapping" class="codex-map"></div>
-        </details>
       </section>
     </div>
 
