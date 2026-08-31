@@ -5,6 +5,7 @@
   "packageManager": "pnpm@11.19.0",
   "scripts": {
     "test": "node --test apps/desktop/test/*.test.cjs packages/app-host/test/*.test.cjs packages/cli/test/*.test.cjs packages/installation/test/*.test.cjs packages/mapper-session/test/*.test.cjs packages/source-inspector/test/*.test.cjs packages/project/test/*.test.cjs packages/runtime/test/*.test.cjs packages/renderer/test/*.test.cjs packages/clawd-target/test/*.test.cjs packages/codex-target/test/*.test.cjs packages/frame-selection/test/*.test.cjs packages/package-build/test/*.test.cjs packages/skill-client/test/*.test.cjs packages/skill-manager/test/*.test.cjs",
+    "release:check": "node apps/desktop/scripts/check-source-release.cjs",
     "typecheck": "node --check apps/desktop/*.cjs apps/desktop/scripts/*.cjs packages/app-host/src/*.cjs packages/cli/src/*.cjs packages/cli/bin/*.cjs packages/installation/src/*.cjs packages/installation/src/platform-paths.cjs packages/mapper-session/src/*.cjs packages/source-inspector/src/*.cjs packages/source-inspector/bin/*.cjs packages/project/src/*.cjs packages/runtime/src/*.cjs packages/runtime/bin/*.cjs packages/renderer/src/*.cjs packages/clawd-target/src/*.cjs packages/codex-target/src/*.cjs packages/frame-selection/src/*.cjs packages/package-build/src/*.cjs packages/skill-client/src/*.cjs packages/skill-manager/src/*.cjs"
   }
 }

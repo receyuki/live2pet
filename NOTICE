@@ -1,0 +1,8 @@
+Live2Pet
+Copyright 2026 Live2Pet contributors.
+
+Live2Pet source code is provided under the Apache License, Version 2.0.
+Third-party dependencies retain their own licenses; see
+apps/desktop/THIRD-PARTY-NOTICES.md and the staged license files for details.
+User-provided Cubism runtimes, Live2D Source Packages, character assets, and
+generated packages are not distributed by this repository.
