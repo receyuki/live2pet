@@ -7,7 +7,7 @@
   "scripts": {
     "prepare:mapper": "node scripts/stage-mapper-assets.cjs",
     "start": "electron .",
-    "typecheck": "node --check main.cjs preload.cjs forge.config.cjs scripts/*.cjs"
+    "typecheck": "node --check main.cjs preload.cjs renderer-host.cjs renderer-preview-service.cjs forge.config.cjs scripts/*.cjs"
   },
   "dependencies": {
     "@live2pet/app-host": "workspace:*"

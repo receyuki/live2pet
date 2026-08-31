@@ -12,6 +12,7 @@ const {
   inspectRuntime,
   loadRuntimeSettings,
   redactRuntimeSettings,
+  resolveRuntimeEntrypoint,
   saveRuntimeSettings,
 } = require('../src/index.cjs');
 
@@ -38,6 +39,14 @@ test('recognizes a modern Cubism Core file in an SDK directory', async () => {
   assert.deepEqual(descriptor.cubismGenerations, [3, 4, 5]);
   assert.match(descriptor.fingerprint, /^[a-f0-9]{64}$/);
   assert.equal(JSON.stringify(descriptor).includes(root), false);
+});
+
+test('resolves the same validated entrypoint for an isolated renderer', async () => {
+  const root = modernFixture();
+  const descriptor = await inspectRuntime(root);
+  assert.equal(resolveRuntimeEntrypoint(root), path.join(root, descriptor.entrypoint));
+  const file = path.join(root, 'Framework', 'live2dcubismcore.min.js');
+  assert.equal(resolveRuntimeEntrypoint(file), file);
 });
 
 test('recognizes a legacy Cubism 2 runtime and redacts settings for diagnostics', async () => {

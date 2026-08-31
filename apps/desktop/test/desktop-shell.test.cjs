@@ -6,6 +6,7 @@ const { EventEmitter } = require('node:events');
 
 const root = path.resolve(__dirname, '..');
 const { cubismAdapter, createRendererWindowHost, hardenRendererWindow, waitForRendererReady } = require('../renderer-host.cjs');
+const { createRendererPreviewService } = require('../renderer-preview-service.cjs');
 
 test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narrow', () => {
   const main = fs.readFileSync(path.join(root, 'main.cjs'), 'utf8');
@@ -35,7 +36,7 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(preload, /const APP_IPC_CHANNEL = 'live2pet:app';/);
   assert.match(preload, /const APP_IPC_PROTOCOL_VERSION = 1;/);
   assert.match(preload, /const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';/);
-  for (const method of ['getVersion', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'buildProject', 'getBuildArtifact', 'installArtifact', 'closeMapperSession']) {
+  for (const method of ['getVersion', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'buildProject', 'getBuildArtifact', 'installArtifact', 'closeMapperSession', 'startRendererPreview', 'loadRendererSource', 'rendererCommand', 'getRendererPreviewStatus', 'restartRendererPreview', 'closeRendererPreview']) {
     assert.match(preload, new RegExp(`invoke\\('${method}'`));
   }
   assert.match(preload, /getBuildArtifact: \(artifactId, offset = 0\) => invoke\('getBuildArtifact', \{ artifactId, offset \}\)/);
@@ -125,6 +126,13 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /id="clawdBuildProgressBar"/);
   assert.match(mapper, /id="clearSavedRuntimes"/);
   assert.match(mapper, /const RUNTIME_DB_NAME = "live2pet-mapper-runtime"/);
+  assert.match(mapper, /function desktopRendererApi\(\)/);
+  assert.match(mapper, /function rendererPreviewSource\(\)/);
+  assert.match(mapper, /id="openRendererPreview"/);
+  assert.match(mapper, /id="restartRendererPreview"/);
+  assert.match(mapper, /id="closeRendererPreview"/);
+  assert.match(mapper, /startRendererPreview\(\{ sourceRoot:/);
+  assert.match(mapper, /loadRendererSource\(\{/);
   assert.match(mapper, /const I18n = \(\(\) =>/);
   assert.match(mapper, /id="languageSelect"/);
   assert.match(mapper, /class="mapping-scroll"/);
@@ -234,6 +242,44 @@ test('renderer window hardening denies navigation, webviews, and new windows', (
   prevented = false;
   window.webContents.emit('will-attach-webview', { preventDefault: () => { prevented = true; } });
   assert.equal(prevented, true);
+});
+
+test('renderer preview service resolves the saved runtime and guards one session', async () => {
+  const calls = [];
+  let hostClosed = false;
+  let generation = 1;
+  const service = createRendererPreviewService({
+    loadRuntime: async () => ({ configured: true, available: true, runtimePath: '/Users/RY/Downloads/cubism', descriptor: { cubismGenerations: [2] } }),
+    resolveRuntimeEntrypoint: (inputPath) => { calls.push(['resolve', inputPath]); return '/Users/RY/Downloads/cubism/live2d.min.js'; },
+    createHost: (options) => {
+      calls.push(['host', options]);
+      return {
+        kind: 'legacy-cubism2',
+        start: async () => ({ state: 'ready' }),
+        restart: async () => ({ state: 'ready', generation: ++generation }),
+        close: async () => { hostClosed = true; return { state: 'closed', generation }; },
+        getStatus: () => ({ state: 'ready', generation, hasWindow: true, hasRenderer: true }),
+        loadSource: async (source) => ({ contractVersion: 1, motionCount: source.motions.length, expressionCount: 0 }),
+        invoke: async (method) => method === 'getState' ? { loaded: true, motionId: null } : true,
+      };
+    },
+  });
+  const started = await service.start({ sourceRoot: '/Users/RY/Downloads/model', cubismVersion: 2, width: 512, height: 512, show: true });
+  assert.equal(started.kind, 'legacy-cubism2');
+  assert.equal(started.status.state, 'ready');
+  assert.equal(calls[0][0], 'resolve');
+  assert.deepEqual(calls[1][1], { sourceRoot: '/Users/RY/Downloads/model', runtimePath: '/Users/RY/Downloads/cubism/live2d.min.js', cubismVersion: 2, width: 512, height: 512, show: true });
+  await assert.rejects(() => service.start({ sourceRoot: '/tmp/other', cubismVersion: 2 }), (error) => error.code === 'RENDERER_PREVIEW_ACTIVE');
+  const loaded = await service.loadSource({ sessionId: started.sessionId, modelConfig: 'model.json', cubismVersion: 2, motions: [] });
+  assert.equal(loaded.result.motionCount, 0);
+  const state = await service.command({ sessionId: started.sessionId, method: 'getState', args: [] });
+  assert.deepEqual(state.result, { loaded: true, motionId: null });
+  const restarted = await service.restart({ sessionId: started.sessionId });
+  assert.equal(restarted.status.generation, 2);
+  const closed = await service.close({ sessionId: started.sessionId });
+  assert.equal(closed.closed, true);
+  assert.equal(hostClosed, true);
+  assert.equal(service.status().active, false);
 });
 
 test('renderer ready helper returns a typed timeout instead of hanging', async () => {

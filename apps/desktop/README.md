@@ -34,8 +34,8 @@ bounded browser-profile copy so a selected runtime can refresh the in-session
 preview; that copy is not part of a project, cache artifact, package, or
 release.
 
-The desktop shell also includes a separate renderer-realm host for the next
-preview path. It creates a transparent BrowserWindow with Node integration off,
+The desktop shell also includes a separate renderer-realm host for Live2D
+preview. It creates a transparent BrowserWindow with Node integration off,
 context isolation, sandboxing, strict CSP, and a loopback-only asset server for
 the selected Source Package plus runtime file. Adapter selection follows the
 inspected Cubism generation (legacy Cubism 2 versus modern Cubism 3–5). If the
@@ -44,9 +44,18 @@ adapter and destroys that window; the main Mapper window remains available and
 an explicit restart creates a fresh realm. Its `loadSource()` helper accepts the
 inspection manifest's relative `modelConfig`, resolves it through the same
 loopback server, and rejects a mismatched Cubism generation before touching the
-renderer. The host is a reusable seam today;
-the full official modern Web Framework adapter and user-facing preview command
-remain gated work.
+renderer.
+
+The Mapper exposes this host through a narrow App IPC session: **Open isolated
+preview**, **Restart preview**, and **Close preview**. Only a standard local
+Source Package directory can be opened in this window; reconstructed PCK files
+continue to use the browser preview because they do not have a directory that
+the loopback server can safely serve. Preview commands are limited to Motion /
+Expression playback, playback controls, state, and bounds; RGBA capture and
+filesystem operations are not exposed through this UI. The saved runtime is
+resolved in the main process, and neither runtime bytes nor absolute paths cross
+the App boundary. The adapter remains the temporary Pixi/Cubism bridge; the
+full official modern Web Framework adapter is still downstream.
 
 The shared Mapper exposes both Codex Pet and Clawd Theme build actions. Clawd
 captures mapped Motion frames in the renderer and sends them through the same

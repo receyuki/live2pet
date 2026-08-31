@@ -288,6 +288,10 @@
       <input id="legacyRuntimeInput" class="hidden" type="file" accept=".js,application/javascript">
       <button id="clearSavedRuntimes" data-i18n="runtime.clearSaved">Clear saved runtimes</button>
       <span id="runtimeStatus" class="runtime-status" role="status" aria-live="polite" data-i18n="runtime.status">Modern Core is optional for inspection; Cubism 2 preview requires a local runtime.</span>
+      <button id="openRendererPreview" data-i18n="runtime.preview.open">Open isolated preview</button>
+      <button id="restartRendererPreview" data-i18n="runtime.preview.restart" disabled>Restart preview</button>
+      <button id="closeRendererPreview" data-i18n="runtime.preview.close" disabled>Close preview</button>
+      <span id="rendererPreviewStatus" class="runtime-status" role="status" aria-live="polite" data-i18n="runtime.preview.status">Isolated preview is closed.</span>
     </section>
 
     <section class="projectbar" aria-labelledby="projectHeading">
@@ -527,6 +531,16 @@
           "runtime.clearing": "Clearing saved runtimes…",
           "runtime.cleared": "Saved runtimes cleared. The currently loaded runtime remains active.",
           "runtime.refreshing": "{runtime} loaded; refreshing preview…",
+          "runtime.preview.open": "Open isolated preview",
+          "runtime.preview.restart": "Restart preview",
+          "runtime.preview.close": "Close preview",
+          "runtime.preview.status": "Isolated preview is closed.",
+          "runtime.preview.opening": "Opening isolated preview…",
+          "runtime.preview.ready": "Isolated preview is ready in a separate window.",
+          "runtime.preview.closed": "Isolated preview closed.",
+          "runtime.preview.unavailable": "Isolated preview needs the Desktop App, a local source directory, and a saved matching Cubism runtime.",
+          "runtime.preview.failed": "Isolated preview failed: {message}",
+          "runtime.preview.restarting": "Restarting isolated preview…",
           "project.eyebrow": "Live2Pet Project",
           "project.heading": "Save your mapping",
           "project.description": "Projects keep source references and Motion Mappings, never model bytes or runtime files.",
@@ -854,6 +868,16 @@
           "runtime.clearing": "正在清除已保存运行时…",
           "runtime.cleared": "已清除保存的运行时；当前已加载的运行时仍在使用。",
           "runtime.refreshing": "已加载 {runtime}；正在刷新预览…",
+          "runtime.preview.open": "打开独立预览",
+          "runtime.preview.restart": "重启预览",
+          "runtime.preview.close": "关闭预览",
+          "runtime.preview.status": "独立预览已关闭。",
+          "runtime.preview.opening": "正在打开独立预览…",
+          "runtime.preview.ready": "独立预览已在单独窗口中就绪。",
+          "runtime.preview.closed": "独立预览已关闭。",
+          "runtime.preview.unavailable": "独立预览需要 Desktop App、本地资源目录和已保存且匹配的 Cubism 运行时。",
+          "runtime.preview.failed": "独立预览失败：{message}",
+          "runtime.preview.restarting": "正在重启独立预览…",
           "project.eyebrow": "Live2Pet 项目",
           "project.heading": "保存映射",
           "project.description": "项目只保存资源引用和动作映射，不保存模型字节或运行时文件。",
@@ -1346,6 +1370,10 @@
     let modernAdapterLoaded = false;
     let mapperSession = null;
     let sessionProject = null;
+    let rendererPreviewSessionId = null;
+    let rendererPreviewBusy = false;
+    let rendererPreviewStatusText = "";
+    let rendererPreviewStatusLevel = "";
     const PROJECT_DRAFT_STORAGE_KEY = "live2pet-mapper-project-draft-v1";
     const PROJECT_DRAFT_MAX_BYTES = 1024 * 1024;
     let pendingProjectDraft = null;
@@ -1356,6 +1384,7 @@
       if (action.type === "LOAD_MODEL" || action.type === "INSPECTION_ERROR") {
         releaseClawdPreview();
         clawdArtifact = null;
+        if (rendererPreviewSessionId) void closeRendererPreview({ silent: true });
       }
       state = MotionMapping.reducer(state, action);
       if (action.type === "LOAD_MODEL" && sessionProject) {
@@ -1599,9 +1628,132 @@
       return window.live2pet && typeof window.live2pet.configureRuntime === "function" ? window.live2pet : null;
     }
 
+    function desktopRendererApi() {
+      return window.live2pet && typeof window.live2pet.startRendererPreview === "function" && typeof window.live2pet.loadRendererSource === "function" && typeof window.live2pet.rendererCommand === "function" ? window.live2pet : null;
+    }
+
     function localFilePath(file) {
       const value = file?.path;
       return typeof value === "string" && /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value) ? value : null;
+    }
+
+    function rendererPreviewSource() {
+      if (!state.model || !state.inspection || state.inspection.source?.kind !== "standard-directory") return null;
+      const sourceRoot = selectedSourcePath(activeSourceFiles || [], activeSourceOptions || {});
+      const modelConfig = state.inspection.source?.modelConfig;
+      if (!sourceRoot || !modelConfig || /\.pck$/i.test(sourceRoot) || !Number.isInteger(Number(state.model.cubism))) return null;
+      return { sourceRoot, modelConfig, cubismVersion: Number(state.model.cubism) };
+    }
+
+    function setRendererPreviewStatus(message, level = "") {
+      rendererPreviewStatusText = message;
+      rendererPreviewStatusLevel = level;
+      const element = $("rendererPreviewStatus");
+      if (!element) return;
+      element.className = `runtime-status${level ? ` ${level}` : ""}`;
+      element.textContent = message;
+    }
+
+    function rendererPreviewError(response, fallback) {
+      if (response?.ok === true) return null;
+      return projectError(response?.error?.code || "RENDERER_PREVIEW_FAILED", response?.error?.message || fallback);
+    }
+
+    async function rendererPreviewCommand(method, args = []) {
+      const api = desktopRendererApi();
+      if (!api || !rendererPreviewSessionId) return null;
+      const response = await api.rendererCommand({ sessionId: rendererPreviewSessionId, method, args });
+      const error = rendererPreviewError(response, `Renderer command ${method} failed.`);
+      if (error) throw error;
+      return response.result;
+    }
+
+    async function closeRendererPreview({ silent = false } = {}) {
+      const api = desktopRendererApi();
+      const sessionId = rendererPreviewSessionId;
+      rendererPreviewSessionId = null;
+      if (!api || !sessionId) {
+        if (!silent) setRendererPreviewStatus(I18n.t("runtime.preview.closed"));
+        render();
+        return;
+      }
+      try {
+        const response = await api.closeRendererPreview(sessionId);
+        const error = rendererPreviewError(response, "The isolated preview could not be closed.");
+        if (error && !silent) throw error;
+        if (!silent) setRendererPreviewStatus(I18n.t("runtime.preview.closed"), "good");
+      } catch (error) {
+        if (!silent) setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad");
+      } finally {
+        render();
+      }
+    }
+
+    async function openRendererPreview() {
+      const api = desktopRendererApi();
+      const source = rendererPreviewSource();
+      if (!api || !source) {
+        setRendererPreviewStatus(I18n.t("runtime.preview.unavailable"), "bad");
+        render();
+        return;
+      }
+      rendererPreviewBusy = true;
+      setRendererPreviewStatus(I18n.t("runtime.preview.opening"), "busy");
+      render();
+      try {
+        const started = await api.startRendererPreview({ sourceRoot: source.sourceRoot, cubismVersion: source.cubismVersion, show: true });
+        const startError = rendererPreviewError(started, "The isolated preview could not be started.");
+        if (startError) throw startError;
+        rendererPreviewSessionId = started.result.sessionId;
+        const loaded = await api.loadRendererSource({
+          sessionId: rendererPreviewSessionId,
+          modelConfig: source.modelConfig,
+          cubismVersion: source.cubismVersion,
+          motions: state.motions.map(motion => ({ id: motion.id, name: motion.name, group: motion.group, index: motion.index, duration: motion.duration })),
+          expressions: state.expressions.map(expression => ({ id: expression.id, name: expression.name, runtimeId: expression.index })),
+        });
+        const loadError = rendererPreviewError(loaded, "The isolated preview could not load this Source Package.");
+        if (loadError) throw loadError;
+        if (state.selectedMotionId) await rendererPreviewCommand("playMotion", [state.selectedMotionId, { loop: true, speed: 1, start: 0 }]);
+        setRendererPreviewStatus(I18n.t("runtime.preview.ready"), "good");
+      } catch (error) {
+        if (rendererPreviewSessionId) await closeRendererPreview({ silent: true });
+        setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad");
+      } finally {
+        rendererPreviewBusy = false;
+        render();
+      }
+    }
+
+    async function restartRendererPreview() {
+      const api = desktopRendererApi();
+      if (!api || !rendererPreviewSessionId) return;
+      rendererPreviewBusy = true;
+      setRendererPreviewStatus(I18n.t("runtime.preview.restarting"), "busy");
+      render();
+      try {
+        const response = await api.restartRendererPreview(rendererPreviewSessionId);
+        const error = rendererPreviewError(response, "The isolated preview could not be restarted.");
+        if (error) throw error;
+        const source = rendererPreviewSource();
+        if (!source) throw projectError("RENDERER_PREVIEW_SOURCE_UNAVAILABLE", I18n.t("runtime.preview.unavailable"));
+        const loaded = await api.loadRendererSource({
+          sessionId: rendererPreviewSessionId,
+          modelConfig: source.modelConfig,
+          cubismVersion: source.cubismVersion,
+          motions: state.motions.map(motion => ({ id: motion.id, name: motion.name, group: motion.group, index: motion.index, duration: motion.duration })),
+          expressions: state.expressions.map(expression => ({ id: expression.id, name: expression.name, runtimeId: expression.index })),
+        });
+        const loadError = rendererPreviewError(loaded, "The isolated preview could not reload this Source Package.");
+        if (loadError) throw loadError;
+        if (state.selectedMotionId) await rendererPreviewCommand("playMotion", [state.selectedMotionId, { loop: true, speed: 1, start: 0 }]);
+        setRendererPreviewStatus(I18n.t("runtime.preview.ready"), "good");
+      } catch (error) {
+        setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad");
+      } finally {
+        rendererPreviewBusy = false;
+        render();
+      }
     }
 
     function selectedSourcePath(files, options = {}) {
@@ -2008,6 +2160,14 @@
       $("codexRenderPreset").value = state.codexRenderPreset;
       $("outputPrefix").value = state.outputPrefix;
       $("saveProject").disabled = !state.model || !state.inspection;
+      const rendererApi = desktopRendererApi();
+      const rendererSource = rendererPreviewSource();
+      $("openRendererPreview").disabled = rendererPreviewBusy || Boolean(rendererPreviewSessionId) || !rendererApi || !rendererSource;
+      $("restartRendererPreview").disabled = rendererPreviewBusy || !rendererPreviewSessionId || !rendererApi;
+      $("closeRendererPreview").disabled = rendererPreviewBusy || !rendererPreviewSessionId || !rendererApi;
+      const rendererStatus = $("rendererPreviewStatus");
+      rendererStatus.className = "runtime-status" + (rendererPreviewStatusLevel ? ` ${rendererPreviewStatusLevel}` : "");
+      rendererStatus.textContent = rendererPreviewStatusText || I18n.t("runtime.preview.status");
       $("validation").innerHTML = MotionMapping.validate(state).map(x=>`<div class="${x.level}">${escapeHtml(x.text)}</div>`).join("");
       $("jsonOutput").textContent = JSON.stringify(MotionMapping.output(state),null,2);
       const readiness = codexBuildReadiness();
@@ -2465,23 +2625,32 @@
       liveModel.y = (app.renderer.height-bounds.height*scale)/2-bounds.y*scale;
     }
     async function playMotion(id) {
-      if (!liveModel) return;
       const motion = MotionMapping.motion(state,id);
       if (!motion) return;
       dispatch({type:"SELECT_MOTION",id});
-      await liveModel.motion(motion.group,motion.index,3);
+      if (liveModel) await liveModel.motion(motion.group,motion.index,3);
+      if (rendererPreviewSessionId) {
+        try { await rendererPreviewCommand("playMotion", [id, { loop: true, speed: 1, start: 0 }]); }
+        catch (error) { setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad"); }
+      }
     }
     async function playExpression(id) {
-      if (!liveModel) return;
       const expression = state.expressions.find(item => item.id === id);
       if (!expression) return;
-      const applied = await liveModel.expression(expression.index);
+      const applied = liveModel ? await liveModel.expression(expression.index) : true;
       if (applied !== false) dispatch({type:"SELECT_EXPRESSION",id});
+      if (applied !== false && rendererPreviewSessionId) {
+        try { await rendererPreviewCommand("setExpression", [id]); }
+        catch (error) { setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad"); }
+      }
     }
     function resetExpression() {
       const manager = liveModel?.internalModel?.motionManager?.expressionManager;
       if (manager) manager.resetExpression();
       dispatch({type:"SELECT_EXPRESSION",id:null});
+      if (rendererPreviewSessionId) {
+        void rendererPreviewCommand("setExpression", [null]).catch(error => setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad"));
+      }
     }
 
     function downloadJson() {
@@ -3621,6 +3790,9 @@
         setRuntimeStatus(`${error.code || "RUNTIME_STORAGE_CLEAR_FAILED"}: ${error.message}`, "bad");
       }
     });
+    $("openRendererPreview").addEventListener("click", openRendererPreview);
+    $("restartRendererPreview").addEventListener("click", restartRendererPreview);
+    $("closeRendererPreview").addEventListener("click", () => { void closeRendererPreview(); });
     $("openProject").addEventListener("click",()=>$("projectInput").click());
     $("recoverProject").addEventListener("click", recoverProjectDraft);
     $("projectInput").addEventListener("change",async e=>{

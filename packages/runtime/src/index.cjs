@@ -101,6 +101,16 @@ function selectEntrypoint(inputPath) {
   fail('UNKNOWN_RUNTIME', 'No recognized Cubism runtime entrypoint was found in the selected directory.');
 }
 
+/**
+ * Resolve the validated JavaScript entrypoint that should be served to an
+ * isolated renderer. This keeps directory selection and entrypoint ranking in
+ * one place; callers should not expose the returned absolute path over IPC.
+ */
+function resolveRuntimeEntrypoint(inputPath) {
+  if (typeof inputPath !== 'string' || !inputPath.trim()) fail('INVALID_RUNTIME_PATH', 'A Cubism runtime file or SDK directory is required.');
+  return selectEntrypoint(inputPath).file;
+}
+
 async function inspectRuntime(inputPath) {
   if (typeof inputPath !== 'string' || !inputPath.trim()) fail('INVALID_RUNTIME_PATH', 'A Cubism runtime file or SDK directory is required.');
   const selected = selectEntrypoint(inputPath);
@@ -259,6 +269,7 @@ module.exports = {
   inspectRuntime,
   loadRuntimeSettings,
   redactRuntimeSettings,
+  resolveRuntimeEntrypoint,
   saveRuntimeSettings,
   SCHEMA_VERSION,
 };

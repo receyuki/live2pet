@@ -13,10 +13,12 @@ const { CacheStore, buildProjectTargets } = require('../../packages/package-buil
 const { installPackage } = require('../../packages/installation/src/index.cjs');
 const { inspectSourcePackage } = require('../../packages/source-inspector/src/index.cjs');
 const { createRendererWindowHost } = require('./renderer-host.cjs');
+const { createRendererPreviewService } = require('./renderer-preview-service.cjs');
 const {
   clearRuntimeSettings,
   loadRuntimeSettings,
   redactRuntimeSettings,
+  resolveRuntimeEntrypoint,
   saveRuntimeSettings,
 } = require('../../packages/runtime/src/index.cjs');
 
@@ -45,7 +47,8 @@ function rendererPath() {
  * separate sandboxed BrowserWindow and a loopback asset server instead.
  */
 function createRendererPreviewHost(options = {}) {
-  if (rendererWindowHost) return rendererWindowHost;
+  if (rendererWindowHost && rendererWindowHost.getStatus().state !== 'closed') return rendererWindowHost;
+  rendererWindowHost = null;
   rendererWindowHost = createRendererWindowHost({
     ...options,
     BrowserWindow,
@@ -95,11 +98,18 @@ const runtimeSettingsService = Object.freeze({
   clear: async () => redactRuntimeSettings(clearRuntimeSettings(runtimeSettingsPath())),
 });
 
+const rendererPreviewService = createRendererPreviewService({
+  loadRuntime: () => loadRuntimeSettings(runtimeSettingsPath()),
+  resolveRuntimeEntrypoint,
+  createHost: (options) => createRendererPreviewHost(options),
+});
+
 function registerIpc() {
   route = createAppIpcRouter({
     mapperHostFactory,
     sourceInspectionService,
     runtimeSettingsService,
+    rendererPreviewService,
     buildProjectService: buildProjectTargets,
     installPackageService: installPackage,
     onBuildProgress: (event) => {
@@ -116,6 +126,8 @@ function registerIpc() {
 
 async function closeActiveSession() {
   if (route) await route({ protocolVersion: 1, method: 'closeMapperSession', args: [] });
+  if (route) await route({ protocolVersion: 1, method: 'closeRendererPreview', args: [] });
+  else await closeRendererPreviewHost();
 }
 
 async function createMainWindow() {
@@ -148,5 +160,5 @@ app.whenReady().then(async () => {
   app.on('activate', async () => { if (!mainWindow) await createMainWindow(); });
 });
 
-app.on('before-quit', () => { void closeActiveSession(); void closeRendererPreviewHost(); });
+app.on('before-quit', () => { void closeActiveSession(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

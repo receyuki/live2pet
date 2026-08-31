@@ -15,12 +15,17 @@ const {
   APP_BUILD_PROGRESS_CHANNEL,
   APP_IPC_CHANNEL,
   APP_IPC_METHODS,
+  RENDERER_PREVIEW_COMMANDS,
   AppHostError,
   createAppIpcRouter,
   createAppPreloadApi,
   createAppWindowOptions,
   normalizeInspectRequest,
   normalizeRuntimeRequest,
+  normalizeRendererPreviewStartRequest,
+  normalizeRendererLoadRequest,
+  normalizeRendererCommandRequest,
+  normalizeRendererSessionRequest,
   normalizeInstallRequest,
   normalizeBuildProgressEvent,
   normalizeRequest,
@@ -47,10 +52,17 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.equal(APP_IPC_METHODS.includes('getBuildArtifact'), true);
   assert.equal(APP_IPC_METHODS.includes('installArtifact'), true);
   assert.equal(APP_IPC_METHODS.includes('inspectSource'), true);
+  assert.equal(APP_IPC_METHODS.includes('startRendererPreview'), true);
+  assert.deepEqual(RENDERER_PREVIEW_COMMANDS, ['playMotion', 'pause', 'resume', 'restart', 'setLoop', 'setSpeed', 'setExpression', 'step', 'getState', 'getBounds']);
   assert.deepEqual(normalizeInspectRequest({ inputPath: '/tmp/source', projectId: 'fixture' }), { inputPath: '/tmp/source', projectId: 'fixture' });
   assert.throws(() => normalizeInspectRequest({ inputPath: '/tmp/source', shell: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_INSPECT_REQUEST');
   assert.deepEqual(normalizeRuntimeRequest({ inputPath: '/tmp/live2d.min.js' }), { inputPath: '/tmp/live2d.min.js' });
   assert.throws(() => normalizeRuntimeRequest({ inputPath: '/tmp/runtime', shell: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_RUNTIME_REQUEST');
+  assert.deepEqual(normalizeRendererPreviewStartRequest({ sourceRoot: '/tmp/source', cubismVersion: 2 }), { sourceRoot: '/tmp/source', cubismVersion: 2, width: 512, height: 512, show: true });
+  assert.deepEqual(normalizeRendererLoadRequest({ sessionId: 'renderer-session', modelConfig: 'model.json', cubismVersion: 2, motions: [{ id: 'idle:0', group: 'idle', index: 0, duration: 1 }] }), { sessionId: 'renderer-session', source: { modelConfig: 'model.json', cubismVersion: 2, motions: [{ id: 'idle:0', name: 'idle:0', group: 'idle', index: 0, duration: 1 }], expressions: [] } });
+  assert.deepEqual(normalizeRendererCommandRequest({ sessionId: 'renderer-session', method: 'playMotion', args: ['idle:0', { loop: true }] }), { sessionId: 'renderer-session', method: 'playMotion', args: ['idle:0', { loop: true }] });
+  assert.deepEqual(normalizeRendererSessionRequest(undefined, { optional: true }), {});
+  assert.throws(() => normalizeRendererCommandRequest({ sessionId: 'renderer-session', method: 'captureRgba', args: [] }), (error) => error instanceof AppHostError && error.code === 'INVALID_RENDERER_COMMAND');
   assert.deepEqual(normalizeInstallRequest({ artifactId: 'artifact', target: 'codex-pet', confirmInstall: true }), { artifactId: 'artifact', target: 'codex-pet', conflict: 'cancel', confirmInstall: true });
   assert.throws(() => normalizeInstallRequest({ artifactId: 'artifact', target: 'codex-pet' }), (error) => error instanceof AppHostError && error.code === 'INSTALL_AUTHORIZATION_REQUIRED');
 });
@@ -98,6 +110,41 @@ test('rejects runtime services that return raw paths or incomplete metadata', as
   const response = await router({ protocolVersion: 1, method: 'getRuntimeSettings', args: [] });
   assert.equal(response.ok, false);
   assert.equal(response.error.code, 'INVALID_RUNTIME_RESULT');
+});
+
+test('routes an isolated renderer preview without exposing source paths or binary commands', async () => {
+  const calls = [];
+  const rendererPreviewService = {
+    start: async (input) => { calls.push(['start', input]); return { protocolVersion: 1, sessionId: 'renderer-session', kind: 'legacy-cubism2', cubismVersion: 2, status: { state: 'ready', generation: 1, hasWindow: true, hasRenderer: true } }; },
+    loadSource: async (input) => { calls.push(['loadSource', input]); return { protocolVersion: 1, sessionId: input.sessionId, result: { contractVersion: 1, motionCount: input.source.motions.length, expressionCount: 0 } }; },
+    command: async (input) => { calls.push(['command', input]); return { protocolVersion: 1, sessionId: input.sessionId, result: input.method === 'getState' ? { loaded: true, motionId: 'idle:0', time: 0 } : true }; },
+    status: async () => ({ protocolVersion: 1, active: true, sessionId: 'renderer-session', kind: 'legacy-cubism2', cubismVersion: 2, status: { state: 'ready', generation: 1, hasWindow: true, hasRenderer: true } }),
+    restart: async (input) => { calls.push(['restart', input]); return { protocolVersion: 1, sessionId: input.sessionId, status: { state: 'ready', generation: 2, hasWindow: true, hasRenderer: true } }; },
+    close: async (input) => { calls.push(['close', input]); return { protocolVersion: 1, closed: true, sessionId: input.sessionId || 'renderer-session' }; },
+  };
+  const router = createAppIpcRouter({ rendererPreviewService });
+  const started = await router({ protocolVersion: 1, method: 'startRendererPreview', args: [{ sourceRoot: '/Users/RY/Downloads/model', cubismVersion: 2 }] });
+  assert.equal(started.ok, true);
+  assert.equal(started.result.sessionId, 'renderer-session');
+  assert.equal(JSON.stringify(started).includes('/Users/RY/Downloads'), false);
+  const loaded = await router({ protocolVersion: 1, method: 'loadRendererSource', args: [{ sessionId: 'renderer-session', modelConfig: 'model.json', cubismVersion: 2, motions: [{ id: 'idle:0', group: 'idle', index: 0, duration: 1 }], expressions: [] }] });
+  assert.equal(loaded.ok, true);
+  const state = await router({ protocolVersion: 1, method: 'rendererCommand', args: [{ sessionId: 'renderer-session', method: 'getState', args: [] }] });
+  assert.deepEqual(state.result.result, { loaded: true, motionId: 'idle:0', time: 0 });
+  const status = await router({ protocolVersion: 1, method: 'getRendererPreviewStatus', args: [] });
+  assert.equal(status.result.active, true);
+  const restarted = await router({ protocolVersion: 1, method: 'restartRendererPreview', args: [{ sessionId: 'renderer-session' }] });
+  assert.equal(restarted.result.status.generation, 2);
+  const closed = await router({ protocolVersion: 1, method: 'closeRendererPreview', args: [] });
+  assert.equal(closed.result.closed, true);
+  assert.deepEqual(calls.map(([method]) => method), ['start', 'loadSource', 'command', 'restart', 'close']);
+});
+
+test('keeps renderer preview IPC unavailable until the Desktop service is explicitly wired', async () => {
+  const router = createAppIpcRouter();
+  const response = await router({ protocolVersion: 1, method: 'startRendererPreview', args: [{ sourceRoot: '/tmp/source', cubismVersion: 2 }] });
+  assert.equal(response.ok, false);
+  assert.equal(response.error.code, 'APP_RENDERER_PREVIEW_UNAVAILABLE');
 });
 
 test('routes the same normalized synthetic Source Package manifest as the CLI and caches App-side PCK extraction', async () => {
@@ -483,6 +530,12 @@ test('preload exposes only typed methods and the window options keep Electron sa
   await api.getRuntimeSettings();
   await api.configureRuntime({ inputPath: '/tmp/live2d.min.js' });
   await api.clearRuntimeSettings();
+  await api.startRendererPreview({ sourceRoot: '/tmp/source', cubismVersion: 2 });
+  await api.loadRendererSource({ sessionId: 'renderer-session', modelConfig: 'model.json', cubismVersion: 2, motions: [] });
+  await api.rendererCommand({ sessionId: 'renderer-session', method: 'getState', args: [] });
+  await api.getRendererPreviewStatus();
+  await api.restartRendererPreview('renderer-session');
+  await api.closeRendererPreview('renderer-session');
   assert.equal(calls[0][0], APP_IPC_CHANNEL);
   assert.deepEqual(calls[0][1], { protocolVersion: 1, method: 'getVersion', args: [] });
   assert.deepEqual(calls[1][1], { protocolVersion: 1, method: 'startMapperSession', args: [{}] });
@@ -494,6 +547,12 @@ test('preload exposes only typed methods and the window options keep Electron sa
   assert.deepEqual(calls[7][1], { protocolVersion: 1, method: 'getRuntimeSettings', args: [] });
   assert.deepEqual(calls[8][1], { protocolVersion: 1, method: 'configureRuntime', args: [{ inputPath: '/tmp/live2d.min.js' }] });
   assert.deepEqual(calls[9][1], { protocolVersion: 1, method: 'clearRuntimeSettings', args: [] });
+  assert.deepEqual(calls[10][1], { protocolVersion: 1, method: 'startRendererPreview', args: [{ sourceRoot: '/tmp/source', cubismVersion: 2 }] });
+  assert.deepEqual(calls[11][1], { protocolVersion: 1, method: 'loadRendererSource', args: [{ sessionId: 'renderer-session', modelConfig: 'model.json', cubismVersion: 2, motions: [] }] });
+  assert.deepEqual(calls[12][1], { protocolVersion: 1, method: 'rendererCommand', args: [{ sessionId: 'renderer-session', method: 'getState', args: [] }] });
+  assert.deepEqual(calls[13][1], { protocolVersion: 1, method: 'getRendererPreviewStatus', args: [] });
+  assert.deepEqual(calls[14][1], { protocolVersion: 1, method: 'restartRendererPreview', args: [{ sessionId: 'renderer-session' }] });
+  assert.deepEqual(calls[15][1], { protocolVersion: 1, method: 'closeRendererPreview', args: [{ sessionId: 'renderer-session' }] });
   assert.equal(Object.hasOwn(api, 'ipcRenderer'), false);
   const options = createAppWindowOptions({ preload: '/app/preload.cjs' });
   assert.equal(options.webPreferences.nodeIntegration, false);

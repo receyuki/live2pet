@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const path = require('node:path');
 
 const { MapperSessionError, startMapperSessionHost } = require('../../mapper-session/src/index.cjs');
 const { installPackage } = require('../../installation/src/index.cjs');
@@ -9,6 +10,18 @@ const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';
 const APP_BUILD_ARTIFACT_CHUNK_BYTES = 1024 * 1024;
 const APP_SOURCE_INSPECTION_PROGRESS_STAGE = 'inspect';
 const APP_RUNTIME_PROGRESS_STAGE = 'runtime';
+const RENDERER_PREVIEW_COMMANDS = Object.freeze([
+  'playMotion',
+  'pause',
+  'resume',
+  'restart',
+  'setLoop',
+  'setSpeed',
+  'setExpression',
+  'step',
+  'getState',
+  'getBounds',
+]);
 const BUILD_PROGRESS_FIELDS = Object.freeze([
   'target',
   'stage',
@@ -60,6 +73,12 @@ const APP_IPC_METHODS = Object.freeze([
   'getBuildArtifact',
   'installArtifact',
   'closeMapperSession',
+  'startRendererPreview',
+  'loadRendererSource',
+  'rendererCommand',
+  'getRendererPreviewStatus',
+  'restartRendererPreview',
+  'closeRendererPreview',
 ]);
 
 class AppHostError extends Error {
@@ -180,6 +199,161 @@ function normalizeRuntimeRequest(value) {
   return { inputPath: value.inputPath.trim() };
 }
 
+function normalizeRendererSessionId(value, label = 'sessionId') {
+  if (typeof value !== 'string' || !value.trim() || value.length > 128 || !/^[A-Za-z0-9_-]{8,128}$/.test(value.trim())) {
+    fail('INVALID_RENDERER_PREVIEW_REQUEST', `${label} must be an opaque renderer preview session id.`);
+  }
+  return value.trim();
+}
+
+function normalizeRendererModelConfig(value) {
+  if (typeof value !== 'string' || !value.trim() || value.length > 2048 || value.includes('\0')) {
+    fail('INVALID_RENDERER_SOURCE_REQUEST', 'Renderer modelConfig must be a non-empty relative path.');
+  }
+  const replaced = value.trim().replaceAll('\\', '/');
+  if (replaced.startsWith('/') || /^[A-Za-z]:\//.test(replaced)) fail('INVALID_RENDERER_SOURCE_REQUEST', 'Renderer modelConfig must remain inside the selected Source Package.');
+  const normalized = path.posix.normalize(replaced);
+  if (!normalized || normalized === '.' || normalized === '..' || normalized.startsWith('../')) fail('INVALID_RENDERER_SOURCE_REQUEST', 'Renderer modelConfig must remain inside the selected Source Package.');
+  return normalized;
+}
+
+function normalizeRendererPreviewStartRequest(value) {
+  if (!isRecord(value)) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer preview start input must be an object.');
+  const allowed = new Set(['sourceRoot', 'cubismVersion', 'width', 'height', 'show']);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) fail('INVALID_RENDERER_PREVIEW_REQUEST', `Renderer preview start input contains unsupported fields: ${unknown.join(', ')}.`);
+  if (typeof value.sourceRoot !== 'string' || !value.sourceRoot.trim() || value.sourceRoot.length > 4096 || value.sourceRoot.includes('\0') || !/^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value.sourceRoot.trim())) {
+    fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer preview sourceRoot must be an absolute local directory path.');
+  }
+  const cubismVersion = Number(value.cubismVersion);
+  if (![2, 3, 4, 5].includes(cubismVersion)) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer preview cubismVersion must be 2, 3, 4, or 5.');
+  const width = value.width === undefined ? 512 : Number(value.width);
+  const height = value.height === undefined ? 512 : Number(value.height);
+  if (!Number.isInteger(width) || width < 128 || width > 2048 || !Number.isInteger(height) || height < 128 || height > 2048) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer preview dimensions must be integers between 128 and 2048.');
+  if (value.show !== undefined && typeof value.show !== 'boolean') fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer preview show must be boolean.');
+  return { sourceRoot: value.sourceRoot.trim(), cubismVersion, width, height, show: value.show === undefined ? true : value.show };
+}
+
+function normalizeRendererMotion(value, index) {
+  if (!isRecord(value)) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Motion ${index} must be an object.`);
+  const allowed = new Set(['id', 'name', 'group', 'index', 'duration']);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Motion ${index} contains unsupported fields: ${unknown.join(', ')}.`);
+  if (typeof value.id !== 'string' || !value.id.trim() || value.id.length > 256) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Motion ${index} id is invalid.`);
+  if (typeof value.group !== 'string' || value.group.length > 256) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Motion ${index} group is invalid.`);
+  const motionIndex = Number(value.index);
+  if (!Number.isInteger(motionIndex) || motionIndex < 0 || motionIndex > 100000) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Motion ${index} index is invalid.`);
+  const duration = value.duration == null ? null : Number(value.duration);
+  if (duration !== null && (!Number.isFinite(duration) || duration < 0 || duration > 3600)) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Motion ${index} duration is invalid.`);
+  return {
+    id: value.id.trim(),
+    name: value.name === undefined ? value.id.trim() : (typeof value.name === 'string' && value.name.length <= 256 ? value.name : fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Motion ${index} name is invalid.`)),
+    group: value.group,
+    index: motionIndex,
+    duration,
+  };
+}
+
+function normalizeRendererExpression(value, index) {
+  if (!isRecord(value)) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Expression ${index} must be an object.`);
+  const allowed = new Set(['id', 'name', 'runtimeId']);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Expression ${index} contains unsupported fields: ${unknown.join(', ')}.`);
+  if (typeof value.id !== 'string' || !value.id.trim() || value.id.length > 256) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Expression ${index} id is invalid.`);
+  const name = value.name === undefined ? value.id.trim() : value.name;
+  if (typeof name !== 'string' || name.length > 256) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Expression ${index} name is invalid.`);
+  const runtimeId = value.runtimeId;
+  if (runtimeId !== undefined && !((typeof runtimeId === 'string' && runtimeId.length <= 256) || (Number.isInteger(runtimeId) && runtimeId >= 0 && runtimeId <= 100000))) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Expression ${index} runtimeId is invalid.`);
+  return { id: value.id.trim(), name, ...(runtimeId === undefined ? {} : { runtimeId }) };
+}
+
+function normalizeRendererLoadRequest(value) {
+  if (!isRecord(value)) fail('INVALID_RENDERER_SOURCE_REQUEST', 'Renderer source input must be an object.');
+  const allowed = new Set(['sessionId', 'modelConfig', 'cubismVersion', 'motions', 'expressions']);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer source input contains unsupported fields: ${unknown.join(', ')}.`);
+  const sessionId = normalizeRendererSessionId(value.sessionId);
+  const cubismVersion = Number(value.cubismVersion);
+  if (![2, 3, 4, 5].includes(cubismVersion)) fail('INVALID_RENDERER_SOURCE_REQUEST', 'Renderer source cubismVersion must be 2, 3, 4, or 5.');
+  if (!Array.isArray(value.motions) || value.motions.length > 2048) fail('INVALID_RENDERER_SOURCE_REQUEST', 'Renderer source motions must be an array with at most 2048 entries.');
+  if (value.expressions !== undefined && (!Array.isArray(value.expressions) || value.expressions.length > 512)) fail('INVALID_RENDERER_SOURCE_REQUEST', 'Renderer source expressions must be an array with at most 512 entries.');
+  return {
+    sessionId,
+    source: {
+      modelConfig: normalizeRendererModelConfig(value.modelConfig),
+      cubismVersion,
+      motions: value.motions.map(normalizeRendererMotion),
+      expressions: (value.expressions || []).map(normalizeRendererExpression),
+    },
+  };
+}
+
+function normalizeRendererCommandArgument(value, depth = 0) {
+  if (value === null || typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) fail('INVALID_RENDERER_COMMAND', 'Renderer command arguments must contain finite numbers.');
+    return value;
+  }
+  if (typeof value === 'string') {
+    if (value.length > 1024) fail('INVALID_RENDERER_COMMAND', 'Renderer command string arguments are too long.');
+    if (/^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value)) fail('INVALID_RENDERER_COMMAND', 'Renderer command arguments cannot contain absolute paths.');
+    return value;
+  }
+  if (Buffer.isBuffer(value) || value instanceof ArrayBuffer || ArrayBuffer.isView(value)) fail('INVALID_RENDERER_COMMAND', 'Renderer command arguments cannot contain binary data.');
+  if (depth >= 3) fail('INVALID_RENDERER_COMMAND', 'Renderer command arguments are nested too deeply.');
+  if (Array.isArray(value)) {
+    if (value.length > 16) fail('INVALID_RENDERER_COMMAND', 'Renderer command arrays are too large.');
+    return value.map((item) => normalizeRendererCommandArgument(item, depth + 1));
+  }
+  if (!isRecord(value)) fail('INVALID_RENDERER_COMMAND', 'Renderer command arguments contain an unsupported value.');
+  const keys = Object.keys(value);
+  if (keys.length > 16) fail('INVALID_RENDERER_COMMAND', 'Renderer command objects are too large.');
+  return Object.fromEntries(keys.map((key) => {
+    if (!key || key.length > 64 || key.includes('\0')) fail('INVALID_RENDERER_COMMAND', 'Renderer command object keys are invalid.');
+    return [key, normalizeRendererCommandArgument(value[key], depth + 1)];
+  }));
+}
+
+function normalizeRendererCommandRequest(value) {
+  if (!isRecord(value)) fail('INVALID_RENDERER_COMMAND', 'Renderer command input must be an object.');
+  const allowed = new Set(['sessionId', 'method', 'args']);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) fail('INVALID_RENDERER_COMMAND', `Renderer command input contains unsupported fields: ${unknown.join(', ')}.`);
+  const sessionId = normalizeRendererSessionId(value.sessionId);
+  if (typeof value.method !== 'string' || !RENDERER_PREVIEW_COMMANDS.includes(value.method)) fail('INVALID_RENDERER_COMMAND', `Renderer command is not allowed: ${String(value.method)}.`);
+  const args = value.args == null ? [] : value.args;
+  if (!Array.isArray(args) || args.length > 4) fail('INVALID_RENDERER_COMMAND', 'Renderer command args must be an array with at most four items.');
+  return { sessionId, method: value.method, args: args.map((item) => normalizeRendererCommandArgument(item)) };
+}
+
+function normalizeRendererSessionRequest(value, { optional = false } = {}) {
+  if (value === undefined && optional) return {};
+  if (!isRecord(value)) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer preview session input must be an object.');
+  const unknown = Object.keys(value).filter((key) => key !== 'sessionId');
+  if (unknown.length) fail('INVALID_RENDERER_PREVIEW_REQUEST', `Renderer preview session input contains unsupported fields: ${unknown.join(', ')}.`);
+  if (value.sessionId === undefined && optional) return {};
+  return { sessionId: normalizeRendererSessionId(value.sessionId) };
+}
+
+function sanitizeRendererPreviewValue(value, depth = 0) {
+  if (Buffer.isBuffer(value) || value instanceof ArrayBuffer || ArrayBuffer.isView(value)) fail('INVALID_RENDERER_PREVIEW_RESULT', 'Renderer preview results cannot contain binary data.');
+  if (typeof value === 'string') return /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value) ? '<redacted-path>' : value.slice(0, 4096);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'boolean' || value === null) return value;
+  if (value === undefined) return null;
+  if (depth > 8) fail('INVALID_RENDERER_PREVIEW_RESULT', 'Renderer preview results are nested too deeply.');
+  if (Array.isArray(value)) {
+    if (value.length > 2048) fail('INVALID_RENDERER_PREVIEW_RESULT', 'Renderer preview results contain too many entries.');
+    return value.map((item) => sanitizeRendererPreviewValue(item, depth + 1));
+  }
+  if (!isRecord(value)) fail('INVALID_RENDERER_PREVIEW_RESULT', 'Renderer preview results contain an unsupported value.');
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizeRendererPreviewValue(item, depth + 1)]));
+}
+
+function summarizeRendererPreviewResult(result) {
+  return sanitizeRendererPreviewValue(result);
+}
+
 function summarizeRuntimeSettings(result) {
   const sanitized = sanitizeInspectionValue(result);
   if (!isRecord(sanitized) || sanitized.schemaVersion !== 1 || typeof sanitized.configured !== 'boolean' || typeof sanitized.restartRequired !== 'boolean') fail('INVALID_RUNTIME_RESULT', 'App runtime settings did not return the supported versioned contract.');
@@ -298,17 +472,19 @@ function typedError(error) {
   const details = error && error.details && typeof error.details === 'object'
     ? Object.fromEntries(Object.entries(error.details).map(([key, value]) => [key, redactedKeys.has(key) ? '<redacted-path>' : value]))
     : undefined;
+  const message = error && error.message ? String(error.message) : String(error);
   return {
     code: error && error.code ? error.code : 'APP_COMMAND_FAILED',
-    message: error && error.message ? error.message : String(error),
+    message: message.replace(/(?:[A-Za-z]:[\\/]|\/(?:Users|home|private|tmp)\/)[^\s'"`]+/g, '<redacted-path>'),
     ...(details ? { details } : {}),
   };
 }
 
-function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, sourceInspectionService = null, runtimeSettingsService = null, buildProjectService = null, installPackageService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
+function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, sourceInspectionService = null, runtimeSettingsService = null, rendererPreviewService = null, buildProjectService = null, installPackageService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
   if (typeof mapperHostFactory !== 'function') fail('INVALID_APP_ROUTER', 'mapperHostFactory must be a function.');
   if (sourceInspectionService !== null && typeof sourceInspectionService !== 'function') fail('INVALID_APP_ROUTER', 'sourceInspectionService must be a function when provided.');
   if (runtimeSettingsService !== null && (!isRecord(runtimeSettingsService) || typeof runtimeSettingsService.get !== 'function' || typeof runtimeSettingsService.configure !== 'function' || typeof runtimeSettingsService.clear !== 'function')) fail('INVALID_APP_ROUTER', 'runtimeSettingsService must expose get, configure, and clear functions when provided.');
+  if (rendererPreviewService !== null && (!isRecord(rendererPreviewService) || typeof rendererPreviewService.start !== 'function' || typeof rendererPreviewService.loadSource !== 'function' || typeof rendererPreviewService.command !== 'function' || typeof rendererPreviewService.status !== 'function' || typeof rendererPreviewService.restart !== 'function' || typeof rendererPreviewService.close !== 'function')) fail('INVALID_APP_ROUTER', 'rendererPreviewService must expose start, loadSource, command, status, restart, and close functions when provided.');
   if (buildProjectService !== null && typeof buildProjectService !== 'function') fail('INVALID_APP_ROUTER', 'buildProjectService must be a function when provided.');
   if (installPackageService !== null && typeof installPackageService !== 'function') fail('INVALID_APP_ROUTER', 'installPackageService must be a function when provided.');
   if (onBuildProgress !== null && typeof onBuildProgress !== 'function') fail('INVALID_APP_ROUTER', 'onBuildProgress must be a function when provided.');
@@ -359,6 +535,37 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, source
       if (normalized.method === 'clearRuntimeSettings') {
         if (!runtimeSettingsService) fail('APP_RUNTIME_UNAVAILABLE', 'The App runtime settings service is not configured.');
         return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRuntimeSettings(await runtimeSettingsService.clear()) };
+      }
+      if (normalized.method === 'startRendererPreview') {
+        if (!rendererPreviewService) fail('APP_RENDERER_PREVIEW_UNAVAILABLE', 'The App isolated renderer preview service is not configured.');
+        const input = normalizeRendererPreviewStartRequest(normalized.args[0]);
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRendererPreviewResult(await rendererPreviewService.start(input)) };
+      }
+      if (normalized.method === 'loadRendererSource') {
+        if (!rendererPreviewService) fail('APP_RENDERER_PREVIEW_UNAVAILABLE', 'The App isolated renderer preview service is not configured.');
+        const input = normalizeRendererLoadRequest(normalized.args[0]);
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRendererPreviewResult(await rendererPreviewService.loadSource(input)) };
+      }
+      if (normalized.method === 'rendererCommand') {
+        if (!rendererPreviewService) fail('APP_RENDERER_PREVIEW_UNAVAILABLE', 'The App isolated renderer preview service is not configured.');
+        const input = normalizeRendererCommandRequest(normalized.args[0]);
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRendererPreviewResult(await rendererPreviewService.command(input)) };
+      }
+      if (normalized.method === 'getRendererPreviewStatus') {
+        if (!rendererPreviewService) fail('APP_RENDERER_PREVIEW_UNAVAILABLE', 'The App isolated renderer preview service is not configured.');
+        if (normalized.args.length) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'getRendererPreviewStatus does not accept arguments.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRendererPreviewResult(await rendererPreviewService.status()) };
+      }
+      if (normalized.method === 'restartRendererPreview') {
+        if (!rendererPreviewService) fail('APP_RENDERER_PREVIEW_UNAVAILABLE', 'The App isolated renderer preview service is not configured.');
+        const input = normalizeRendererSessionRequest(normalized.args[0]);
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRendererPreviewResult(await rendererPreviewService.restart(input)) };
+      }
+      if (normalized.method === 'closeRendererPreview') {
+        if (!rendererPreviewService) fail('APP_RENDERER_PREVIEW_UNAVAILABLE', 'The App isolated renderer preview service is not configured.');
+        if (normalized.args.length > 1) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'closeRendererPreview accepts at most one session object.');
+        const input = normalizeRendererSessionRequest(normalized.args[0], { optional: true });
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRendererPreviewResult(await rendererPreviewService.close(input)) };
       }
       if (normalized.method === 'startMapperSession') {
         if (activeHost) fail('MAPPER_SESSION_ACTIVE', 'A Mapper Session is already active. Close it before starting another session.');
@@ -491,6 +698,12 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL } = {}) {
     getRuntimeSettings: () => invoke('getRuntimeSettings'),
     configureRuntime: (input) => invoke('configureRuntime', input),
     clearRuntimeSettings: () => invoke('clearRuntimeSettings'),
+    startRendererPreview: (input) => invoke('startRendererPreview', input),
+    loadRendererSource: (input) => invoke('loadRendererSource', input),
+    rendererCommand: (input) => invoke('rendererCommand', input),
+    getRendererPreviewStatus: () => invoke('getRendererPreviewStatus'),
+    restartRendererPreview: (sessionId) => invoke('restartRendererPreview', { sessionId }),
+    closeRendererPreview: (sessionId) => invoke('closeRendererPreview', sessionId === undefined ? undefined : { sessionId }),
     startMapperSession: (options) => invoke('startMapperSession', options),
     getMapperProject: () => invoke('getMapperProject'),
     updateMapperProject: (project) => invoke('updateMapperProject', project),
@@ -539,6 +752,10 @@ module.exports = {
   normalizeRequest,
   normalizeInspectRequest,
   normalizeRuntimeRequest,
+  normalizeRendererPreviewStartRequest,
+  normalizeRendererLoadRequest,
+  normalizeRendererCommandRequest,
+  normalizeRendererSessionRequest,
   normalizeBuildRequest,
   normalizeInstallRequest,
   normalizeBuildProgressEvent,
@@ -549,4 +766,6 @@ module.exports = {
   collectBuildArtifacts,
   summarizeSourceInspection,
   summarizeRuntimeSettings,
+  summarizeRendererPreviewResult,
+  RENDERER_PREVIEW_COMMANDS,
 };
