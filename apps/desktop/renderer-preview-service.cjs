@@ -99,8 +99,9 @@ function createRendererPreviewService({
     }
   }
 
-  async function loadSource({ sessionId, ...source } = {}) {
+  async function loadSource({ sessionId, source } = {}) {
     const current = requireSession(sessionId);
+    if (!isRecord(source)) fail('INVALID_RENDERER_SOURCE_REQUEST', 'Renderer preview source must be an object.');
     const result = await current.host.loadSource(source);
     return { protocolVersion: 1, sessionId: current.id, result };
   }

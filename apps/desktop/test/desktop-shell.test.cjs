@@ -7,6 +7,7 @@ const { EventEmitter } = require('node:events');
 const root = path.resolve(__dirname, '..');
 const { cubismAdapter, createRendererWindowHost, hardenRendererWindow, waitForRendererReady } = require('../renderer-host.cjs');
 const { createRendererPreviewService } = require('../renderer-preview-service.cjs');
+const { createAppIpcRouter } = require('../../../packages/app-host/src/index.cjs');
 
 test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narrow', () => {
   const main = fs.readFileSync(path.join(root, 'main.cjs'), 'utf8');
@@ -287,7 +288,10 @@ test('renderer preview service resolves the saved runtime and guards one session
   assert.equal(calls[1][0], 'resolve');
   assert.deepEqual(calls[2][1], { sourceRoot: '/Users/RY/Downloads/model', runtimePath: '/Users/RY/Downloads/cubism/live2d.min.js', cubismVersion: 2, width: 512, height: 512, show: true });
   await assert.rejects(() => service.start({ sourceRoot: '/tmp/other', cubismVersion: 2 }), (error) => error.code === 'RENDERER_PREVIEW_ACTIVE');
-  const loaded = await service.loadSource({ sessionId: started.sessionId, modelConfig: 'model.json', cubismVersion: 2, motions: [] });
+  const loaded = await service.loadSource({
+    sessionId: started.sessionId,
+    source: { modelConfig: 'model.json', cubismVersion: 2, motions: [], expressions: [] },
+  });
   assert.equal(loaded.result.motionCount, 0);
   const state = await service.command({ sessionId: started.sessionId, method: 'getState', args: [] });
   assert.deepEqual(state.result, { loaded: true, motionId: null });
@@ -297,6 +301,56 @@ test('renderer preview service resolves the saved runtime and guards one session
   assert.equal(closed.closed, true);
   assert.equal(hostClosed, true);
   assert.equal(service.status().active, false);
+});
+
+test('App IPC preserves renderer source generation through the preview service', async () => {
+  let loadedSource = null;
+  const service = createRendererPreviewService({
+    loadRuntime: async () => ({
+      available: true,
+      runtimePath: '/tmp/live2dcubismcore.min.js',
+      descriptor: { cubismGenerations: [3] },
+    }),
+    createHost: () => ({
+      kind: 'modern-cubism',
+      start: async () => ({ state: 'ready' }),
+      restart: async () => ({ state: 'ready', generation: 2 }),
+      close: async () => ({ state: 'closed' }),
+      getStatus: () => ({ state: 'ready', generation: 1, hasWindow: true, hasRenderer: true }),
+      loadSource: async (source) => {
+        if (source.cubismVersion !== 3) {
+          const error = new Error('The selected renderer runtime does not match the Source Package Cubism generation.');
+          error.code = 'RENDERER_RUNTIME_MISMATCH';
+          throw error;
+        }
+        loadedSource = source;
+        return { contractVersion: 1, motionCount: source.motions.length, expressionCount: source.expressions.length };
+      },
+      invoke: async () => true,
+    }),
+  });
+  const router = createAppIpcRouter({ rendererPreviewService: service });
+  const started = await router({
+    protocolVersion: 1,
+    method: 'startRendererPreview',
+    args: [{ sourceRoot: '/tmp/source', cubismVersion: 3, show: false }],
+  });
+  assert.equal(started.ok, true);
+
+  const loaded = await router({
+    protocolVersion: 1,
+    method: 'loadRendererSource',
+    args: [{
+      sessionId: started.result.sessionId,
+      modelConfig: 'model3.json',
+      cubismVersion: 3,
+      motions: [],
+      expressions: [],
+    }],
+  });
+  assert.equal(loaded.ok, true, loaded.error && loaded.error.message);
+  assert.equal(loadedSource.cubismVersion, 3);
+  await service.close({ sessionId: started.result.sessionId });
 });
 
 test('renderer ready helper returns a typed timeout instead of hanging', async () => {
