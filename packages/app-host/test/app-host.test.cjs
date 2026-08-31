@@ -28,6 +28,7 @@ const {
   normalizeRendererCommandRequest,
   normalizeRendererSessionRequest,
   normalizeInstallRequest,
+  normalizeInstallRootRequest,
   normalizeBuildProgressEvent,
   normalizeRequest,
 } = require('../src/index.cjs');
@@ -52,6 +53,7 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.equal(APP_IPC_METHODS.includes('buildProject'), true);
   assert.equal(APP_IPC_METHODS.includes('getBuildArtifact'), true);
   assert.equal(APP_IPC_METHODS.includes('installArtifact'), true);
+  assert.equal(APP_IPC_METHODS.includes('chooseInstallRoot'), true);
   assert.equal(APP_IPC_METHODS.includes('inspectSource'), true);
   assert.equal(APP_IPC_METHODS.includes('startRendererPreview'), true);
   assert.deepEqual(RENDERER_PREVIEW_COMMANDS, ['playMotion', 'pause', 'resume', 'restart', 'setLoop', 'setSpeed', 'setExpression', 'step', 'getState', 'getBounds']);
@@ -67,6 +69,9 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.deepEqual(normalizeRendererSessionRequest(undefined, { optional: true }), {});
   assert.throws(() => normalizeRendererCommandRequest({ sessionId: 'renderer-session', method: 'captureRgba', args: [] }), (error) => error instanceof AppHostError && error.code === 'INVALID_RENDERER_COMMAND');
   assert.deepEqual(normalizeInstallRequest({ artifactId: 'artifact', target: 'codex-pet', confirmInstall: true }), { artifactId: 'artifact', target: 'codex-pet', conflict: 'cancel', confirmInstall: true });
+  assert.deepEqual(normalizeInstallRequest({ artifactId: 'artifact', target: 'codex-pet', locationId: '01234567-89ab-cdef-0123-456789abcdef', confirmInstall: true }), { artifactId: 'artifact', target: 'codex-pet', conflict: 'cancel', locationId: '01234567-89ab-cdef-0123-456789abcdef', confirmInstall: true });
+  assert.deepEqual(normalizeInstallRootRequest({ target: 'clawd' }), { target: 'clawd' });
+  assert.throws(() => normalizeInstallRootRequest({ target: 'codex-pet', path: '/tmp' }), (error) => error instanceof AppHostError && error.code === 'INVALID_INSTALL_ROOT_REQUEST');
   assert.throws(() => normalizeInstallRequest({ artifactId: 'artifact', target: 'codex-pet' }), (error) => error instanceof AppHostError && error.code === 'INSTALL_AUTHORIZATION_REQUIRED');
 });
 
@@ -509,6 +514,41 @@ test('installs only a current artifact after explicit confirmation and redacts t
   assert.equal(mismatch.error.code, 'INSTALL_TARGET_MISMATCH');
 });
 
+test('keeps a native install-folder choice behind an opaque location id', async () => {
+  const calls = [];
+  const router = createAppIpcRouter({
+    installRootPickerService: async (input) => {
+      assert.deepEqual(input, { target: 'codex-pet' });
+      return { path: '/Users/private/Downloads/live2pet-pets' };
+    },
+    buildProjectService: async () => ({
+      projectId: 'app-selected-root',
+      targets: ['codex-pet'],
+      builds: { 'codex-pet': { target: 'codex-pet', package: { artifactName: 'selected-root.zip', byteLength: 1, files: ['pet.json'], buffer: Uint8Array.from([7]) } } },
+    }),
+    installPackageService: async (input) => {
+      calls.push(input);
+      return { protocolVersion: 1, target: input.target, packageId: 'selected-root', conflict: 'none', files: ['pet.json'], byteLength: 1, path: input.targetRoot };
+    },
+  });
+  const chosen = await router({ protocolVersion: 1, method: 'chooseInstallRoot', args: [{ target: 'codex-pet' }] });
+  assert.equal(chosen.ok, true);
+  assert.equal(chosen.result.target, 'codex-pet');
+  assert.equal(chosen.result.cancelled, false);
+  assert.match(chosen.result.locationId, /^[0-9a-f-]{36}$/);
+  assert.equal(JSON.stringify(chosen).includes('/Users/private'), false);
+  const built = await router({ protocolVersion: 1, method: 'buildProject', args: [{ project: { projectId: 'app-selected-root' }, targets: ['codex-pet'] }] });
+  const artifactId = built.result.artifacts[0].artifactId;
+  const installed = await router({ protocolVersion: 1, method: 'installArtifact', args: [{ artifactId, target: 'codex-pet', locationId: chosen.result.locationId, confirmInstall: true }] });
+  assert.equal(installed.ok, true);
+  assert.equal(installed.result.path, '<selected-install-root>');
+  assert.equal(calls[0].targetRoot, '/Users/private/Downloads/live2pet-pets');
+  await router({ protocolVersion: 1, method: 'closeMapperSession', args: [] });
+  const expired = await router({ protocolVersion: 1, method: 'installArtifact', args: [{ artifactId, target: 'codex-pet', locationId: chosen.result.locationId, confirmInstall: true }] });
+  assert.equal(expired.ok, false);
+  assert.equal(expired.error.code, 'BUILD_ARTIFACT_NOT_FOUND');
+});
+
 test('retains the latest artifact for an unrelated target across builds', async () => {
   const router = createAppIpcRouter({
     mapperHostFactory: async () => fakeHost(),
@@ -561,6 +601,7 @@ test('preload exposes only typed methods and the window options keep Electron sa
   await api.getRendererPreviewStatus();
   await api.restartRendererPreview('renderer-session');
   await api.closeRendererPreview('renderer-session');
+  await api.chooseInstallRoot('clawd');
   assert.equal(calls[0][0], APP_IPC_CHANNEL);
   assert.deepEqual(calls[0][1], { protocolVersion: 1, method: 'getVersion', args: [] });
   assert.deepEqual(calls[1][1], { protocolVersion: 1, method: 'startMapperSession', args: [{}] });
@@ -578,6 +619,7 @@ test('preload exposes only typed methods and the window options keep Electron sa
   assert.deepEqual(calls[13][1], { protocolVersion: 1, method: 'getRendererPreviewStatus', args: [] });
   assert.deepEqual(calls[14][1], { protocolVersion: 1, method: 'restartRendererPreview', args: [{ sessionId: 'renderer-session' }] });
   assert.deepEqual(calls[15][1], { protocolVersion: 1, method: 'closeRendererPreview', args: [{ sessionId: 'renderer-session' }] });
+  assert.deepEqual(calls[16][1], { protocolVersion: 1, method: 'chooseInstallRoot', args: [{ target: 'clawd' }] });
   assert.equal(Object.hasOwn(api, 'ipcRenderer'), false);
   const options = createAppWindowOptions({ preload: '/app/preload.cjs' });
   assert.equal(options.webPreferences.nodeIntegration, false);

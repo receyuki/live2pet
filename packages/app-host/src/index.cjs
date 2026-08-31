@@ -8,6 +8,7 @@ const APP_IPC_PROTOCOL_VERSION = 1;
 const APP_IPC_CHANNEL = 'live2pet:app';
 const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';
 const APP_BUILD_ARTIFACT_CHUNK_BYTES = 1024 * 1024;
+const APP_INSTALL_LOCATION_LIMIT = 8;
 const APP_SOURCE_INSPECTION_PROGRESS_STAGE = 'inspect';
 const APP_RUNTIME_PROGRESS_STAGE = 'runtime';
 const RENDERER_PREVIEW_COMMANDS = Object.freeze([
@@ -72,6 +73,7 @@ const APP_IPC_METHODS = Object.freeze([
   'updateMapperProject',
   'buildProject',
   'getBuildArtifact',
+  'chooseInstallRoot',
   'installArtifact',
   'closeMapperSession',
   'startRendererPreview',
@@ -430,19 +432,30 @@ function summarizeRuntimeSettings(result) {
 
 function normalizeInstallRequest(value) {
   if (!isRecord(value)) fail('INVALID_INSTALL_REQUEST', 'App installation input must be an object.');
-  const allowed = new Set(['artifactId', 'target', 'conflict', 'confirmInstall']);
+  const allowed = new Set(['artifactId', 'target', 'conflict', 'confirmInstall', 'locationId']);
   const unknown = Object.keys(value).filter((key) => !allowed.has(key));
   if (unknown.length) fail('INVALID_INSTALL_REQUEST', `App installation input contains unsupported fields: ${unknown.join(', ')}.`);
   if (typeof value.artifactId !== 'string' || !value.artifactId.trim()) fail('INVALID_INSTALL_REQUEST', 'App installation input requires an artifactId.');
   if (!['clawd', 'codex-pet'].includes(value.target)) fail('INVALID_INSTALL_REQUEST', 'App installation target must be clawd or codex-pet.');
   if (value.conflict !== undefined && !['cancel', 'upgrade', 'side-by-side'].includes(value.conflict)) fail('INVALID_INSTALL_REQUEST', 'App installation conflict must be cancel, upgrade, or side-by-side.');
+  if (value.locationId !== undefined && (typeof value.locationId !== 'string' || !/^[0-9a-f-]{16,128}$/i.test(value.locationId.trim()))) fail('INVALID_INSTALL_REQUEST', 'locationId must be an opaque install location identifier.');
   if (value.confirmInstall !== true) fail('INSTALL_AUTHORIZATION_REQUIRED', 'Installing a package requires explicit confirmation.');
   return {
     artifactId: value.artifactId.trim(),
     target: value.target,
     conflict: value.conflict || 'cancel',
+    ...(value.locationId === undefined ? {} : { locationId: value.locationId.trim() }),
     confirmInstall: true,
   };
+}
+
+function normalizeInstallRootRequest(value) {
+  if (!isRecord(value)) fail('INVALID_INSTALL_ROOT_REQUEST', 'Install root selection input must be an object.');
+  const allowed = new Set(['target']);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) fail('INVALID_INSTALL_ROOT_REQUEST', `Install root selection contains unsupported fields: ${unknown.join(', ')}.`);
+  if (!['clawd', 'codex-pet'].includes(value.target)) fail('INVALID_INSTALL_ROOT_REQUEST', 'Install root selection target must be clawd or codex-pet.');
+  return { target: value.target };
 }
 
 function summarizeBuild(build = {}) {
@@ -500,7 +513,7 @@ function collectBuildArtifacts(built = {}) {
   return artifacts;
 }
 
-function summarizeInstall(result = {}) {
+function summarizeInstall(result = {}, { customRoot = false } = {}) {
   return {
     protocolVersion: result.protocolVersion,
     target: result.target,
@@ -508,7 +521,7 @@ function summarizeInstall(result = {}) {
     conflict: result.conflict,
     files: Array.isArray(result.files) ? [...result.files] : [],
     byteLength: result.byteLength,
-    path: '<platform-default-target-root>',
+    path: customRoot ? '<selected-install-root>' : '<platform-default-target-root>',
   };
 }
 
@@ -534,7 +547,7 @@ function typedError(error) {
   };
 }
 
-function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, sourceInspectionService = null, runtimeSettingsService = null, captureCacheService = null, rendererPreviewService = null, buildProjectService = null, installPackageService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
+function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, sourceInspectionService = null, runtimeSettingsService = null, captureCacheService = null, rendererPreviewService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
   if (typeof mapperHostFactory !== 'function') fail('INVALID_APP_ROUTER', 'mapperHostFactory must be a function.');
   if (sourceInspectionService !== null && typeof sourceInspectionService !== 'function') fail('INVALID_APP_ROUTER', 'sourceInspectionService must be a function when provided.');
   if (runtimeSettingsService !== null && (!isRecord(runtimeSettingsService) || typeof runtimeSettingsService.get !== 'function' || typeof runtimeSettingsService.configure !== 'function' || typeof runtimeSettingsService.clear !== 'function')) fail('INVALID_APP_ROUTER', 'runtimeSettingsService must expose get, configure, and clear functions when provided.');
@@ -542,21 +555,25 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, source
   if (rendererPreviewService !== null && (!isRecord(rendererPreviewService) || typeof rendererPreviewService.start !== 'function' || typeof rendererPreviewService.loadSource !== 'function' || typeof rendererPreviewService.command !== 'function' || typeof rendererPreviewService.status !== 'function' || typeof rendererPreviewService.restart !== 'function' || typeof rendererPreviewService.close !== 'function')) fail('INVALID_APP_ROUTER', 'rendererPreviewService must expose start, loadSource, command, status, restart, and close functions when provided.');
   if (buildProjectService !== null && typeof buildProjectService !== 'function') fail('INVALID_APP_ROUTER', 'buildProjectService must be a function when provided.');
   if (installPackageService !== null && typeof installPackageService !== 'function') fail('INVALID_APP_ROUTER', 'installPackageService must be a function when provided.');
+  if (installRootPickerService !== null && typeof installRootPickerService !== 'function') fail('INVALID_APP_ROUTER', 'installRootPickerService must be a function when provided.');
   if (onBuildProgress !== null && typeof onBuildProgress !== 'function') fail('INVALID_APP_ROUTER', 'onBuildProgress must be a function when provided.');
   if (typeof appVersion !== 'string' || !appVersion.trim()) fail('INVALID_APP_ROUTER', 'appVersion must be a non-empty string.');
   let activeHost = null;
   let activeClient = null;
   let buildArtifacts = new Map();
+  let installLocations = new Map();
 
   const closeActive = async () => {
     if (!activeHost) {
       buildArtifacts = new Map();
+      installLocations = new Map();
       return { closed: false };
     }
     const host = activeHost;
     activeHost = null;
     activeClient = null;
     buildArtifacts = new Map();
+    installLocations = new Map();
     await host.close();
     return { closed: true, sessionId: host.sessionId };
   };
@@ -710,20 +727,35 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, source
           },
         };
       }
+      if (normalized.method === 'chooseInstallRoot') {
+        if (!installRootPickerService) fail('APP_INSTALL_ROOT_UNAVAILABLE', 'The App install root picker is not configured.');
+        const input = normalizeInstallRootRequest(normalized.args[0]);
+        const picked = await installRootPickerService(input);
+        if (!picked || picked.cancelled === true) return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: { target: input.target, cancelled: true } };
+        if (!isRecord(picked) || typeof picked.path !== 'string' || !picked.path.trim() || picked.path.includes('\0') || !path.isAbsolute(picked.path.trim())) fail('INVALID_INSTALL_ROOT_RESULT', 'The App install root picker returned an invalid directory.');
+        const locationId = crypto.randomUUID();
+        installLocations.set(locationId, { target: input.target, path: path.resolve(picked.path.trim()) });
+        while (installLocations.size > APP_INSTALL_LOCATION_LIMIT) installLocations.delete(installLocations.keys().next().value);
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: { target: input.target, cancelled: false, locationId, label: 'selected-folder' } };
+      }
       if (normalized.method === 'installArtifact') {
         if (!installPackageService) fail('APP_INSTALL_UNAVAILABLE', 'The App installation service is not configured.');
         const input = normalizeInstallRequest(normalized.args[0]);
         const artifact = buildArtifacts.get(input.artifactId);
         if (!artifact) fail('BUILD_ARTIFACT_NOT_FOUND', 'The requested build artifact is no longer available. Build the project again.');
         if (artifact.target !== input.target) fail('INSTALL_TARGET_MISMATCH', 'The selected artifact does not belong to the requested Target Profile.');
+        const location = input.locationId ? installLocations.get(input.locationId) : null;
+        if (input.locationId && !location) fail('INSTALL_LOCATION_EXPIRED', 'The selected install folder is no longer available. Choose it again.');
+        if (location && location.target !== input.target) fail('INSTALL_LOCATION_MISMATCH', 'The selected install folder belongs to another Target Profile.');
         const progress = [];
         const installed = await installPackageService({
           target: artifact.target,
           packageBytes: artifact.bytes,
           conflict: input.conflict,
+          ...(location ? { targetRoot: location.path } : {}),
           onProgress: (event) => progress.push(event),
         });
-        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, progress, result: summarizeInstall(installed) };
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, progress, result: summarizeInstall(installed, { customRoot: Boolean(location) }) };
       }
       if (normalized.method === 'closeMapperSession') return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: await closeActive() };
       fail('UNKNOWN_APP_METHOD', `App method is not allowed: ${normalized.method}.`);
@@ -781,6 +813,7 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
     buildProject: (input) => invoke('buildProject', input),
     onBuildProgress,
     getBuildArtifact: (artifactId, offset = 0) => invoke('getBuildArtifact', { artifactId, offset }),
+    chooseInstallRoot: (target) => invoke('chooseInstallRoot', { target }),
     installArtifact: (request) => invoke('installArtifact', request),
     closeMapperSession: () => invoke('closeMapperSession'),
   });
@@ -830,6 +863,7 @@ module.exports = {
   normalizeRendererSessionRequest,
   normalizeBuildRequest,
   normalizeInstallRequest,
+  normalizeInstallRootRequest,
   normalizeBuildProgressEvent,
   normalizeBuildProgressPayload,
   summarizeBuild,

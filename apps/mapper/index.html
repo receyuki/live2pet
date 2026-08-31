@@ -455,7 +455,8 @@
             <option value="side-by-side" data-i18n="build.install.conflict.sideBySide">Install alongside the current package</option>
           </select>
         </label>
-        <span class="muted" data-i18n="build.install.target.codex">Codex default location</span>
+        <span id="codexInstallLocation" class="muted" data-i18n="build.install.target.codex">Codex default location</span>
+        <button id="chooseCodexInstallRoot" type="button" data-i18n="build.install.choose">Choose folder</button>
         <button id="installCodex" data-i18n="build.install.codex">Install Codex Pet</button>
       </div>
       <div id="codexInstallStatus" class="install-status" role="status" aria-live="polite"></div>
@@ -495,7 +496,8 @@
             <option value="side-by-side" data-i18n="build.install.conflict.sideBySide">Install alongside the current package</option>
           </select>
         </label>
-        <span class="muted" data-i18n="build.install.target.clawd">Clawd default location</span>
+        <span id="clawdInstallLocation" class="muted" data-i18n="build.install.target.clawd">Clawd default location</span>
+        <button id="chooseClawdInstallRoot" type="button" data-i18n="build.install.choose">Choose folder</button>
         <button id="installClawd" data-i18n="build.install.clawd">Install Clawd Theme</button>
       </div>
       <div id="clawdInstallStatus" class="install-status" role="status" aria-live="polite"></div>
@@ -682,6 +684,10 @@
           "build.install.conflict.none": "new installation",
           "build.install.codex": "Install Codex Pet",
           "build.install.clawd": "Install Clawd Theme",
+          "build.install.choose": "Choose folder",
+          "build.install.selected": "Custom folder selected",
+          "build.install.chooseCancelled": "Folder selection cancelled.",
+          "build.install.chooseFailed": "Could not choose an install folder: {message}",
           "build.install.target.codex": "Codex default location",
           "build.install.target.clawd": "Clawd default location",
           "build.install.confirm": "Install {filename} in the {target}?",
@@ -1049,6 +1055,10 @@
           "build.install.conflict.none": "全新安装",
           "build.install.codex": "安装 Codex Pet",
           "build.install.clawd": "安装 Clawd 主题",
+          "build.install.choose": "选择文件夹",
+          "build.install.selected": "已选择自定义文件夹",
+          "build.install.chooseCancelled": "已取消选择文件夹。",
+          "build.install.chooseFailed": "无法选择安装文件夹：{message}",
           "build.install.target.codex": "Codex 默认目录",
           "build.install.target.clawd": "Clawd 默认目录",
           "build.install.confirm": "要将 {filename} 安装到 {target} 吗？",
@@ -2534,6 +2544,8 @@
       const codexInstallable = Boolean(installApi && codexArtifact?.artifactId);
       $("codexInstallControls").classList.toggle("hidden", !codexInstallable);
       $("installCodex").disabled = !codexInstallable || codexInstallBusy;
+      $("chooseCodexInstallRoot").disabled = !codexInstallable || codexInstallBusy || typeof installApi?.chooseInstallRoot !== "function";
+      $("codexInstallLocation").textContent = installLocations.codex ? I18n.t("build.install.selected") : I18n.t("build.install.target.codex");
       const clawdReadiness = clawdBuildReadiness();
       $("buildClawd").disabled = clawdBuildBusy || !clawdReadiness.ready;
       $("buildClawd").textContent = clawdBuildBusy ? I18n.t("build.clawd.building") : I18n.t("build.clawd.build");
@@ -2545,6 +2557,8 @@
       const clawdInstallable = Boolean(installApi && clawdArtifact?.artifactId);
       $("clawdInstallControls").classList.toggle("hidden", !clawdInstallable);
       $("installClawd").disabled = !clawdInstallable || clawdInstallBusy;
+      $("chooseClawdInstallRoot").disabled = !clawdInstallable || clawdInstallBusy || typeof installApi?.chooseInstallRoot !== "function";
+      $("clawdInstallLocation").textContent = installLocations.clawd ? I18n.t("build.install.selected") : I18n.t("build.install.target.clawd");
       const targetPreview = $("codexTargetPreview");
       const hasTargetPreview = Boolean(codexArtifact?.previewUrl && codexArtifact?.cellPreviewUrl);
       targetPreview.classList.toggle("hidden", !hasTargetPreview);
@@ -3018,6 +3032,7 @@
     let codexBuildBusy = false;
     let codexArtifact = null;
     const codexRowPlayback = { rowId: null, frameIndex: 0, timer: null, playing: false };
+    const installLocations = { clawd: null, codex: null };
     const codexCaptureMemory = new Map();
     let codexCaptureMemoryBytes = 0;
     const CODEX_CAPTURE_MEMORY_LIMIT = 256 * 1024 * 1024;
@@ -4022,6 +4037,29 @@
       element.textContent = message;
     }
 
+    async function chooseInstallRoot(target) {
+      const api = desktopInstallApi();
+      if (!api || typeof api.chooseInstallRoot !== "function") {
+        setInstallStatus(target, I18n.t("build.install.unavailable"), "bad");
+        return;
+      }
+      try {
+        const response = await api.chooseInstallRoot(target);
+        if (!response?.ok) throw projectError(response?.error?.code || "APP_INSTALL_ROOT_FAILED", response?.error?.message || "The App install root picker rejected the request.");
+        const result = response.result || {};
+        if (result.cancelled) {
+          setInstallStatus(target, I18n.t("build.install.chooseCancelled"));
+          return;
+        }
+        if (typeof result.locationId !== "string" || !result.locationId) throw projectError("APP_INSTALL_ROOT_FAILED", "The App did not return a usable install location.");
+        installLocations[target === "clawd" ? "clawd" : "codex"] = { locationId: result.locationId, label: result.label || "selected-folder" };
+        setInstallStatus(target, I18n.t("build.install.selected"), "good");
+        render();
+      } catch (error) {
+        setInstallStatus(target, I18n.t("build.install.chooseFailed", { message: error.message }), "bad");
+      }
+    }
+
     async function installTargetArtifact(target) {
       const codex = target === "codex-pet";
       const artifact = codex ? codexArtifact : clawdArtifact;
@@ -4032,7 +4070,8 @@
         setInstallStatus(statusTarget, I18n.t("build.install.unavailable"), "bad");
         return;
       }
-      const targetLabel = I18n.t(codex ? "build.install.target.codex" : "build.install.target.clawd");
+      const locationKey = codex ? "codex" : "clawd";
+      const targetLabel = installLocations[locationKey] ? I18n.t("build.install.selected") : I18n.t(codex ? "build.install.target.codex" : "build.install.target.clawd");
       if (!window.confirm(I18n.t("build.install.confirm", { filename: artifact.filename, target: targetLabel }))) {
         setInstallStatus(statusTarget, I18n.t("build.install.cancelled"));
         return;
@@ -4042,7 +4081,8 @@
       render();
       setInstallStatus(statusTarget, I18n.t("build.install.busy", { filename: artifact.filename }), "busy");
       try {
-        const response = await api.installArtifact({ artifactId: artifact.artifactId, target, conflict, confirmInstall: true });
+        const location = installLocations[locationKey];
+        const response = await api.installArtifact({ artifactId: artifact.artifactId, target, conflict, ...(location ? { locationId: location.locationId } : {}), confirmInstall: true });
         if (!response?.ok) throw projectError(response?.error?.code || "APP_INSTALL_FAILED", response?.error?.message || "The App installation service rejected the request.");
         const result = response.result || {};
         const conflictKey = ["none", "cancel", "upgrade", "side-by-side"].includes(result.conflict) ? result.conflict : "none";
@@ -4333,9 +4373,11 @@
     $("downloadJson").addEventListener("click",downloadJson);
     $("buildCodex").addEventListener("click", async () => { try { await buildCodexPackage(); } catch (error) { setBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad"); } });
     $("downloadCodex").addEventListener("click",downloadCodexPackage);
+    $("chooseCodexInstallRoot").addEventListener("click", async () => { await chooseInstallRoot("codex-pet"); });
     $("installCodex").addEventListener("click", async () => { await installTargetArtifact("codex-pet"); });
     $("buildClawd").addEventListener("click", async () => { try { await buildClawdPackage(); } catch (error) { setClawdBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad"); } });
     $("downloadClawd").addEventListener("click",downloadClawdPackage);
+    $("chooseClawdInstallRoot").addEventListener("click", async () => { await chooseInstallRoot("clawd"); });
     $("installClawd").addEventListener("click", async () => { await installTargetArtifact("clawd"); });
     $("clawdPreviewState").addEventListener("change", async event => {
       const preview = clawdPreview;

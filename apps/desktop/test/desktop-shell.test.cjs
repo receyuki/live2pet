@@ -27,6 +27,8 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(main, /APP_BUILD_PROGRESS_CHANNEL/);
   assert.match(main, /webContents\.send\(APP_BUILD_PROGRESS_CHANNEL/);
   assert.match(main, /installPackageService: installPackage/);
+  assert.match(main, /installRootPickerService: chooseInstallRoot/);
+  assert.match(main, /dialog\.showOpenDialog/);
   assert.match(main, /event\.sender !== mainWindow\.webContents/);
   assert.match(main, /setWindowOpenHandler\(\(\) => \(\{ action: 'deny' \}\)\)/);
   assert.match(main, /mainWindow\.once\('ready-to-show', showWindow\);[\s\S]*await mainWindow\.loadFile\(documentPath\);[\s\S]*!mainWindow\.isVisible\(\)/);
@@ -41,7 +43,7 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(preload, /const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';/);
   assert.match(preload, /webUtils\.getPathForFile/);
   assert.match(preload, /getFilePath,/);
-  for (const method of ['getVersion', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'buildProject', 'getBuildArtifact', 'installArtifact', 'closeMapperSession', 'getCaptureCacheStatus', 'startRendererPreview', 'loadRendererSource', 'rendererCommand', 'getRendererPreviewStatus', 'restartRendererPreview', 'closeRendererPreview']) {
+  for (const method of ['getVersion', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'buildProject', 'getBuildArtifact', 'chooseInstallRoot', 'installArtifact', 'closeMapperSession', 'getCaptureCacheStatus', 'startRendererPreview', 'loadRendererSource', 'rendererCommand', 'getRendererPreviewStatus', 'restartRendererPreview', 'closeRendererPreview']) {
     assert.match(preload, new RegExp(`invoke\\('${method}'`));
   }
   assert.match(preload, /getBuildArtifact: \(artifactId, offset = 0\) => invoke\('getBuildArtifact', \{ artifactId, offset \}\)/);
@@ -88,6 +90,8 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /id="downloadClawd"/);
   assert.match(mapper, /id="installCodex"/);
   assert.match(mapper, /id="installClawd"/);
+  assert.match(mapper, /id="chooseCodexInstallRoot"/);
+  assert.match(mapper, /id="chooseClawdInstallRoot"/);
   assert.match(mapper, /confirmInstall: true/);
   assert.match(mapper, /async function prepareClawdPreview\(artifact, generation\)/);
   assert.match(mapper, /function startClawdPreview\(artifact\)/);

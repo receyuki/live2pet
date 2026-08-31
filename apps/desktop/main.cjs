@@ -1,6 +1,6 @@
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 
 const {
   APP_BUILD_PROGRESS_CHANNEL,
@@ -128,6 +128,14 @@ const buildProjectWithCaptureCache = createCaptureCacheBuildService({
   getCaptureCacheService,
 });
 
+async function chooseInstallRoot({ target } = {}) {
+  if (!mainWindow || mainWindow.isDestroyed()) throw new Error('The Live2Pet window is not available for folder selection.');
+  const title = target === 'clawd' ? 'Choose a Clawd themes folder' : 'Choose a Codex pets folder';
+  const result = await dialog.showOpenDialog(mainWindow, { title, properties: ['openDirectory', 'createDirectory'] });
+  if (result.canceled || !result.filePaths?.[0]) return { cancelled: true };
+  return { path: result.filePaths[0] };
+}
+
 function registerIpc() {
   route = createAppIpcRouter({
     mapperHostFactory,
@@ -137,6 +145,7 @@ function registerIpc() {
     rendererPreviewService,
     buildProjectService: buildProjectWithCaptureCache,
     installPackageService: installPackage,
+    installRootPickerService: chooseInstallRoot,
     onBuildProgress: (event) => {
       if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
       try { mainWindow.webContents.send(APP_BUILD_PROGRESS_CHANNEL, event); } catch {}
