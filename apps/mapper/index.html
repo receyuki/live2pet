@@ -1410,6 +1410,50 @@
       return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(projectError("WEBP_ENCODER_FAILED", "This browser could not encode the transparent atlas as WebP.")), type, quality));
     }
 
+    function desktopBuildApi() {
+      return window.live2pet && typeof window.live2pet.buildProject === "function" && typeof window.live2pet.getBuildArtifact === "function" ? window.live2pet : null;
+    }
+
+    function appBuildCandidate(frame, motion, index, total) {
+      return {
+        id: `${motion.id}-capture-${index}`,
+        index,
+        time: total > 1 ? index / (total - 1) : 0,
+        visualChange: index === 0 || index === total - 1 ? 0 : 1,
+        bounds: { x: 0, y: 0, width: 1, height: 1 },
+        width: frame.width,
+        height: frame.height,
+        rgba: Uint8Array.from(frame.data),
+      };
+    }
+
+    async function buildCodexThroughDesktop(project, captures) {
+      const api = desktopBuildApi();
+      if (!api) return null;
+      const candidatesByRow = {};
+      for (const row of MotionMapping.codexRows) {
+        const value = state.codexMappings[row.id];
+        const motion = selectedMotionById(value.slice(7));
+        const frames = captures.get(motion.id) || [];
+        candidatesByRow[row.id] = frames.map((frame, index) => appBuildCandidate(frame, motion, index, frames.length));
+      }
+      setBuildStatus("Building through the shared App Package Build service…", "busy");
+      const quality = state.codexRenderPreset === "compact" ? 76 : state.codexRenderPreset === "high" ? 88 : 82;
+      const response = await api.buildProject({
+        project,
+        targets: ["codex-pet"],
+        inputsByTarget: { "codex-pet": { candidatesByRow } },
+        metadataByTarget: { "codex-pet": { id: project.projectId, displayName: project.name, description: `A Codex pet generated locally by Live2Pet from ${project.name}.`, version: CODEX_PACKAGE_VERSION } },
+        optionsByTarget: { "codex-pet": { package: true, quality, render: { preset: state.codexRenderPreset } } },
+      });
+      if (!response?.ok) throw projectError(response?.error?.code || "APP_BUILD_FAILED", response?.error?.message || "The App Package Build service rejected the request.");
+      const artifact = response.result?.artifacts?.find(item => item.target === "codex-pet");
+      if (!artifact?.artifactId) throw projectError("APP_BUILD_ARTIFACT_MISSING", "The App Package Build completed without a downloadable Codex artifact.");
+      const payload = await api.getBuildArtifact(artifact.artifactId);
+      if (!payload?.ok || !payload.result?.bytes) throw projectError(payload?.error?.code || "APP_BUILD_ARTIFACT_FAILED", payload?.error?.message || "The App could not retrieve the built Codex artifact.");
+      return { blob: new Blob([payload.result.bytes], { type: "application/zip" }), filename: artifact.filename, manifest: response.result.builds?.["codex-pet"]?.manifest || null };
+    }
+
     function releaseCodexPreview() {
       if (!codexArtifact) return;
       for (const key of ["previewUrl", "cellPreviewUrl"]) if (codexArtifact[key]) URL.revokeObjectURL(codexArtifact[key]);
@@ -1460,6 +1504,14 @@
         cell.getContext("2d").drawImage(atlas, 0, 0, CODEX_ATLAS.cellWidth, CODEX_ATLAS.cellHeight, 0, 0, CODEX_ATLAS.cellWidth, CODEX_ATLAS.cellHeight);
         const cellPreviewUrl = URL.createObjectURL(await canvasToBlob(cell, "image/png"));
         previewUrls.push(cellPreviewUrl);
+        const project = buildProjectDocument();
+        const desktopArtifact = await buildCodexThroughDesktop(project, captures);
+        if (desktopArtifact) {
+          codexArtifact = { ...desktopArtifact, previewUrl: atlasPreviewUrl, cellPreviewUrl };
+          previewUrls.length = 0;
+          setBuildStatus(`Built ${desktopArtifact.filename} through the App · ${Math.round(desktopArtifact.blob.size / 1024)} KiB · shared Package Build.`, "good");
+          return;
+        }
         setBuildStatus("Encoding transparent WebP atlas…", "busy");
         const renderPreset = state.codexRenderPreset;
         const quality = renderPreset === "compact" ? 0.76 : renderPreset === "high" ? 0.88 : 0.82;

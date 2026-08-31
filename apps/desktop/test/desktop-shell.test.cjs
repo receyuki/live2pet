@@ -35,3 +35,13 @@ test('desktop package keeps Electron and future Forge settings explicit', () => 
   assert.match(forge, /extraResource:\s*\[path\.resolve\(__dirname, 'mapper-dist'\)\]/);
   assert.equal(manifest.scripts['prepare:mapper'], 'node scripts/stage-mapper-assets.cjs');
 });
+
+test('shared Mapper uses the App build seam when available and keeps browser fallback intact', () => {
+  const mapper = fs.readFileSync(path.resolve(root, '../mapper/index.html'), 'utf8');
+  assert.match(mapper, /function desktopBuildApi\(\)/);
+  assert.match(mapper, /window\.live2pet\.buildProject/);
+  assert.match(mapper, /window\.live2pet\.getBuildArtifact/);
+  assert.match(mapper, /optionsByTarget: \{ "codex-pet": \{ package: true/);
+  assert.match(mapper, /if \(desktopArtifact\) \{/);
+  assert.match(mapper, /Encoding transparent WebP atlas/);
+});
