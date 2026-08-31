@@ -5,7 +5,10 @@ function fail(message) {
 }
 
 function mappedMotionIds(target = {}) {
-  const values = [...Object.values(target.mappings || {}), ...Object.values(target.reactions || {})];
+  const behavior = target.options && target.options.behavior && typeof target.options.behavior === 'object' ? target.options.behavior : {};
+  const behaviorValues = ['idleAnimations', 'workingTiers', 'jugglingTiers']
+    .flatMap((field) => Array.isArray(behavior[field]) ? behavior[field].map((entry) => entry && entry.motion) : []);
+  const values = [...Object.values(target.mappings || {}), ...Object.values(target.reactions || {}), ...behaviorValues];
   const seen = new Set();
   return values
     .filter((value) => typeof value === 'string' && value.startsWith('motion:'))

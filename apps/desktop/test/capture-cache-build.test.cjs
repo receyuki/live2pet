@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { createCaptureCacheBuildService } = require('../capture-cache-build.cjs');
+const { createCaptureCacheBuildService, mappedMotionIds } = require('../capture-cache-build.cjs');
 
 function project() {
   return {
@@ -76,6 +76,20 @@ test('capture-cache build service replaces Clawd inputs with cache hits and stri
   assert.equal('captureCache' in clawdInput, false);
   assert.equal(clawdInput.framesByMotion.idle.frames[0].rgba[0], 7);
   assert.equal(clawdInput.framesByMotion.working.frames[0].rgba[0], 8);
+});
+
+test('capture-cache build service includes user-configured Clawd behavior Motions', () => {
+  assert.deepEqual(mappedMotionIds({
+    mappings: { idle: 'motion:idle' },
+    reactions: {},
+    options: {
+      behavior: {
+        idleAnimations: [{ motion: 'motion:idle-pool' }],
+        workingTiers: [{ motion: 'motion:working-tier' }],
+        jugglingTiers: [{ motion: 'motion:juggling-tier' }],
+      },
+    },
+  }), ['idle', 'idle-pool', 'working-tier', 'juggling-tier']);
 });
 
 test('capture-cache build service persists completed misses even when the build fails', async () => {
