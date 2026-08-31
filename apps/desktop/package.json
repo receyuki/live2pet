@@ -6,6 +6,7 @@
   "main": "main.cjs",
   "scripts": {
     "prepare:mapper": "node scripts/stage-mapper-assets.cjs",
+    "benchmark:capture": "node scripts/benchmark-capture-transport.cjs",
     "start": "electron .",
     "typecheck": "node --check main.cjs preload.cjs renderer-host.cjs renderer-preview-service.cjs forge.config.cjs scripts/*.cjs"
   },

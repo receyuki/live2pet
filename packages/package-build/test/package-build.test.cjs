@@ -6,6 +6,7 @@ const { deflateSync } = require('node:zlib');
 const {
   CLAWD_PACKAGE_LIMIT,
   DEFAULT_CLAWD_ENCODING_CONCURRENCY,
+  MAX_RGBA_CHUNK_BYTES,
   MAX_STACKED_RGBA_BYTES,
   AssetCacheError,
   CacheStore,
@@ -23,9 +24,12 @@ const {
   createTargetPreview,
   createCodexPetZip,
   decodeCompressedRgbaFrame,
+  decodeCompressedRgbaStack,
+  decodeCaptureSet,
   decodeAsset,
   encodeAnimatedWebp,
   encodeAsset,
+  encodeCaptureSet,
   decodeFrameSet,
   encodeFrameSet,
   renderMappedMotions,
@@ -168,6 +172,53 @@ test('builds Clawd themes from deflate-compressed RGBA frame transport', async (
   assert.equal(result.assets.length, 5);
   assert.equal(result.validation.ok, true);
   assert.deepEqual(result.assets.map((asset) => asset.motionId), Object.keys(rawFrames));
+});
+
+test('builds Clawd themes from bounded stacked RGBA capture chunks', async () => {
+  const rawFrames = clawdFrames();
+  const stacked = Object.fromEntries(Object.entries(rawFrames).map(([motionId, frameSet]) => {
+    const bytes = Buffer.concat(frameSet.frames.map((frame) => Buffer.from(frame.rgba)));
+    const first = frameSet.frames[0];
+    return [motionId, {
+      ...frameSet,
+      frames: frameSet.frames.map((frame, index) => ({ width: frame.width, height: frame.height, id: `${motionId}-${index}`, index })),
+      rgbaChunks: [{ startFrame: 0, frameCount: frameSet.frames.length, width: first.width, height: first.height, rgbaDeflate: deflateSync(bytes), compression: 'deflate-stack-v1' }],
+    }];
+  }));
+  const result = await buildClawdTheme(
+    { mapping: clawdMapping(), framesByMotion: stacked, metadata: { id: 'stacked-theme', name: 'Stacked Theme' } },
+    { sharpFactory: clawdSharpFactory(), encodingConcurrency: 1 },
+  );
+  assert.equal(result.assets.length, 5);
+  assert.equal(result.validation.ok, true);
+  assert.ok(MAX_RGBA_CHUNK_BYTES > 0);
+  const raw = Buffer.concat(rawFrames.idle.frames.map((frame) => Buffer.from(frame.rgba)));
+  assert.deepEqual(await decodeCompressedRgbaStack({ width: 2, height: 2, frameCount: 2, rgbaDeflate: deflateSync(raw), compression: 'deflate-stack-v1' }), raw);
+});
+
+test('round-trips persistent capture cache envelopes without storing frame paths', () => {
+  const frames = clawdFrames().idle.frames.map((frame, index) => ({ ...frame, id: `idle-${index}`, time: index / 10 }));
+  const bytes = encodeCaptureSet({ motionId: 'idle', frames, fps: 10, delay: [100, 100] });
+  const decoded = decodeCaptureSet(bytes);
+  assert.equal(decoded.motionId, 'idle');
+  assert.equal(decoded.frames.length, 2);
+  assert.deepEqual(decoded.frames.map((frame) => Array.from(frame.rgba)), frames.map((frame) => Array.from(frame.rgba)));
+  assert.deepEqual(decoded.delay, [100, 100]);
+});
+
+test('rejects capture cache payload ranges before inflating untrusted bytes', () => {
+  const frames = clawdFrames().idle.frames.map((frame, index) => ({ ...frame, id: `idle-${index}` }));
+  const bytes = encodeCaptureSet({ motionId: 'idle', frames });
+  const headerLength = bytes.readUInt32LE(0);
+  const metadata = JSON.parse(bytes.toString('utf8', 4, 4 + headerLength));
+  metadata.chunks[0].offset = 1;
+  const header = Buffer.from(JSON.stringify(metadata), 'utf8');
+  const prefix = Buffer.allocUnsafe(4);
+  prefix.writeUInt32LE(header.byteLength, 0);
+  assert.throws(
+    () => decodeCaptureSet(Buffer.concat([prefix, header, bytes.subarray(4 + headerLength)])),
+    (error) => error.code === 'INVALID_CAPTURE_CACHE',
+  );
 });
 
 test('rejects malformed or oversized deflate RGBA frames before WebP encoding', async () => {

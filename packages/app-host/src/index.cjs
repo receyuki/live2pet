@@ -66,6 +66,7 @@ const APP_IPC_METHODS = Object.freeze([
   'getRuntimeSettings',
   'configureRuntime',
   'clearRuntimeSettings',
+  'getCaptureCacheStatus',
   'startMapperSession',
   'getMapperProject',
   'updateMapperProject',
@@ -197,6 +198,52 @@ function normalizeRuntimeRequest(value) {
   if (unknown.length) fail('INVALID_RUNTIME_REQUEST', `App runtime configuration contains unsupported fields: ${unknown.join(', ')}.`);
   if (typeof value.inputPath !== 'string' || !value.inputPath.trim() || value.inputPath.length > 4096 || value.inputPath.includes('\0')) fail('INVALID_RUNTIME_REQUEST', 'App runtime configuration requires a valid local inputPath.');
   return { inputPath: value.inputPath.trim() };
+}
+
+function normalizeCaptureCacheRecipe(value, index) {
+  if (!isRecord(value)) fail('INVALID_CAPTURE_CACHE_REQUEST', `Capture cache recipe ${index} must be an object.`);
+  const allowed = new Set(['motionId', 'duration', 'width', 'height', 'frameCount', 'fps']);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) fail('INVALID_CAPTURE_CACHE_REQUEST', `Capture cache recipe ${index} contains unsupported fields: ${unknown.join(', ')}.`);
+  if (typeof value.motionId !== 'string' || !value.motionId.trim() || value.motionId.length > 256) fail('INVALID_CAPTURE_CACHE_REQUEST', `Capture cache recipe ${index} motionId is invalid.`);
+  const duration = Number(value.duration);
+  const width = Number(value.width);
+  const height = Number(value.height);
+  const frameCount = Number(value.frameCount);
+  const fps = Number(value.fps);
+  if (!Number.isFinite(duration) || duration < 0 || duration > 3600 || !Number.isInteger(width) || width < 1 || width > 4096 || !Number.isInteger(height) || height < 1 || height > 4096 || !Number.isInteger(frameCount) || frameCount < 1 || frameCount > 4096 || !Number.isFinite(fps) || fps <= 0 || fps > 240) fail('INVALID_CAPTURE_CACHE_REQUEST', `Capture cache recipe ${index} contains invalid timing or dimensions.`);
+  return { motionId: value.motionId.trim(), duration, width, height, frameCount, fps };
+}
+
+function normalizeCaptureCacheStatusRequest(value) {
+  if (!isRecord(value)) fail('INVALID_CAPTURE_CACHE_REQUEST', 'Capture cache status input must be an object.');
+  const allowed = new Set(['sourceFingerprint', 'cubismVersion', 'target', 'renderPreset', 'motions']);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) fail('INVALID_CAPTURE_CACHE_REQUEST', `Capture cache status contains unsupported fields: ${unknown.join(', ')}.`);
+  if (typeof value.sourceFingerprint !== 'string' || !/^[a-f0-9]{64}$/i.test(value.sourceFingerprint.trim())) fail('INVALID_CAPTURE_CACHE_REQUEST', 'Capture cache sourceFingerprint must be a SHA-256 digest.');
+  const cubismVersion = Number(value.cubismVersion);
+  if (![2, 3, 4, 5].includes(cubismVersion)) fail('INVALID_CAPTURE_CACHE_REQUEST', 'Capture cache cubismVersion must be 2, 3, 4, or 5.');
+  if (value.target !== 'clawd' && value.target !== 'codex-pet') fail('INVALID_CAPTURE_CACHE_REQUEST', 'Capture cache target must be clawd or codex-pet.');
+  if (typeof value.renderPreset !== 'string' || !['compact', 'balanced', 'high'].includes(value.renderPreset.trim().toLowerCase())) fail('INVALID_CAPTURE_CACHE_REQUEST', 'Capture cache renderPreset must be compact, balanced, or high.');
+  if (!Array.isArray(value.motions) || !value.motions.length || value.motions.length > 2048) fail('INVALID_CAPTURE_CACHE_REQUEST', 'Capture cache motions must be a non-empty array with at most 2048 entries.');
+  return {
+    sourceFingerprint: value.sourceFingerprint.trim().toLowerCase(),
+    cubismVersion,
+    target: value.target,
+    renderPreset: value.renderPreset.trim().toLowerCase(),
+    motions: value.motions.map(normalizeCaptureCacheRecipe),
+  };
+}
+
+function summarizeCaptureCacheStatus(result) {
+  if (!isRecord(result) || result.schemaVersion !== 1 || typeof result.target !== 'string' || typeof result.renderPreset !== 'string' || !Array.isArray(result.entries) || result.entries.length > 2048) fail('INVALID_CAPTURE_CACHE_RESULT', 'Capture cache status did not return the supported result contract.');
+  const entries = result.entries.map((entry, index) => {
+    if (!isRecord(entry) || typeof entry.motionId !== 'string' || !entry.motionId.trim() || typeof entry.hit !== 'boolean') fail('INVALID_CAPTURE_CACHE_RESULT', `Capture cache result entry ${index} is invalid.`);
+    if (entry.key !== undefined && (typeof entry.key !== 'string' || !/^[a-f0-9]{64}$/i.test(entry.key))) fail('INVALID_CAPTURE_CACHE_RESULT', `Capture cache result entry ${index} key is invalid.`);
+    if (entry.byteLength !== undefined && (!Number.isSafeInteger(entry.byteLength) || entry.byteLength < 0)) fail('INVALID_CAPTURE_CACHE_RESULT', `Capture cache result entry ${index} byteLength is invalid.`);
+    return { motionId: entry.motionId.trim(), hit: entry.hit, ...(entry.key === undefined ? {} : { key: entry.key.toLowerCase() }), ...(entry.byteLength === undefined ? {} : { byteLength: entry.byteLength }) };
+  });
+  return { schemaVersion: 1, target: result.target, renderPreset: result.renderPreset, runtimeAvailable: result.runtimeAvailable !== false, entries };
 }
 
 function normalizeRendererSessionId(value, label = 'sessionId') {
@@ -487,10 +534,11 @@ function typedError(error) {
   };
 }
 
-function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, sourceInspectionService = null, runtimeSettingsService = null, rendererPreviewService = null, buildProjectService = null, installPackageService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
+function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, sourceInspectionService = null, runtimeSettingsService = null, captureCacheService = null, rendererPreviewService = null, buildProjectService = null, installPackageService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
   if (typeof mapperHostFactory !== 'function') fail('INVALID_APP_ROUTER', 'mapperHostFactory must be a function.');
   if (sourceInspectionService !== null && typeof sourceInspectionService !== 'function') fail('INVALID_APP_ROUTER', 'sourceInspectionService must be a function when provided.');
   if (runtimeSettingsService !== null && (!isRecord(runtimeSettingsService) || typeof runtimeSettingsService.get !== 'function' || typeof runtimeSettingsService.configure !== 'function' || typeof runtimeSettingsService.clear !== 'function')) fail('INVALID_APP_ROUTER', 'runtimeSettingsService must expose get, configure, and clear functions when provided.');
+  if (captureCacheService !== null && (!isRecord(captureCacheService) || typeof captureCacheService.status !== 'function')) fail('INVALID_APP_ROUTER', 'captureCacheService must expose a status function when provided.');
   if (rendererPreviewService !== null && (!isRecord(rendererPreviewService) || typeof rendererPreviewService.start !== 'function' || typeof rendererPreviewService.loadSource !== 'function' || typeof rendererPreviewService.command !== 'function' || typeof rendererPreviewService.status !== 'function' || typeof rendererPreviewService.restart !== 'function' || typeof rendererPreviewService.close !== 'function')) fail('INVALID_APP_ROUTER', 'rendererPreviewService must expose start, loadSource, command, status, restart, and close functions when provided.');
   if (buildProjectService !== null && typeof buildProjectService !== 'function') fail('INVALID_APP_ROUTER', 'buildProjectService must be a function when provided.');
   if (installPackageService !== null && typeof installPackageService !== 'function') fail('INVALID_APP_ROUTER', 'installPackageService must be a function when provided.');
@@ -542,6 +590,11 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, source
       if (normalized.method === 'clearRuntimeSettings') {
         if (!runtimeSettingsService) fail('APP_RUNTIME_UNAVAILABLE', 'The App runtime settings service is not configured.');
         return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRuntimeSettings(await runtimeSettingsService.clear()) };
+      }
+      if (normalized.method === 'getCaptureCacheStatus') {
+        if (!captureCacheService) fail('APP_CAPTURE_CACHE_UNAVAILABLE', 'The App capture cache service is not configured.');
+        const input = normalizeCaptureCacheStatusRequest(normalized.args[0]);
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeCaptureCacheStatus(await captureCacheService.status(input)) };
       }
       if (normalized.method === 'startRendererPreview') {
         if (!rendererPreviewService) fail('APP_RENDERER_PREVIEW_UNAVAILABLE', 'The App isolated renderer preview service is not configured.');
@@ -714,6 +767,7 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
     getRuntimeSettings: () => invoke('getRuntimeSettings'),
     configureRuntime: (input) => invoke('configureRuntime', input),
     clearRuntimeSettings: () => invoke('clearRuntimeSettings'),
+    getCaptureCacheStatus: (input) => invoke('getCaptureCacheStatus', input),
     getFilePath: resolveFilePath,
     startRendererPreview: (input) => invoke('startRendererPreview', input),
     loadRendererSource: (input) => invoke('loadRendererSource', input),
@@ -769,6 +823,7 @@ module.exports = {
   normalizeRequest,
   normalizeInspectRequest,
   normalizeRuntimeRequest,
+  normalizeCaptureCacheStatusRequest,
   normalizeRendererPreviewStartRequest,
   normalizeRendererLoadRequest,
   normalizeRendererCommandRequest,
@@ -783,6 +838,7 @@ module.exports = {
   collectBuildArtifacts,
   summarizeSourceInspection,
   summarizeRuntimeSettings,
+  summarizeCaptureCacheStatus,
   summarizeRendererPreviewResult,
   RENDERER_PREVIEW_COMMANDS,
 };

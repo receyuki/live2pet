@@ -81,8 +81,12 @@ root; the renderer never supplies an arbitrary filesystem path.
 
 Build progress is streamed over a versioned, path-redacted IPC event channel and
 shown in the Mapper for both targets. Live2D capture stays sequential on the
-single preview renderer; captured Clawd RGBA frames are deflate-compressed before
-the IPC handoff and restored with bounded validation in the App. After capture,
+single preview renderer, but it now advances the animation with deterministic
+fixed steps, reuses its capture surfaces, and batches Clawd RGBA frames into
+bounded deflate stacks before the IPC handoff. The App keeps those validated
+capture stacks in a private one-GiB LRU cache keyed by the source fingerprint,
+saved runtime, renderer, Motion recipe, Target Profile, and Render Preset; a
+repeat build can therefore skip the renderer capture entirely. After capture,
 Clawd WebP assets are encoded with a bounded worker pool (two concurrent assets
 by default) while output order stays stable. The event stream includes stage
 transitions and per-Motion encoding updates, so long builds remain observable
@@ -99,6 +103,17 @@ Before a package build, stage the browser dependencies into a self-contained Map
 ```text
 pnpm --filter @live2pet/desktop prepare:mapper
 ```
+
+To compare the bounded stacked transport with the former per-frame transport
+using a copyright-safe synthetic RGBA workload, run:
+
+```text
+pnpm --filter @live2pet/desktop benchmark:capture
+```
+
+The command reports compression calls, elapsed time, and payload size only; it
+does not load a model or runtime and is not a substitute for an opt-in real
+model capture smoke test.
 
 The staging step copies only Pixi, the matching Pixi `@pixi/unsafe-eval`
 compatibility bundle, the Pixi Live2D adapter, and zip.js. It

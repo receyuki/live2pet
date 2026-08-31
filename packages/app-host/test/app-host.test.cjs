@@ -20,6 +20,7 @@ const {
   createAppIpcRouter,
   createAppPreloadApi,
   createAppWindowOptions,
+  normalizeCaptureCacheStatusRequest,
   normalizeInspectRequest,
   normalizeRuntimeRequest,
   normalizeRendererPreviewStartRequest,
@@ -58,6 +59,8 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.throws(() => normalizeInspectRequest({ inputPath: '/tmp/source', shell: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_INSPECT_REQUEST');
   assert.deepEqual(normalizeRuntimeRequest({ inputPath: '/tmp/live2d.min.js' }), { inputPath: '/tmp/live2d.min.js' });
   assert.throws(() => normalizeRuntimeRequest({ inputPath: '/tmp/runtime', shell: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_RUNTIME_REQUEST');
+  assert.deepEqual(normalizeCaptureCacheStatusRequest({ sourceFingerprint: 'a'.repeat(64), cubismVersion: 3, target: 'clawd', renderPreset: 'balanced', motions: [{ motionId: 'idle', duration: 1.2, width: 768, height: 768, frameCount: 29, fps: 24 }] }), { sourceFingerprint: 'a'.repeat(64), cubismVersion: 3, target: 'clawd', renderPreset: 'balanced', motions: [{ motionId: 'idle', duration: 1.2, width: 768, height: 768, frameCount: 29, fps: 24 }] });
+  assert.throws(() => normalizeCaptureCacheStatusRequest({ sourceFingerprint: 'not-a-digest', cubismVersion: 3, target: 'clawd', renderPreset: 'balanced', motions: [] }), (error) => error instanceof AppHostError && error.code === 'INVALID_CAPTURE_CACHE_REQUEST');
   assert.deepEqual(normalizeRendererPreviewStartRequest({ sourceRoot: '/tmp/source', cubismVersion: 2 }), { sourceRoot: '/tmp/source', cubismVersion: 2, width: 512, height: 512, show: true });
   assert.deepEqual(normalizeRendererLoadRequest({ sessionId: 'renderer-session', modelConfig: 'model.json', cubismVersion: 2, motions: [{ id: 'idle:0', group: 'idle', index: 0, duration: 1 }] }), { sessionId: 'renderer-session', source: { modelConfig: 'model.json', cubismVersion: 2, motions: [{ id: 'idle:0', name: 'idle:0', group: 'idle', index: 0, duration: 1 }], expressions: [] } });
   assert.deepEqual(normalizeRendererCommandRequest({ sessionId: 'renderer-session', method: 'playMotion', args: ['idle:0', { loop: true }] }), { sessionId: 'renderer-session', method: 'playMotion', args: ['idle:0', { loop: true }] });
@@ -108,6 +111,26 @@ test('rejects runtime services that return raw paths or incomplete metadata', as
   const response = await router({ protocolVersion: 1, method: 'getRuntimeSettings', args: [] });
   assert.equal(response.ok, false);
   assert.equal(response.error.code, 'INVALID_RUNTIME_RESULT');
+});
+
+test('routes bounded capture cache status without exposing local paths', async () => {
+  const calls = [];
+  const router = createAppIpcRouter({
+    captureCacheService: {
+      status: async (input) => {
+        calls.push(input);
+        return { schemaVersion: 1, target: input.target, renderPreset: input.renderPreset, runtimeAvailable: true, entries: [{ motionId: input.motions[0].motionId, key: 'b'.repeat(64), hit: true, byteLength: 1234 }] };
+      },
+    },
+  });
+  const response = await router({ protocolVersion: 1, method: 'getCaptureCacheStatus', args: [{ sourceFingerprint: 'a'.repeat(64), cubismVersion: 4, target: 'clawd', renderPreset: 'balanced', motions: [{ motionId: 'idle', duration: 1.2, width: 768, height: 768, frameCount: 29, fps: 24 }] }] });
+  assert.equal(response.ok, true);
+  assert.deepEqual(response.result.entries[0], { motionId: 'idle', key: 'b'.repeat(64), hit: true, byteLength: 1234 });
+  assert.equal(JSON.stringify(response).includes('/Users/'), false);
+  assert.equal(calls[0].motions[0].motionId, 'idle');
+  const unavailable = await createAppIpcRouter()({ protocolVersion: 1, method: 'getCaptureCacheStatus', args: [{ sourceFingerprint: 'a'.repeat(64), cubismVersion: 4, target: 'clawd', renderPreset: 'balanced', motions: [{ motionId: 'idle', duration: 1.2, width: 768, height: 768, frameCount: 29, fps: 24 }] }] });
+  assert.equal(unavailable.ok, false);
+  assert.equal(unavailable.error.code, 'APP_CAPTURE_CACHE_UNAVAILABLE');
 });
 
 test('routes an isolated renderer preview without exposing source paths or binary commands', async () => {

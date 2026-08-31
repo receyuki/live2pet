@@ -14,6 +14,8 @@ const { installPackage } = require('../../packages/installation/src/index.cjs');
 const { inspectSourcePackage } = require('../../packages/source-inspector/src/index.cjs');
 const { createRendererWindowHost } = require('./renderer-host.cjs');
 const { createRendererPreviewService } = require('./renderer-preview-service.cjs');
+const { createCaptureCacheService } = require('./capture-cache-service.cjs');
+const { createCaptureCacheBuildService } = require('./capture-cache-build.cjs');
 const {
   clearRuntimeSettings,
   loadRuntimeForGeneration,
@@ -28,11 +30,13 @@ const PACKAGED_MAPPER_PATH = path.join(process.resourcesPath, 'mapper-dist', 'in
 const DEVELOPMENT_RENDERER_PATH = path.resolve(__dirname, 'renderer/index.html');
 const PACKAGED_RENDERER_PATH = path.join(process.resourcesPath, 'mapper-dist', 'renderer.html');
 const SOURCE_CACHE_LIMIT = 1024 * 1024 * 1024;
+const CAPTURE_CACHE_LIMIT = 1024 * 1024 * 1024;
 let mainWindow = null;
 let route = null;
 let sourceCache = null;
 let runtimeSettingsFile = null;
 let rendererWindowHost = null;
+let captureCacheService = null;
 
 function mapperPath() {
   return app.isPackaged ? PACKAGED_MAPPER_PATH : DEVELOPMENT_MAPPER_PATH;
@@ -105,13 +109,33 @@ const rendererPreviewService = createRendererPreviewService({
   createHost: (options) => createRendererPreviewHost(options),
 });
 
+function getCaptureCacheService() {
+  if (!captureCacheService) {
+    const cache = new CacheStore({
+      rootDir: path.join(app.getPath('userData'), 'cache', 'captures'),
+      maxBytes: CAPTURE_CACHE_LIMIT,
+    });
+    captureCacheService = createCaptureCacheService({
+      cache,
+      getRuntimeForGeneration: (cubismVersion) => loadRuntimeForGeneration(runtimeSettingsPath(), cubismVersion),
+    });
+  }
+  return captureCacheService;
+}
+
+const buildProjectWithCaptureCache = createCaptureCacheBuildService({
+  buildProjectTargets,
+  getCaptureCacheService,
+});
+
 function registerIpc() {
   route = createAppIpcRouter({
     mapperHostFactory,
     sourceInspectionService,
     runtimeSettingsService,
+    captureCacheService: getCaptureCacheService(),
     rendererPreviewService,
-    buildProjectService: buildProjectTargets,
+    buildProjectService: buildProjectWithCaptureCache,
     installPackageService: installPackage,
     onBuildProgress: (event) => {
       if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
