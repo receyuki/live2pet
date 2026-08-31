@@ -79,7 +79,15 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /function beginBuildProgress\(target/);
   assert.match(mapper, /function setBuildProgressCapture\(target/);
   assert.match(mapper, /function handleBuildProgress\(event\)/);
-  assert.match(mapper, /function compressClawdFrameSet\(frameSet/);
+  assert.match(mapper, /async function compressClawdFrame\(frame\)/);
+  assert.match(mapper, /<script src="\.\/clawd-capture-plan\.js"><\/script>/);
+  assert.match(mapper, /Live2PetClawdCapture\.createClawdCapturePlan/);
+  assert.match(mapper, /liveModel\.autoUpdate = false/);
+  assert.match(mapper, /liveModel\.update\(index === 0 \? 1 : plan\.stepMs\)/);
+  assert.ok((mapper.match(/liveModel\.elapsedTime = performance\.now\(\);/g) || []).length >= 2);
+  assert.match(mapper, /CLAWD_CAPTURE_COMPRESSION_REQUIRED/);
+  assert.match(mapper, /encodingConcurrency: Live2PetClawdCapture\.resolveClawdEncodingConcurrency/);
+  assert.doesNotMatch(mapper, /maxFrames/);
   assert.match(mapper, /async function retrieveDesktopArtifact\(api, artifact, target, setStatus\)/);
   assert.match(mapper, /getBuildArtifact\(artifact\.artifactId, offset\)/);
   assert.match(mapper, /build\.progress\.stage\.transfer/);

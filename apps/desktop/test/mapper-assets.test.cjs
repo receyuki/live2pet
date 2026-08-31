@@ -29,6 +29,10 @@ test('mapper asset staging creates a self-contained local document without Core'
       assert.match(asset.sha256, /^[a-f0-9]{64}$/);
     }
     assert.match(html, /src="vendor\/pixi\.min\.js"/);
+    assert.match(html, /src="\.\/clawd-capture-plan\.js"/);
+    assert.ok(fs.statSync(path.join(output, 'clawd-capture-plan.js')).isFile());
+    assert.deepEqual(manifest.supportFiles.map((file) => file.path), ['clawd-capture-plan.js']);
+    assert.match(manifest.supportFiles[0].sha256, /^[a-f0-9]{64}$/);
     assert.match(html, /src="vendor\/unsafe-eval\.min\.js"/);
     assert.match(html, /vendor\/cubism4\.min\.js/);
     assert.match(html, /zip-no-worker\.min\.js/);

@@ -21,6 +21,7 @@ const CLAWD_STAGES = Object.freeze(['validate', 'encode', 'manifest', 'preview',
 const MAX_ENCODE_FRAMES = 4096;
 const MAX_RGBA_FRAME_DIMENSION = 4096;
 const MAX_RGBA_FRAME_BYTES = 64 * 1024 * 1024;
+const MAX_STACKED_RGBA_BYTES = 1024 * 1024 * 1024;
 const RGBA_FRAME_COMPRESSION = 'deflate';
 const PACKAGE_FILES = Object.freeze(['pet.json', 'spritesheet.webp']);
 const CLAWD_PACKAGE_LIMIT = 83_886_080;
@@ -373,7 +374,13 @@ async function normalizeEncodeFrames(frames, width, height, { signal } = {}) {
   if (!Array.isArray(frames) || !frames.length || frames.length > MAX_ENCODE_FRAMES) fail('INVALID_WEBP_INPUT', `WebP encoding requires between 1 and ${MAX_ENCODE_FRAMES} frames.`);
   if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) fail('INVALID_WEBP_INPUT', 'WebP width and height must be positive integers.');
   const expectedBytes = rgbaByteLength(width, height, 'WebP frame');
-  const normalized = [];
+  const stackedBytes = expectedBytes * frames.length;
+  if (!Number.isSafeInteger(stackedBytes) || stackedBytes > MAX_STACKED_RGBA_BYTES) {
+    fail('RGBA_ANIMATION_TOO_LARGE', `Animated WebP RGBA input exceeds the ${MAX_STACKED_RGBA_BYTES}-byte encoder budget.`, { width, height, frameCount: frames.length, byteLength: stackedBytes, maxBytes: MAX_STACKED_RGBA_BYTES });
+  }
+  // Decode directly into the final page stack so a full normalized-frame
+  // array and Buffer.concat copy never coexist for large animations.
+  const stacked = Buffer.allocUnsafe(stackedBytes);
   for (const [index, frame] of frames.entries()) {
     checkCancelled(signal);
     if (!frame || typeof frame !== 'object' || frame.width !== width || frame.height !== height) fail('INVALID_WEBP_INPUT', `Frame ${index} must contain ${width}×${height} RGBA bytes.`);
@@ -384,7 +391,7 @@ async function normalizeEncodeFrames(frames, width, height, { signal } = {}) {
       try {
         const decoded = await decodeCompressedRgbaFrame(frame, { signal, label: `Frame ${index}` });
         if (decoded.byteLength !== expectedBytes) fail('INVALID_WEBP_INPUT', `Frame ${index} must contain ${expectedBytes} decompressed RGBA bytes.`);
-        normalized.push(decoded);
+        decoded.copy(stacked, index * expectedBytes);
       } catch (error) {
         if (error instanceof PackageBuildError) throw error;
         fail('RGBA_DECOMPRESSION_FAILED', `Frame ${index} deflate payload could not be decoded.`, { cause: String(error && error.message ? error.message : error) });
@@ -392,28 +399,27 @@ async function normalizeEncodeFrames(frames, width, height, { signal } = {}) {
       continue;
     }
     if (!hasRaw || !ArrayBuffer.isView(frame.rgba) || frame.rgba.byteLength !== expectedBytes) fail('INVALID_WEBP_INPUT', `Frame ${index} must contain ${width}×${height} RGBA bytes.`);
-    normalized.push(Buffer.from(frame.rgba.buffer, frame.rgba.byteOffset, frame.rgba.byteLength));
+    Buffer.from(frame.rgba.buffer, frame.rgba.byteOffset, frame.rgba.byteLength).copy(stacked, index * expectedBytes);
   }
   checkCancelled(signal);
-  return normalized;
+  return stacked;
 }
 
 async function encodeAnimatedWebp({ frames, width, height, delay = 100, loop = 0, quality = 80, alphaQuality = 100, lossless = false } = {}, { sharpFactory, signal } = {}) {
-  const normalizedFrames = await normalizeEncodeFrames(frames, width, height, { signal });
+  const stacked = await normalizeEncodeFrames(frames, width, height, { signal });
   checkCancelled(signal);
   if (!Number.isInteger(loop) || loop < 0 || loop > 65535) fail('INVALID_WEBP_INPUT', 'WebP loop count must be an integer between 0 and 65535.');
   if (!Number.isFinite(quality) || quality < 0 || quality > 100 || !Number.isFinite(alphaQuality) || alphaQuality < 0 || alphaQuality > 100) fail('INVALID_WEBP_INPUT', 'WebP quality values must be between 0 and 100.');
-  const delays = Array.isArray(delay) ? delay : Array(normalizedFrames.length).fill(delay);
-  if (delays.length !== normalizedFrames.length || delays.some((value) => !Number.isInteger(value) || value < 1 || value > 60000)) fail('INVALID_WEBP_INPUT', 'WebP delays must contain one integer millisecond value per frame between 1 and 60000.');
-  const stacked = Buffer.concat(normalizedFrames);
+  const delays = Array.isArray(delay) ? delay : Array(frames.length).fill(delay);
+  if (delays.length !== frames.length || delays.some((value) => !Number.isInteger(value) || value < 1 || value > 60000)) fail('INVALID_WEBP_INPUT', 'WebP delays must contain one integer millisecond value per frame between 1 and 60000.');
   const sharp = resolveSharp(sharpFactory);
   try {
-    const result = await sharp(stacked, { animated: normalizedFrames.length > 1, raw: { width, height: height * normalizedFrames.length, channels: 4, pageHeight: height } })
+    const result = await sharp(stacked, { animated: frames.length > 1, raw: { width, height: height * frames.length, channels: 4, pageHeight: height } })
       .webp({ quality, alphaQuality, lossless, loop, delay: delays })
       .toBuffer({ resolveWithObject: true });
     const buffer = Buffer.isBuffer(result) ? result : result && result.data;
     if (!buffer || !buffer.length) fail('WEBP_ENCODER_INVALID_OUTPUT', 'The WebP encoder returned an empty buffer.');
-    return { format: 'webp', buffer, frameCount: normalizedFrames.length, width, height, delays, info: result && result.info ? result.info : null };
+    return { format: 'webp', buffer, frameCount: frames.length, width, height, delays, info: result && result.info ? result.info : null };
   } catch (error) {
     if (error instanceof PackageBuildError) throw error;
     fail('WEBP_ENCODER_FAILED', `The WebP encoder failed: ${error && error.message ? error.message : error}`);
@@ -961,6 +967,7 @@ module.exports = {
   DEFAULT_CLAWD_ENCODING_CONCURRENCY,
   MAX_RGBA_FRAME_BYTES,
   MAX_RGBA_FRAME_DIMENSION,
+  MAX_STACKED_RGBA_BYTES,
   RGBA_FRAME_COMPRESSION,
   CacheError,
   CacheStore,

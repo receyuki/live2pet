@@ -479,6 +479,7 @@
   <script src="../../packages/live2d-exporter/node_modules/pixi.js/dist/browser/pixi.min.js"></script>
   <script src="../../packages/live2d-exporter/node_modules/@pixi/unsafe-eval/dist/browser/unsafe-eval.min.js"></script>
   <script src="../../node_modules/.pnpm/@zip.js+zip.js@2.7.57/node_modules/@zip.js/zip.js/dist/zip-no-worker.min.js"></script>
+  <script src="./clawd-capture-plan.js"></script>
   <script>
     const I18n = (() => {
       const STORAGE_KEY = "live2pet.mapper.locale";
@@ -2856,10 +2857,12 @@
     }
 
     function clawdRenderSettings() {
-      const preset = state.clawdRenderPreset;
-      if (preset === "compact") return { preset, width: 512, height: 512, fps: 18, quality: 76, maxFrames: 8 };
-      if (preset === "high") return { preset, width: 1024, height: 1024, fps: 30, quality: 88, maxFrames: 12 };
-      return { preset: "balanced", width: 768, height: 768, fps: 24, quality: 82, maxFrames: 10 };
+      const selection = Live2PetClawdCapture.resolveClawdRenderSettings(state.clawdRenderPreset);
+      return { preset: selection.preset, ...selection.settings };
+    }
+
+    function clawdCapturePlan(motion) {
+      return Live2PetClawdCapture.createClawdCapturePlan(state.clawdRenderPreset, motion?.duration);
     }
 
     function clawdMappedMotionIds() {
@@ -2888,9 +2891,7 @@
     }
 
     function clawdFrameCount(motion) {
-      const settings = clawdRenderSettings();
-      const duration = Math.max(0.8, Math.min(8, Number(motion.duration) || 1.2));
-      return Math.max(2, Math.min(settings.maxFrames, Math.round(duration * settings.fps)));
+      return clawdCapturePlan(motion).frameCount;
     }
 
     async function deflateCaptureBytes(bytes) {
@@ -2905,43 +2906,45 @@
       }
     }
 
-    async function compressClawdFrameSet(frameSet, onFrame = null) {
-      if (!frameSet || !Array.isArray(frameSet.frames) || typeof CompressionStream !== "function") return frameSet;
-      const frames = [];
-      for (let index = 0; index < frameSet.frames.length; index += 1) {
-        const frame = frameSet.frames[index];
-        const raw = frame?.rgba;
-        const source = ArrayBuffer.isView(raw) ? new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength) : null;
-        if (!source) {
-          frames.push(frame);
-          if (typeof onFrame === "function") onFrame(index + 1, frameSet.frames.length);
-          continue;
-        }
-        const compressed = await deflateCaptureBytes(source);
-        if (compressed) {
-          const { rgba, ...metadata } = frame;
-          frames.push({ ...metadata, rgbaDeflate: compressed, compression: "deflate" });
-        } else {
-          frames.push(frame);
-        }
-        if (typeof onFrame === "function") onFrame(index + 1, frameSet.frames.length);
-      }
-      return { ...frameSet, frames };
+    async function compressClawdFrame(frame) {
+      const raw = frame?.rgba;
+      const source = ArrayBuffer.isView(raw) ? new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength) : null;
+      if (!source) return frame;
+      const compressed = await deflateCaptureBytes(source);
+      if (!compressed) throw projectError("CLAWD_CAPTURE_COMPRESSION_REQUIRED", "The Desktop App could not compress captured RGBA frames before transfer.");
+      const { rgba, ...metadata } = frame;
+      return { ...metadata, rgbaDeflate: compressed, compression: "deflate" };
     }
 
-    async function captureClawdMotion(motion) {
+    async function captureClawdMotion(motion, onFrame = null) {
       const settings = clawdRenderSettings();
-      const count = clawdFrameCount(motion);
-      const duration = Math.max(0.8, Math.min(8, Number(motion.duration) || 1.2));
-      const playback = Promise.resolve(liveModel.motion(motion.group, motion.index, 3)).catch(() => null);
+      const plan = clawdCapturePlan(motion);
+      const previousAutoUpdate = liveModel.autoUpdate;
+      const motionManager = liveModel.internalModel?.motionManager;
       const frames = [];
-      for (let index = 0; index < count; index += 1) {
-        await new Promise(resolve => setTimeout(resolve, Math.max(50, Math.round(duration * 1000 / (count + 1)))));
-        await waitForNextFrame();
-        frames.push(captureClawdFrame());
+      try {
+        liveModel.autoUpdate = false;
+        motionManager?.stopAllMotions();
+        // MotionManager starts from wall time, so each fixed-step capture must
+        // rebase the model clock instead of inheriting the previous Motion.
+        liveModel.deltaTime = 0;
+        liveModel.elapsedTime = performance.now();
+        const started = await liveModel.motion(motion.group, motion.index, 3);
+        if (started === false) throw projectError("MOTION_CAPTURE_FAILED", `Motion ${motion.name || motion.id} could not be started for capture.`);
+        for (let index = 0; index < plan.frameCount; index += 1) {
+          liveModel.update(index === 0 ? 1 : plan.stepMs);
+          app.renderer.render(app.stage);
+          frames.push(await compressClawdFrame(captureClawdFrame()));
+          if (typeof onFrame === "function") onFrame(index + 1, plan.frameCount);
+          if ((index + 1) % 4 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      } finally {
+        motionManager?.stopAllMotions();
+        liveModel.deltaTime = 0;
+        liveModel.elapsedTime = performance.now();
+        liveModel.autoUpdate = previousAutoUpdate;
       }
-      await playback;
-      return { frames, delay: Math.max(40, Math.round(duration * 1000 / count)), loop: 0, quality: settings.quality, alphaQuality: 100, lossless: false };
+      return { frames, delay: plan.delays, loop: 0, quality: settings.quality, alphaQuality: settings.alphaQuality, lossless: false };
     }
 
     function artifactChunkBytes(value) {
@@ -3004,7 +3007,7 @@
         targets: ["clawd"],
         inputsByTarget: { clawd: { framesByMotion } },
         metadataByTarget: { clawd: metadata },
-        optionsByTarget: { clawd: { package: true, render: { preset: state.clawdRenderPreset } } },
+        optionsByTarget: { clawd: { package: true, render: { preset: state.clawdRenderPreset }, encodingConcurrency: Live2PetClawdCapture.resolveClawdEncodingConcurrency(state.clawdRenderPreset) } },
       });
       if (!response?.ok) throw projectError(response?.error?.code || "APP_BUILD_FAILED", response?.error?.message || "The App Package Build service rejected the request.");
       consumeBuildProgressEvents(response.progress);
@@ -3045,9 +3048,7 @@
           const frameCount = clawdFrameCount(motion);
           setBuildProgressCapture("clawd", index, motionIds.length, motion.name);
           setClawdBuildStatus(I18n.t("build.status.capture", { slot: motionId, motion: motion.name, count: frameCount }), "busy");
-          const captured = await captureClawdMotion(motion);
-          setClawdBuildStatus(I18n.t("build.status.captureCompress", { motion: motion.name, current: 0, total: captured.frames.length }), "busy");
-          captures[motionId] = await compressClawdFrameSet(captured, (completed, total) => {
+          captures[motionId] = await captureClawdMotion(motion, (completed, total) => {
             setClawdBuildStatus(I18n.t("build.status.captureCompress", { motion: motion.name, current: completed, total }), "busy");
           });
           setBuildProgressCapture("clawd", index + 1, motionIds.length, motion.name);

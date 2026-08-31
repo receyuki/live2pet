@@ -6,6 +6,7 @@ const { deflateSync } = require('node:zlib');
 const {
   CLAWD_PACKAGE_LIMIT,
   DEFAULT_CLAWD_ENCODING_CONCURRENCY,
+  MAX_STACKED_RGBA_BYTES,
   AssetCacheError,
   CacheStore,
   PackageBuildError,
@@ -340,6 +341,15 @@ test('encodes stacked RGBA frames through the injected WebP encoder contract', a
   assert.deepEqual(calls[0].options, { animated: true, raw: { width: 2, height: 2, channels: 4, pageHeight: 1 } });
   assert.deepEqual(calls[1].webpOptions, { quality: 82, alphaQuality: 97, lossless: true, loop: 0, delay: [120, 180] });
   assert.equal(calls[0].input.length, 16);
+});
+
+test('rejects an animation whose stacked RGBA buffer exceeds the bounded encoder budget', async () => {
+  assert.equal(MAX_STACKED_RGBA_BYTES, 1024 * 1024 * 1024);
+  const frames = Array.from({ length: 17 }, () => ({ width: 4096, height: 4096, rgba: new Uint8Array() }));
+  await assert.rejects(
+    () => encodeAnimatedWebp({ frames, width: 4096, height: 4096 }),
+    (error) => error instanceof PackageBuildError && error.code === 'RGBA_ANIMATION_TOO_LARGE',
+  );
 });
 
 test('encodes and validates the bounded WebP asset cache envelope', () => {

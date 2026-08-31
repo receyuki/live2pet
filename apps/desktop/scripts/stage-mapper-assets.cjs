@@ -4,6 +4,12 @@ const path = require('node:path');
 
 const SOURCE_MAPPER = path.resolve(__dirname, '../../mapper/index.html');
 const DEFAULT_OUTPUT = path.resolve(__dirname, '../mapper-dist');
+const SUPPORT_FILES = Object.freeze([
+  {
+    source: path.resolve(__dirname, '../../mapper/clawd-capture-plan.js'),
+    target: 'clawd-capture-plan.js',
+  },
+]);
 
 const ASSETS = Object.freeze([
   {
@@ -82,6 +88,9 @@ function copyFile(source, destination) {
 function stageMapperAssets(output = DEFAULT_OUTPUT) {
   if (!path.isAbsolute(output)) fail('Mapper staging output must be an absolute path.');
   if (!fs.statSync(SOURCE_MAPPER).isFile()) fail('The shared Mapper document is missing.');
+  for (const file of SUPPORT_FILES) {
+    if (!fs.statSync(file.source, { throwIfNoEntry: false })?.isFile()) fail(`The shared Mapper support file is missing: ${file.target}`);
+  }
 
   for (const asset of ASSETS) {
     if (!fs.statSync(asset.source, { throwIfNoEntry: false })?.isFile()) {
@@ -105,11 +114,13 @@ function stageMapperAssets(output = DEFAULT_OUTPUT) {
       fail('Cubism Core must remain user-provided and cannot be staged.');
     }
     fs.writeFileSync(path.join(staging, 'index.html'), mapperHtml, 'utf8');
+    for (const file of SUPPORT_FILES) copyFile(file.source, path.join(staging, file.target));
 
     const manifest = {
       schemaVersion: 1,
       source: 'apps/mapper/index.html',
       runtimePolicy: 'Cubism Core and legacy runtimes are user-provided and are never staged.',
+      supportFiles: SUPPORT_FILES.map((file) => ({ path: file.target, sha256: sha256(path.join(staging, file.target)) })),
       assets: ASSETS.map((asset) => {
         const destination = path.join(staging, asset.target);
         copyFile(asset.source, destination);
@@ -152,4 +163,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { ASSETS, DEFAULT_OUTPUT, SOURCE_MAPPER, stageMapperAssets };
+module.exports = { ASSETS, DEFAULT_OUTPUT, SOURCE_MAPPER, SUPPORT_FILES, stageMapperAssets };
