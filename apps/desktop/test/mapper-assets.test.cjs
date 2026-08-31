@@ -19,6 +19,7 @@ test('mapper asset staging creates a self-contained local document without Core'
     assert.equal(result.output, output);
     assert.deepEqual(manifest.assets.map((asset) => asset.path), [
       'vendor/pixi.min.js',
+      'vendor/unsafe-eval.min.js',
       'vendor/cubism4.min.js',
       'vendor/cubism2.min.js',
       'vendor/zip-no-worker.min.js',
@@ -28,13 +29,15 @@ test('mapper asset staging creates a self-contained local document without Core'
       assert.match(asset.sha256, /^[a-f0-9]{64}$/);
     }
     assert.match(html, /src="vendor\/pixi\.min\.js"/);
-    assert.match(html, /src="vendor\/cubism4\.min\.js"/);
+    assert.match(html, /src="vendor\/unsafe-eval\.min\.js"/);
+    assert.match(html, /vendor\/cubism4\.min\.js/);
     assert.match(html, /zip-no-worker\.min\.js/);
     assert.match(html, /vendor\/cubism2\.min\.js/);
     assert.doesNotMatch(html, /\.\.\/\.\.\/(?:packages|node_modules)\//);
     assert.doesNotMatch(html, /<script[^>]+live2dcubismcore/i);
     assert.match(html, /script-src 'self' 'unsafe-inline' blob:/);
     assert.ok(manifest.licenses.some((license) => license.packageName === 'pixi.js' && license.license === 'MIT'));
+    assert.ok(manifest.licenses.some((license) => license.packageName === '@pixi/unsafe-eval' && license.license === 'MIT'));
     assert.ok(manifest.licenses.some((license) => license.packageName === '@zip.js/zip.js' && license.license === 'BSD-3-Clause'));
   } finally {
     fs.rmSync(temporaryRoot, { recursive: true, force: true });

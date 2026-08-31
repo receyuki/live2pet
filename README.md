@@ -6,7 +6,7 @@ Live2Pet is an early-stage local toolchain for loading Cubism models, previewing
 
 ## Components
 
-- `apps/mapper/` — browser-based Live2D motion preview, Clawd mapping, Codex nine-row mapping, local Codex ZIP fallback build, shared-App Clawd Theme ZIP build, and generated target previews. The Mapper has no runtime CDN dependency: modern Core can be selected locally, and Cubism 2 preview requires a user-selected local `live2d.min.js`. Its first English/Chinese (`zh-CN`) locale layer is presentation-only and does not change project or package schemas.
+- `apps/mapper/` — browser-based Live2D motion preview, Clawd mapping, Codex nine-row mapping, local Codex ZIP fallback build, shared-App Clawd Theme ZIP build, and generated target previews. The Mapper has no runtime CDN dependency: modern Core can be selected locally, and Cubism 2 preview requires a user-selected local `live2d.min.js`. Selected runtimes are saved only in the browser profile and restored on the next launch; the clear-saved control removes those local copies. Its first English/Chinese (`zh-CN`) locale layer is presentation-only and does not change project or package schemas.
 - `packages/source-inspector/` — normalized Source Package inspection API and versioned `live2pet-inspect` CLI for standard Cubism directories and the supported Destiny Child PCK shape.
 - `packages/project/` — reference-only `.live2pet` Project schema, validation, target Render Preset persistence, deterministic serialization, atomic file I/O, autosave recovery, source relinking, and review gating.
 - `packages/runtime/` — user-provided Cubism runtime discovery, bounded validation, redacted diagnosis, and restart-required settings metadata.
@@ -69,4 +69,4 @@ node packages/cli/bin/live2pet.cjs skill-install --input skills/live2pet --targe
 node --test packages/skill-client/test/*.test.cjs
 ```
 
-Inspection output is metadata-only: it contains relative resource identities, fingerprints, warnings, and Motion/Expression catalogs, not model bytes, runtime binaries, bearer tokens, or unrelated absolute paths.
+Inspection output is metadata-only: it contains relative resource identities, fingerprints, warnings, and Motion/Expression catalogs, not model bytes, runtime binaries, bearer tokens, or unrelated absolute paths. The browser preview uses the version-matched Pixi `@pixi/unsafe-eval` compatibility bundle and allows only generated `blob:` resource URLs under the existing strict CSP; it does not enable general `unsafe-eval`.

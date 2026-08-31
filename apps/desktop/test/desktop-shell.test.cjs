@@ -52,6 +52,12 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /id="clawdTargetPreview"/);
   assert.match(mapper, /id="clawdPreviewState"/);
   assert.match(mapper, /data-i18n-alt="preview\.clawd\.alt"/);
+  assert.match(mapper, /@pixi\/unsafe-eval\/dist\/browser\/unsafe-eval\.min\.js/);
+  assert.match(mapper, /connect-src 'self' blob: http:\/\/127\.0\.0\.1:\*/);
+  assert.match(mapper, /function buildPreviewFiles\(files, modelFile, cubism, modelJson\)/);
+  assert.match(mapper, /function restorePersistedRuntimes\(\)/);
+  assert.match(mapper, /id="clearSavedRuntimes"/);
+  assert.match(mapper, /const RUNTIME_DB_NAME = "live2pet-mapper-runtime"/);
   assert.match(mapper, /const I18n = \(\(\) =>/);
   assert.match(mapper, /id="languageSelect"/);
 });

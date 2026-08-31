@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http://127.0.0.1:*; font-src 'self' data:; worker-src 'self' blob:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob: http://127.0.0.1:*; font-src 'self' data:; worker-src 'self' blob:;">
   <title>Live2Pet Mapper</title>
   <style>
     :root {
@@ -253,6 +253,7 @@
       <input id="modernRuntimeInput" class="hidden" type="file" accept=".js,.wasm,application/javascript,application/wasm">
       <button id="chooseLegacyRuntime" data-i18n="runtime.legacy">Choose Cubism 2 runtime</button>
       <input id="legacyRuntimeInput" class="hidden" type="file" accept=".js,application/javascript">
+      <button id="clearSavedRuntimes" data-i18n="runtime.clearSaved">Clear saved runtimes</button>
       <span id="runtimeStatus" class="runtime-status" role="status" aria-live="polite" data-i18n="runtime.status">Modern Core is optional for inspection; Cubism 2 preview requires a local runtime.</span>
     </section>
 
@@ -405,7 +406,7 @@
   </main>
 
   <script src="../../packages/live2d-exporter/node_modules/pixi.js/dist/browser/pixi.min.js"></script>
-  <script src="../../packages/live2d-exporter/node_modules/pixi-live2d-display/dist/cubism4.min.js"></script>
+  <script src="../../packages/live2d-exporter/node_modules/@pixi/unsafe-eval/dist/browser/unsafe-eval.min.js"></script>
   <script src="../../node_modules/.pnpm/@zip.js+zip.js@2.7.57/node_modules/@zip.js/zip.js/dist/zip-no-worker.min.js"></script>
   <script>
     const I18n = (() => {
@@ -429,11 +430,19 @@
           "runtime.heading": "Local Cubism runtime",
           "runtime.modern": "Choose modern Core",
           "runtime.legacy": "Choose Cubism 2 runtime",
+          "runtime.clearSaved": "Clear saved runtimes",
           "runtime.status": "Modern Core is optional for inspection; Cubism 2 preview requires a local runtime.",
           "runtime.name.modern": "Modern Core",
           "runtime.name.legacy": "Cubism 2 runtime",
           "runtime.loading": "Loading {runtime} {name}…",
           "runtime.loaded": "{runtime} loaded: {name}",
+          "runtime.saved": "{runtime} loaded and saved locally: {name}",
+          "runtime.savedSessionOnly": "{runtime} loaded for this session; it could not be saved locally.",
+          "runtime.restored": "Restored {runtime} from local storage: {name}",
+          "runtime.restoreFailed": "Saved {runtime} could not be restored; choose the runtime file again.",
+          "runtime.storageUnavailable": "Local runtime storage is unavailable; runtimes are session-only.",
+          "runtime.clearing": "Clearing saved runtimes…",
+          "runtime.cleared": "Saved runtimes cleared. The currently loaded runtime remains active.",
           "runtime.refreshing": "{runtime} loaded; refreshing preview…",
           "project.eyebrow": "Live2Pet Project",
           "project.heading": "Save your mapping",
@@ -675,11 +684,19 @@
           "runtime.heading": "本地 Cubism 运行时",
           "runtime.modern": "选择现代 Core",
           "runtime.legacy": "选择 Cubism 2 运行时",
+          "runtime.clearSaved": "清除已保存运行时",
           "runtime.status": "检查资源时现代 Core 可选；预览 Cubism 2 需要本地运行时。",
           "runtime.name.modern": "现代 Core",
           "runtime.name.legacy": "Cubism 2 运行时",
           "runtime.loading": "正在加载 {runtime} {name}…",
           "runtime.loaded": "已加载 {runtime}：{name}",
+          "runtime.saved": "已加载并保存 {runtime}：{name}",
+          "runtime.savedSessionOnly": "已加载 {runtime}，但无法保存到本机；本次会话结束后需要重新选择。",
+          "runtime.restored": "已从本机存储恢复 {runtime}：{name}",
+          "runtime.restoreFailed": "已保存的 {runtime} 无法恢复，请重新选择运行时文件。",
+          "runtime.storageUnavailable": "本机运行时存储不可用；运行时仅在本次会话有效。",
+          "runtime.clearing": "正在清除已保存运行时…",
+          "runtime.cleared": "已清除保存的运行时；当前已加载的运行时仍在使用。",
           "runtime.refreshing": "已加载 {runtime}；正在刷新预览…",
           "project.eyebrow": "Live2Pet 项目",
           "project.heading": "保存映射",
@@ -1071,7 +1088,12 @@
     let activeSourceFiles = null;
     let activeSourceOptions = null;
     const runtimeScripts = new Map();
+    const RUNTIME_DB_NAME = "live2pet-mapper-runtime";
+    const RUNTIME_DB_VERSION = 1;
+    const RUNTIME_STORE_NAME = "runtimes";
+    const RUNTIME_PERSIST_MAX_BYTES = 16 * 1024 * 1024;
     let legacyAdapterLoaded = false;
+    let modernAdapterLoaded = false;
     let mapperSession = null;
     let sessionProject = null;
     const $ = id => document.getElementById(id);
@@ -1240,11 +1262,65 @@
       status.textContent = message;
     }
 
-    async function loadLocalRuntime(file, kind) {
-      if (!file) return;
+    function openRuntimeDatabase() {
+      if (!window.indexedDB) return Promise.resolve(null);
+      return new Promise((resolve, reject) => {
+        const request = window.indexedDB.open(RUNTIME_DB_NAME, RUNTIME_DB_VERSION);
+        request.onupgradeneeded = () => {
+          if (!request.result.objectStoreNames.contains(RUNTIME_STORE_NAME)) request.result.createObjectStore(RUNTIME_STORE_NAME, { keyPath: "kind" });
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error("Unable to open local runtime storage."));
+      });
+    }
+
+    async function readPersistedRuntime(kind) {
+      const database = await openRuntimeDatabase();
+      if (!database) return null;
+      return new Promise((resolve, reject) => {
+        const transaction = database.transaction(RUNTIME_STORE_NAME, "readonly");
+        const request = transaction.objectStore(RUNTIME_STORE_NAME).get(kind);
+        request.onsuccess = () => {
+          const value = request.result;
+          resolve(value && typeof value.source === "string" && value.source.trim() ? { kind, name: value.name || `${kind}.js`, source: value.source } : null);
+        };
+        request.onerror = () => reject(request.error || new Error("Unable to read the saved runtime."));
+        transaction.oncomplete = () => database.close();
+        transaction.onerror = () => reject(transaction.error || new Error("Unable to read the saved runtime."));
+      });
+    }
+
+    async function persistRuntime(kind, name, source) {
+      if (!window.indexedDB) return { saved: false, reason: "unavailable" };
+      if (new TextEncoder().encode(source).byteLength > RUNTIME_PERSIST_MAX_BYTES) return { saved: false, reason: "too-large" };
+      const database = await openRuntimeDatabase();
+      if (!database) return { saved: false, reason: "unavailable" };
+      return new Promise((resolve, reject) => {
+        const transaction = database.transaction(RUNTIME_STORE_NAME, "readwrite");
+        transaction.objectStore(RUNTIME_STORE_NAME).put({ kind, name, source, updatedAt: Date.now() });
+        transaction.oncomplete = () => { database.close(); resolve({ saved: true }); };
+        transaction.onerror = () => { database.close(); reject(transaction.error || new Error("Unable to save the runtime locally.")); };
+        transaction.onabort = () => { database.close(); reject(transaction.error || new Error("Unable to save the runtime locally.")); };
+      });
+    }
+
+    async function clearPersistedRuntimes() {
+      const database = await openRuntimeDatabase();
+      if (!database) return false;
+      return new Promise((resolve, reject) => {
+        const transaction = database.transaction(RUNTIME_STORE_NAME, "readwrite");
+        transaction.objectStore(RUNTIME_STORE_NAME).clear();
+        transaction.oncomplete = () => { database.close(); resolve(true); };
+        transaction.onerror = () => { database.close(); reject(transaction.error || new Error("Unable to clear saved runtimes.")); };
+        transaction.onabort = () => { database.close(); reject(transaction.error || new Error("Unable to clear saved runtimes.")); };
+      });
+    }
+
+    async function loadRuntimeSource(source, name, kind, { persist = true, restored = false } = {}) {
+      if (typeof source !== "string") throw projectError("RUNTIME_SOURCE_INVALID", "The runtime source must be text.");
+      if (!name || !kind) throw projectError("RUNTIME_SOURCE_INVALID", "The runtime name and kind are required.");
       const maxBytes = 128 * 1024 * 1024;
-      if (file.size > maxBytes) throw projectError("RUNTIME_TOO_LARGE", `The selected runtime exceeds the ${maxBytes}-byte limit.`);
-      const source = await file.text();
+      if (new TextEncoder().encode(source).byteLength > maxBytes) throw projectError("RUNTIME_TOO_LARGE", `The selected runtime exceeds the ${maxBytes}-byte limit.`);
       if (!source.trim()) throw projectError("RUNTIME_EMPTY", "The selected runtime file is empty.");
       const signature = kind === "legacy" ? /(?:Live2D|L2D)/ : /(?:Live2DCubismCore|csmGetVersion|csmGetLatestMocVersion)/;
       if (!signature.test(source)) throw projectError("UNKNOWN_RUNTIME", `The selected file does not look like a ${kind === "legacy" ? "Cubism 2" : "modern Cubism"} runtime.`);
@@ -1262,17 +1338,50 @@
         element.onerror = () => reject(projectError("RUNTIME_LOAD_FAILED", `The selected ${kind} runtime could not be executed.`));
         document.head.appendChild(element);
       });
-      runtimeScripts.set(kind, { element, url, name: file.name });
+      runtimeScripts.set(kind, { element, url, name });
       const available = kind === "legacy" ? Boolean(window.Live2D) : Boolean(window.Live2DCubismCore);
       if (!available) throw projectError("UNKNOWN_RUNTIME", `The selected file does not expose a usable ${kind === "legacy" ? "Cubism 2" : "modern Cubism"} runtime.`);
       if (kind === "legacy" && !legacyAdapterLoaded) {
         await loadLegacyAdapter();
       }
+      if (kind !== "legacy" && !modernAdapterLoaded) {
+        await loadModernAdapter();
+      }
       const runtimeLabel = I18n.t(`runtime.name.${kind === "legacy" ? "legacy" : "modern"}`);
-      setRuntimeStatus(I18n.t("runtime.loaded", { runtime: runtimeLabel, name: file.name }), "good");
+      let persistence = { saved: false, reason: "session" };
+      if (persist) {
+        try { persistence = await persistRuntime(kind, name, source); }
+        catch { persistence = { saved: false, reason: "unavailable" }; }
+      }
+      const statusKey = restored
+        ? "runtime.restored"
+        : persistence.saved
+          ? "runtime.saved"
+          : "runtime.savedSessionOnly";
+      setRuntimeStatus(I18n.t(statusKey, { runtime: runtimeLabel, name }), "good");
       if (activeSourceFiles && state.inspection) {
         setRuntimeStatus(I18n.t("runtime.refreshing", { runtime: runtimeLabel }), "good");
         await loadFolder(activeSourceFiles, activeSourceOptions || {});
+      }
+    }
+
+    async function loadLocalRuntime(file, kind) {
+      if (!file) return;
+      const source = await file.text();
+      await loadRuntimeSource(source, file.name, kind);
+    }
+
+    async function restorePersistedRuntimes() {
+      if (!window.indexedDB) return;
+      for (const kind of ["modern", "legacy"]) {
+        try {
+          const saved = await readPersistedRuntime(kind);
+          if (!saved) continue;
+          await loadRuntimeSource(saved.source, saved.name, kind, { persist: false, restored: true });
+        } catch (error) {
+          const runtime = I18n.t(`runtime.name.${kind}`);
+          setRuntimeStatus(`${I18n.t("runtime.restoreFailed", { runtime })} (${error.code || "RUNTIME_RESTORE_FAILED"})`, "bad");
+        }
       }
     }
 
@@ -1287,6 +1396,19 @@
         document.head.appendChild(element);
       });
       legacyAdapterLoaded = true;
+    }
+
+    async function loadModernAdapter() {
+      if (modernAdapterLoaded) return;
+      const element = document.createElement("script");
+      element.async = false;
+      element.src = "../../packages/live2d-exporter/node_modules/pixi-live2d-display/dist/cubism4.min.js";
+      await new Promise((resolve, reject) => {
+        element.onload = resolve;
+        element.onerror = () => reject(projectError("RENDERER_ADAPTER_UNAVAILABLE", "The local Cubism 4 Pixi adapter could not be loaded."));
+        document.head.appendChild(element);
+      });
+      modernAdapterLoaded = true;
     }
 
     function renderInspection() {
@@ -1900,7 +2022,7 @@
           // both directory uploads and reconstructed PCK entries.
           if (cubism === 2 && !window.Live2D) throw browserInspectionError("RUNTIME_UNAVAILABLE", "Inspection is complete, but Cubism 2 preview needs a local live2d.min.js. Use Choose Cubism 2 runtime above.");
           if (cubism !== 2 && !window.Live2DCubismCore) throw browserInspectionError("RUNTIME_UNAVAILABLE", "Inspection is complete, but modern preview needs a local Cubism Core JavaScript file.");
-          await mountModel(list);
+          await mountModel(buildPreviewFiles(list, modelFile, cubism, original));
           $("stageMessage").classList.add("hidden");
           if (motions[0]) await playMotion(motions[0].id);
         } catch (previewError) {
@@ -1919,6 +2041,19 @@
       }
     }
 
+    function stripNullJsonValues(value) {
+      if (Array.isArray(value)) return value.filter(item => item !== null).map(stripNullJsonValues);
+      if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== null).map(([key, item]) => [key, stripNullJsonValues(item)]));
+      return value;
+    }
+    function buildPreviewFiles(files, modelFile, cubism, modelJson) {
+      if (cubism === 2 || !modelJson?.FileReferences) return files;
+      const previewJson = structuredClone(modelJson);
+      previewJson.FileReferences = stripNullJsonValues(previewJson.FileReferences);
+      const previewFile = new File([JSON.stringify(previewJson)], modelFile.name, { type: modelFile.type || "application/json" });
+      Object.defineProperty(previewFile, "webkitRelativePath", { value: modelFile.webkitRelativePath || modelFile.name, configurable: true });
+      return files.map(file => file === modelFile ? previewFile : file);
+    }
     async function mountModel(modelUrl) {
       if (liveModel) { liveModel.destroy({children:true}); liveModel = null; }
       if (!app) app = new PIXI.Application({view:$("live2dCanvas"),resizeTo:$("stage"),backgroundAlpha:0,antialias:true,autoStart:true});
@@ -2466,6 +2601,15 @@
         e.target.value = "";
       }
     });
+    $("clearSavedRuntimes").addEventListener("click", async () => {
+      try {
+        setRuntimeStatus(I18n.t("runtime.clearing"), "busy");
+        const cleared = await clearPersistedRuntimes();
+        setRuntimeStatus(I18n.t(cleared ? "runtime.cleared" : "runtime.storageUnavailable"), cleared ? "good" : "");
+      } catch (error) {
+        setRuntimeStatus(`${error.code || "RUNTIME_STORAGE_CLEAR_FAILED"}: ${error.message}`, "bad");
+      }
+    });
     $("openProject").addEventListener("click",()=>$("projectInput").click());
     $("projectInput").addEventListener("change",async e=>{
       const projectFile = e.target.files[0];
@@ -2496,6 +2640,7 @@
     setBuildStatus(I18n.t("build.codex.status.empty"));
     setClawdBuildStatus(I18n.t("build.clawd.status.empty"));
     render();
+    void restorePersistedRuntimes();
     void connectMapperSession();
   </script>
 </body>

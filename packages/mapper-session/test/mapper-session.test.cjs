@@ -109,6 +109,7 @@ test('serves an optional mapper document and performs a one-time browser bootstr
     assert.equal(page.status, 200);
     assert.equal(await page.text(), mapperHtml);
     assert.match(page.headers.get('content-security-policy'), /object-src 'none'/);
+    assert.match(page.headers.get('content-security-policy'), /connect-src 'self' blob:/);
 
     const payload = new URL(mapperUrl).hash.slice('#live2pet='.length);
     const code = payload.slice(payload.lastIndexOf('.') + 1);

@@ -38,10 +38,17 @@ Before a package build, stage the browser dependencies into a self-contained Map
 pnpm --filter @live2pet/desktop prepare:mapper
 ```
 
-The staging step copies only Pixi, the Pixi Live2D adapter, and zip.js. It
+The staging step copies only Pixi, the matching Pixi `@pixi/unsafe-eval`
+compatibility bundle, the Pixi Live2D adapter, and zip.js. It
 rewrites the shared Mapper to use local `vendor/` paths and emits hashes and
 third-party license notices. Cubism Core and legacy runtimes are never staged;
 they remain user-provided and local.
+
+When a user selects a Cubism Core or legacy runtime, the Mapper stores its
+source text in a browser-profile IndexedDB store (bounded to 16 MiB per runtime)
+so the next launch can restore it without another file-picker step. The stored
+copy is local-only and can be removed with **Clear saved runtimes**; it is never
+included in a Project, cache, package, or release artifact.
 
 The package does not include models, examples, or generated packages. Those
 remain user-provided and local.

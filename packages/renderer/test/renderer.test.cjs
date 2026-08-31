@@ -222,6 +222,7 @@ test('renderer host helpers enforce sandbox defaults, CSP, and a narrow IPC surf
   assert.match(createRendererCsp({ scriptNonce: 'nonce_123' }), /default-src 'none'/);
   assert.match(createRendererCsp({ scriptNonce: 'nonce_123' }), /script-src 'self' 'nonce-nonce_123'/);
   assert.doesNotMatch(createRendererCsp(), /unsafe-eval|file:/);
+  assert.match(createRendererCsp(), /connect-src 'self' blob:/);
   assert.match(createRendererCspMeta(), /^<meta http-equiv="Content-Security-Policy"/);
   assert.throws(
     () => createRendererWindowOptions({ preload: '/app/preload.cjs', width: 0 }),

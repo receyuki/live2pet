@@ -73,9 +73,11 @@ function viewerHtml(options, motionTarget, cubismVersion) {
   const runtimeScripts = cubismVersion === 2
     ? `<script src="/runtime/${encodeURIComponent(path.basename(options.runtime))}"></script>
   <script src="/pixi/pixi.min.js"></script>
+  <script src="/pixi/unsafe-eval.min.js"></script>
   <script src="/pixi-live2d/cubism2.min.js"></script>`
     : `<script src="/vendor/live2dcubismcore.min.js"></script>
   <script src="/pixi/pixi.min.js"></script>
+  <script src="/pixi/unsafe-eval.min.js"></script>
   <script src="/pixi-live2d/cubism4.min.js"></script>`;
   return `<!doctype html>
 <html>
@@ -175,6 +177,7 @@ async function main() {
   const toolRoot = __dirname;
   const routes = {
     '/pixi/pixi.min.js': path.join(toolRoot, 'node_modules/pixi.js/dist/browser/pixi.min.js'),
+    '/pixi/unsafe-eval.min.js': path.join(toolRoot, 'node_modules/@pixi/unsafe-eval/dist/browser/unsafe-eval.min.js'),
     '/pixi-live2d/cubism2.min.js': path.join(toolRoot, 'node_modules/pixi-live2d-display/dist/cubism2.min.js'),
     '/pixi-live2d/cubism4.min.js': path.join(toolRoot, 'node_modules/pixi-live2d-display/dist/cubism4.min.js'),
     '/vendor/live2dcubismcore.min.js': path.join(toolRoot, 'vendor/live2dcubismcore.min.js'),

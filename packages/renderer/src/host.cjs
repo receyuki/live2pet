@@ -95,7 +95,7 @@ function createRendererCsp({ scriptNonce } = {}) {
     `script-src ${script}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
-    "connect-src 'self'",
+    "connect-src 'self' blob:",
     "font-src 'self'",
     "media-src 'none'",
     "worker-src 'self' blob:",

@@ -7,6 +7,7 @@ corresponding upstream license text under `licenses/`.
 | Package | Version | License | Upstream |
 | --- | --- | --- | --- |
 | `pixi.js` | 6.5.10 | MIT | https://github.com/pixijs/pixi.js |
+| `@pixi/unsafe-eval` | 6.5.10 | MIT | https://github.com/pixijs/pixi.js |
 | `pixi-live2d-display` | 0.4.0 | MIT | https://github.com/guansss/pixi-live2d-display |
 | `@zip.js/zip.js` | 2.7.57 | BSD-3-Clause | https://github.com/gildas-lormeau/zip.js |
 

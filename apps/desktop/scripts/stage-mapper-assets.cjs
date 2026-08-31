@@ -15,6 +15,14 @@ const ASSETS = Object.freeze([
     licenseSource: path.resolve(__dirname, '../../../packages/live2d-exporter/node_modules/pixi.js/LICENSE'),
   },
   {
+    source: path.resolve(__dirname, '../../../packages/live2d-exporter/node_modules/@pixi/unsafe-eval/dist/browser/unsafe-eval.min.js'),
+    target: 'vendor/unsafe-eval.min.js',
+    packageName: '@pixi/unsafe-eval',
+    version: '6.5.10',
+    license: 'MIT',
+    licenseSource: path.resolve(__dirname, '../../../packages/live2d-exporter/node_modules/@pixi/unsafe-eval/LICENSE'),
+  },
+  {
     source: path.resolve(__dirname, '../../../packages/live2d-exporter/node_modules/pixi-live2d-display/dist/cubism4.min.js'),
     target: 'vendor/cubism4.min.js',
     packageName: 'pixi-live2d-display',
@@ -42,6 +50,7 @@ const ASSETS = Object.freeze([
 
 const REPLACEMENTS = Object.freeze([
   ['../../packages/live2d-exporter/node_modules/pixi.js/dist/browser/pixi.min.js', 'vendor/pixi.min.js'],
+  ['../../packages/live2d-exporter/node_modules/@pixi/unsafe-eval/dist/browser/unsafe-eval.min.js', 'vendor/unsafe-eval.min.js'],
   ['../../packages/live2d-exporter/node_modules/pixi-live2d-display/dist/cubism4.min.js', 'vendor/cubism4.min.js'],
   ['../../packages/live2d-exporter/node_modules/pixi-live2d-display/dist/cubism2.min.js', 'vendor/cubism2.min.js'],
   ['../../node_modules/.pnpm/@zip.js+zip.js@2.7.57/node_modules/@zip.js/zip.js/dist/zip-no-worker.min.js', 'vendor/zip-no-worker.min.js'],

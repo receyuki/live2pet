@@ -22,7 +22,9 @@ The host descriptor contains only the protocol version, session id, loopback API
 
 This boundary is intentionally separate from Electron IPC. The eventual App must expose only typed preload methods to the renderer, keep Node integration disabled, and package the Mapper's local dependencies instead of relying on the prototype's development paths.
 
-The Mapper UI includes an English-default, Chinese (`zh-CN`) translation layer. The language selector persists only the locale preference in browser storage; source assets, runtimes, and project contents remain local. Target ids, project schema keys, and generated package metadata stay language-neutral.
+The Mapper UI includes an English-default, Chinese (`zh-CN`) translation layer. The language selector persists only the locale preference in browser storage; source assets, runtimes, and project contents remain local. A selected Cubism runtime is additionally stored as bounded source text in a browser-profile IndexedDB store and restored on the next launch; the **Clear saved runtimes** action deletes that store without unloading the active runtime. Target ids, project schema keys, and generated package metadata stay language-neutral.
+
+The browser preview loads the version-matched Pixi `@pixi/unsafe-eval` compatibility bundle after Pixi. This replaces Pixi's generated uniform functions with static upload functions for strict-CSP environments; the Mapper CSP allows `blob:` only for object URLs created from the user's local source files and does not add general `'unsafe-eval'`.
 
 When the App preload exposes `buildProject` and `getBuildArtifact`, the Mapper can capture the selected Clawd Motion ids and request a guide-shaped Clawd Theme ZIP through the shared Package Build service. Browser-only sessions intentionally keep this button disabled because the browser fallback is not an equivalent Clawd encoder; preview and mapping remain available.
 
