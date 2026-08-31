@@ -23,6 +23,7 @@ const {
   normalizeCaptureCacheStatusRequest,
   normalizeInspectRequest,
   normalizeRuntimeRequest,
+  normalizeSkillInstallRequest,
   normalizeRendererPreviewStartRequest,
   normalizeRendererLoadRequest,
   normalizeRendererCommandRequest,
@@ -31,6 +32,7 @@ const {
   normalizeInstallRootRequest,
   normalizeBuildProgressEvent,
   normalizeRequest,
+  summarizeSkillStatus,
 } = require('../src/index.cjs');
 
 function fakeHost() {
@@ -55,12 +57,18 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.equal(APP_IPC_METHODS.includes('installArtifact'), true);
   assert.equal(APP_IPC_METHODS.includes('chooseInstallRoot'), true);
   assert.equal(APP_IPC_METHODS.includes('inspectSource'), true);
+  assert.equal(APP_IPC_METHODS.includes('getSkillStatus'), true);
+  assert.equal(APP_IPC_METHODS.includes('installSkill'), true);
   assert.equal(APP_IPC_METHODS.includes('startRendererPreview'), true);
   assert.deepEqual(RENDERER_PREVIEW_COMMANDS, ['playMotion', 'pause', 'resume', 'restart', 'setLoop', 'setSpeed', 'setExpression', 'step', 'getState', 'getBounds']);
   assert.deepEqual(normalizeInspectRequest({ inputPath: '/tmp/source', projectId: 'fixture' }), { inputPath: '/tmp/source', projectId: 'fixture' });
   assert.throws(() => normalizeInspectRequest({ inputPath: '/tmp/source', shell: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_INSPECT_REQUEST');
   assert.deepEqual(normalizeRuntimeRequest({ inputPath: '/tmp/live2d.min.js' }), { inputPath: '/tmp/live2d.min.js' });
   assert.throws(() => normalizeRuntimeRequest({ inputPath: '/tmp/runtime', shell: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_RUNTIME_REQUEST');
+  assert.deepEqual(normalizeSkillInstallRequest({ confirmInstall: true }), { confirmInstall: true, overwrite: false });
+  assert.deepEqual(normalizeSkillInstallRequest({ confirmInstall: true, overwrite: true }), { confirmInstall: true, overwrite: true });
+  assert.throws(() => normalizeSkillInstallRequest({ overwrite: true }), (error) => error instanceof AppHostError && error.code === 'INSTALL_AUTHORIZATION_REQUIRED');
+  assert.throws(() => normalizeSkillInstallRequest({ confirmInstall: true, path: '/tmp' }), (error) => error instanceof AppHostError && error.code === 'INVALID_SKILL_INSTALL_REQUEST');
   assert.deepEqual(normalizeCaptureCacheStatusRequest({ sourceFingerprint: 'a'.repeat(64), cubismVersion: 3, target: 'clawd', renderPreset: 'balanced', motions: [{ motionId: 'idle', duration: 1.2, width: 768, height: 768, frameCount: 29, fps: 24 }] }), { sourceFingerprint: 'a'.repeat(64), cubismVersion: 3, target: 'clawd', renderPreset: 'balanced', motions: [{ motionId: 'idle', duration: 1.2, width: 768, height: 768, frameCount: 29, fps: 24 }] });
   assert.throws(() => normalizeCaptureCacheStatusRequest({ sourceFingerprint: 'not-a-digest', cubismVersion: 3, target: 'clawd', renderPreset: 'balanced', motions: [] }), (error) => error instanceof AppHostError && error.code === 'INVALID_CAPTURE_CACHE_REQUEST');
   assert.deepEqual(normalizeRendererPreviewStartRequest({ sourceRoot: '/tmp/source', cubismVersion: 2 }), { sourceRoot: '/tmp/source', cubismVersion: 2, width: 512, height: 512, show: true });
@@ -116,6 +124,61 @@ test('rejects runtime services that return raw paths or incomplete metadata', as
   const response = await router({ protocolVersion: 1, method: 'getRuntimeSettings', args: [] });
   assert.equal(response.ok, false);
   assert.equal(response.error.code, 'INVALID_RUNTIME_RESULT');
+});
+
+test('routes skill status and explicit installation without exposing skill paths', async () => {
+  const calls = [];
+  const skillStatus = {
+    skillId: 'live2pet',
+    path: '/Users/private/.codex/skills/live2pet',
+    upToDate: false,
+    source: { available: true, valid: true, path: '/workspace/skills/live2pet', files: ['SKILL.md', 'agents/openai.yaml'], byteLength: 42, sha256: 'a'.repeat(64) },
+    installed: { exists: true, valid: true, path: '/Users/private/.codex/skills/live2pet', files: ['SKILL.md'], byteLength: 20, sha256: 'b'.repeat(64) },
+  };
+  const router = createAppIpcRouter({
+    skillService: {
+      get: async () => skillStatus,
+      install: async (input) => {
+        calls.push(input);
+        input.onProgress({ stage: 'stage', status: 'completed', files: 2, path: '/private/skill' });
+        input.onProgress({ stage: 'commit', status: 'completed', upgraded: true });
+        return { skillId: 'live2pet', path: '/Users/private/.codex/skills/live2pet', files: ['SKILL.md', 'agents/openai.yaml'], byteLength: 42, sha256: 'a'.repeat(64), upgraded: true };
+      },
+    },
+  });
+  const current = await router({ protocolVersion: 1, method: 'getSkillStatus', args: [] });
+  assert.equal(current.ok, true);
+  assert.deepEqual(current.result, {
+    schemaVersion: 1,
+    skillId: 'live2pet',
+    upToDate: false,
+    source: { available: true, valid: true, fileCount: 2, byteLength: 42, sha256: 'a'.repeat(64) },
+    installed: { exists: true, valid: true, fileCount: 1, byteLength: 20, sha256: 'b'.repeat(64) },
+  });
+  assert.equal(JSON.stringify(current).includes('/Users/private'), false);
+  const unauthorized = await router({ protocolVersion: 1, method: 'installSkill', args: [{ overwrite: true }] });
+  assert.equal(unauthorized.ok, false);
+  assert.equal(unauthorized.error.code, 'INSTALL_AUTHORIZATION_REQUIRED');
+  const installed = await router({ protocolVersion: 1, method: 'installSkill', args: [{ confirmInstall: true, overwrite: true }] });
+  assert.equal(installed.ok, true);
+  assert.deepEqual(installed.progress, [
+    { stage: 'stage', status: 'completed', files: 2 },
+    { stage: 'commit', status: 'completed', upgraded: true },
+    { stage: 'skill', status: 'completed' },
+  ]);
+  assert.deepEqual(installed.result, { schemaVersion: 1, skillId: 'live2pet', fileCount: 2, byteLength: 42, sha256: 'a'.repeat(64), upgraded: true });
+  assert.equal(JSON.stringify(installed).includes('/Users/private'), false);
+  assert.equal(calls.length, 1);
+  assert.deepEqual({ confirmInstall: calls[0].confirmInstall, overwrite: calls[0].overwrite }, { confirmInstall: true, overwrite: true });
+  assert.equal(typeof calls[0].onProgress, 'function');
+  assert.deepEqual(summarizeSkillStatus(skillStatus).source, current.result.source);
+  const invalidArgs = await router({ protocolVersion: 1, method: 'getSkillStatus', args: [{}] });
+  assert.equal(invalidArgs.ok, false);
+  assert.equal(invalidArgs.error.code, 'INVALID_SKILL_REQUEST');
+  const unavailableRouter = createAppIpcRouter({ skillService: { get: async () => ({ skillId: 'live2pet', upToDate: false, source: { available: false, valid: false, error: { code: 'SKILL_NOT_FOUND', message: 'Missing /Users/private/skills/live2pet' } }, installed: { exists: false, valid: false, files: [], byteLength: 0, sha256: null } }), install: async () => ({}) } });
+  const unavailable = await unavailableRouter({ protocolVersion: 1, method: 'getSkillStatus', args: [] });
+  assert.equal(unavailable.ok, true);
+  assert.deepEqual(unavailable.result.source, { available: false, valid: false, fileCount: 0, byteLength: 0, sha256: null, error: { code: 'SKILL_NOT_FOUND', message: 'Missing <redacted-path>' } });
 });
 
 test('routes bounded capture cache status without exposing local paths', async () => {
@@ -602,6 +665,8 @@ test('preload exposes only typed methods and the window options keep Electron sa
   await api.restartRendererPreview('renderer-session');
   await api.closeRendererPreview('renderer-session');
   await api.chooseInstallRoot('clawd');
+  await api.getSkillStatus();
+  await api.installSkill({ confirmInstall: true, overwrite: true });
   assert.equal(calls[0][0], APP_IPC_CHANNEL);
   assert.deepEqual(calls[0][1], { protocolVersion: 1, method: 'getVersion', args: [] });
   assert.deepEqual(calls[1][1], { protocolVersion: 1, method: 'startMapperSession', args: [{}] });
@@ -620,6 +685,8 @@ test('preload exposes only typed methods and the window options keep Electron sa
   assert.deepEqual(calls[14][1], { protocolVersion: 1, method: 'restartRendererPreview', args: [{ sessionId: 'renderer-session' }] });
   assert.deepEqual(calls[15][1], { protocolVersion: 1, method: 'closeRendererPreview', args: [{ sessionId: 'renderer-session' }] });
   assert.deepEqual(calls[16][1], { protocolVersion: 1, method: 'chooseInstallRoot', args: [{ target: 'clawd' }] });
+  assert.deepEqual(calls[17][1], { protocolVersion: 1, method: 'getSkillStatus', args: [] });
+  assert.deepEqual(calls[18][1], { protocolVersion: 1, method: 'installSkill', args: [{ confirmInstall: true, overwrite: true }] });
   assert.equal(Object.hasOwn(api, 'ipcRenderer'), false);
   const options = createAppWindowOptions({ preload: '/app/preload.cjs' });
   assert.equal(options.webPreferences.nodeIntegration, false);

@@ -11,6 +11,7 @@ const APP_BUILD_ARTIFACT_CHUNK_BYTES = 1024 * 1024;
 const APP_INSTALL_LOCATION_LIMIT = 8;
 const APP_SOURCE_INSPECTION_PROGRESS_STAGE = 'inspect';
 const APP_RUNTIME_PROGRESS_STAGE = 'runtime';
+const APP_SKILL_PROGRESS_STAGE = 'skill';
 const RENDERER_PREVIEW_COMMANDS = Object.freeze([
   'playMotion',
   'pause',
@@ -67,6 +68,8 @@ const APP_IPC_METHODS = Object.freeze([
   'getRuntimeSettings',
   'configureRuntime',
   'clearRuntimeSettings',
+  'getSkillStatus',
+  'installSkill',
   'getCaptureCacheStatus',
   'startMapperSession',
   'getMapperProject',
@@ -200,6 +203,16 @@ function normalizeRuntimeRequest(value) {
   if (unknown.length) fail('INVALID_RUNTIME_REQUEST', `App runtime configuration contains unsupported fields: ${unknown.join(', ')}.`);
   if (typeof value.inputPath !== 'string' || !value.inputPath.trim() || value.inputPath.length > 4096 || value.inputPath.includes('\0')) fail('INVALID_RUNTIME_REQUEST', 'App runtime configuration requires a valid local inputPath.');
   return { inputPath: value.inputPath.trim() };
+}
+
+function normalizeSkillInstallRequest(value) {
+  if (!isRecord(value)) fail('INVALID_SKILL_INSTALL_REQUEST', 'App skill installation input must be an object.');
+  const allowed = new Set(['confirmInstall', 'overwrite']);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) fail('INVALID_SKILL_INSTALL_REQUEST', `App skill installation contains unsupported fields: ${unknown.join(', ')}.`);
+  if (value.confirmInstall !== true) fail('INSTALL_AUTHORIZATION_REQUIRED', 'Installing the Live2Pet skill requires explicit confirmation.');
+  if (value.overwrite !== undefined && typeof value.overwrite !== 'boolean') fail('INVALID_SKILL_INSTALL_REQUEST', 'Skill overwrite must be a boolean when provided.');
+  return { confirmInstall: true, overwrite: value.overwrite === true };
 }
 
 function normalizeCaptureCacheRecipe(value, index) {
@@ -430,6 +443,58 @@ function summarizeRuntimeSettings(result) {
   };
 }
 
+function summarizeSkillPart(value, kind) {
+  if (!isRecord(value)) fail('INVALID_SKILL_RESULT', `App skill ${kind} status is invalid.`);
+  const exists = kind === 'installed' ? value.exists : value.available;
+  const files = value.files === undefined && kind === 'source' && exists === false ? [] : value.files;
+  const byteLength = value.byteLength === undefined && kind === 'source' && exists === false ? 0 : value.byteLength;
+  const sha256 = value.sha256 === undefined && kind === 'source' && exists === false ? null : value.sha256;
+  if (typeof exists !== 'boolean' || typeof value.valid !== 'boolean' || !Array.isArray(files) || files.length > 128 || !Number.isSafeInteger(byteLength) || byteLength < 0) {
+    fail('INVALID_SKILL_RESULT', `App skill ${kind} status is incomplete.`);
+  }
+  if (sha256 !== null && (typeof sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(sha256))) fail('INVALID_SKILL_RESULT', `App skill ${kind} digest is invalid.`);
+  const summary = {
+    ...(kind === 'installed' ? { exists } : { available: exists }),
+    valid: value.valid,
+    fileCount: files.length,
+    byteLength,
+    sha256: sha256 === null ? null : sha256.toLowerCase(),
+  };
+  if (value.error && isRecord(value.error) && typeof value.error.code === 'string') {
+    summary.error = { code: value.error.code.slice(0, 96), message: String(value.error.message || 'Skill status is unavailable.').replace(/(?:[A-Za-z]:[\\/]|\/(?:Users|home|private|tmp)\/)[^\s'"`]+/g, '<redacted-path>').slice(0, 512) };
+  }
+  return summary;
+}
+
+function summarizeSkillStatus(result) {
+  if (!isRecord(result) || result.skillId !== 'live2pet' || typeof result.upToDate !== 'boolean') fail('INVALID_SKILL_RESULT', 'App skill status did not return the supported Live2Pet contract.');
+  return {
+    schemaVersion: 1,
+    skillId: 'live2pet',
+    upToDate: result.upToDate,
+    source: summarizeSkillPart(result.source, 'source'),
+    installed: summarizeSkillPart(result.installed, 'installed'),
+  };
+}
+
+function summarizeSkillInstall(result) {
+  if (!isRecord(result) || result.skillId !== 'live2pet' || !Array.isArray(result.files) || result.files.length > 128 || !Number.isSafeInteger(result.byteLength) || result.byteLength < 0 || typeof result.sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(result.sha256) || typeof result.upgraded !== 'boolean') fail('INVALID_SKILL_RESULT', 'App skill installation did not return the supported result contract.');
+  return { schemaVersion: 1, skillId: 'live2pet', fileCount: result.files.length, byteLength: result.byteLength, sha256: result.sha256.toLowerCase(), upgraded: result.upgraded };
+}
+
+function summarizeSkillProgress(events) {
+  if (!Array.isArray(events) || events.length > 32) fail('INVALID_SKILL_RESULT', 'App skill progress is invalid.');
+  return events.map((event, index) => {
+    if (!isRecord(event) || typeof event.stage !== 'string' || typeof event.status !== 'string' || event.stage.length > 64 || event.status.length > 64) fail('INVALID_SKILL_RESULT', `App skill progress event ${index} is invalid.`);
+    return {
+      stage: event.stage.slice(0, 64),
+      status: event.status.slice(0, 64),
+      ...(typeof event.files === 'number' && Number.isSafeInteger(event.files) && event.files >= 0 && event.files <= 128 ? { files: event.files } : {}),
+      ...(typeof event.upgraded === 'boolean' ? { upgraded: event.upgraded } : {}),
+    };
+  });
+}
+
 function normalizeInstallRequest(value) {
   if (!isRecord(value)) fail('INVALID_INSTALL_REQUEST', 'App installation input must be an object.');
   const allowed = new Set(['artifactId', 'target', 'conflict', 'confirmInstall', 'locationId']);
@@ -547,10 +612,11 @@ function typedError(error) {
   };
 }
 
-function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, sourceInspectionService = null, runtimeSettingsService = null, captureCacheService = null, rendererPreviewService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
+function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, sourceInspectionService = null, runtimeSettingsService = null, skillService = null, captureCacheService = null, rendererPreviewService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
   if (typeof mapperHostFactory !== 'function') fail('INVALID_APP_ROUTER', 'mapperHostFactory must be a function.');
   if (sourceInspectionService !== null && typeof sourceInspectionService !== 'function') fail('INVALID_APP_ROUTER', 'sourceInspectionService must be a function when provided.');
   if (runtimeSettingsService !== null && (!isRecord(runtimeSettingsService) || typeof runtimeSettingsService.get !== 'function' || typeof runtimeSettingsService.configure !== 'function' || typeof runtimeSettingsService.clear !== 'function')) fail('INVALID_APP_ROUTER', 'runtimeSettingsService must expose get, configure, and clear functions when provided.');
+  if (skillService !== null && (!isRecord(skillService) || typeof skillService.get !== 'function' || typeof skillService.install !== 'function')) fail('INVALID_APP_ROUTER', 'skillService must expose get and install functions when provided.');
   if (captureCacheService !== null && (!isRecord(captureCacheService) || typeof captureCacheService.status !== 'function')) fail('INVALID_APP_ROUTER', 'captureCacheService must expose a status function when provided.');
   if (rendererPreviewService !== null && (!isRecord(rendererPreviewService) || typeof rendererPreviewService.start !== 'function' || typeof rendererPreviewService.loadSource !== 'function' || typeof rendererPreviewService.command !== 'function' || typeof rendererPreviewService.status !== 'function' || typeof rendererPreviewService.restart !== 'function' || typeof rendererPreviewService.close !== 'function')) fail('INVALID_APP_ROUTER', 'rendererPreviewService must expose start, loadSource, command, status, restart, and close functions when provided.');
   if (buildProjectService !== null && typeof buildProjectService !== 'function') fail('INVALID_APP_ROUTER', 'buildProjectService must be a function when provided.');
@@ -607,6 +673,18 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, source
       if (normalized.method === 'clearRuntimeSettings') {
         if (!runtimeSettingsService) fail('APP_RUNTIME_UNAVAILABLE', 'The App runtime settings service is not configured.');
         return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRuntimeSettings(await runtimeSettingsService.clear()) };
+      }
+      if (normalized.method === 'getSkillStatus') {
+        if (!skillService) fail('APP_SKILL_UNAVAILABLE', 'The App skill service is not configured.');
+        if (normalized.args.length) fail('INVALID_SKILL_REQUEST', 'getSkillStatus does not accept arguments.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeSkillStatus(await skillService.get()) };
+      }
+      if (normalized.method === 'installSkill') {
+        if (!skillService) fail('APP_SKILL_UNAVAILABLE', 'The App skill service is not configured.');
+        const input = normalizeSkillInstallRequest(normalized.args[0]);
+        const progress = [];
+        const installed = await skillService.install({ ...input, onProgress: (event) => progress.push(event) });
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, progress: [...summarizeSkillProgress(progress), { stage: APP_SKILL_PROGRESS_STAGE, status: 'completed' }], result: summarizeSkillInstall(installed) };
       }
       if (normalized.method === 'getCaptureCacheStatus') {
         if (!captureCacheService) fail('APP_CAPTURE_CACHE_UNAVAILABLE', 'The App capture cache service is not configured.');
@@ -799,6 +877,8 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
     getRuntimeSettings: () => invoke('getRuntimeSettings'),
     configureRuntime: (input) => invoke('configureRuntime', input),
     clearRuntimeSettings: () => invoke('clearRuntimeSettings'),
+    getSkillStatus: () => invoke('getSkillStatus'),
+    installSkill: (input) => invoke('installSkill', input),
     getCaptureCacheStatus: (input) => invoke('getCaptureCacheStatus', input),
     getFilePath: resolveFilePath,
     startRendererPreview: (input) => invoke('startRendererPreview', input),
@@ -845,6 +925,7 @@ module.exports = {
   APP_BUILD_PROGRESS_CHANNEL,
   APP_SOURCE_INSPECTION_PROGRESS_STAGE,
   APP_RUNTIME_PROGRESS_STAGE,
+  APP_SKILL_PROGRESS_STAGE,
   APP_IPC_CHANNEL,
   APP_IPC_METHODS,
   APP_IPC_PROTOCOL_VERSION,
@@ -856,6 +937,7 @@ module.exports = {
   normalizeRequest,
   normalizeInspectRequest,
   normalizeRuntimeRequest,
+  normalizeSkillInstallRequest,
   normalizeCaptureCacheStatusRequest,
   normalizeRendererPreviewStartRequest,
   normalizeRendererLoadRequest,
@@ -872,6 +954,9 @@ module.exports = {
   collectBuildArtifacts,
   summarizeSourceInspection,
   summarizeRuntimeSettings,
+  summarizeSkillStatus,
+  summarizeSkillInstall,
+  summarizeSkillProgress,
   summarizeCaptureCacheStatus,
   summarizeRendererPreviewResult,
   RENDERER_PREVIEW_COMMANDS,

@@ -24,6 +24,11 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(main, /mapperAssetRoot: app\.isPackaged \? path\.dirname\(documentPath\) : undefined,/);
   assert.match(main, /buildProjectService: buildProjectWithCaptureCache/);
   assert.match(main, /getCaptureCacheService/);
+  assert.match(main, /DEVELOPMENT_SKILL_PATH = path\.resolve\(__dirname, '\.\.\/\.\.\/skills\/live2pet'\)/);
+  assert.match(main, /PACKAGED_SKILL_PATH = path\.join\(process\.resourcesPath, 'live2pet-skill'\)/);
+  assert.match(main, /getSkillStatus/);
+  assert.match(main, /installSkill/);
+  assert.match(main, /skillService/);
   assert.match(main, /APP_BUILD_PROGRESS_CHANNEL/);
   assert.match(main, /webContents\.send\(APP_BUILD_PROGRESS_CHANNEL/);
   assert.match(main, /installPackageService: installPackage/);
@@ -43,7 +48,7 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(preload, /const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';/);
   assert.match(preload, /webUtils\.getPathForFile/);
   assert.match(preload, /getFilePath,/);
-  for (const method of ['getVersion', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'buildProject', 'getBuildArtifact', 'chooseInstallRoot', 'installArtifact', 'closeMapperSession', 'getCaptureCacheStatus', 'startRendererPreview', 'loadRendererSource', 'rendererCommand', 'getRendererPreviewStatus', 'restartRendererPreview', 'closeRendererPreview']) {
+  for (const method of ['getVersion', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'buildProject', 'getBuildArtifact', 'chooseInstallRoot', 'installArtifact', 'closeMapperSession', 'getCaptureCacheStatus', 'getSkillStatus', 'installSkill', 'startRendererPreview', 'loadRendererSource', 'rendererCommand', 'getRendererPreviewStatus', 'restartRendererPreview', 'closeRendererPreview']) {
     assert.match(preload, new RegExp(`invoke\\('${method}'`));
   }
   assert.match(preload, /getBuildArtifact: \(artifactId, offset = 0\) => invoke\('getBuildArtifact', \{ artifactId, offset \}\)/);
@@ -71,7 +76,7 @@ test('desktop package keeps Electron and future Forge settings explicit', () => 
   assert.equal(manifest.scripts.start, 'electron .');
   assert.match(forge, /asar:\s*true/);
   assert.match(forge, /executableName:\s*'live2pet'/);
-  assert.match(forge, /extraResource:\s*\[path\.resolve\(__dirname, 'mapper-dist'\)\]/);
+  assert.match(forge, /extraResource:\s*\[[\s\S]*path\.resolve\(__dirname, 'mapper-dist'\)[\s\S]*live2pet-skill/);
   assert.equal(manifest.scripts['prepare:mapper'], 'node scripts/stage-mapper-assets.cjs');
 });
 
@@ -138,6 +143,11 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /id="codexBuildProgressBar"/);
   assert.match(mapper, /id="clawdBuildProgressBar"/);
   assert.match(mapper, /id="clearSavedRuntimes"/);
+  assert.match(mapper, /id="refreshSkillStatus"/);
+  assert.match(mapper, /id="installSkill"/);
+  assert.match(mapper, /function desktopSkillApi\(\)/);
+  assert.match(mapper, /async function refreshSkillStatus\(\)/);
+  assert.match(mapper, /async function installSkillFromApp\(\)/);
   assert.match(mapper, /id="chooseRuntime"/);
   assert.match(mapper, /function detectRuntimeKind\(source\)/);
   assert.doesNotMatch(mapper, /id="chooseModernRuntime"|id="chooseLegacyRuntime"/);

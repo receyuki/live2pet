@@ -11,6 +11,7 @@ const {
 const { startMapperSessionHost } = require('../../packages/mapper-session/src/index.cjs');
 const { CacheStore, buildProjectTargets } = require('../../packages/package-build/src/index.cjs');
 const { installPackage } = require('../../packages/installation/src/index.cjs');
+const { getSkillStatus, installSkill } = require('../../packages/skill-manager/src/index.cjs');
 const { inspectSourcePackage } = require('../../packages/source-inspector/src/index.cjs');
 const { createRendererWindowHost } = require('./renderer-host.cjs');
 const { createRendererPreviewService } = require('./renderer-preview-service.cjs');
@@ -29,6 +30,8 @@ const DEVELOPMENT_MAPPER_PATH = path.resolve(__dirname, '../mapper/index.html');
 const PACKAGED_MAPPER_PATH = path.join(process.resourcesPath, 'mapper-dist', 'index.html');
 const DEVELOPMENT_RENDERER_PATH = path.resolve(__dirname, 'renderer/index.html');
 const PACKAGED_RENDERER_PATH = path.join(process.resourcesPath, 'mapper-dist', 'renderer.html');
+const DEVELOPMENT_SKILL_PATH = path.resolve(__dirname, '../../skills/live2pet');
+const PACKAGED_SKILL_PATH = path.join(process.resourcesPath, 'live2pet-skill');
 const SOURCE_CACHE_LIMIT = 1024 * 1024 * 1024;
 const CAPTURE_CACHE_LIMIT = 1024 * 1024 * 1024;
 let mainWindow = null;
@@ -44,6 +47,10 @@ function mapperPath() {
 
 function rendererPath() {
   return app.isPackaged ? PACKAGED_RENDERER_PATH : DEVELOPMENT_RENDERER_PATH;
+}
+
+function skillSourcePath() {
+  return app.isPackaged ? PACKAGED_SKILL_PATH : DEVELOPMENT_SKILL_PATH;
 }
 
 /**
@@ -103,6 +110,18 @@ const runtimeSettingsService = Object.freeze({
   clear: async () => redactRuntimeSettings(clearRuntimeSettings(runtimeSettingsPath())),
 });
 
+const skillService = Object.freeze({
+  get: async () => getSkillStatus({ sourceDir: skillSourcePath(), homeDir: app.getPath('home'), env: process.env }),
+  install: async ({ confirmInstall = false, overwrite = false, onProgress } = {}) => installSkill({
+    sourceDir: skillSourcePath(),
+    homeDir: app.getPath('home'),
+    env: process.env,
+    confirmInstall: confirmInstall === true,
+    overwrite: overwrite === true,
+    onProgress,
+  }),
+});
+
 const rendererPreviewService = createRendererPreviewService({
   loadRuntime: (cubismVersion) => loadRuntimeForGeneration(runtimeSettingsPath(), cubismVersion),
   resolveRuntimeEntrypoint,
@@ -141,6 +160,7 @@ function registerIpc() {
     mapperHostFactory,
     sourceInspectionService,
     runtimeSettingsService,
+    skillService,
     captureCacheService: getCaptureCacheService(),
     rendererPreviewService,
     buildProjectService: buildProjectWithCaptureCache,

@@ -60,6 +60,12 @@
     .runtimebar .runtime-status { min-width: 16ch; color: var(--muted); font-size: 12px; }
     .runtimebar .runtime-status.good { color: var(--good); }
     .runtimebar .runtime-status.bad { color: var(--bad); }
+    .skillbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -6px 0 18px; padding: 11px 13px; background: #0b1628; border: 1px solid var(--line); border-radius: 11px; }
+    .skillbar .skill-label { color: var(--muted); font-size: 12px; }
+    .skillbar .skill-status { min-width: 18ch; color: var(--muted); font-size: 12px; }
+    .skillbar .skill-status.good { color: var(--good); }
+    .skillbar .skill-status.bad { color: var(--bad); }
+    .skillbar .skill-status.busy { color: var(--warn); }
     .projectbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 18px; align-items: center; margin-bottom: 18px; padding: 14px 17px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
     .project-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
     .project-status { grid-column: 1 / -1; min-height: 22px; color: var(--muted); }
@@ -319,6 +325,13 @@
       <span id="rendererPreviewStatus" class="runtime-status" role="status" aria-live="polite" data-i18n="runtime.preview.status">Isolated preview is closed.</span>
     </section>
 
+    <section class="skillbar" aria-labelledby="skillHeading">
+      <span id="skillHeading" class="skill-label" data-i18n="skill.heading">Codex skill</span>
+      <button id="refreshSkillStatus" data-i18n="skill.refresh">Check skill</button>
+      <button id="installSkill" class="primary" data-i18n="skill.install" disabled>Install skill</button>
+      <span id="skillStatus" class="skill-status" role="status" aria-live="polite" data-i18n="skill.status.browserOnly">Skill installation is available in the Desktop App.</span>
+    </section>
+
     <section class="projectbar" aria-labelledby="projectHeading">
       <div>
         <div class="eyebrow" data-i18n="project.eyebrow">Live2Pet Project</div>
@@ -567,6 +580,24 @@
           "runtime.clearing": "Clearing saved runtimes…",
           "runtime.cleared": "Saved runtimes cleared. The currently loaded runtime remains active.",
           "runtime.refreshing": "{runtime} loaded; refreshing preview…",
+          "skill.heading": "Codex skill",
+          "skill.refresh": "Check skill",
+          "skill.install": "Install skill",
+          "skill.update": "Update skill",
+          "skill.status.browserOnly": "Skill installation is available in the Desktop App.",
+          "skill.status.checking": "Checking the local Codex skill…",
+          "skill.status.ready": "Live2Pet skill is ready ({files} files).",
+          "skill.status.update": "A newer Live2Pet skill is ready to install.",
+          "skill.status.missing": "Live2Pet skill is not installed.",
+          "skill.status.invalid": "The installed Live2Pet skill is invalid; reinstall to repair it.",
+          "skill.status.unavailable": "The Desktop App skill service is unavailable.",
+          "skill.status.failed": "Skill status failed: {message}",
+          "skill.confirm.install": "Install the Live2Pet Codex skill now?",
+          "skill.confirm.update": "Replace the installed Live2Pet skill with the current App version?",
+          "skill.status.installing": "Installing the Live2Pet Codex skill…",
+          "skill.status.installed": "Live2Pet skill installed.",
+          "skill.status.updated": "Live2Pet skill updated.",
+          "skill.status.installFailed": "Skill installation failed: {message}",
           "runtime.preview.open": "Open isolated preview",
           "runtime.preview.restart": "Restart preview",
           "runtime.preview.close": "Close preview",
@@ -938,6 +969,24 @@
           "runtime.clearing": "正在清除已保存运行时…",
           "runtime.cleared": "已清除保存的运行时；当前已加载的运行时仍在使用。",
           "runtime.refreshing": "已加载 {runtime}；正在刷新预览…",
+          "skill.heading": "Codex skill",
+          "skill.refresh": "检查 skill",
+          "skill.install": "安装 skill",
+          "skill.update": "更新 skill",
+          "skill.status.browserOnly": "Skill 安装功能仅在 Desktop App 中可用。",
+          "skill.status.checking": "正在检查本机 Codex skill…",
+          "skill.status.ready": "Live2Pet skill 已就绪（{files} 个文件）。",
+          "skill.status.update": "检测到更新版 Live2Pet skill，可以安装。",
+          "skill.status.missing": "尚未安装 Live2Pet skill。",
+          "skill.status.invalid": "已安装的 Live2Pet skill 无效；重新安装可修复。",
+          "skill.status.unavailable": "Desktop App skill 服务不可用。",
+          "skill.status.failed": "Skill 状态检查失败：{message}",
+          "skill.confirm.install": "现在安装 Live2Pet Codex skill 吗？",
+          "skill.confirm.update": "用当前 App 版本替换已安装的 Live2Pet skill 吗？",
+          "skill.status.installing": "正在安装 Live2Pet Codex skill…",
+          "skill.status.installed": "Live2Pet skill 已安装。",
+          "skill.status.updated": "Live2Pet skill 已更新。",
+          "skill.status.installFailed": "Skill 安装失败：{message}",
           "runtime.preview.open": "打开独立预览",
           "runtime.preview.restart": "重启预览",
           "runtime.preview.close": "关闭预览",
@@ -1534,6 +1583,10 @@
     let rendererPreviewBusy = false;
     let rendererPreviewStatusText = "";
     let rendererPreviewStatusLevel = "";
+    let skillStatus = null;
+    let skillBusy = false;
+    let skillStatusText = "";
+    let skillStatusLevel = "";
     const PROJECT_DRAFT_STORAGE_KEY = "live2pet-mapper-project-draft-v1";
     const PROJECT_DRAFT_MAX_BYTES = 1024 * 1024;
     let pendingProjectDraft = null;
@@ -1787,6 +1840,113 @@
 
     function desktopRuntimeApi() {
       return window.live2pet && typeof window.live2pet.configureRuntime === "function" ? window.live2pet : null;
+    }
+
+    function desktopSkillApi() {
+      return window.live2pet && typeof window.live2pet.getSkillStatus === "function" && typeof window.live2pet.installSkill === "function" ? window.live2pet : null;
+    }
+
+    function setSkillStatus(message, level = "") {
+      skillStatusText = message;
+      skillStatusLevel = level;
+      const status = $("skillStatus");
+      if (!status) return;
+      status.className = `skill-status${level ? ` ${level}` : ""}`;
+      status.textContent = message;
+    }
+
+    function skillDerivedStatus() {
+      if (!skillStatus?.source?.available || !skillStatus?.source?.valid) return { message: I18n.t("skill.status.unavailable"), level: "bad" };
+      if (skillStatus.upToDate && skillStatus.installed?.exists && skillStatus.installed?.valid) return { message: I18n.t("skill.status.ready", { files: skillStatus.installed.fileCount }), level: "good" };
+      if (skillStatus.installed?.exists && !skillStatus.installed?.valid) return { message: I18n.t("skill.status.invalid"), level: "bad" };
+      if (skillStatus.installed?.exists) return { message: I18n.t("skill.status.update"), level: "" };
+      return { message: I18n.t("skill.status.missing"), level: "" };
+    }
+
+    function renderSkillStatus() {
+      const api = desktopSkillApi();
+      const refresh = $("refreshSkillStatus");
+      const install = $("installSkill");
+      const status = $("skillStatus");
+      if (!refresh || !install || !status) return;
+      const hasValidSource = Boolean(skillStatus?.source?.available && skillStatus?.source?.valid);
+      const needsInstall = Boolean(hasValidSource && (!skillStatus?.upToDate || !skillStatus?.installed?.valid));
+      refresh.disabled = skillBusy || !api;
+      install.disabled = skillBusy || !api || !needsInstall;
+      install.textContent = skillStatus?.installed?.exists ? I18n.t("skill.update") : I18n.t("skill.install");
+      let display = { message: I18n.t("skill.status.browserOnly"), level: "" };
+      if (api && skillBusy) display = { message: skillStatusText || I18n.t("skill.status.checking"), level: skillStatusLevel || "busy" };
+      else if (api && skillStatusText) display = { message: skillStatusText, level: skillStatusLevel };
+      else if (api && skillStatus) display = skillDerivedStatus();
+      status.className = `skill-status${display.level ? ` ${display.level}` : ""}`;
+      status.textContent = display.message;
+    }
+
+    async function refreshSkillStatus() {
+      const api = desktopSkillApi();
+      if (!api) {
+        skillStatus = null;
+        skillBusy = false;
+        skillStatusText = "";
+        skillStatusLevel = "";
+        renderSkillStatus();
+        return null;
+      }
+      skillBusy = true;
+      skillStatusText = I18n.t("skill.status.checking");
+      skillStatusLevel = "busy";
+      renderSkillStatus();
+      try {
+        const response = await api.getSkillStatus();
+        if (!response || response.ok !== true || !response.result) throw projectError(response?.error?.code || "APP_SKILL_STATUS_FAILED", response?.error?.message || "The Desktop App did not return skill status.");
+        skillStatus = response.result;
+        skillStatusText = "";
+        skillStatusLevel = "";
+        return skillStatus;
+      } catch (error) {
+        skillStatus = null;
+        skillStatusText = I18n.t("skill.status.failed", { message: error.message });
+        skillStatusLevel = "bad";
+        return null;
+      } finally {
+        skillBusy = false;
+        renderSkillStatus();
+      }
+    }
+
+    async function installSkillFromApp() {
+      const api = desktopSkillApi();
+      if (!api) {
+        setSkillStatus(I18n.t("skill.status.unavailable"), "bad");
+        renderSkillStatus();
+        return;
+      }
+      if (!skillStatus) await refreshSkillStatus();
+      const hasValidSource = Boolean(skillStatus?.source?.available && skillStatus?.source?.valid);
+      if (!hasValidSource) return;
+      const overwrite = Boolean(skillStatus.installed?.exists);
+      const confirmation = window.confirm(I18n.t(overwrite ? "skill.confirm.update" : "skill.confirm.install"));
+      if (!confirmation) return;
+      skillBusy = true;
+      skillStatusText = I18n.t("skill.status.installing");
+      skillStatusLevel = "busy";
+      renderSkillStatus();
+      try {
+        const response = await api.installSkill({ confirmInstall: true, overwrite });
+        if (!response || response.ok !== true || !response.result) throw projectError(response?.error?.code || "APP_SKILL_INSTALL_FAILED", response?.error?.message || "The Desktop App rejected the skill installation.");
+        try {
+          const statusResponse = await api.getSkillStatus();
+          if (statusResponse?.ok === true && statusResponse.result) skillStatus = statusResponse.result;
+        } catch {}
+        skillStatusText = I18n.t(overwrite ? "skill.status.updated" : "skill.status.installed");
+        skillStatusLevel = "good";
+      } catch (error) {
+        skillStatusText = I18n.t("skill.status.installFailed", { message: error.message });
+        skillStatusLevel = "bad";
+      } finally {
+        skillBusy = false;
+        renderSkillStatus();
+      }
     }
 
     function desktopRendererApi() {
@@ -2515,6 +2675,7 @@
     function render() {
       renderProjectWorkflow(); renderInspection(); renderMetrics(); renderMotions(); renderExpressions(); renderMappings(); renderScenario();
       renderBuildProgress("codex"); renderBuildProgress("clawd");
+      renderSkillStatus();
       $("sleepMode").value = state.sleepMode;
       $("clawdRenderPreset").value = state.clawdRenderPreset;
       $("codexRenderPreset").value = state.codexRenderPreset;
@@ -4345,6 +4506,8 @@
         setRuntimeStatus(`${error.code || "RUNTIME_STORAGE_CLEAR_FAILED"}: ${error.message}`, "bad");
       }
     });
+    $("refreshSkillStatus").addEventListener("click", () => { void refreshSkillStatus(); });
+    $("installSkill").addEventListener("click", () => { void installSkillFromApp(); });
     $("openRendererPreview").addEventListener("click", openRendererPreview);
     $("restartRendererPreview").addEventListener("click", restartRendererPreview);
     $("closeRendererPreview").addEventListener("click", () => { void closeRendererPreview(); });
@@ -4422,6 +4585,7 @@
     setClawdBuildStatus(I18n.t("build.clawd.status.empty"));
     render();
     if (recoveredDraft) setProjectStatus(I18n.t("project.recovery.available", { time: projectDraftTime(recoveredDraft.savedAt) }));
+    void refreshSkillStatus();
     void initializeRuntimes();
     void connectMapperSession();
   </script>

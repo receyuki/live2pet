@@ -36,6 +36,17 @@ also keeps its bounded browser-profile copy so a selected runtime can refresh
 the in-page preview; neither copy is part of a project, cache artifact, package,
 source checkout, or release.
 
+The Desktop App also exposes the repository's text-only Codex skill bundle
+through `getSkillStatus` and `installSkill`. The Mapper shows whether the
+bundled `live2pet` skill is available, missing, invalid, or out of date. An
+installation or upgrade requires a separate user confirmation and is committed
+atomically by the main process into the user's Codex skills directory. The
+renderer receives only the skill id, digest, file count, and status; it never
+receives the destination path or skill contents. Development builds read from
+`skills/live2pet`; packaged builds stage the same source at the private
+`live2pet-skill` resource path. User-provided skill edits are not overwritten
+unless the user explicitly confirms an upgrade.
+
 The desktop shell also includes a separate renderer-realm host for Live2D
 preview. It creates a transparent BrowserWindow with Node integration off,
 context isolation, sandboxing, strict CSP, and a loopback-only asset server for

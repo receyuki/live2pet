@@ -17,6 +17,18 @@ moving the original download afterward does not break rendering. The Mapper
 may still keep its browser-profile copy for in-page preview, but App-owned
 rendering uses the private library as its source of truth.
 
+`getSkillStatus` and `installSkill` are the Codex skill provisioning boundary.
+The main process selects the repository source in development and the staged
+`live2pet-skill` resource in a packaged build, then delegates validation and
+atomic installation to `@live2pet/skill-manager`. `getSkillStatus` returns only
+the versioned skill id, source/installed validity, file counts, byte lengths,
+digests, and a boolean `upToDate`; absolute paths and file names are omitted.
+`installSkill` accepts only `confirmInstall: true` and an optional boolean
+`overwrite`, returns a binary-free installation summary, and reports bounded
+stage/commit progress. The Mapper asks for confirmation before both first
+installation and replacement of an existing skill. Browser-only Mapper
+sessions keep this control disabled.
+
 The main process creates one router and registers it on the fixed `live2pet:app` channel:
 
 ```js
