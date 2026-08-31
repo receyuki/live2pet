@@ -23,6 +23,13 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(main, /setPermissionCheckHandler/);
   assert.doesNotMatch(main, /nodeIntegration:\s*true/);
   assert.match(preload, /contextBridge\.exposeInMainWorld\('live2pet'/);
+  assert.match(preload, /const APP_IPC_CHANNEL = 'live2pet:app';/);
+  assert.match(preload, /const APP_IPC_PROTOCOL_VERSION = 1;/);
+  for (const method of ['getVersion', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'buildProject', 'getBuildArtifact', 'installArtifact', 'closeMapperSession']) {
+    assert.match(preload, new RegExp(`invoke\\('${method}'`));
+  }
+  assert.match(preload, /getBuildArtifact: \(artifactId\) => invoke\('getBuildArtifact', \{ artifactId \}\)/);
+  assert.doesNotMatch(preload, /require\(['"]\.\.\/\.\.\/packages\/app-host/);
   assert.doesNotMatch(preload, /exposeInMainWorld\([^,]+,\s*\{\s*ipcRenderer/);
 });
 
