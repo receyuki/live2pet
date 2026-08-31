@@ -36,6 +36,8 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(preload, /const APP_IPC_CHANNEL = 'live2pet:app';/);
   assert.match(preload, /const APP_IPC_PROTOCOL_VERSION = 1;/);
   assert.match(preload, /const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';/);
+  assert.match(preload, /webUtils\.getPathForFile/);
+  assert.match(preload, /getFilePath,/);
   for (const method of ['getVersion', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'buildProject', 'getBuildArtifact', 'installArtifact', 'closeMapperSession', 'startRendererPreview', 'loadRendererSource', 'rendererCommand', 'getRendererPreviewStatus', 'restartRendererPreview', 'closeRendererPreview']) {
     assert.match(preload, new RegExp(`invoke\\('${method}'`));
   }
@@ -131,6 +133,9 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /id="clearSavedRuntimes"/);
   assert.match(mapper, /const RUNTIME_DB_NAME = "live2pet-mapper-runtime"/);
   assert.match(mapper, /function desktopRendererApi\(\)/);
+  assert.match(mapper, /function rendererPreviewAvailability\(\)/);
+  assert.match(mapper, /runtime\.preview\.desktopOnly/);
+  assert.match(mapper, /bridge\.getFilePath\(file\)/);
   assert.match(mapper, /function rendererPreviewSource\(\)/);
   assert.match(mapper, /id="openRendererPreview"/);
   assert.match(mapper, /id="restartRendererPreview"/);

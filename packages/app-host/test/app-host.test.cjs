@@ -519,7 +519,11 @@ test('retains the latest artifact for an unrelated target across builds', async 
 
 test('preload exposes only typed methods and the window options keep Electron sandbox defaults', async () => {
   const calls = [];
-  const api = createAppPreloadApi({ ipcRenderer: { invoke: async (...args) => (calls.push(args), { ok: true }) } });
+  const api = createAppPreloadApi({
+    ipcRenderer: { invoke: async (...args) => (calls.push(args), { ok: true }) },
+    getFilePath: () => '/tmp/source/model3.json',
+  });
+  assert.equal(api.getFilePath({ name: 'model3.json' }), '/tmp/source/model3.json');
   await api.getVersion();
   await api.startMapperSession({});
   await api.buildProject({ project: { projectId: 'app-fixture' } });

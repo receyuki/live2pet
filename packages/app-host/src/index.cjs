@@ -673,7 +673,7 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, source
   };
 }
 
-function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL } = {}) {
+function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePath = null } = {}) {
   if (!ipcRenderer || typeof ipcRenderer.invoke !== 'function') fail('INVALID_APP_PRELOAD', 'App preload API requires ipcRenderer.invoke.');
   if (typeof channel !== 'string' || !channel.trim()) fail('INVALID_APP_PRELOAD', 'App IPC channel must be a non-empty string.');
   const invoke = (method, ...args) => ipcRenderer.invoke(channel, { protocolVersion: APP_IPC_PROTOCOL_VERSION, method, args });
@@ -692,12 +692,22 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL } = {}) {
       ipcRenderer.removeListener(APP_BUILD_PROGRESS_CHANNEL, handler);
     };
   };
+  const resolveFilePath = (file) => {
+    if (typeof getFilePath !== 'function') return null;
+    try {
+      const value = getFilePath(file);
+      return typeof value === 'string' && value ? value : null;
+    } catch {
+      return null;
+    }
+  };
   return Object.freeze({
     getVersion: () => invoke('getVersion'),
     inspectSource: (input) => invoke('inspectSource', input),
     getRuntimeSettings: () => invoke('getRuntimeSettings'),
     configureRuntime: (input) => invoke('configureRuntime', input),
     clearRuntimeSettings: () => invoke('clearRuntimeSettings'),
+    getFilePath: resolveFilePath,
     startRendererPreview: (input) => invoke('startRendererPreview', input),
     loadRendererSource: (input) => invoke('loadRendererSource', input),
     rendererCommand: (input) => invoke('rendererCommand', input),

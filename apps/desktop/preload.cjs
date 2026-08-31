@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 // Sandboxed preload scripts can require Electron's built-ins, but cannot load
 // arbitrary workspace modules. Keep this bridge intentionally tiny and in
@@ -48,6 +48,15 @@ const onBuildProgress = (listener) => {
     ipcRenderer.removeListener(APP_BUILD_PROGRESS_CHANNEL, handler);
   };
 };
+const getFilePath = (file) => {
+  if (!webUtils || typeof webUtils.getPathForFile !== 'function') return null;
+  try {
+    const value = webUtils.getPathForFile(file);
+    return typeof value === 'string' && value ? value : null;
+  } catch {
+    return null;
+  }
+};
 
 contextBridge.exposeInMainWorld('live2pet', Object.freeze({
   getVersion: () => invoke('getVersion'),
@@ -55,6 +64,7 @@ contextBridge.exposeInMainWorld('live2pet', Object.freeze({
   getRuntimeSettings: () => invoke('getRuntimeSettings'),
   configureRuntime: (input) => invoke('configureRuntime', input),
   clearRuntimeSettings: () => invoke('clearRuntimeSettings'),
+  getFilePath,
   startRendererPreview: (input) => invoke('startRendererPreview', input),
   loadRendererSource: (input) => invoke('loadRendererSource', input),
   rendererCommand: (input) => invoke('rendererCommand', input),

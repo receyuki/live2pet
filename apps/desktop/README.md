@@ -46,6 +46,11 @@ inspection manifest's relative `modelConfig`, resolves it through the same
 loopback server, and rejects a mismatched Cubism generation before touching the
 renderer.
 
+Electron 44 no longer guarantees the legacy `File.path` property in a sandboxed
+renderer. The App preload therefore exposes only the typed `webUtils.getPathForFile`
+result needed to resolve the selected Source Package directory for the isolated
+preview; browser-only Mapper sessions keep the helper unavailable.
+
 The Mapper exposes this host through a narrow App IPC session: **Open isolated
 preview**, **Restart preview**, and **Close preview**. Only a standard local
 Source Package directory can be opened in this window; reconstructed PCK files
