@@ -1791,7 +1791,9 @@
       if (!first) return null;
       const absolute = localFilePath(first).replaceAll("\\", "/");
       const relative = String(first.webkitRelativePath).replaceAll("\\", "/").replace(/^\/+/, "");
-      const suffix = `/${relative}`;
+      const relativeParts = relative.split("/").filter(Boolean);
+      if (relativeParts.length < 2) return null;
+      const suffix = `/${relativeParts.slice(1).join("/")}`;
       return absolute.endsWith(suffix) ? absolute.slice(0, -suffix.length) || "/" : null;
     }
 
