@@ -56,11 +56,11 @@ function createRendererPreviewService({
     starting = true;
     let host = null;
     try {
-      const settings = await loadRuntime();
-      if (!settings || settings.configured !== true || settings.available !== true || typeof settings.runtimePath !== 'string' || !settings.runtimePath.trim()) {
-        fail('RENDERER_RUNTIME_REQUIRED', 'Choose and save a matching Cubism runtime before opening an isolated preview.');
-      }
       const cubismVersion = Number(input.cubismVersion);
+      const settings = await loadRuntime(cubismVersion);
+      if (!settings || settings.available !== true || typeof settings.runtimePath !== 'string' || !settings.runtimePath.trim()) {
+        fail('RENDERER_RUNTIME_REQUIRED', `No saved runtime supports Cubism generation ${String(input.cubismVersion)}. Add it to the local runtime library once, then retry.`);
+      }
       const generations = settings.descriptor && Array.isArray(settings.descriptor.cubismGenerations)
         ? settings.descriptor.cubismGenerations
         : [];

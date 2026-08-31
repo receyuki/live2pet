@@ -356,21 +356,28 @@ function summarizeRendererPreviewResult(result) {
 
 function summarizeRuntimeSettings(result) {
   const sanitized = sanitizeInspectionValue(result);
-  if (!isRecord(sanitized) || sanitized.schemaVersion !== 1 || typeof sanitized.configured !== 'boolean' || typeof sanitized.restartRequired !== 'boolean') fail('INVALID_RUNTIME_RESULT', 'App runtime settings did not return the supported versioned contract.');
-  if (!sanitized.configured) return { schemaVersion: 1, configured: false, restartRequired: false };
-  if (Object.hasOwn(sanitized, 'runtimePath')) fail('INVALID_RUNTIME_RESULT', 'App runtime settings must not expose a runtime path.');
-  if (typeof sanitized.runtimeName !== 'string' || !sanitized.runtimeName || typeof sanitized.runtimeKind !== 'string' || !sanitized.runtimeKind || !Array.isArray(sanitized.cubismGenerations) || !sanitized.cubismGenerations.every((generation) => Number.isInteger(generation) && generation >= 2 && generation <= 5) || typeof sanitized.fingerprint !== 'string' || !/^[a-f0-9]{64}$/i.test(sanitized.fingerprint) || typeof sanitized.available !== 'boolean') fail('INVALID_RUNTIME_RESULT', 'App runtime settings are missing validated runtime metadata.');
+  if (!isRecord(sanitized) || sanitized.schemaVersion !== 2 || typeof sanitized.configured !== 'boolean' || sanitized.restartRequired !== false || !Array.isArray(sanitized.runtimes) || sanitized.runtimes.length > 2) fail('INVALID_RUNTIME_RESULT', 'App runtime settings did not return the supported runtime library contract.');
+  const kinds = new Set();
+  const runtimes = sanitized.runtimes.map((runtime) => {
+    if (!isRecord(runtime) || Object.hasOwn(runtime, 'runtimePath') || Object.hasOwn(runtime, 'storagePath')) fail('INVALID_RUNTIME_RESULT', 'App runtime settings must not expose runtime paths.');
+    if (typeof runtime.runtimeName !== 'string' || !runtime.runtimeName || typeof runtime.runtimeKind !== 'string' || !['legacy-cubism2', 'modern-cubism-core'].includes(runtime.runtimeKind) || kinds.has(runtime.runtimeKind) || !Array.isArray(runtime.cubismGenerations) || !runtime.cubismGenerations.every((generation) => Number.isInteger(generation) && generation >= 2 && generation <= 5) || typeof runtime.fingerprint !== 'string' || !/^[a-f0-9]{64}$/i.test(runtime.fingerprint) || typeof runtime.available !== 'boolean') fail('INVALID_RUNTIME_RESULT', 'App runtime settings are missing validated runtime metadata.');
+    kinds.add(runtime.runtimeKind);
+    return {
+      runtimeName: runtime.runtimeName,
+      ...(typeof runtime.sourceType === 'string' ? { sourceType: runtime.sourceType } : {}),
+      runtimeKind: runtime.runtimeKind,
+      cubismGenerations: [...runtime.cubismGenerations],
+      fingerprint: runtime.fingerprint,
+      available: runtime.available,
+      ...(runtime.error && isRecord(runtime.error) && typeof runtime.error.code === 'string' ? { error: { code: runtime.error.code, message: typeof runtime.error.message === 'string' ? runtime.error.message : 'Runtime is unavailable.' } } : {}),
+    };
+  });
+  if (sanitized.configured !== (runtimes.length > 0)) fail('INVALID_RUNTIME_RESULT', 'App runtime configured state does not match the runtime library.');
   return {
-    schemaVersion: 1,
-    configured: true,
-    runtimeName: sanitized.runtimeName,
-    ...(typeof sanitized.sourceType === 'string' ? { sourceType: sanitized.sourceType } : {}),
-    runtimeKind: sanitized.runtimeKind,
-    cubismGenerations: [...sanitized.cubismGenerations],
-    fingerprint: sanitized.fingerprint,
-    restartRequired: sanitized.restartRequired,
-    available: sanitized.available,
-    ...(sanitized.error && isRecord(sanitized.error) && typeof sanitized.error.code === 'string' ? { error: { code: sanitized.error.code, message: typeof sanitized.error.message === 'string' ? sanitized.error.message : 'Runtime is unavailable.' } } : {}),
+    schemaVersion: 2,
+    configured: runtimes.length > 0,
+    restartRequired: false,
+    runtimes,
   };
 }
 

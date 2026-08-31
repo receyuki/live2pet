@@ -25,14 +25,16 @@ user-data directory; the renderer receives metadata and warnings, never source
 or runtime bytes.
 
 Runtime provisioning is exposed through `getRuntimeSettings`,
-`configureRuntime`, and `clearRuntimeSettings`. Selecting a local modern Core
-or Cubism 2 runtime validates it in the main process and persists only its path
-and diagnostic fingerprint under the App user-data directory. The renderer
-receives metadata, never runtime bytes or the path, and a changed setting is
-explicitly marked restart-required. The current prototype also keeps its
-bounded browser-profile copy so a selected runtime can refresh the in-session
-preview; that copy is not part of a project, cache artifact, package, or
-release.
+`configureRuntime`, and `clearRuntimeSettings`. One picker accepts either a
+modern Core or Cubism 2 JavaScript runtime; the main process validates its
+contents, detects the runtime family, and copies the entrypoint into a private
+library under the App user-data directory. Modern and legacy entries coexist,
+and the renderer selects one from the inspected Cubism generation. A valid
+legacy path-based setting is migrated into this library automatically. The
+renderer receives metadata, never runtime bytes or a path. The current Mapper
+also keeps its bounded browser-profile copy so a selected runtime can refresh
+the in-page preview; neither copy is part of a project, cache artifact, package,
+source checkout, or release.
 
 The desktop shell also includes a separate renderer-realm host for Live2D
 preview. It creates a transparent BrowserWindow with Node integration off,

@@ -67,24 +67,22 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.throws(() => normalizeInstallRequest({ artifactId: 'artifact', target: 'codex-pet' }), (error) => error instanceof AppHostError && error.code === 'INSTALL_AUTHORIZATION_REQUIRED');
 });
 
-test('routes runtime settings without exposing the selected path and marks changes restart-required', async () => {
+test('routes a multi-runtime library without exposing App storage paths', async () => {
   const calls = [];
   const available = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     configured: true,
-    runtimeName: 'live2d.min.js',
-    sourceType: 'file',
-    runtimeKind: 'legacy-cubism2',
-    cubismGenerations: [2],
-    fingerprint: 'a'.repeat(64),
-    restartRequired: true,
-    available: true,
+    restartRequired: false,
+    runtimes: [
+      { runtimeName: 'live2d.min.js', sourceType: 'file', runtimeKind: 'legacy-cubism2', cubismGenerations: [2], fingerprint: 'a'.repeat(64), available: true },
+      { runtimeName: 'live2dcubismcore.min.js', sourceType: 'file', runtimeKind: 'modern-cubism-core', cubismGenerations: [3, 4, 5], fingerprint: 'b'.repeat(64), available: true },
+    ],
   };
   const router = createAppIpcRouter({
     runtimeSettingsService: {
       get: async () => available,
       configure: async (input) => { calls.push(input); return available; },
-      clear: async () => ({ schemaVersion: 1, configured: false, restartRequired: false }),
+      clear: async () => ({ schemaVersion: 2, configured: false, restartRequired: false, runtimes: [] }),
     },
   });
   const current = await router({ protocolVersion: 1, method: 'getRuntimeSettings', args: [] });
@@ -95,7 +93,7 @@ test('routes runtime settings without exposing the selected path and marks chang
   assert.deepEqual(calls, [{ inputPath: '/Users/RY/Downloads/live2d.min.js' }]);
   assert.equal(JSON.stringify(configured).includes('/Users/RY/Downloads'), false);
   const cleared = await router({ protocolVersion: 1, method: 'clearRuntimeSettings', args: [] });
-  assert.deepEqual(cleared.result, { schemaVersion: 1, configured: false, restartRequired: false });
+  assert.deepEqual(cleared.result, { schemaVersion: 2, configured: false, restartRequired: false, runtimes: [] });
   const malformed = await router({ protocolVersion: 1, method: 'configureRuntime', args: [{ inputPath: '/tmp/runtime', extra: true }] });
   assert.equal(malformed.ok, false);
   assert.equal(malformed.error.code, 'INVALID_RUNTIME_REQUEST');
@@ -106,7 +104,7 @@ test('rejects runtime services that return raw paths or incomplete metadata', as
   const incompleteResponse = await incomplete({ protocolVersion: 1, method: 'getRuntimeSettings', args: [] });
   assert.equal(incompleteResponse.ok, false);
   assert.equal(incompleteResponse.error.code, 'INVALID_RUNTIME_RESULT');
-  const router = createAppIpcRouter({ runtimeSettingsService: { get: async () => ({ schemaVersion: 1, configured: true, restartRequired: true, runtimePath: '/tmp/runtime' }), configure: async () => ({}), clear: async () => ({ schemaVersion: 1, configured: false, restartRequired: false }) } });
+  const router = createAppIpcRouter({ runtimeSettingsService: { get: async () => ({ schemaVersion: 2, configured: true, restartRequired: false, runtimes: [{ runtimePath: '/tmp/runtime' }] }), configure: async () => ({}), clear: async () => ({ schemaVersion: 2, configured: false, restartRequired: false, runtimes: [] }) } });
   const response = await router({ protocolVersion: 1, method: 'getRuntimeSettings', args: [] });
   assert.equal(response.ok, false);
   assert.equal(response.error.code, 'INVALID_RUNTIME_RESULT');

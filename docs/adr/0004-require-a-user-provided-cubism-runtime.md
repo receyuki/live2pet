@@ -4,7 +4,7 @@ Date: 2026-08-30
 
 ## Status
 
-Accepted
+Superseded by [ADR 0010](0010-copy-user-provided-runtimes-into-private-app-storage.md)
 
 ## Context
 

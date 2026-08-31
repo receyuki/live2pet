@@ -282,10 +282,8 @@
 
     <section class="runtimebar" aria-labelledby="runtimeHeading">
       <span id="runtimeHeading" class="runtime-label" data-i18n="runtime.heading">Local Cubism runtime</span>
-      <button id="chooseModernRuntime" data-i18n="runtime.modern">Choose modern Core</button>
-      <input id="modernRuntimeInput" class="hidden" type="file" accept=".js,.wasm,application/javascript,application/wasm">
-      <button id="chooseLegacyRuntime" data-i18n="runtime.legacy">Choose Cubism 2 runtime</button>
-      <input id="legacyRuntimeInput" class="hidden" type="file" accept=".js,application/javascript">
+      <button id="chooseRuntime" data-i18n="runtime.choose">Add Cubism runtime</button>
+      <input id="runtimeInput" class="hidden" type="file" accept=".js,.mjs,application/javascript">
       <button id="clearSavedRuntimes" data-i18n="runtime.clearSaved">Clear saved runtimes</button>
       <span id="runtimeStatus" class="runtime-status" role="status" aria-live="polite" data-i18n="runtime.status">Modern Core is optional for inspection; Cubism 2 preview requires a local runtime.</span>
       <button id="openRendererPreview" data-i18n="runtime.preview.open">Open isolated preview</button>
@@ -515,12 +513,13 @@
           "source.choosePck": "Choose Destiny Child PCK",
           "source.loadHint": "Supports .pck, .model3.json, or Cubism 2 model.json",
           "runtime.heading": "Local Cubism runtime",
-          "runtime.modern": "Choose modern Core",
-          "runtime.legacy": "Choose Cubism 2 runtime",
+          "runtime.choose": "Add Cubism runtime",
           "runtime.clearSaved": "Clear saved runtimes",
-          "runtime.status": "Modern Core is optional for inspection; Cubism 2 preview requires a local runtime.",
+          "runtime.status": "Add each runtime once. Live2Pet detects its Cubism generation and keeps a private local copy.",
           "runtime.name.modern": "Modern Core",
           "runtime.name.legacy": "Cubism 2 runtime",
+          "runtime.detecting": "Detecting and saving runtime {name}…",
+          "runtime.libraryReady": "Local runtime library ready: {runtimes}.",
           "runtime.loading": "Loading {runtime} {name}…",
           "runtime.loaded": "{runtime} loaded: {name}",
           "runtime.saved": "{runtime} loaded and saved locally: {name}",
@@ -856,12 +855,13 @@
           "source.choosePck": "选择 Destiny Child PCK",
           "source.loadHint": "支持 .pck、.model3.json 或 Cubism 2 model.json",
           "runtime.heading": "本地 Cubism 运行时",
-          "runtime.modern": "选择现代 Core",
-          "runtime.legacy": "选择 Cubism 2 运行时",
+          "runtime.choose": "添加 Cubism 运行时",
           "runtime.clearSaved": "清除已保存运行时",
-          "runtime.status": "检查资源时现代 Core 可选；预览 Cubism 2 需要本地运行时。",
+          "runtime.status": "每种运行时只需添加一次；Live2Pet 会自动识别 Cubism 代际并保存私有本地副本。",
           "runtime.name.modern": "现代 Core",
           "runtime.name.legacy": "Cubism 2 运行时",
+          "runtime.detecting": "正在识别并保存运行时 {name}…",
+          "runtime.libraryReady": "本地运行时库已就绪：{runtimes}。",
           "runtime.loading": "正在加载 {runtime} {name}…",
           "runtime.loaded": "已加载 {runtime}：{name}",
           "runtime.saved": "已加载并保存 {runtime}：{name}",
@@ -1868,7 +1868,14 @@
       });
     }
 
-    async function loadRuntimeSource(source, name, kind, { persist = true, restored = false } = {}) {
+    function detectRuntimeKind(source) {
+      if (typeof source !== "string" || !source.trim()) throw projectError("RUNTIME_EMPTY", "The selected runtime file is empty.");
+      if (source.includes("Live2DCubismCore") && /csmGetVersion|csmGetLatestMocVersion/.test(source)) return "modern";
+      if (/(?:Live2D|L2D)/.test(source)) return "legacy";
+      throw projectError("UNKNOWN_RUNTIME", "The selected file is not a recognized modern Cubism Core or Cubism 2 runtime.");
+    }
+
+    async function loadRuntimeSource(source, name, kind, { persist = true, restored = false, appSaved = false } = {}) {
       if (typeof source !== "string") throw projectError("RUNTIME_SOURCE_INVALID", "The runtime source must be text.");
       if (!name || !kind) throw projectError("RUNTIME_SOURCE_INVALID", "The runtime name and kind are required.");
       const maxBytes = 128 * 1024 * 1024;
@@ -1902,7 +1909,7 @@
       }
       const statusKey = restored
         ? "runtime.restored"
-        : persistence.saved
+        : persistence.saved || appSaved
           ? "runtime.saved"
           : "runtime.savedSessionOnly";
       setRuntimeStatus(I18n.t(statusKey, { runtime: runtimeLabel, name }), "good");
@@ -1912,18 +1919,21 @@
       }
     }
 
-    async function loadLocalRuntime(file, kind) {
+    async function loadLocalRuntime(file) {
       if (!file) return;
+      const source = await file.text();
+      const kind = detectRuntimeKind(source);
       const api = desktopRuntimeApi();
       const inputPath = localFilePath(file);
+      let appSaved = false;
       if (api && inputPath) {
         const response = await api.configureRuntime({ inputPath });
         if (!response || response.ok !== true || !response.result) {
           throw projectError(response?.error?.code || "RUNTIME_SETTINGS_FAILED", response?.error?.message || "The Desktop App could not save the selected runtime setting.");
         }
+        appSaved = true;
       }
-      const source = await file.text();
-      await loadRuntimeSource(source, file.name, kind);
+      await loadRuntimeSource(source, file.name, kind, { appSaved });
     }
 
     async function restorePersistedRuntimes() {
@@ -1938,6 +1948,25 @@
           setRuntimeStatus(`${I18n.t("runtime.restoreFailed", { runtime })} (${error.code || "RUNTIME_RESTORE_FAILED"})`, "bad");
         }
       }
+    }
+
+    async function showDesktopRuntimeLibraryStatus() {
+      const api = desktopRuntimeApi();
+      if (!api || typeof api.getRuntimeSettings !== "function") return;
+      try {
+        const response = await api.getRuntimeSettings();
+        const runtimes = response?.ok === true && Array.isArray(response.result?.runtimes)
+          ? response.result.runtimes.filter(runtime => runtime.available !== false)
+          : [];
+        if (!runtimes.length) return;
+        const labels = runtimes.map(runtime => I18n.t(`runtime.name.${runtime.runtimeKind === "legacy-cubism2" ? "legacy" : "modern"}`));
+        setRuntimeStatus(I18n.t("runtime.libraryReady", { runtimes: labels.join(" · ") }), "good");
+      } catch {}
+    }
+
+    async function initializeRuntimes() {
+      await restorePersistedRuntimes();
+      await showDesktopRuntimeLibraryStatus();
     }
 
     // Cubism 2 and Cubism 4 adapters expose the same PIXI.live2d namespace.
@@ -3810,26 +3839,13 @@
         e.target.value = "";
       }
     });
-    $("chooseModernRuntime").addEventListener("click", () => $("modernRuntimeInput").click());
-    $("modernRuntimeInput").addEventListener("change", async e => {
+    $("chooseRuntime").addEventListener("click", () => $("runtimeInput").click());
+    $("runtimeInput").addEventListener("change", async e => {
       const runtimeFile = e.target.files[0];
       if (!runtimeFile) return;
       try {
-        setRuntimeStatus(I18n.t("runtime.loading", { runtime: I18n.t("runtime.name.modern"), name: runtimeFile.name }));
-        await loadLocalRuntime(runtimeFile, "modern");
-      } catch (error) {
-        setRuntimeStatus(`${error.code || "RUNTIME_LOAD_FAILED"}: ${error.message}`, "bad");
-      } finally {
-        e.target.value = "";
-      }
-    });
-    $("chooseLegacyRuntime").addEventListener("click", () => $("legacyRuntimeInput").click());
-    $("legacyRuntimeInput").addEventListener("change", async e => {
-      const runtimeFile = e.target.files[0];
-      if (!runtimeFile) return;
-      try {
-        setRuntimeStatus(I18n.t("runtime.loading", { runtime: I18n.t("runtime.name.legacy"), name: runtimeFile.name }));
-        await loadLocalRuntime(runtimeFile, "legacy");
+        setRuntimeStatus(I18n.t("runtime.detecting", { name: runtimeFile.name }));
+        await loadLocalRuntime(runtimeFile);
       } catch (error) {
         setRuntimeStatus(`${error.code || "RUNTIME_LOAD_FAILED"}: ${error.message}`, "bad");
       } finally {
@@ -3925,7 +3941,7 @@
     setClawdBuildStatus(I18n.t("build.clawd.status.empty"));
     render();
     if (recoveredDraft) setProjectStatus(I18n.t("project.recovery.available", { time: projectDraftTime(recoveredDraft.savedAt) }));
-    void restorePersistedRuntimes();
+    void initializeRuntimes();
     void connectMapperSession();
   </script>
 </body>

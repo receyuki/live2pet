@@ -7,7 +7,7 @@ const MAX_RUNTIME_BYTES = 128 * 1024 * 1024;
 const MAX_RUNTIME_FILES = 512;
 const MAX_RUNTIME_DEPTH = 5;
 const MAX_SCAN_BYTES = 2 * 1024 * 1024;
-const RUNTIME_SETTINGS_SCHEMA_VERSION = 1;
+const RUNTIME_SETTINGS_SCHEMA_VERSION = 2;
 const MAX_RUNTIME_SETTINGS_BYTES = 64 * 1024;
 
 class RuntimeValidationError extends Error {
@@ -147,6 +147,7 @@ function emptyRuntimeSettings() {
     schemaVersion: RUNTIME_SETTINGS_SCHEMA_VERSION,
     configured: false,
     restartRequired: false,
+    runtimes: [],
   };
 }
 
@@ -173,6 +174,64 @@ function writeRuntimeSettings(settingsPath, settings) {
   return absolute;
 }
 
+function validRuntimeDescriptor(descriptor) {
+  return Boolean(
+    descriptor
+    && typeof descriptor === 'object'
+    && !Array.isArray(descriptor)
+    && typeof descriptor.entrypointName === 'string'
+    && descriptor.entrypointName
+    && ['modern-cubism-core', 'legacy-cubism2'].includes(descriptor.runtimeKind)
+    && Array.isArray(descriptor.cubismGenerations)
+    && descriptor.cubismGenerations.every((generation) => Number.isInteger(generation) && generation >= 2 && generation <= 5)
+    && typeof descriptor.fingerprint === 'string'
+    && /^[a-f0-9]{64}$/i.test(descriptor.fingerprint)
+  );
+}
+
+function runtimeStorageRoot(settingsPath) {
+  return path.join(path.dirname(normalizeSettingsPath(settingsPath)), 'runtimes');
+}
+
+function resolveStoredRuntimePath(settingsPath, storagePath) {
+  if (typeof storagePath !== 'string' || !storagePath.trim() || path.isAbsolute(storagePath)) fail('INVALID_RUNTIME_SETTINGS', 'Stored runtime paths must be relative to the App settings directory.');
+  const settingsDirectory = path.dirname(normalizeSettingsPath(settingsPath));
+  const absolute = path.resolve(settingsDirectory, storagePath);
+  const root = path.resolve(runtimeStorageRoot(settingsPath));
+  if (absolute !== root && !absolute.startsWith(`${root}${path.sep}`)) fail('INVALID_RUNTIME_SETTINGS', 'Stored runtime paths must remain inside the App runtime library.');
+  return absolute;
+}
+
+function storedRuntimeRecord(settingsPath, runtimePath, descriptor) {
+  const relative = path.relative(path.dirname(normalizeSettingsPath(settingsPath)), runtimePath).replaceAll(path.sep, '/');
+  return { storagePath: relative, descriptor };
+}
+
+async function copyRuntimeIntoLibrary(settingsPath, inputPath, descriptor = null) {
+  const inspected = descriptor || await inspectRuntime(inputPath);
+  const source = resolveRuntimeEntrypoint(inputPath);
+  const destinationDirectory = path.join(runtimeStorageRoot(settingsPath), inspected.runtimeKind, inspected.fingerprint);
+  const destination = path.join(destinationDirectory, inspected.entrypointName);
+  fs.mkdirSync(destinationDirectory, { recursive: true, mode: 0o700 });
+  if (path.resolve(source) !== path.resolve(destination)) {
+    let keepExisting = false;
+    try { keepExisting = fs.statSync(destination).isFile() && await sha256(destination) === inspected.fingerprint; } catch {}
+    if (!keepExisting) {
+      const temporary = `${destination}.${process.pid}.${crypto.randomUUID()}.tmp`;
+      try {
+        fs.copyFileSync(source, temporary, fs.constants.COPYFILE_EXCL);
+        fs.chmodSync(temporary, 0o600);
+        fs.rmSync(destination, { force: true });
+        fs.renameSync(temporary, destination);
+      } catch (error) {
+        try { fs.unlinkSync(temporary); } catch {}
+        fail('RUNTIME_COPY_FAILED', 'The selected runtime could not be copied into App storage.', { cause: error && error.code ? error.code : String(error && error.message ? error.message : error) });
+      }
+    }
+  }
+  return { ...storedRuntimeRecord(settingsPath, destination, inspected), runtimePath: destination, available: true };
+}
+
 function parseRuntimeSettings(settingsPath) {
   const absolute = normalizeSettingsPath(settingsPath);
   let text;
@@ -190,40 +249,79 @@ function parseRuntimeSettings(settingsPath) {
   try { parsed = JSON.parse(text); } catch (error) {
     fail('INVALID_RUNTIME_SETTINGS', 'Runtime settings are not valid JSON.', { cause: String(error && error.message ? error.message : error) });
   }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || parsed.schemaVersion !== RUNTIME_SETTINGS_SCHEMA_VERSION || typeof parsed.runtimePath !== 'string' || !parsed.runtimePath.trim() || !parsed.descriptor || typeof parsed.descriptor !== 'object') {
-    fail('INVALID_RUNTIME_SETTINGS', `Runtime settings must use schema version ${RUNTIME_SETTINGS_SCHEMA_VERSION} and contain a runtimePath and descriptor.`);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) fail('INVALID_RUNTIME_SETTINGS', 'Runtime settings must be an object.');
+  if (parsed.schemaVersion === 1 && typeof parsed.runtimePath === 'string' && parsed.runtimePath.trim() && validRuntimeDescriptor(parsed.descriptor)) {
+    return { ...parsed, runtimePath: path.resolve(parsed.runtimePath) };
   }
-  return { ...parsed, runtimePath: path.resolve(parsed.runtimePath) };
+  if (parsed.schemaVersion !== RUNTIME_SETTINGS_SCHEMA_VERSION || !Array.isArray(parsed.runtimes)) {
+    fail('INVALID_RUNTIME_SETTINGS', `Runtime settings must use schema version ${RUNTIME_SETTINGS_SCHEMA_VERSION} and contain a runtimes array.`);
+  }
+  const kinds = new Set();
+  const runtimes = parsed.runtimes.map((runtime) => {
+    if (!runtime || typeof runtime !== 'object' || Array.isArray(runtime) || !validRuntimeDescriptor(runtime.descriptor)) fail('INVALID_RUNTIME_SETTINGS', 'Runtime settings contain an invalid runtime descriptor.');
+    if (kinds.has(runtime.descriptor.runtimeKind)) fail('INVALID_RUNTIME_SETTINGS', `Runtime settings contain duplicate ${runtime.descriptor.runtimeKind} entries.`);
+    kinds.add(runtime.descriptor.runtimeKind);
+    resolveStoredRuntimePath(settingsPath, runtime.storagePath);
+    return { storagePath: runtime.storagePath, descriptor: runtime.descriptor };
+  });
+  return { schemaVersion: RUNTIME_SETTINGS_SCHEMA_VERSION, runtimes };
 }
 
 async function saveRuntimeSettings(settingsPath, inputPath) {
   const descriptor = await inspectRuntime(inputPath);
-  const settings = {
-    schemaVersion: RUNTIME_SETTINGS_SCHEMA_VERSION,
-    runtimePath: path.resolve(inputPath),
-    descriptor,
-    restartRequired: true,
-  };
-  writeRuntimeSettings(settingsPath, settings);
-  return { ...settings, configured: true, available: true };
+  let existing;
+  try { existing = await loadRuntimeSettings(settingsPath); }
+  catch (error) {
+    if (!(error instanceof RuntimeValidationError)) throw error;
+    existing = emptyRuntimeSettings();
+  }
+  const copied = await copyRuntimeIntoLibrary(settingsPath, inputPath, descriptor);
+  const runtimes = existing.runtimes
+    .filter((runtime) => runtime.descriptor.runtimeKind !== descriptor.runtimeKind)
+    .map((runtime) => storedRuntimeRecord(settingsPath, runtime.runtimePath, runtime.descriptor));
+  runtimes.push({ storagePath: copied.storagePath, descriptor: copied.descriptor });
+  runtimes.sort((left, right) => left.descriptor.runtimeKind.localeCompare(right.descriptor.runtimeKind));
+  writeRuntimeSettings(settingsPath, { schemaVersion: RUNTIME_SETTINGS_SCHEMA_VERSION, runtimes });
+  return loadRuntimeSettings(settingsPath);
 }
 
 async function loadRuntimeSettings(settingsPath) {
   const stored = parseRuntimeSettings(settingsPath);
   if (!stored) return emptyRuntimeSettings();
-  try {
-    const descriptor = await inspectRuntime(stored.runtimePath);
-    return { ...stored, descriptor, configured: true, available: true, restartRequired: true };
-  } catch (error) {
-    if (!(error instanceof RuntimeValidationError)) throw error;
-    return {
-      ...stored,
-      configured: true,
-      available: false,
-      restartRequired: true,
-      error: { code: error.code, message: error.message },
-    };
+  if (stored.schemaVersion === 1) {
+    const copied = await copyRuntimeIntoLibrary(settingsPath, stored.runtimePath, stored.descriptor);
+    writeRuntimeSettings(settingsPath, {
+      schemaVersion: RUNTIME_SETTINGS_SCHEMA_VERSION,
+      runtimes: [{ storagePath: copied.storagePath, descriptor: copied.descriptor }],
+    });
+    return loadRuntimeSettings(settingsPath);
   }
+  const runtimes = [];
+  for (const runtime of stored.runtimes) {
+    const runtimePath = resolveStoredRuntimePath(settingsPath, runtime.storagePath);
+    try {
+      const descriptor = await inspectRuntime(runtimePath);
+      const matches = descriptor.runtimeKind === runtime.descriptor.runtimeKind && descriptor.fingerprint === runtime.descriptor.fingerprint;
+      if (!matches) fail('RUNTIME_LIBRARY_MISMATCH', 'A saved runtime no longer matches its validated App library record.');
+      runtimes.push({ ...runtime, runtimePath, descriptor, available: true });
+    } catch (error) {
+      if (!(error instanceof RuntimeValidationError)) throw error;
+      runtimes.push({ ...runtime, runtimePath, available: false, error: { code: error.code, message: error.message } });
+    }
+  }
+  return {
+    schemaVersion: RUNTIME_SETTINGS_SCHEMA_VERSION,
+    configured: runtimes.length > 0,
+    restartRequired: false,
+    runtimes,
+  };
+}
+
+async function loadRuntimeForGeneration(settingsPath, cubismVersion) {
+  const generation = Number(cubismVersion);
+  if (![2, 3, 4, 5].includes(generation)) fail('UNSUPPORTED_CUBISM_VERSION', `Cubism generation ${String(cubismVersion)} is not supported.`);
+  const settings = await loadRuntimeSettings(settingsPath);
+  return settings.runtimes.find((runtime) => runtime.available === true && runtime.descriptor.cubismGenerations.includes(generation)) || null;
 }
 
 function clearRuntimeSettings(settingsPath) {
@@ -231,18 +329,31 @@ function clearRuntimeSettings(settingsPath) {
   try { fs.unlinkSync(absolute); } catch (error) {
     if (error && error.code !== 'ENOENT') fail('RUNTIME_SETTINGS_CLEAR_FAILED', 'Runtime settings could not be cleared.', { cause: error.code || String(error.message || error) });
   }
+  try { fs.rmSync(runtimeStorageRoot(settingsPath), { recursive: true, force: true }); } catch (error) {
+    fail('RUNTIME_SETTINGS_CLEAR_FAILED', 'The App runtime library could not be cleared.', { cause: error.code || String(error.message || error) });
+  }
   return emptyRuntimeSettings();
 }
 
 function redactRuntimeSettings(settings) {
   if (!settings || typeof settings !== 'object') fail('INVALID_RUNTIME_SETTINGS', 'Runtime settings must be an object.');
-  if (settings.configured === false || !settings.runtimePath) {
+  if (settings.schemaVersion === RUNTIME_SETTINGS_SCHEMA_VERSION && Array.isArray(settings.runtimes)) {
     return {
       schemaVersion: RUNTIME_SETTINGS_SCHEMA_VERSION,
-      configured: false,
+      configured: settings.runtimes.length > 0,
       restartRequired: false,
+      runtimes: settings.runtimes.map((runtime) => ({
+        runtimeName: runtime.descriptor.entrypointName,
+        sourceType: runtime.descriptor.sourceType,
+        runtimeKind: runtime.descriptor.runtimeKind,
+        cubismGenerations: [...runtime.descriptor.cubismGenerations],
+        fingerprint: runtime.descriptor.fingerprint,
+        available: runtime.available !== false,
+        ...(runtime.error && typeof runtime.error === 'object' && typeof runtime.error.code === 'string' ? { error: { code: runtime.error.code, message: String(runtime.error.message || 'Runtime is unavailable.').replace(/(?:[A-Za-z]:[\\/]|\/(?:Users|home|private|tmp)\/)[^\s'"`]+/g, '<redacted-path>') } } : {}),
+      })),
     };
   }
+  if (settings.configured === false || !settings.runtimePath) return emptyRuntimeSettings();
   if (!settings.descriptor || typeof settings.descriptor !== 'object') fail('INVALID_RUNTIME_SETTINGS', 'Runtime settings are missing a validated descriptor.');
   return {
     schemaVersion: settings.schemaVersion,
@@ -267,6 +378,7 @@ module.exports = {
   clearRuntimeSettings,
   createRuntimeSettings,
   inspectRuntime,
+  loadRuntimeForGeneration,
   loadRuntimeSettings,
   redactRuntimeSettings,
   resolveRuntimeEntrypoint,

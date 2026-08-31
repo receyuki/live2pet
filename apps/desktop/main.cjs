@@ -16,6 +16,7 @@ const { createRendererWindowHost } = require('./renderer-host.cjs');
 const { createRendererPreviewService } = require('./renderer-preview-service.cjs');
 const {
   clearRuntimeSettings,
+  loadRuntimeForGeneration,
   loadRuntimeSettings,
   redactRuntimeSettings,
   resolveRuntimeEntrypoint,
@@ -99,7 +100,7 @@ const runtimeSettingsService = Object.freeze({
 });
 
 const rendererPreviewService = createRendererPreviewService({
-  loadRuntime: () => loadRuntimeSettings(runtimeSettingsPath()),
+  loadRuntime: (cubismVersion) => loadRuntimeForGeneration(runtimeSettingsPath(), cubismVersion),
   resolveRuntimeEntrypoint,
   createHost: (options) => createRendererPreviewHost(options),
 });

@@ -7,14 +7,15 @@
 `getRuntimeSettings`, `configureRuntime`, and `clearRuntimeSettings` are the
 runtime provisioning boundary. The main process injects a service backed by the
 App user-data directory; `configureRuntime` validates a user-selected local
-Cubism Core or Cubism 2 runtime and stores only its absolute path plus a
-diagnostic descriptor. The typed response deliberately omits that path and all
-runtime bytes, and marks a change `restartRequired: true`. On the next App
-launch the service revalidates the saved path and reports `available: false`
-with a typed, path-redacted error when the user moved or removed the runtime.
-The Mapper may still keep its existing browser-profile copy for the current
-prototype, but the App setting is the source of truth for the future isolated
-renderer host.
+Cubism Core or Cubism 2 runtime, detects its family, and copies the validated
+entrypoint into a private App runtime library. The schema-v2 response lists at
+most one modern and one legacy descriptor, deliberately omits all storage paths
+and runtime bytes, and applies changes without an App restart. The renderer
+selects the matching entry from the inspected Cubism generation. A valid
+schema-v1 external path is migrated into this private library on first load, so
+moving the original download afterward does not break rendering. The Mapper
+may still keep its browser-profile copy for in-page preview, but App-owned
+rendering uses the private library as its source of truth.
 
 The main process creates one router and registers it on the fixed `live2pet:app` channel:
 

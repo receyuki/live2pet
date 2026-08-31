@@ -18,6 +18,7 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(main, /return app\.isPackaged \? PACKAGED_MAPPER_PATH : DEVELOPMENT_MAPPER_PATH;/);
   assert.match(main, /return app\.isPackaged \? PACKAGED_RENDERER_PATH : DEVELOPMENT_RENDERER_PATH;/);
   assert.match(main, /createRendererPreviewHost/);
+  assert.match(main, /loadRuntimeForGeneration/);
   assert.match(main, /closeRendererPreviewHost/);
   assert.match(main, /mapperAssetRoot: app\.isPackaged \? path\.dirname\(documentPath\) : undefined,/);
   assert.match(main, /buildProjectService: buildProjectTargets/);
@@ -131,6 +132,9 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /id="codexBuildProgressBar"/);
   assert.match(mapper, /id="clawdBuildProgressBar"/);
   assert.match(mapper, /id="clearSavedRuntimes"/);
+  assert.match(mapper, /id="chooseRuntime"/);
+  assert.match(mapper, /function detectRuntimeKind\(source\)/);
+  assert.doesNotMatch(mapper, /id="chooseModernRuntime"|id="chooseLegacyRuntime"/);
   assert.match(mapper, /const RUNTIME_DB_NAME = "live2pet-mapper-runtime"/);
   assert.match(mapper, /function desktopRendererApi\(\)/);
   assert.match(mapper, /function rendererPreviewAvailability\(\)/);
@@ -258,7 +262,10 @@ test('renderer preview service resolves the saved runtime and guards one session
   let hostClosed = false;
   let generation = 1;
   const service = createRendererPreviewService({
-    loadRuntime: async () => ({ configured: true, available: true, runtimePath: '/Users/RY/Downloads/cubism', descriptor: { cubismGenerations: [2] } }),
+    loadRuntime: async (cubismVersion) => {
+      calls.push(['load', cubismVersion]);
+      return { available: true, runtimePath: '/Users/RY/Library/Application Support/Live2Pet/runtimes/live2d.min.js', descriptor: { cubismGenerations: [2] } };
+    },
     resolveRuntimeEntrypoint: (inputPath) => { calls.push(['resolve', inputPath]); return '/Users/RY/Downloads/cubism/live2d.min.js'; },
     createHost: (options) => {
       calls.push(['host', options]);
@@ -276,8 +283,9 @@ test('renderer preview service resolves the saved runtime and guards one session
   const started = await service.start({ sourceRoot: '/Users/RY/Downloads/model', cubismVersion: 2, width: 512, height: 512, show: true });
   assert.equal(started.kind, 'legacy-cubism2');
   assert.equal(started.status.state, 'ready');
-  assert.equal(calls[0][0], 'resolve');
-  assert.deepEqual(calls[1][1], { sourceRoot: '/Users/RY/Downloads/model', runtimePath: '/Users/RY/Downloads/cubism/live2d.min.js', cubismVersion: 2, width: 512, height: 512, show: true });
+  assert.deepEqual(calls[0], ['load', 2]);
+  assert.equal(calls[1][0], 'resolve');
+  assert.deepEqual(calls[2][1], { sourceRoot: '/Users/RY/Downloads/model', runtimePath: '/Users/RY/Downloads/cubism/live2d.min.js', cubismVersion: 2, width: 512, height: 512, show: true });
   await assert.rejects(() => service.start({ sourceRoot: '/tmp/other', cubismVersion: 2 }), (error) => error.code === 'RENDERER_PREVIEW_ACTIVE');
   const loaded = await service.loadSource({ sessionId: started.sessionId, modelConfig: 'model.json', cubismVersion: 2, motions: [] });
   assert.equal(loaded.result.motionCount, 0);
