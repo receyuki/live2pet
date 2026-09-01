@@ -16,12 +16,20 @@
       const query = new URLSearchParams(window.location.search);
       const cubismVersion = Number(query.get("cubism") || 4);
       const runtimeUrl = query.get("runtime");
+      const renderer = query.get("renderer") || "pixi";
+      const frameworkUrl = query.get("framework");
       // Development loads the staged vendor directory one level up; the
       // staging script rewrites this prefix when it copies the page beside
       // the vendors for a packaged bundle.
       const vendorRoot = "../mapper-dist/vendor";
       const adapterUrl = cubismVersion === 2 ? `${vendorRoot}/cubism2.min.js` : `${vendorRoot}/cubism4.min.js`;
-      const scripts = [`${vendorRoot}/pixi.min.js`, `${vendorRoot}/unsafe-eval.min.js`];
+      const scripts = [];
+      if (!["pixi", "official"].includes(renderer)) {
+        window.__live2petRendererError = "Renderer adapter must be pixi or official.";
+      }
+      if (renderer === "official" && cubismVersion === 2) {
+        window.__live2petRendererError = "The official Cubism renderer supports only Cubism 3, 4, or 5.";
+      }
       if (runtimeUrl) {
         try {
           const parsed = new URL(runtimeUrl, window.location.href);
@@ -31,7 +39,21 @@
           window.__live2petRendererError = String(error && error.message ? error.message : error);
         }
       }
-      scripts.push(adapterUrl);
+      if (renderer === "official") {
+        if (!frameworkUrl) {
+          window.__live2petRendererError = "An official renderer bridge bundle is required.";
+        } else {
+          try {
+            const parsed = new URL(frameworkUrl, window.location.href);
+            if (parsed.protocol !== "http:" || parsed.hostname !== "127.0.0.1") throw new Error("Framework URL must stay on the loopback asset server.");
+            scripts.push(parsed.href);
+          } catch (error) {
+            window.__live2petRendererError = String(error && error.message ? error.message : error);
+          }
+        }
+      } else {
+        scripts.push(`${vendorRoot}/pixi.min.js`, `${vendorRoot}/unsafe-eval.min.js`, adapterUrl);
+      }
       const load = src => new Promise((resolve, reject) => {
         const element = document.createElement("script");
         element.async = false;

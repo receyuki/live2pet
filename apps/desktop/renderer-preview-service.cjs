@@ -75,6 +75,9 @@ function createRendererPreviewService({
         width: input.width,
         height: input.height,
         show: input.show,
+        ...(input.modernAdapter ? { modernAdapter: input.modernAdapter } : {}),
+        ...(input.frameworkPath ? { frameworkPath: input.frameworkPath } : {}),
+        ...(input.frameworkGlobal ? { frameworkGlobal: input.frameworkGlobal } : {}),
       });
       if (!host || typeof host.start !== 'function' || typeof host.close !== 'function' || typeof host.getStatus !== 'function' || typeof host.loadSource !== 'function' || typeof host.invoke !== 'function' || typeof host.restart !== 'function') {
         fail('INVALID_RENDERER_PREVIEW_HOST', 'Renderer preview host does not expose the required lifecycle methods.');

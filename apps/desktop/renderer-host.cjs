@@ -8,7 +8,7 @@ const {
   createRendererRealmHost,
   createRendererWindowOptions,
   safeRelativePath,
-  selectPixiLive2dAdapter,
+  selectRendererAdapter,
 } = require('../../packages/renderer/src/index.cjs');
 
 const DEFAULT_READY_TIMEOUT_MS = 30 * 1000;
@@ -21,11 +21,11 @@ function fail(code, message, details = {}) {
   throw error;
 }
 
-function cubismAdapter(cubismVersion) {
+function cubismAdapter(cubismVersion, { modernAdapter = 'pixi' } = {}) {
   try {
-    return selectPixiLive2dAdapter(cubismVersion);
+    return selectRendererAdapter(cubismVersion, { modern: modernAdapter });
   } catch (error) {
-    if (error && error.code === 'UNSUPPORTED_CUBISM_VERSION') throw error;
+    if (error && ['UNSUPPORTED_CUBISM_VERSION', 'UNSUPPORTED_RENDERER_ADAPTER'].includes(error.code)) throw error;
     fail('UNSUPPORTED_CUBISM_VERSION', `Renderer host does not support Cubism generation ${String(cubismVersion)}.`, { cubismVersion });
   }
 }
@@ -76,6 +76,9 @@ function createRendererWindowHost({
   height = 512,
   padding = 24,
   motionPriority = 3,
+  modernAdapter = 'pixi',
+  frameworkPath = null,
+  frameworkGlobal,
   show = false,
   readyTimeoutMs = DEFAULT_READY_TIMEOUT_MS,
 } = {}) {
@@ -83,14 +86,17 @@ function createRendererWindowHost({
   if (typeof sourceRoot !== 'string' || !sourceRoot.trim()) fail('INVALID_RENDERER_HOST', 'Renderer sourceRoot is required.');
   if (typeof runtimePath !== 'string' || !runtimePath.trim()) fail('INVALID_RENDERER_HOST', 'Renderer runtimePath is required.');
   if (typeof rendererDocument !== 'string' || !rendererDocument.trim()) fail('INVALID_RENDERER_HOST', 'Renderer document path is required.');
-  const { kind, Adapter } = cubismAdapter(cubismVersion);
+  const { kind, adapter, Adapter } = cubismAdapter(cubismVersion, { modernAdapter });
+  if (adapter === 'official' && (typeof frameworkPath !== 'string' || !frameworkPath.trim())) {
+    fail('OFFICIAL_FRAMEWORK_REQUIRED', 'The official Cubism renderer requires a user-provided Cubism Web Framework bridge bundle.');
+  }
   const options = createRendererWindowOptions({ preload, width, height, show });
   let assetServer = null;
   let assetServerPromise = null;
 
   const ensureAssetServer = async () => {
     if (assetServer) return assetServer;
-    if (!assetServerPromise) assetServerPromise = createRendererAssetServer({ sourceRoot, runtimePath });
+    if (!assetServerPromise) assetServerPromise = createRendererAssetServer({ sourceRoot, runtimePath, frameworkPath });
     try {
       assetServer = await assetServerPromise;
     } catch (error) {
@@ -105,7 +111,8 @@ function createRendererWindowHost({
     createWindow: (windowOptions) => hardenRendererWindow(new BrowserWindow(windowOptions), rendererDocument),
     loadWindow: async (window) => {
       const server = await ensureAssetServer();
-      const query = new URLSearchParams({ cubism: String(cubismVersion), runtime: server.runtimeUrl });
+      const query = new URLSearchParams({ cubism: String(cubismVersion), runtime: server.runtimeUrl, renderer: adapter });
+      if (server.frameworkUrl) query.set('framework', server.frameworkUrl);
       await window.loadURL(`${pathToFileURL(path.resolve(rendererDocument)).href}?${query.toString()}`);
       await waitForRendererReady(window.webContents, { timeoutMs: readyTimeoutMs });
     },
@@ -115,6 +122,7 @@ function createRendererWindowHost({
       height,
       padding,
       motionPriority,
+      ...(frameworkGlobal ? { frameworkGlobal } : {}),
     }),
   });
 
@@ -148,6 +156,7 @@ function createRendererWindowHost({
 
   return Object.freeze({
     kind,
+    adapter,
     start: host.start,
     restart: host.restart,
     close,
@@ -155,7 +164,7 @@ function createRendererWindowHost({
     invoke: host.invoke,
     proxy: host.proxy,
     getStatus: host.getStatus,
-    getAssetDescriptor: () => assetServer ? ({ protocolVersion: 1, baseUrl: assetServer.baseUrl, runtimeUrl: assetServer.runtimeUrl }) : null,
+    getAssetDescriptor: () => assetServer ? ({ protocolVersion: 1, baseUrl: assetServer.baseUrl, runtimeUrl: assetServer.runtimeUrl, ...(assetServer.frameworkUrl ? { frameworkUrl: assetServer.frameworkUrl } : {}) }) : null,
     modelUrl: (modelConfig) => {
       if (!assetServer) fail('RENDERER_NOT_READY', 'Start the renderer host before resolving a model URL.');
       return assetServer.modelUrl(modelConfig);

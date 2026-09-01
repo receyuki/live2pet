@@ -28,6 +28,13 @@ licensed to run. Live2Pet validates and stores them in private local App or
 browser-profile storage; it never commits, stages, packages, or publishes
 those files.
 
+The official Cubism Web Framework is also user-provided. The renderer package
+defines an opt-in bridge contract, but does not vendor Framework source,
+prebuilt bundles, Core bytes, or a wrapper implementation. A host may serve a
+separately built and licensed bridge bundle through the loopback renderer asset
+server; it is never copied into the repository, staged Mapper bundle, cache
+artifact, generated theme, or release archive.
+
 Models, textures, Motion/Expression files, PCK/LPK archives, rendered frames,
 and generated character packages follow the same user-provided boundary.
 
@@ -43,4 +50,3 @@ and generated character packages follow the same user-provided boundary.
 
 See [`apps/desktop/THIRD-PARTY-NOTICES.md`](../apps/desktop/THIRD-PARTY-NOTICES.md)
 for the notices shipped with the staged browser bundle.
-

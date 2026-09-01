@@ -72,8 +72,12 @@ the loopback server can safely serve. Preview commands are limited to Motion /
 Expression playback, playback controls, state, and bounds; RGBA capture and
 filesystem operations are not exposed through this UI. The saved runtime is
 resolved in the main process, and neither runtime bytes nor absolute paths cross
-the App boundary. The adapter remains the temporary Pixi/Cubism bridge; the
-full official modern Web Framework adapter is still downstream.
+the App boundary. Pixi remains the default modern renderer. An advanced host
+integration can opt into the official Web Framework bridge by passing
+`modernAdapter: 'official'` and a user-provided `frameworkPath`; the bundle is
+served only through the same loopback asset server and must expose the
+documented `createRenderer` bridge global. The official Framework and Cubism
+Core are still user-provided and are never staged by `prepare:mapper`.
 
 The shared Mapper exposes both Codex Pet and Clawd Theme build actions. Clawd
 captures mapped Motion frames in the renderer and sends them through the same

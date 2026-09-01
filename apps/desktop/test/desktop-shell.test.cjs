@@ -221,6 +221,7 @@ test('shared Mapper exposes project recovery, source review, and build-gate seam
 test('desktop renderer host selects an adapter by inspected Cubism generation', () => {
   assert.equal(cubismAdapter(2).kind, 'legacy-cubism2');
   assert.equal(cubismAdapter(4).kind, 'modern-cubism');
+  assert.equal(cubismAdapter(4, { modernAdapter: 'official' }).kind, 'modern-cubism-official');
   assert.throws(
     () => cubismAdapter(1),
     (error) => error.code === 'UNSUPPORTED_CUBISM_VERSION',
@@ -233,6 +234,8 @@ test('desktop renderer host owns a loopback asset server and isolated window lif
   fs.writeFileSync(path.join(sourceRoot, 'model.json'), '{}');
   const runtimePath = path.join(runtimeRoot, 'live2dcubismcore.min.js');
   fs.writeFileSync(runtimePath, 'runtime');
+  const frameworkPath = path.join(runtimeRoot, 'live2pet-framework-bridge.js');
+  fs.writeFileSync(frameworkPath, 'framework');
 
   class FakeWindow extends EventEmitter {
     constructor(options) {
@@ -286,6 +289,34 @@ test('desktop renderer host owns a loopback asset server and isolated window lif
   await host.close();
   assert.equal(host.getStatus().state, 'closed');
   assert.equal(host.getAssetDescriptor(), null);
+
+  const officialHost = createRendererWindowHost({
+    BrowserWindow: FakeWindow,
+    sourceRoot,
+    runtimePath,
+    frameworkPath,
+    cubismVersion: 4,
+    modernAdapter: 'official',
+    rendererDocument: path.join(root, 'renderer', 'index.html'),
+    preload: path.join(root, 'renderer-preload.cjs'),
+  });
+  await officialHost.start();
+  assert.equal(officialHost.kind, 'modern-cubism-official');
+  assert.equal(officialHost.adapter, 'official');
+  assert.match(officialHost.getAssetDescriptor().frameworkUrl, /^http:\/\/127\.0\.0\.1:\d+\/framework\//);
+  await officialHost.close();
+  assert.throws(
+    () => createRendererWindowHost({
+      BrowserWindow: FakeWindow,
+      sourceRoot,
+      runtimePath,
+      cubismVersion: 4,
+      modernAdapter: 'official',
+      rendererDocument: path.join(root, 'renderer', 'index.html'),
+      preload: path.join(root, 'renderer-preload.cjs'),
+    }),
+    (error) => error.code === 'OFFICIAL_FRAMEWORK_REQUIRED',
+  );
 });
 
 test('renderer window hardening denies navigation, webviews, and new windows', () => {

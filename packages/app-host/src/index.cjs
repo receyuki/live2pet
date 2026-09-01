@@ -291,7 +291,7 @@ function normalizeRendererModelConfig(value) {
 
 function normalizeRendererPreviewStartRequest(value) {
   if (!isRecord(value)) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer preview start input must be an object.');
-  const allowed = new Set(['sourceRoot', 'cubismVersion', 'width', 'height', 'show']);
+  const allowed = new Set(['sourceRoot', 'cubismVersion', 'width', 'height', 'show', 'modernAdapter', 'frameworkPath', 'frameworkGlobal']);
   const unknown = Object.keys(value).filter((key) => !allowed.has(key));
   if (unknown.length) fail('INVALID_RENDERER_PREVIEW_REQUEST', `Renderer preview start input contains unsupported fields: ${unknown.join(', ')}.`);
   if (typeof value.sourceRoot !== 'string' || !value.sourceRoot.trim() || value.sourceRoot.length > 4096 || value.sourceRoot.includes('\0') || !/^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value.sourceRoot.trim())) {
@@ -299,11 +299,35 @@ function normalizeRendererPreviewStartRequest(value) {
   }
   const cubismVersion = Number(value.cubismVersion);
   if (![2, 3, 4, 5].includes(cubismVersion)) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer preview cubismVersion must be 2, 3, 4, or 5.');
+  const modernAdapter = value.modernAdapter === undefined ? 'pixi' : value.modernAdapter;
+  if (typeof modernAdapter !== 'string' || !['pixi', 'official'].includes(modernAdapter.trim().toLowerCase())) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer preview modernAdapter must be pixi or official.');
+  const normalizedAdapter = modernAdapter.trim().toLowerCase();
+  if (cubismVersion === 2 && normalizedAdapter !== 'pixi') fail('INVALID_RENDERER_PREVIEW_REQUEST', 'The official renderer adapter supports only Cubism 3, 4, or 5.');
+  let frameworkPath;
+  if (value.frameworkPath !== undefined) {
+    if (typeof value.frameworkPath !== 'string' || !value.frameworkPath.trim() || value.frameworkPath.length > 4096 || value.frameworkPath.includes('\0') || !/^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value.frameworkPath.trim())) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer frameworkPath must be an absolute local file path.');
+    frameworkPath = value.frameworkPath.trim();
+  }
+  if (normalizedAdapter === 'official' && !frameworkPath) fail('OFFICIAL_FRAMEWORK_REQUIRED', 'The official renderer requires a user-provided Framework bridge bundle.');
+  let frameworkGlobal;
+  if (value.frameworkGlobal !== undefined) {
+    if (typeof value.frameworkGlobal !== 'string' || !/^(?:[A-Za-z_$][\w$]*)(?:\.(?:[A-Za-z_$][\w$]*))*$/.test(value.frameworkGlobal.trim())) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer frameworkGlobal must be a dot-separated JavaScript global name.');
+    frameworkGlobal = value.frameworkGlobal.trim();
+  }
   const width = value.width === undefined ? 512 : Number(value.width);
   const height = value.height === undefined ? 512 : Number(value.height);
   if (!Number.isInteger(width) || width < 128 || width > 2048 || !Number.isInteger(height) || height < 128 || height > 2048) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer preview dimensions must be integers between 128 and 2048.');
   if (value.show !== undefined && typeof value.show !== 'boolean') fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer preview show must be boolean.');
-  return { sourceRoot: value.sourceRoot.trim(), cubismVersion, width, height, show: value.show === undefined ? true : value.show };
+  return {
+    sourceRoot: value.sourceRoot.trim(),
+    cubismVersion,
+    width,
+    height,
+    show: value.show === undefined ? true : value.show,
+    ...(normalizedAdapter === 'pixi' ? {} : { modernAdapter: normalizedAdapter }),
+    ...(frameworkPath ? { frameworkPath } : {}),
+    ...(frameworkGlobal ? { frameworkGlobal } : {}),
+  };
 }
 
 function normalizeRendererMotion(value, index) {
