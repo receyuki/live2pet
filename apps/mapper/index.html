@@ -68,6 +68,9 @@
     .skillbar .skill-status.busy { color: var(--warn); }
     .projectbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 18px; align-items: center; margin-bottom: 18px; padding: 14px 17px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
     .project-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+    .project-history { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .project-history button { min-width: 92px; }
+    .history-status { color: var(--muted); font-size: 11px; white-space: nowrap; }
     .project-status { grid-column: 1 / -1; min-height: 22px; color: var(--muted); }
     .project-status.good { color: var(--good); }
     .project-status.bad { color: var(--bad); }
@@ -346,6 +349,11 @@
         <input id="projectInput" class="hidden" type="file" accept=".live2pet,application/json">
         <button id="recoverProject" class="hidden" data-i18n="project.recover">Recover autosaved project</button>
         <button id="saveProject" class="primary" disabled data-i18n="project.save">Save .live2pet</button>
+        <div class="project-history" role="group" data-i18n-aria-label="project.history.label" aria-label="Project history">
+          <button id="undoProject" data-i18n="project.undo" data-i18n-aria-label="project.undo" disabled>Undo</button>
+          <button id="redoProject" data-i18n="project.redo" data-i18n-aria-label="project.redo" disabled>Redo</button>
+          <span id="historyStatus" class="history-status" role="status" aria-live="polite"></span>
+        </div>
       </div>
       <div id="projectStatus" class="project-status" role="status" aria-live="polite">No project loaded.</div>
       <div id="projectDirty" class="project-dirty hidden" role="status" aria-live="polite" data-i18n="project.dirty">Unsaved project changes</div>
@@ -622,6 +630,14 @@
           "project.description": "Projects keep source references and Motion Mappings, never model bytes or runtime files.",
           "project.open": "Open .live2pet",
           "project.save": "Save .live2pet",
+          "project.history.label": "Project history",
+          "project.undo": "Undo",
+          "project.redo": "Redo",
+          "project.undo.title": "Undo the last project edit (⌘Z / Ctrl+Z)",
+          "project.redo.title": "Redo the last project edit (⇧⌘Z / Ctrl+Y)",
+          "project.history.status": "Undo {undo} · Redo {redo}",
+          "project.history.undone": "Undid the last project edit.",
+          "project.history.redone": "Redid the last project edit.",
           "project.status.empty": "No project loaded.",
           "inspection.eyebrow": "Source Package",
           "inspection.heading": "Inspection summary",
@@ -1014,6 +1030,14 @@
           "project.description": "项目只保存资源引用和动作映射，不保存模型字节或运行时文件。",
           "project.open": "打开 .live2pet",
           "project.save": "保存 .live2pet",
+          "project.history.label": "项目历史",
+          "project.undo": "撤销",
+          "project.redo": "重做",
+          "project.undo.title": "撤销上一次项目编辑（⌘Z / Ctrl+Z）",
+          "project.redo.title": "重做上一次项目编辑（⇧⌘Z / Ctrl+Y）",
+          "project.history.status": "撤销 {undo} · 重做 {redo}",
+          "project.history.undone": "已撤销上一次项目编辑。",
+          "project.history.redone": "已重做上一次项目编辑。",
           "project.status.empty": "尚未加载项目。",
           "inspection.eyebrow": "资源包",
           "inspection.heading": "检查摘要",
@@ -1600,11 +1624,73 @@
     let skillStatusLevel = "";
     const PROJECT_DRAFT_STORAGE_KEY = "live2pet-mapper-project-draft-v1";
     const PROJECT_DRAFT_MAX_BYTES = 1024 * 1024;
+    const PROJECT_HISTORY_LIMIT = 100;
+    const PROJECT_HISTORY_FIELDS = ["mappings", "reactionMappings", "codexMappings", "clawdBehavior", "sleepMode", "clawdRenderPreset", "codexRenderPreset", "outputPrefix", "projectSourceFingerprint", "projectRecipeIds", "sourceReview", "projectDirty", "scenario", "scenarioStep"];
+    const PROJECT_EDIT_ACTIONS = new Set(["MAP", "MAP_REACTION", "ADD_BEHAVIOR_MOTION", "REMOVE_BEHAVIOR_ENTRY", "SET_BEHAVIOR_TIER", "SET_ROAM_FLIP", "MAP_CODEX", "SET_SLEEP", "SET_RENDER_PRESET", "SET_PREFIX", "CLEAR", "START_SCENARIO", "ACK_SOURCE_REVIEW", "SCENARIO_STEP"]);
     let pendingProjectDraft = null;
     let projectDraftTimer = null;
+    let projectHistory = { past: [], future: [] };
     const $ = id => document.getElementById(id);
 
+    function cloneProjectHistory(value) {
+      return JSON.parse(JSON.stringify(value));
+    }
+
+    function captureProjectHistoryState(source = state) {
+      const snapshot = {};
+      for (const field of PROJECT_HISTORY_FIELDS) snapshot[field] = cloneProjectHistory(source[field]);
+      return snapshot;
+    }
+
+    function projectHistoryStateEqual(left, right) {
+      return JSON.stringify(left) === JSON.stringify(right);
+    }
+
+    function resetProjectHistory() {
+      projectHistory = { past: [], future: [] };
+    }
+
+    function recordProjectEdit(previous) {
+      const before = captureProjectHistoryState(previous);
+      const after = captureProjectHistoryState(state);
+      if (projectHistoryStateEqual(before, after)) return;
+      projectHistory.past.push(before);
+      if (projectHistory.past.length > PROJECT_HISTORY_LIMIT) projectHistory.past.shift();
+      projectHistory.future = [];
+    }
+
+    function restoreProjectHistoryState(snapshot, change) {
+      return { ...state, ...cloneProjectHistory(snapshot), lastChange: change };
+    }
+
+    function syncProjectDraftAfterHistory() {
+      if (state.projectDirty && state.model && state.inspection) scheduleProjectDraft();
+      else if (!state.projectDirty) clearProjectDraft();
+    }
+
+    function undoProjectEdit() {
+      if (!projectHistory.past.length) return false;
+      projectHistory.future.unshift(captureProjectHistoryState());
+      state = restoreProjectHistoryState(projectHistory.past.pop(), "Undid the last project edit");
+      render();
+      syncProjectDraftAfterHistory();
+      setProjectStatus(I18n.t("project.history.undone"), "good");
+      return true;
+    }
+
+    function redoProjectEdit() {
+      if (!projectHistory.future.length) return false;
+      projectHistory.past.push(captureProjectHistoryState());
+      state = restoreProjectHistoryState(projectHistory.future.shift(), "Redid the last project edit");
+      if (projectHistory.past.length > PROJECT_HISTORY_LIMIT) projectHistory.past.shift();
+      render();
+      syncProjectDraftAfterHistory();
+      setProjectStatus(I18n.t("project.history.redone"), "good");
+      return true;
+    }
+
     function dispatch(action) {
+      const previous = state;
       if (action.type === "LOAD_MODEL" || action.type === "INSPECTION_ERROR") {
         releaseClawdPreview();
         clawdArtifact = null;
@@ -1619,6 +1705,8 @@
           setProjectStatus(I18n.t("project.session.waiting"));
         }
       }
+      if (action.type === "LOAD_MODEL" || action.type === "INSPECTION_ERROR" || action.type === "LOAD_PROJECT") resetProjectHistory();
+      else if (PROJECT_EDIT_ACTIONS.has(action.type)) recordProjectEdit(previous);
       render();
       if (state.projectDirty && state.model && state.inspection) scheduleProjectDraft();
     }
@@ -1784,6 +1872,17 @@
       const status = $("sessionStatus");
       status.className = `session-status${level ? ` ${level}` : ""}`;
       status.textContent = message;
+    }
+    function renderProjectHistory() {
+      const undo = $("undoProject");
+      const redo = $("redoProject");
+      const status = $("historyStatus");
+      if (!undo || !redo || !status) return;
+      undo.disabled = projectHistory.past.length === 0;
+      redo.disabled = projectHistory.future.length === 0;
+      undo.title = I18n.t("project.undo.title");
+      redo.title = I18n.t("project.redo.title");
+      status.textContent = I18n.t("project.history.status", { undo: projectHistory.past.length, redo: projectHistory.future.length });
     }
     function sessionBootstrap() {
       const marker = "#live2pet=";
@@ -2684,7 +2783,7 @@
     }
 
     function render() {
-      renderProjectWorkflow(); renderInspection(); renderMetrics(); renderMotions(); renderExpressions(); renderMappings(); renderScenario();
+      renderProjectWorkflow(); renderProjectHistory(); renderInspection(); renderMetrics(); renderMotions(); renderExpressions(); renderMappings(); renderScenario();
       renderBuildProgress("codex"); renderBuildProgress("clawd");
       renderSkillStatus();
       $("sleepMode").value = state.sleepMode;
@@ -4650,6 +4749,8 @@
       try { await openProject(projectFile); } finally { e.target.value = ""; }
     });
     $("saveProject").addEventListener("click",downloadProject);
+    $("undoProject").addEventListener("click", undoProjectEdit);
+    $("redoProject").addEventListener("click", redoProjectEdit);
     function relinkSource() {
       if (!state.sourceReview?.required) return;
       dispatch({ type: "ACK_SOURCE_REVIEW" });
@@ -4704,6 +4805,24 @@
     $("languageSelect").addEventListener("change", event => I18n.setLocale(event.target.value));
     window.addEventListener("live2pet:locale-changed", () => render());
     $("copyJson").addEventListener("click",async()=>{const text=JSON.stringify(MotionMapping.output(state),null,2);try{await navigator.clipboard.writeText(text)}catch{const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove();}});
+    function isProjectTextEditingTarget(target) {
+      const element = typeof Element !== "undefined" && target instanceof Element ? target : null;
+      if (!element) return false;
+      if (element.isContentEditable) return true;
+      if (element.tagName === "TEXTAREA") return true;
+      if (element.tagName !== "INPUT") return false;
+      return !["button", "checkbox", "file", "hidden", "radio", "reset", "submit"].includes(element.type);
+    }
+    window.addEventListener("keydown", event => {
+      if (isProjectTextEditingTarget(event.target) || !(event.metaKey || event.ctrlKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      const undo = key === "z" && !event.shiftKey;
+      const redo = (key === "z" && event.shiftKey) || (key === "y" && !event.shiftKey);
+      if (!undo && !redo) return;
+      const changed = undo ? undoProjectEdit() : redoProjectEdit();
+      if (!changed) return;
+      event.preventDefault();
+    });
     window.addEventListener("beforeunload", event => {
       if (!state.projectDirty) return;
       event.preventDefault();

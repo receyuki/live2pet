@@ -184,6 +184,16 @@ test('shared Mapper exposes project recovery, source review, and build-gate seam
   assert.match(mapper, /sourceReview/i, 'Mapper should carry source-review state into the UI.');
   assert.match(mapper, /PROJECT_REVIEW_REQUIRED|review[^\n]{0,80}before[^\n]{0,80}build/i, 'Mapper should enforce review before a Package Build.');
   assert.match(mapper, /const PROJECT_DRAFT_STORAGE_KEY = "live2pet-mapper-project-draft-v1"/);
+  assert.match(mapper, /const PROJECT_HISTORY_LIMIT = 100/);
+  assert.match(mapper, /const PROJECT_EDIT_ACTIONS = new Set/);
+  assert.match(mapper, /function captureProjectHistoryState\(source = state\)/);
+  assert.match(mapper, /function undoProjectEdit\(\)/);
+  assert.match(mapper, /function redoProjectEdit\(\)/);
+  assert.match(mapper, /id="undoProject"/);
+  assert.match(mapper, /id="redoProject"/);
+  assert.match(mapper, /window\.addEventListener\("keydown"/);
+  assert.match(mapper, /project\.undo\.title/);
+  assert.match(mapper, /project\.history\.status/);
   assert.match(mapper, /function restoreProjectDraft\(\)/);
   assert.match(mapper, /id="recoverProject"/);
   assert.match(mapper, /id="projectReview"/);

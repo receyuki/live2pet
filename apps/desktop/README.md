@@ -156,3 +156,9 @@ shows the affected recipe ids when a loaded Source Package fingerprint changes;
 both Codex and Clawd builds stay disabled until the source review is
 acknowledged. See [`docs/agents/project-workflow.md`](../../docs/agents/project-workflow.md)
 for the project privacy and relinking contract.
+
+The shared Mapper also keeps a bounded 100-step history for project edits. The
+Undo and Redo buttons are keyboard accessible (`⌘Z`/`Ctrl+Z` and
+`⇧⌘Z`/`Ctrl+Y`), and source/project loads start a fresh history boundary. Only
+project metadata and mappings enter that history; source files, runtime bytes,
+renderer objects, and generated packages remain outside it.
