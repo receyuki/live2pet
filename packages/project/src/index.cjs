@@ -6,6 +6,7 @@ const SCHEMA_VERSION = 1;
 const MAX_PROJECT_BYTES = 2 * 1024 * 1024;
 const PROJECT_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,95}$/i;
 const MAPPING_PATTERN = /^(motion|fallback):[^\s:][^\s]{0,255}$/;
+const RECIPE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const TARGETS = ['clawd', 'codex-pet'];
 const RENDER_PRESETS = ['compact', 'balanced', 'high'];
 
@@ -99,6 +100,24 @@ function normalizeMappings(mappings, label) {
   return normalized;
 }
 
+function normalizeRecipeMappings(mappings, label) {
+  if (mappings == null) return undefined;
+  assertRecord(mappings, `${label}.recipeMappings`);
+  const normalized = {};
+  for (const [key, value] of Object.entries(mappings)) {
+    if (!/^[a-z][a-z0-9-]{0,63}$/i.test(key)) fail('INVALID_MAPPING_KEY', `${label}.recipeMappings has an unsafe slot id: ${key}`);
+    if (value === '') {
+      normalized[key] = '';
+      continue;
+    }
+    if (typeof value !== 'string' || !RECIPE_ID_PATTERN.test(value)) {
+      fail('INVALID_RECIPE_MAPPING', `${label}.recipeMappings.${key} must be empty or a safe recipe id.`);
+    }
+    normalized[key] = value;
+  }
+  return normalized;
+}
+
 function normalizeTarget(target, targetId) {
   if (target == null) return { profile: targetId, mappings: {}, reactions: {}, options: {} };
   assertRecord(target, `targets.${targetId}`);
@@ -109,6 +128,8 @@ function normalizeTarget(target, targetId) {
     reactions: normalizeMappings(target.reactions, `targets.${targetId}.reactions`),
     options: {},
   };
+  const recipeMappings = normalizeRecipeMappings(target.recipeMappings, `targets.${targetId}`);
+  if (recipeMappings !== undefined) normalized.recipeMappings = recipeMappings;
   const renderPreset = target.renderPreset ?? target.options?.renderPreset;
   if (renderPreset !== undefined) {
     if (typeof renderPreset !== 'string' || !RENDER_PRESETS.includes(renderPreset.trim().toLowerCase())) {
@@ -159,6 +180,18 @@ function validateProject(input) {
     targets: {},
   };
   for (const targetId of TARGETS) project.targets[targetId] = normalizeTarget(input.targets?.[targetId], targetId);
+  const recipesById = new Map(project.recipes.map((recipe) => [recipe.id, recipe]));
+  for (const [targetId, target] of Object.entries(project.targets)) {
+    for (const [slot, recipeId] of Object.entries(target.recipeMappings || {})) {
+      if (!recipeId) continue;
+      const recipe = recipesById.get(recipeId);
+      if (!recipe) fail('UNKNOWN_RECIPE_ID', `targets.${targetId}.recipeMappings.${slot} references an unknown recipe: ${recipeId}`);
+      const mapping = target.mappings[slot] || target.reactions[slot];
+      if (typeof mapping !== 'string' || !mapping.startsWith('motion:') || mapping.slice(7) !== recipe.motionId) {
+        fail('RECIPE_MAPPING_MISMATCH', `targets.${targetId}.recipeMappings.${slot} must match motion:${recipe.motionId}.`);
+      }
+    }
+  }
   const rightsNote = text(input.rightsNote, 'rightsNote', { required: false, max: 4096 });
   if (rightsNote !== undefined) project.rightsNote = rightsNote;
   const sourceReview = normalizeSourceReview(input.sourceReview);

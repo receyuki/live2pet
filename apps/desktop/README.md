@@ -99,7 +99,8 @@ single preview renderer, but it now advances the animation with deterministic
 fixed steps, reuses its capture surfaces, and batches Clawd RGBA frames into
 bounded deflate stacks before the IPC handoff. The App keeps those validated
 capture stacks in a private one-GiB LRU cache keyed by the source fingerprint,
-saved runtime, renderer, Motion recipe, Target Profile, and Render Preset; a
+saved runtime, renderer, Motion plus optional Animation Recipe Expression, Target
+Profile, and Render Preset; a
 repeat build can therefore skip the renderer capture entirely. After capture,
 Clawd WebP assets are encoded with a bounded worker pool (two concurrent assets
 by default) while output order stays stable. The event stream includes stage

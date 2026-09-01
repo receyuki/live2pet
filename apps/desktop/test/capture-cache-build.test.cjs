@@ -120,3 +120,32 @@ test('capture-cache build service persists completed misses even when the build 
   assert.deepEqual(writes[0].entries.map((entry) => entry.recipe.motionId), ['idle', 'working']);
   assert.equal(writes[0].context.target, 'clawd');
 });
+
+test('capture-cache build service preserves Codex recipe Expressions when writing misses', async () => {
+  const writes = [];
+  const codexProject = project();
+  codexProject.targets['codex-pet'].mappings = { idle: 'motion:idle' };
+  const codexPlan = plan(['idle'], { recipesByMotion: { idle: { ...plan(['idle']).recipesByMotion.idle, expressionId: 'smile' } } });
+  const service = createCaptureCacheBuildService({
+    getCaptureCacheService: () => ({
+      readMany: async () => ({}),
+      writeMany: async (_context, entries) => { writes.push(...entries); return entries; },
+    }),
+    buildProjectTargets: async () => ({ targets: ['codex-pet'], builds: { 'codex-pet': { ok: true } } }),
+  });
+
+  await service({
+    project: codexProject,
+    targets: ['codex-pet'],
+    inputsByTarget: {
+      'codex-pet': {
+        candidatesByRow: { idle: frameSet('idle', 1).frames },
+        captureCache: codexPlan,
+      },
+    },
+  });
+
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].recipe.expressionId, 'smile');
+  assert.equal(writes[0].frameSet.expressionId, 'smile');
+});

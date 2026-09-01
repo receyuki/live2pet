@@ -852,6 +852,8 @@
           "mapping.selected.label": "Selected source Motion",
           "mapping.selected.none": "No Motion selected",
           "mapping.selected.help": "Choose one in the left Motion library, then assign it to a Clawd slot below.",
+          "mapping.selected.recipeBase": "Recipe: base model Expression",
+          "mapping.selected.recipeExpression": "Recipe Expression: {name}",
           "mapping.assigned.one": "{count} slot currently assigned",
           "mapping.assigned.many": "{count} slots currently assigned",
           "mapping.unmapped": "Unmapped",
@@ -1263,6 +1265,8 @@
           "mapping.selected.label": "选中的资源动作",
           "mapping.selected.none": "尚未选择动作",
           "mapping.selected.help": "在左侧动作库选择一个动作，然后分配到下方 Clawd 槽位。",
+          "mapping.selected.recipeBase": "动画配方：模型默认表情",
+          "mapping.selected.recipeExpression": "动画配方表情：{name}",
           "mapping.assigned.one": "当前已分配 {count} 个槽位",
           "mapping.assigned.many": "当前已分配 {count} 个槽位",
           "mapping.unmapped": "未映射",
@@ -1490,6 +1494,31 @@
       function emptyBehavior() {
         return { idleAnimations: [], workingTiers: [], jugglingTiers: [], roamFlipAssets: false };
       }
+      function recipeSlug(value) {
+        return String(value || "base").toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 72) || "base";
+      }
+      function recipeIdFor(motionId, expressionId, existing = []) {
+        const base = `recipe-${recipeSlug(motionId)}-${recipeSlug(expressionId || "base")}`;
+        if (!existing.some(recipe => recipe.id === base)) return base;
+        const match = existing.find(recipe => recipe.id === base);
+        if (match?.motionId === motionId && (match.expressionId || null) === (expressionId || null)) return base;
+        for (let index = 2; index < 1000; index += 1) {
+          const candidate = `${base}-${index}`;
+          if (!existing.some(recipe => recipe.id === candidate)) return candidate;
+        }
+        return `${base}-${Date.now()}`;
+      }
+      function normalizeRecipes(value) {
+        if (!Array.isArray(value)) return [];
+        const seen = new Set();
+        return value.filter(recipe => recipe && typeof recipe === "object" && typeof recipe.id === "string" && recipe.id.trim() && typeof recipe.motionId === "string" && recipe.motionId.trim()).map(recipe => {
+          const id = recipe.id.trim();
+          if (seen.has(id)) return null;
+          seen.add(id);
+          const expressionId = typeof recipe.expressionId === "string" && recipe.expressionId.trim() ? recipe.expressionId.trim() : null;
+          return { id, motionId: recipe.motionId.trim(), expressionId, ...(recipe.label ? { label: String(recipe.label) } : {}) };
+        }).filter(Boolean);
+      }
       function normalizeBehavior(value) {
         const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
         const normalized = emptyBehavior();
@@ -1506,7 +1535,7 @@
       }
 
       function initial() {
-        return { model: null, motions: [], expressions: [], inspection: null, inspectionError: null, selectedMotionId: null, selectedExpressionId: null, mappings: {}, reactionMappings: {}, codexMappings: {}, clawdBehavior: emptyBehavior(), sleepMode: "direct", clawdRenderPreset: "balanced", codexRenderPreset: "balanced", outputPrefix: "live2pet", projectName: "Untitled Live2Pet Project", projectSourceFingerprint: null, projectRecipeIds: [], sourceReview: null, projectDirty: false, lastChange: "Waiting for a Source Package", scenario: null, scenarioStep: 0 };
+        return { model: null, motions: [], expressions: [], inspection: null, inspectionError: null, selectedMotionId: null, selectedExpressionId: null, mappings: {}, reactionMappings: {}, codexMappings: {}, recipeMappings: {}, reactionRecipeMappings: {}, codexRecipeMappings: {}, recipes: [], clawdBehavior: emptyBehavior(), sleepMode: "direct", clawdRenderPreset: "balanced", codexRenderPreset: "balanced", outputPrefix: "live2pet", projectName: "Untitled Live2Pet Project", projectSourceFingerprint: null, projectRecipeIds: [], sourceReview: null, projectDirty: false, lastChange: "Waiting for a Source Package", scenario: null, scenarioStep: 0 };
       }
       function reducer(state, action) {
         if (action.type === "LOAD_MODEL") {
@@ -1524,7 +1553,7 @@
           const options = target.options || {};
           const validPreset = value => ["compact", "balanced", "high"].includes(String(value || "").toLowerCase()) ? String(value).toLowerCase() : "balanced";
           const selected = Object.values(target.mappings || {}).find(value => value?.startsWith("motion:"))?.slice(7);
-          const recipes = Array.isArray(action.project.recipes) ? action.project.recipes : [];
+          const recipes = normalizeRecipes(action.project.recipes);
           const currentFingerprint = state.inspection?.source?.fingerprint || null;
           const sourceChanged = Boolean(currentFingerprint && action.project.source?.fingerprint && currentFingerprint !== action.project.source.fingerprint);
           const sourceReview = action.project.sourceReview?.required
@@ -1532,12 +1561,26 @@
             : sourceChanged
               ? { required: recipes.length > 0, reason: "source-fingerprint-changed", affectedRecipeIds: recipes.map(recipe => recipe.id) }
               : action.project.sourceReview || null;
-          return { ...state, projectName: action.project.name, mappings: { ...(target.mappings || {}) }, reactionMappings: { ...(target.reactions || {}) }, codexMappings: { ...(codexTarget.mappings || {}) }, clawdBehavior: normalizeBehavior(options.behavior), sleepMode: options.sleepMode === "full" ? "full" : "direct", clawdRenderPreset: validPreset(target.renderPreset || options.renderPreset), codexRenderPreset: validPreset(codexTarget.renderPreset || codexTarget.options?.renderPreset), outputPrefix: typeof options.outputPrefix === "string" && options.outputPrefix.trim() ? options.outputPrefix : "live2pet", selectedMotionId: selected && MotionMapping.motion(state, selected) ? selected : state.selectedMotionId, projectSourceFingerprint: action.project.source?.fingerprint || null, projectRecipeIds: recipes.map(recipe => recipe.id), sourceReview, projectDirty: Boolean(action.dirty), lastChange: `Opened ${action.project.name}` };
+          const targetRecipeMappings = target.recipeMappings || {};
+          const recipeMappings = Object.fromEntries(Object.entries(targetRecipeMappings).filter(([key]) => Object.hasOwn(target.mappings || {}, key)));
+          const reactionRecipeMappings = Object.fromEntries(Object.entries(targetRecipeMappings).filter(([key]) => Object.hasOwn(target.reactions || {}, key)));
+          return { ...state, projectName: action.project.name, mappings: { ...(target.mappings || {}) }, reactionMappings: { ...(target.reactions || {}) }, codexMappings: { ...(codexTarget.mappings || {}) }, recipeMappings, reactionRecipeMappings, codexRecipeMappings: { ...(codexTarget.recipeMappings || {}) }, recipes, clawdBehavior: normalizeBehavior(options.behavior), sleepMode: options.sleepMode === "full" ? "full" : "direct", clawdRenderPreset: validPreset(target.renderPreset || options.renderPreset), codexRenderPreset: validPreset(codexTarget.renderPreset || codexTarget.options?.renderPreset), outputPrefix: typeof options.outputPrefix === "string" && options.outputPrefix.trim() ? options.outputPrefix : "live2pet", selectedMotionId: selected && MotionMapping.motion(state, selected) ? selected : state.selectedMotionId, projectSourceFingerprint: action.project.source?.fingerprint || null, projectRecipeIds: recipes.map(recipe => recipe.id), sourceReview, projectDirty: Boolean(action.dirty), lastChange: `Opened ${action.project.name}` };
         }
         if (action.type === "SELECT_MOTION") return { ...state, selectedMotionId: action.id, lastChange: `Playing ${action.id}` };
         if (action.type === "SELECT_EXPRESSION") return { ...state, selectedExpressionId: action.id, lastChange: action.id === null ? "Expression reset" : `Previewing Expression ${action.id}` };
-        if (action.type === "MAP") return { ...state, mappings: { ...state.mappings, [action.key]: action.value }, projectDirty: true, lastChange: `${action.key} → ${action.value || "Unmapped"}` };
-        if (action.type === "MAP_REACTION") return { ...state, reactionMappings: { ...state.reactionMappings, [action.key]: action.value }, projectDirty: true, lastChange: `${action.key} → ${action.value || "Unmapped"}` };
+        if (action.type === "MAP") return { ...state, mappings: { ...state.mappings, [action.key]: action.value }, recipeMappings: { ...state.recipeMappings, [action.key]: action.value?.startsWith("motion:") ? state.recipeMappings[action.key] || "" : "" }, projectDirty: true, lastChange: `${action.key} → ${action.value || "Unmapped"}` };
+        if (action.type === "MAP_REACTION") return { ...state, reactionMappings: { ...state.reactionMappings, [action.key]: action.value }, reactionRecipeMappings: { ...state.reactionRecipeMappings, [action.key]: action.value?.startsWith("motion:") ? state.reactionRecipeMappings[action.key] || "" : "" }, projectDirty: true, lastChange: `${action.key} → ${action.value || "Unmapped"}` };
+        if (action.type === "ASSIGN_SELECTED_RECIPE") {
+          if (!state.selectedMotionId) return state;
+          const expressionId = action.expressionId === undefined ? (state.selectedExpressionId || null) : (action.expressionId || null);
+          const existing = state.recipes.find(recipe => recipe.motionId === state.selectedMotionId && (recipe.expressionId || null) === expressionId);
+          const recipe = existing || { id: recipeIdFor(state.selectedMotionId, expressionId, state.recipes), motionId: state.selectedMotionId, expressionId };
+          const recipes = existing ? state.recipes : [...state.recipes, recipe];
+          const mapping = `motion:${state.selectedMotionId}`;
+          if (action.target === "codex") return { ...state, recipes, codexMappings: { ...state.codexMappings, [action.key]: mapping }, codexRecipeMappings: { ...state.codexRecipeMappings, [action.key]: recipe.id }, projectRecipeIds: recipes.map(item => item.id), projectDirty: true, lastChange: `Codex ${action.key} → ${recipe.id}` };
+          if (action.target === "reaction") return { ...state, recipes, reactionMappings: { ...state.reactionMappings, [action.key]: mapping }, reactionRecipeMappings: { ...state.reactionRecipeMappings, [action.key]: recipe.id }, projectRecipeIds: recipes.map(item => item.id), projectDirty: true, lastChange: `${action.key} → ${recipe.id}` };
+          return { ...state, recipes, mappings: { ...state.mappings, [action.key]: mapping }, recipeMappings: { ...state.recipeMappings, [action.key]: recipe.id }, projectRecipeIds: recipes.map(item => item.id), projectDirty: true, lastChange: `${action.key} → ${recipe.id}` };
+        }
         if (action.type === "ADD_BEHAVIOR_MOTION") {
           const field = behaviorFields.includes(action.field) ? action.field : null;
           if (!field || !state.selectedMotionId) return state;
@@ -1565,12 +1608,12 @@
           return { ...state, clawdBehavior: { ...state.clawdBehavior, [field]: entries }, projectDirty: true, lastChange: `${field}.${action.key} → ${value == null ? "" : value}` };
         }
         if (action.type === "SET_ROAM_FLIP") return { ...state, clawdBehavior: { ...state.clawdBehavior, roamFlipAssets: action.value === true }, projectDirty: true, lastChange: `roamFlipAssets → ${action.value === true}` };
-        if (action.type === "MAP_CODEX") return { ...state, codexMappings: { ...state.codexMappings, [action.key]: action.value }, projectDirty: true, lastChange: `Codex ${action.key} → ${action.value || "Unmapped"}` };
+        if (action.type === "MAP_CODEX") return { ...state, codexMappings: { ...state.codexMappings, [action.key]: action.value }, codexRecipeMappings: { ...state.codexRecipeMappings, [action.key]: action.value?.startsWith("motion:") ? state.codexRecipeMappings[action.key] || "" : "" }, projectDirty: true, lastChange: `Codex ${action.key} → ${action.value || "Unmapped"}` };
         if (action.type === "SET_SLEEP") return { ...state, sleepMode: action.value, projectDirty: true, lastChange: `sleepSequence.mode → ${action.value}` };
         if (action.type === "SET_RENDER_PRESET") return { ...state, [`${action.target}RenderPreset`]: action.value, projectDirty: true, lastChange: `${action.target} Render Preset → ${action.value}` };
         if (action.type === "SET_PREFIX") return { ...state, outputPrefix: action.value, projectDirty: true, lastChange: `Output prefix → ${action.value}` };
-        if (action.type === "CLEAR") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, clawdBehavior: emptyBehavior(), projectDirty: true, lastChange: "Mappings cleared" };
-        if (action.type === "START_SCENARIO") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, clawdBehavior: emptyBehavior(), sleepMode: "direct", scenario: action.id, scenarioStep: 0, projectDirty: true, lastChange: `Started scenario ${action.id}` };
+        if (action.type === "CLEAR") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, recipeMappings: {}, reactionRecipeMappings: {}, codexRecipeMappings: {}, recipes: [], projectRecipeIds: [], clawdBehavior: emptyBehavior(), projectDirty: true, lastChange: "Mappings cleared" };
+        if (action.type === "START_SCENARIO") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, recipeMappings: {}, reactionRecipeMappings: {}, codexRecipeMappings: {}, recipes: [], projectRecipeIds: [], clawdBehavior: emptyBehavior(), sleepMode: "direct", scenario: action.id, scenarioStep: 0, projectDirty: true, lastChange: `Started scenario ${action.id}` };
         if (action.type === "ACK_SOURCE_REVIEW") {
           const fingerprint = state.inspection?.source?.fingerprint || null;
           if (!fingerprint) return state;
@@ -1637,10 +1680,11 @@
           sleepSequence: { mode: state.sleepMode },
           states,
           reactions: reactionOut,
-          behavior: normalizeBehavior(state.clawdBehavior)
+          behavior: normalizeBehavior(state.clawdBehavior),
+          recipes: normalizeRecipes(state.recipes)
         };
       }
-      return { groups, reactions, codexRows, allStates, behaviorFields, emptyBehavior, normalizeBehavior, initial, reducer, motion, validate, output };
+      return { groups, reactions, codexRows, allStates, behaviorFields, emptyBehavior, normalizeBehavior, normalizeRecipes, initial, reducer, motion, validate, output };
     })();
 
     let state = MotionMapping.initial();
@@ -1678,8 +1722,8 @@
     const PROJECT_DRAFT_STORAGE_KEY = "live2pet-mapper-project-draft-v1";
     const PROJECT_DRAFT_MAX_BYTES = 1024 * 1024;
     const PROJECT_HISTORY_LIMIT = 100;
-    const PROJECT_HISTORY_FIELDS = ["mappings", "reactionMappings", "codexMappings", "clawdBehavior", "sleepMode", "clawdRenderPreset", "codexRenderPreset", "outputPrefix", "projectSourceFingerprint", "projectRecipeIds", "sourceReview", "projectDirty", "scenario", "scenarioStep"];
-    const PROJECT_EDIT_ACTIONS = new Set(["MAP", "MAP_REACTION", "ADD_BEHAVIOR_MOTION", "REMOVE_BEHAVIOR_ENTRY", "SET_BEHAVIOR_TIER", "SET_ROAM_FLIP", "MAP_CODEX", "SET_SLEEP", "SET_RENDER_PRESET", "SET_PREFIX", "CLEAR", "START_SCENARIO", "ACK_SOURCE_REVIEW", "SCENARIO_STEP"]);
+    const PROJECT_HISTORY_FIELDS = ["mappings", "reactionMappings", "codexMappings", "recipeMappings", "reactionRecipeMappings", "codexRecipeMappings", "recipes", "clawdBehavior", "sleepMode", "clawdRenderPreset", "codexRenderPreset", "outputPrefix", "projectSourceFingerprint", "projectRecipeIds", "sourceReview", "projectDirty", "scenario", "scenarioStep"];
+    const PROJECT_EDIT_ACTIONS = new Set(["MAP", "MAP_REACTION", "ASSIGN_SELECTED_RECIPE", "ADD_BEHAVIOR_MOTION", "REMOVE_BEHAVIOR_ENTRY", "SET_BEHAVIOR_TIER", "SET_ROAM_FLIP", "MAP_CODEX", "SET_SLEEP", "SET_RENDER_PRESET", "SET_PREFIX", "CLEAR", "START_SCENARIO", "ACK_SOURCE_REVIEW", "SCENARIO_STEP"]);
     let pendingProjectDraft = null;
     let projectDraftTimer = null;
     let projectHistory = { past: [], future: [] };
@@ -1771,12 +1815,14 @@
       return slug || "live2pet-project";
     }
     function projectRecipes() {
+      const recipes = Array.isArray(state.recipes) ? MotionMapping.normalizeRecipes(state.recipes) : [];
       const behaviorValues = MotionMapping.behaviorFields.flatMap(field => (state.clawdBehavior?.[field] || []).map(entry => entry.motion));
       const motionIds = [...Object.values(state.mappings), ...Object.values(state.reactionMappings), ...behaviorValues]
         .filter(value => value?.startsWith("motion:"))
         .map(value => value.slice(7));
-      const seen = new Set();
-      return motionIds.filter(id => !seen.has(id) && seen.add(id)).map((motionId, index) => ({ id: `recipe-${String(index + 1).padStart(3, "0")}-${projectId(motionId)}`, motionId, expressionId: null }));
+      const seen = new Set(recipes.map(recipe => recipe.motionId));
+      const derived = motionIds.filter(id => !seen.has(id) && seen.add(id)).map((motionId, index) => ({ id: `recipe-${String(recipes.length + index + 1).padStart(3, "0")}-${projectId(motionId)}`, motionId, expressionId: null }));
+      return [...recipes, ...derived];
     }
     function currentProjectReview() {
       if (!state.sourceReview) return null;
@@ -1802,10 +1848,11 @@
             profile: "clawd",
             mappings: { ...state.mappings },
             reactions: { ...state.reactionMappings },
+            ...(Object.keys({ ...state.recipeMappings, ...state.reactionRecipeMappings }).some(key => state.recipeMappings[key] || state.reactionRecipeMappings[key]) ? { recipeMappings: { ...Object.fromEntries(Object.entries(state.recipeMappings).filter(([, value]) => value)), ...Object.fromEntries(Object.entries(state.reactionRecipeMappings).filter(([, value]) => value)) } } : {}),
             renderPreset: state.clawdRenderPreset,
             options: { sleepMode: state.sleepMode, outputPrefix: state.outputPrefix, behavior: MotionMapping.normalizeBehavior(state.clawdBehavior) },
           },
-          "codex-pet": { profile: "codex-pet", mappings: { ...state.codexMappings }, reactions: {}, renderPreset: state.codexRenderPreset, options: {} },
+          "codex-pet": { profile: "codex-pet", mappings: { ...state.codexMappings }, reactions: {}, ...(Object.keys(state.codexRecipeMappings).some(key => state.codexRecipeMappings[key]) ? { recipeMappings: { ...Object.fromEntries(Object.entries(state.codexRecipeMappings).filter(([, value]) => value)) } } : {}), renderPreset: state.codexRenderPreset, options: {} },
         },
       };
       const review = currentProjectReview();
@@ -1822,6 +1869,7 @@
       if (!project.source || typeof project.source !== "object" || !project.source.kind || !project.source.name || !project.source.fingerprint) throw projectError("INVALID_PROJECT_SOURCE", "The project does not contain a complete Source Package reference.");
       const target = project.targets?.clawd;
       if (!target || typeof target !== "object") throw projectError("INVALID_PROJECT_TARGET", "The project does not contain a Clawd Target Profile.");
+      const codexTarget = project.targets?.["codex-pet"];
       for (const [label, targetValue] of [["Clawd", target], ["Codex", project.targets?.["codex-pet"]]]) {
         const preset = targetValue?.renderPreset || targetValue?.options?.renderPreset;
         if (preset != null && !["compact", "balanced", "high"].includes(String(preset).toLowerCase())) throw projectError("INVALID_RENDER_PRESET", `${label} Render Preset must be compact, balanced, or high.`);
@@ -1835,7 +1883,14 @@
           if (value !== "" && (typeof value !== "string" || !/^(motion|fallback):[^\s:][^\s]{0,255}$/.test(value))) throw projectError("INVALID_PROJECT_MAPPING", `Clawd ${label}.${key} is not a valid mapping.`);
         }
       }
-      const codexTarget = project.targets?.["codex-pet"];
+      for (const [label, recipeMappings] of [["Clawd", target.recipeMappings], ["Codex", codexTarget?.recipeMappings]]) {
+        if (recipeMappings == null) continue;
+        if (typeof recipeMappings !== "object" || Array.isArray(recipeMappings)) throw projectError("INVALID_PROJECT_RECIPE_MAPPING", `${label} recipeMappings must be an object.`);
+        for (const [key, value] of Object.entries(recipeMappings)) {
+          if (!/^[a-z][a-z0-9-]{0,63}$/i.test(key)) throw projectError("INVALID_PROJECT_RECIPE_MAPPING", `${label} recipeMappings.${key} is not a valid slot id.`);
+          if (value !== "" && (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value))) throw projectError("INVALID_PROJECT_RECIPE_MAPPING", `${label} recipeMappings.${key} is not a valid recipe id.`);
+        }
+      }
       if (codexTarget?.mappings != null) {
         if (typeof codexTarget.mappings !== "object" || Array.isArray(codexTarget.mappings)) throw projectError("INVALID_PROJECT_MAPPING", "Codex mappings must be an object.");
         for (const [key, value] of Object.entries(codexTarget.mappings)) {
@@ -2561,13 +2616,15 @@
       return MotionMapping.motion(state, id);
     }
 
-    function mappingDetails(value) {
+    function mappingDetails(value, recipeId = "") {
       if (!value) return { title: I18n.t("mapping.unmapped"), meta: I18n.t("mapping.unmapped.help"), unmapped: true };
       if (value.startsWith("fallback:")) return { title: I18n.t("mapping.fallback.label", { id: value.slice(9) }), meta: I18n.t("mapping.fallback.help") };
       if (value.startsWith("motion:")) {
         const motion = selectedMotionById(value.slice(7));
+        const recipe = recipeId ? state.recipes.find(item => item.id === recipeId) : null;
+        const expression = recipe?.expressionId ? state.expressions.find(item => item.id === recipe.expressionId) : null;
         return motion
-          ? { title: motion.name, meta: `${motion.sourceFile} · ${motion.duration ? `${motion.duration.toFixed(2)}s` : I18n.t("mapping.durationUnknown")}` }
+          ? { title: motion.name, meta: `${motion.sourceFile} · ${motion.duration ? `${motion.duration.toFixed(2)}s` : I18n.t("mapping.durationUnknown")}${expression ? ` · ${I18n.t("mapping.selected.recipeExpression", { name: expression.name })}` : ""}` }
           : { title: I18n.t("mapping.unavailable"), meta: I18n.t("mapping.unavailable.help") };
       }
       return { title: I18n.t("mapping.unknown"), meta: I18n.t("mapping.unknown.help") };
@@ -2584,18 +2641,20 @@
 
     function renderMappingSelection() {
       const current = selectedMotion();
+      const expression = state.expressions.find(item => item.id === state.selectedExpressionId);
       const targetCount = current
         ? Object.values(state.mappings).filter(value => value === `motion:${current.id}`).length
           + Object.values(state.reactionMappings).filter(value => value === `motion:${current.id}`).length
         : 0;
       $("mappingSelection").className = `mapping-selection${current ? " ready" : ""}`;
       $("mappingSelection").innerHTML = current
-        ? `<span class="selection-label">${escapeHtml(I18n.t("mapping.selected.label"))}</span><strong>${escapeHtml(current.name)}</strong><span class="selection-meta">${escapeHtml(current.sourceFile)} · ${current.duration ? `${current.duration.toFixed(2)}s` : I18n.t("mapping.durationUnknown")} · ${escapeHtml(I18n.t(targetCount === 1 ? "mapping.assigned.one" : "mapping.assigned.many", { count: targetCount }))}</span>`
+        ? `<span class="selection-label">${escapeHtml(I18n.t("mapping.selected.label"))}</span><strong>${escapeHtml(current.name)}</strong><span class="selection-meta">${escapeHtml(current.sourceFile)} · ${current.duration ? `${current.duration.toFixed(2)}s` : I18n.t("mapping.durationUnknown")} · ${escapeHtml(I18n.t(targetCount === 1 ? "mapping.assigned.one" : "mapping.assigned.many", { count: targetCount }))}</span><span class="selection-meta">${escapeHtml(expression ? I18n.t("mapping.selected.recipeExpression", { name: expression.name }) : I18n.t("mapping.selected.recipeBase"))}</span>`
         : `<span class="selection-label">${escapeHtml(I18n.t("mapping.selected.label"))}</span><strong>${escapeHtml(I18n.t("mapping.selected.none"))}</strong><span class="selection-meta">${escapeHtml(I18n.t("mapping.selected.help"))}</span>`;
     }
 
     function assignmentMarkup(def, current, kind) {
-      const details = mappingDetails(current);
+      const recipeId = kind === "reaction" ? state.reactionRecipeMappings[def.id] : state.recipeMappings[def.id];
+      const details = mappingDetails(current, recipeId);
       const assignAttribute = kind === "state" ? `data-assign-state="${escapeHtml(def.id)}"` : `data-assign-reaction="${escapeHtml(def.id)}"`;
       const clearAttribute = kind === "state" ? `data-clear-state="${escapeHtml(def.id)}"` : `data-clear-reaction="${escapeHtml(def.id)}"`;
       const fallback = kind === "state" && def.fallback
@@ -2660,9 +2719,9 @@
     function renderMappings() {
       renderMappingSelection();
       $("mappingTables").innerHTML = MotionMapping.groups.map(group => `<div class="group"><div class="group-title"><h3>${escapeHtml(I18n.t(`mapping.group.${group.id}`))}</h3><span class="muted">${escapeHtml(I18n.t(`mapping.group.${group.id}.hint`))}</span></div><table><thead><tr><th>${escapeHtml(I18n.t("mapping.table.state"))}</th><th>${escapeHtml(I18n.t("mapping.table.assignment"))}</th></tr></thead><tbody>${group.states.map(def => `<tr><td class="key"><code>${def.id}</code>${def.required ? `<span class="required">${escapeHtml(I18n.t("mapping.required"))}</span>` : ''}<span class="key-meaning">${escapeHtml(I18n.t(def.meaningKey) || def.meaning)}</span></td><td>${assignmentMarkup(def, state.mappings[def.id] || "", "state")}</td></tr>`).join("")}</tbody></table></div>`).join("") + `<div class="group"><div class="group-title"><h3>${escapeHtml(I18n.t("mapping.group.reactions"))}</h3><span class="muted">${escapeHtml(I18n.t("mapping.group.reactions.hint"))}</span></div><table><thead><tr><th>${escapeHtml(I18n.t("mapping.table.field"))}</th><th>${escapeHtml(I18n.t("mapping.table.assignment"))}</th></tr></thead><tbody>${MotionMapping.reactions.map(def => `<tr><td class="key"><code>${def.id}</code><span class="key-meaning">${escapeHtml(I18n.t(def.meaningKey) || def.meaning)}</span></td><td>${assignmentMarkup(def, state.reactionMappings[def.id] || "", "reaction")}</td></tr>`).join("")}</tbody></table></div>`;
-      document.querySelectorAll("[data-assign-state]").forEach(button => button.addEventListener("click",()=>dispatch({type:"MAP",key:button.dataset.assignState,value:state.selectedMotionId ? `motion:${state.selectedMotionId}` : ""})));
+      document.querySelectorAll("[data-assign-state]").forEach(button => button.addEventListener("click",()=>dispatch({type:"ASSIGN_SELECTED_RECIPE",target:"clawd",key:button.dataset.assignState})));
       document.querySelectorAll("[data-clear-state]").forEach(button => button.addEventListener("click",()=>dispatch({type:"MAP",key:button.dataset.clearState,value:""})));
-      document.querySelectorAll("[data-assign-reaction]").forEach(button => button.addEventListener("click",()=>dispatch({type:"MAP_REACTION",key:button.dataset.assignReaction,value:state.selectedMotionId ? `motion:${state.selectedMotionId}` : ""})));
+      document.querySelectorAll("[data-assign-reaction]").forEach(button => button.addEventListener("click",()=>dispatch({type:"ASSIGN_SELECTED_RECIPE",target:"reaction",key:button.dataset.assignReaction})));
       document.querySelectorAll("[data-clear-reaction]").forEach(button => button.addEventListener("click",()=>dispatch({type:"MAP_REACTION",key:button.dataset.clearReaction,value:""})));
       document.querySelectorAll("[data-fallback-state]").forEach(select => select.addEventListener("change",()=>dispatch({type:"MAP",key:select.dataset.fallbackState,value:select.value ? `fallback:${select.value}` : ""})));
       $("quickState").innerHTML = MotionMapping.allStates.map(def => `<option value="${def.id}">${def.id} · ${escapeHtml(I18n.t(def.meaningKey) || def.meaning)}</option>`).join("");
@@ -2671,7 +2730,43 @@
     }
 
     function codexValidation() {
-      return MotionMapping.codexRows.filter(row => !state.codexMappings[row.id]?.startsWith("motion:")).map(row => row.id);
+      const missing = MotionMapping.codexRows.filter(row => !state.codexMappings[row.id]?.startsWith("motion:")).map(row => row.id);
+      return [...missing, ...recipeExpressionByMotion("codex").errors];
+    }
+
+    function recipeExpressionByMotion(target) {
+      const recipeMappings = target === "codex"
+        ? state.codexRecipeMappings
+        : { ...state.recipeMappings, ...state.reactionRecipeMappings };
+      const mappings = target === "codex"
+        ? state.codexMappings
+        : { ...state.mappings, ...state.reactionMappings };
+      const expressions = {};
+      const errors = [];
+      for (const [slot, recipeId] of Object.entries(recipeMappings || {})) {
+        if (!recipeId) continue;
+        const recipe = state.recipes.find(item => item.id === recipeId);
+        const mapping = mappings[slot];
+        if (!recipe) {
+          errors.push(`${slot} references missing recipe ${recipeId}.`);
+          continue;
+        }
+        if (recipe.expressionId && !state.expressions.some(item => item.id === recipe.expressionId)) {
+          errors.push(`${slot} recipe ${recipeId} references an Expression that is not loaded.`);
+          continue;
+        }
+        if (!mapping?.startsWith("motion:") || mapping.slice(7) !== recipe.motionId) {
+          errors.push(`${slot} recipe ${recipeId} does not match its mapped Motion.`);
+          continue;
+        }
+        const expressionId = recipe.expressionId || null;
+        if (Object.hasOwn(expressions, recipe.motionId) && expressions[recipe.motionId] !== expressionId) {
+          errors.push(`${recipe.motionId} uses more than one Expression; use one Expression per Motion.`);
+          continue;
+        }
+        expressions[recipe.motionId] = expressionId;
+      }
+      return { expressions, errors };
     }
 
     function codexBuildReadiness() {
@@ -2693,6 +2788,7 @@
       for (const [slot, value] of Object.entries(state.reactionMappings)) {
         if (value && !value.startsWith("motion:")) errors.push(`${slot} reactions must map directly to a Motion.`);
       }
+      errors.push(...recipeExpressionByMotion("clawd").errors);
       return errors;
     }
 
@@ -2715,9 +2811,12 @@
       $("codexMapping").innerHTML = rows.map(row => {
         const value = state.codexMappings[row.id] || "";
         const motion = value.startsWith("motion:") ? selectedMotionById(value.slice(7)) : null;
-        return `<div class="codex-row"><code>${escapeHtml(row.id)}</code><strong class="${motion ? "" : "unmapped"}" title="${escapeHtml(motion?.sourceFile || I18n.t("codex.motion.title"))}">${escapeHtml(motion?.name || I18n.t("codex.row.unmapped"))}</strong><button data-codex-assign="${escapeHtml(row.id)}" aria-label="${escapeHtml(I18n.t("codex.row.assign", { id: row.id }))}" ${state.selectedMotionId ? "" : "disabled"}>${escapeHtml(I18n.t("mapping.useSelected"))}</button></div>`;
+        const recipe = state.codexRecipeMappings[row.id] ? state.recipes.find(item => item.id === state.codexRecipeMappings[row.id]) : null;
+        const expression = recipe?.expressionId ? state.expressions.find(item => item.id === recipe.expressionId) : null;
+        const label = motion ? `${motion.name}${expression ? ` · ${I18n.t("mapping.selected.recipeExpression", { name: expression.name })}` : ""}` : I18n.t("codex.row.unmapped");
+        return `<div class="codex-row"><code>${escapeHtml(row.id)}</code><strong class="${motion ? "" : "unmapped"}" title="${escapeHtml(motion?.sourceFile || I18n.t("codex.motion.title"))}">${escapeHtml(label)}</strong><button data-codex-assign="${escapeHtml(row.id)}" aria-label="${escapeHtml(I18n.t("codex.row.assign", { id: row.id }))}" ${state.selectedMotionId ? "" : "disabled"}>${escapeHtml(I18n.t("mapping.useSelected"))}</button></div>`;
       }).join("");
-      document.querySelectorAll("[data-codex-assign]").forEach(button => button.addEventListener("click", () => dispatch({ type: "MAP_CODEX", key: button.dataset.codexAssign, value: state.selectedMotionId ? `motion:${state.selectedMotionId}` : "" })));
+      document.querySelectorAll("[data-codex-assign]").forEach(button => button.addEventListener("click", () => dispatch({ type: "ASSIGN_SELECTED_RECIPE", target: "codex", key: button.dataset.codexAssign })));
     }
 
     function codexRowFrames(rowId) {
@@ -2830,7 +2929,7 @@
 
     function resolveScenarioAction(action) {
       if (action.type !== "MAP_CURRENT") return action;
-      return { type:"MAP", key:action.key, value:state.selectedMotionId ? `motion:${state.selectedMotionId}` : "" };
+      return { type:"ASSIGN_SELECTED_RECIPE", target:"clawd", key:action.key };
     }
     function renderScenario() {
       $("scenarioTabs").innerHTML = scenarios.map(s => `<button class="${state.scenario === s.id ? "active" : ""}" data-scenario="${s.id}">${escapeHtml(I18n.t(`scenario.${s.id}`))}</button>`).join("");
@@ -2860,7 +2959,9 @@
       const rendererStatus = $("rendererPreviewStatus");
       rendererStatus.className = "runtime-status" + (rendererPreviewStatusLevel ? ` ${rendererPreviewStatusLevel}` : "");
       rendererStatus.textContent = rendererPreviewStatusText || I18n.t("runtime.preview.status");
-      $("validation").innerHTML = MotionMapping.validate(state).map(x=>`<div class="${x.level}">${escapeHtml(x.text)}</div>`).join("");
+      const projectValidation = MotionMapping.validate(state).map(x => ({ level: x.level, text: x.text }));
+      recipeExpressionByMotion("clawd").errors.forEach(text => projectValidation.push({ level: "error", text }));
+      $("validation").innerHTML = projectValidation.map(x=>`<div class="${x.level}">${escapeHtml(x.text)}</div>`).join("");
       $("jsonOutput").textContent = JSON.stringify(MotionMapping.output(state),null,2);
       const readiness = codexBuildReadiness();
       $("buildCodex").disabled = codexBuildBusy || !readiness.ready;
@@ -4106,10 +4207,10 @@
       return captured.image;
     }
 
-    function codexCaptureMemoryKey(motion) {
+    function codexCaptureMemoryKey(motion, expressionId = null) {
       const sourceFingerprint = state.inspection?.source?.fingerprint || "unknown-source";
       const duration = Math.max(0.8, Math.min(8, Number(motion?.duration) || 1.2));
-      return [sourceFingerprint, state.model?.cubism || "unknown-cubism", state.codexRenderPreset, motion?.id || "unknown-motion", duration].join("|");
+      return [sourceFingerprint, state.model?.cubism || "unknown-cubism", state.codexRenderPreset, motion?.id || "unknown-motion", expressionId || "base", duration].join("|");
     }
 
     function codexCaptureFrameBytes(frames) {
@@ -4140,11 +4241,26 @@
       return cached.frames;
     }
 
-    async function captureCodexMotion(motion, count, signal = null) {
+    async function applyCaptureExpression(expressionId) {
+      if (!liveModel) return;
+      const manager = liveModel.internalModel?.motionManager?.expressionManager;
+      if (!expressionId) {
+        if (manager?.resetExpression) manager.resetExpression();
+        else if (manager?.stopAllExpressions) manager.stopAllExpressions();
+        return;
+      }
+      const expression = state.expressions.find(item => item.id === expressionId);
+      if (!expression) throw projectError("EXPRESSION_NOT_FOUND", `Expression ${expressionId} is not available in the loaded Source Package.`);
+      const applied = await liveModel.expression(expression.index);
+      if (applied === false) throw projectError("EXPRESSION_CAPTURE_FAILED", `Expression ${expression.name || expression.id} could not be applied for capture.`);
+    }
+
+    async function captureCodexMotion(motion, count, signal = null, expressionId = null) {
       checkMapperBuildCancelled(signal);
       const duration = Math.max(0.8, Math.min(8, Number(motion.duration) || 1.2));
       const plan = Live2PetClawdCapture.createFixedStepPlan(duration, count);
       const previousAutoUpdate = liveModel.autoUpdate;
+      const previousExpressionId = state.selectedExpressionId;
       const motionManager = liveModel.internalModel?.motionManager;
       const frames = [];
       const startedAt = performance.now();
@@ -4153,6 +4269,7 @@
         motionManager?.stopAllMotions();
         liveModel.deltaTime = 0;
         liveModel.elapsedTime = performance.now();
+        await applyCaptureExpression(expressionId);
         const started = await liveModel.motion(motion.group, motion.index, 3);
         checkMapperBuildCancelled(signal);
         if (started === false) throw projectError("MOTION_CAPTURE_FAILED", `Motion ${motion.name || motion.id} could not be started for capture.`);
@@ -4171,10 +4288,12 @@
         liveModel.deltaTime = 0;
         liveModel.elapsedTime = performance.now();
         liveModel.autoUpdate = previousAutoUpdate;
+        try { await applyCaptureExpression(previousExpressionId); } catch (error) { console.warn("Live2Pet could not restore the previous Expression after capture", error); }
       }
       const captureMs = Math.max(0, performance.now() - startedAt);
       frames.captureMs = captureMs;
       frames.captureRate = plan.frameCount / Math.max(0.001, captureMs / 1000);
+      frames.expressionId = expressionId || null;
       return frames;
     }
 
@@ -4284,11 +4403,12 @@
       return { width, height, startFrame, frameCount, rgbaDeflate: compressed, compression: "deflate-stack-v1" };
     }
 
-    async function captureClawdMotion(motion, onFrame = null, signal = null) {
+    async function captureClawdMotion(motion, onFrame = null, signal = null, expressionId = null) {
       checkMapperBuildCancelled(signal);
       const settings = clawdRenderSettings();
       const plan = clawdCapturePlan(motion);
       const previousAutoUpdate = liveModel.autoUpdate;
+      const previousExpressionId = state.selectedExpressionId;
       const motionManager = liveModel.internalModel?.motionManager;
       const frames = [];
       const chunkPlan = Live2PetClawdCapture.createCaptureChunkPlan(settings.width, settings.height, plan.frameCount);
@@ -4324,6 +4444,7 @@
         // rebase the model clock instead of inheriting the previous Motion.
         liveModel.deltaTime = 0;
         liveModel.elapsedTime = performance.now();
+        await applyCaptureExpression(expressionId);
         const started = await liveModel.motion(motion.group, motion.index, 3);
         checkMapperBuildCancelled(signal);
         if (started === false) throw projectError("MOTION_CAPTURE_FAILED", `Motion ${motion.name || motion.id} could not be started for capture.`);
@@ -4354,11 +4475,13 @@
         liveModel.deltaTime = 0;
         liveModel.elapsedTime = performance.now();
         liveModel.autoUpdate = previousAutoUpdate;
+        try { await applyCaptureExpression(previousExpressionId); } catch (error) { console.warn("Live2Pet could not restore the previous Expression after capture", error); }
       }
       const finishedAt = performance.now();
       const captureMs = Math.max(0, finishedAt - startedAt);
       return {
         frames,
+        expressionId: expressionId || null,
         rgbaChunks: compressedChunks,
         delay: plan.delays,
         loop: 0,
@@ -4475,11 +4598,12 @@
         const project = buildProjectDocument();
         const captures = {};
         const motionIds = clawdMappedMotionIds();
+        const expressionByMotion = recipeExpressionByMotion("clawd").expressions;
         const settings = clawdRenderSettings();
         const captureRecipesByMotion = Object.fromEntries(motionIds.map((motionId) => {
           const motion = selectedMotionById(motionId);
           const plan = clawdCapturePlan(motion);
-          return [motionId, { motionId, duration: plan.durationSeconds, width: settings.width, height: settings.height, frameCount: plan.frameCount, fps: settings.fps }];
+          return [motionId, { motionId, expressionId: expressionByMotion[motionId] || null, duration: plan.durationSeconds, width: settings.width, height: settings.height, frameCount: plan.frameCount, fps: settings.fps }];
         }));
         beginBuildProgress("clawd", motionIds.length);
         const captureCache = await prepareCaptureCache("clawd", captureRecipesByMotion, state.clawdRenderPreset, signal);
@@ -4498,7 +4622,7 @@
           setClawdBuildStatus(I18n.t("build.status.capture", { slot: motionId, motion: motion.name, count: frameCount }), "busy");
           captures[motionId] = await captureClawdMotion(motion, (completed, total) => {
             setClawdBuildStatus(I18n.t("build.status.captureCompress", { motion: motion.name, current: completed, total }), "busy");
-          }, signal);
+          }, signal, expressionByMotion[motionId] || null);
           if (captures[motionId].timing) {
             setClawdBuildStatus(I18n.t("build.status.captureTiming", {
               motion: motion.name,
@@ -4668,6 +4792,7 @@
       const previewUrls = [];
       try {
         const signal = codexBuildAbortController.signal;
+        const expressionByMotion = recipeExpressionByMotion("codex").expressions;
         const captures = new Map();
         let capturedCount = 0;
         for (const row of MotionMapping.codexRows) {
@@ -4677,7 +4802,7 @@
           if (!motion) throw projectError("INVALID_CODEX_MAPPING", `${row.id} points to a Motion that is no longer loaded.`);
           const needed = Math.max(row.frames, captures.get(motion.id)?.length || 0);
           if (!captures.has(motion.id) || captures.get(motion.id).length < needed) {
-            const memoryKey = codexCaptureMemoryKey(motion);
+            const memoryKey = codexCaptureMemoryKey(motion, expressionByMotion[motion.id] || null);
             const remembered = recallCodexCapture(memoryKey, needed);
             if (remembered) {
               captures.set(motion.id, remembered);
@@ -4685,7 +4810,7 @@
             } else {
               setBuildProgressCapture("codex", capturedCount, captureMotionIds.length, motion.name);
               setBuildStatus(I18n.t("build.status.capture", { slot: row.id, motion: motion.name, count: needed }), "busy");
-              const captured = await captureCodexMotion(motion, needed, signal);
+              const captured = await captureCodexMotion(motion, needed, signal, expressionByMotion[motion.id] || null);
               rememberCodexCapture(memoryKey, captured);
               captures.set(motion.id, captured);
               setBuildStatus(I18n.t("build.status.captureTiming", {
@@ -4915,7 +5040,7 @@
     $("previewSpeed").addEventListener("change", () => { void updateSourcePreviewSettings(); });
     $("previewLoop").addEventListener("change", () => { void updateSourcePreviewSettings(); });
     $("resetExpression").addEventListener("click",resetExpression);
-    $("assignCurrent").addEventListener("click",()=>dispatch({type:"MAP",key:$("quickState").value,value:state.selectedMotionId?`motion:${state.selectedMotionId}`:""}));
+    $("assignCurrent").addEventListener("click",()=>dispatch({type:"ASSIGN_SELECTED_RECIPE",target:"clawd",key:$("quickState").value}));
     $("sleepMode").addEventListener("change",e=>dispatch({type:"SET_SLEEP",value:e.target.value}));
     $("clawdRenderPreset").addEventListener("change",e=>dispatch({type:"SET_RENDER_PRESET",target:"clawd",value:e.target.value}));
     $("codexRenderPreset").addEventListener("change",e=>dispatch({type:"SET_RENDER_PRESET",target:"codex",value:e.target.value}));

@@ -160,6 +160,18 @@ test('samples deterministic RGBA motion candidates for downstream selection', as
   assert.ok(first.candidates.every((candidate) => candidate.bounds && candidate.bounds.width > 0 && candidate.bounds.height > 0));
 });
 
+test('samples an Animation Recipe Expression and restores the previous preview Expression', async () => {
+  const renderer = new SyntheticRenderer();
+  await renderer.load({ motions: [{ id: 'sample', duration: 1 }], expressions: [{ id: 'base', name: 'Base' }, { id: 'smile', name: 'Smile' }] });
+  await renderer.setExpression('smile');
+  const result = await sampleMotionCandidates(renderer, { motionId: 'sample', expressionId: null, duration: 1, samples: 2, width: 16, height: 16 });
+  assert.equal(result.expressionId, null);
+  assert.equal(renderer.getState().expressionId, 'smile');
+  const withExpression = await sampleMotionCandidates(renderer, { motionId: 'sample', expressionId: 'base', duration: 1, samples: 2, width: 16, height: 16 });
+  assert.equal(withExpression.expressionId, 'base');
+  assert.equal(renderer.getState().expressionId, 'smile');
+});
+
 test('rejects invalid motion sampling inputs', async () => {
   const renderer = new SyntheticRenderer();
   await renderer.load({ motions: [{ id: 'sample', duration: 1 }] });

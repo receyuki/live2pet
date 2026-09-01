@@ -30,7 +30,7 @@ The project service now also provides explicit autosave recovery, source relinki
 
 The shared Mapper now also provides a bounded 100-step project-edit history with accessible Undo/Redo controls and platform keyboard shortcuts. History is intentionally limited to project metadata, mappings, behavior settings, and source-review state; source/runtime bytes and generated artifacts are excluded. Loading a new Source Package or project resets the history boundary, and undoing back to a clean state clears the draft autosave.
 
-The source-preview surface now forwards pause, resume, restart, loop, and speed controls to the isolated renderer contract, with a local browser fallback for pause/resume/restart and an explicit capability message for loop/speed when no isolated renderer is open.
+The source-preview surface now forwards pause, resume, restart, loop, and speed controls to the isolated renderer contract, with a local browser fallback for pause/resume/restart and an explicit capability message for loop/speed when no isolated renderer is open. The Mapper now creates or reuses safe Animation Recipe ids for the selected Motion plus optional Expression, persists target `recipeMappings`, validates one Expression per Motion, and passes the resolved Expression through renderer capture and App cache identities while preserving legacy direct-motion projects.
 
 ### Current implementation update (2026-08-31)
 

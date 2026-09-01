@@ -23,7 +23,9 @@ function normalizeRecipe(value, index = 0) {
   if (!Number.isFinite(duration) || duration < 0 || duration > 3600 || !Number.isInteger(width) || width < 1 || width > 4096 || !Number.isInteger(height) || height < 1 || height > 4096 || !Number.isInteger(frameCount) || frameCount < 1 || frameCount > 4096 || !Number.isFinite(fps) || fps <= 0 || fps > 240) {
     fail('INVALID_CAPTURE_CACHE_REQUEST', `Capture recipe ${index} contains invalid timing or dimensions.`);
   }
-  return { motionId, duration, width, height, frameCount, fps };
+  const expressionId = value.expressionId == null ? null : String(value.expressionId).trim();
+  if (expressionId !== null && !expressionId) fail('INVALID_CAPTURE_CACHE_REQUEST', `Capture recipe ${index} expressionId cannot be empty.`);
+  return { motionId, expressionId, duration, width, height, frameCount, fps };
 }
 
 function normalizeContext(input = {}) {
@@ -78,7 +80,7 @@ function createCaptureCacheService({ cache, getRuntimeForGeneration, rendererVer
   }
 
   function validCachedFrameSet(value, recipe) {
-    if (!value || value.motionId !== recipe.motionId || !Array.isArray(value.frames) || value.frames.length !== recipe.frameCount) return false;
+    if (!value || value.motionId !== recipe.motionId || (value.expressionId || null) !== (recipe.expressionId || null) || !Array.isArray(value.frames) || value.frames.length !== recipe.frameCount) return false;
     return value.frames.every((frame) => frame.width === recipe.width && frame.height === recipe.height);
   }
 

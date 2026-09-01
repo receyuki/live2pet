@@ -197,6 +197,10 @@ test('shared Mapper exposes project recovery, source review, and build-gate seam
   assert.match(mapper, /const PROJECT_DRAFT_STORAGE_KEY = "live2pet-mapper-project-draft-v1"/);
   assert.match(mapper, /const PROJECT_HISTORY_LIMIT = 100/);
   assert.match(mapper, /const PROJECT_EDIT_ACTIONS = new Set/);
+  assert.match(mapper, /function recipeIdFor\(motionId, expressionId/);
+  assert.match(mapper, /type:"ASSIGN_SELECTED_RECIPE"/);
+  assert.match(mapper, /recipeMappings/);
+  assert.match(mapper, /function recipeExpressionByMotion\(target\)/);
   assert.match(mapper, /function captureProjectHistoryState\(source = state\)/);
   assert.match(mapper, /function undoProjectEdit\(\)/);
   assert.match(mapper, /function redoProjectEdit\(\)/);

@@ -83,20 +83,27 @@ async function sampleMotionCandidates(renderer, options = {}) {
   const samples = positiveInteger(options.samples == null ? 32 : options.samples, 'Motion sample count', 4096);
   const width = positiveInteger(options.width == null ? 256 : options.width, 'Sample width');
   const height = positiveInteger(options.height == null ? 256 : options.height, 'Sample height');
+  const hasExpression = Object.prototype.hasOwnProperty.call(options, 'expressionId');
+  const previousExpressionId = hasExpression && typeof renderer.getState === 'function' ? renderer.getState().expressionId : null;
+  if (hasExpression) await renderer.setExpression(options.expressionId == null ? null : options.expressionId);
   const candidates = [];
   let previousRgba = null;
   let previousBounds = null;
-  for (let index = 0; index < samples; index += 1) {
-    const time = duration * (samples === 1 ? 0 : index / (samples - 1));
-    const capture = await renderer.captureRgba({ width, height, motionId, time });
-    if (!capture || capture.width !== width || capture.height !== height || !ArrayBuffer.isView(capture.rgba) || capture.rgba.byteLength !== width * height * 4) fail('INVALID_RENDER_CAPTURE', `Renderer returned an invalid RGBA capture for ${motionId} at sample ${index}.`);
-    const rgba = new Uint8Array(capture.rgba.buffer, capture.rgba.byteOffset, capture.rgba.byteLength);
-    const bounds = alphaBounds(rgba, width, height);
-    candidates.push({ id: `${motionId}#${index}`, time, bounds, visualChange: rgbaDifference(previousRgba, rgba), boundsDelta: boundsDifference(previousBounds, bounds), width, height, rgba: new Uint8Array(rgba) });
-    previousRgba = rgba;
-    previousBounds = bounds;
+  try {
+    for (let index = 0; index < samples; index += 1) {
+      const time = duration * (samples === 1 ? 0 : index / (samples - 1));
+      const capture = await renderer.captureRgba({ width, height, motionId, time });
+      if (!capture || capture.width !== width || capture.height !== height || !ArrayBuffer.isView(capture.rgba) || capture.rgba.byteLength !== width * height * 4) fail('INVALID_RENDER_CAPTURE', `Renderer returned an invalid RGBA capture for ${motionId} at sample ${index}.`);
+      const rgba = new Uint8Array(capture.rgba.buffer, capture.rgba.byteOffset, capture.rgba.byteLength);
+      const bounds = alphaBounds(rgba, width, height);
+      candidates.push({ id: `${motionId}#${index}`, time, bounds, visualChange: rgbaDifference(previousRgba, rgba), boundsDelta: boundsDifference(previousBounds, bounds), width, height, rgba: new Uint8Array(rgba) });
+      previousRgba = rgba;
+      previousBounds = bounds;
+    }
+  } finally {
+    if (hasExpression) await renderer.setExpression(previousExpressionId);
   }
-  return { contractVersion: CONTRACT_VERSION, motionId, duration, samples, width, height, candidates };
+  return { contractVersion: CONTRACT_VERSION, motionId, expressionId: hasExpression ? (options.expressionId == null ? null : options.expressionId) : previousExpressionId, duration, samples, width, height, candidates };
 }
 
 function stableSeed(value) {

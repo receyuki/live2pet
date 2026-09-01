@@ -21,7 +21,7 @@ function normalizeRgba(frame, index) {
   return Buffer.from(frame.rgba.buffer, frame.rgba.byteOffset, frame.rgba.byteLength);
 }
 
-function encodeFrameSet({ motionId, frames, fps } = {}) {
+function encodeFrameSet({ motionId, frames, fps, expressionId = null } = {}) {
   if (typeof motionId !== 'string' || !motionId.trim()) fail('INVALID_FRAME_CACHE', 'A Motion id is required for a frame cache entry.');
   if (!Array.isArray(frames) || !frames.length) fail('INVALID_FRAME_CACHE', 'A frame cache entry requires at least one frame.');
   if (!Number.isFinite(fps) || fps <= 0) fail('INVALID_FRAME_CACHE', 'A frame cache entry requires a positive fps value.');
@@ -44,7 +44,7 @@ function encodeFrameSet({ motionId, frames, fps } = {}) {
     offset += capture.byteLength;
     return result;
   });
-  const header = Buffer.from(JSON.stringify({ schemaVersion: FRAME_CACHE_SCHEMA_VERSION, motionId, fps, frames: metadata }), 'utf8');
+  const header = Buffer.from(JSON.stringify({ schemaVersion: FRAME_CACHE_SCHEMA_VERSION, motionId, expressionId: expressionId || null, fps, frames: metadata }), 'utf8');
   if (header.byteLength > MAX_FRAME_CACHE_HEADER_BYTES) fail('INVALID_FRAME_CACHE', 'Frame cache metadata exceeds the 1 MiB limit.');
   const prefix = Buffer.allocUnsafe(4);
   prefix.writeUInt32LE(header.byteLength, 0);
@@ -78,7 +78,7 @@ function decodeFrameSet(value) {
     };
     return frame;
   });
-  return { motionId: header.motionId, fps: header.fps, frames };
+  return { motionId: header.motionId, expressionId: header.expressionId || null, fps: header.fps, frames };
 }
 
 module.exports = {

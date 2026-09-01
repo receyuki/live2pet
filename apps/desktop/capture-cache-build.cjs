@@ -93,7 +93,7 @@ function createCaptureCacheBuildService({ buildProjectTargets, getCaptureCacheSe
         }
         for (const [motionId, frameSet] of candidatesByMotion) {
           const recipe = recipes[motionId];
-          if (recipe) pendingWrites.push({ context, recipe, frameSet: { motionId, frames: frameSet, fps: recipe.fps } });
+          if (recipe) pendingWrites.push({ context, recipe, frameSet: { motionId, expressionId: recipe.expressionId || null, frames: frameSet, fps: recipe.fps } });
         }
       }
     }

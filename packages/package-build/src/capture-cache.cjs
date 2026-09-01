@@ -88,7 +88,7 @@ function normalizeChunkList(chunks, frames) {
   return normalized;
 }
 
-function encodeCaptureSet({ motionId, frames, rgbaChunks, fps, delay, loop = 0, quality = 80, alphaQuality = 100, lossless = false } = {}) {
+function encodeCaptureSet({ motionId, frames, rgbaChunks, fps, delay, loop = 0, quality = 80, alphaQuality = 100, lossless = false, expressionId = null } = {}) {
   if (typeof motionId !== 'string' || !motionId.trim()) fail('INVALID_CAPTURE_CACHE', 'Capture cache requires a Motion id.');
   const normalizedFrames = normalizeFrameList(frames, motionId.trim());
   let chunks;
@@ -110,6 +110,7 @@ function encodeCaptureSet({ motionId, frames, rgbaChunks, fps, delay, loop = 0, 
     schemaVersion: CAPTURE_CACHE_SCHEMA_VERSION,
     compression: CAPTURE_CACHE_COMPRESSION,
     motionId: motionId.trim(),
+    expressionId: expressionId || null,
     frames: normalizedFrames,
     chunks: chunks.map((chunk, index) => ({ startFrame: chunk.startFrame, frameCount: chunk.frameCount, width: chunk.width, height: chunk.height, offset: index === 0 ? 0 : undefined, length: chunk.bytes.byteLength })),
     ...(Number.isFinite(fps) && fps > 0 ? { fps } : {}),
@@ -167,6 +168,7 @@ function decodeCaptureSet(value) {
   }
   return {
     motionId: metadata.motionId,
+    expressionId: metadata.expressionId || null,
     frames: decodedFrames,
     ...(metadata.fps === undefined ? {} : { fps: metadata.fps }),
     ...(metadata.delay === undefined ? {} : { delay: metadata.delay }),

@@ -309,6 +309,26 @@ function mappedMotionIds(values) {
   return ids;
 }
 
+function resolveProjectRecipeExpressions(project, targetProject, targetId) {
+  const recipesById = new Map((Array.isArray(project?.recipes) ? project.recipes : []).map((recipe) => [recipe.id, recipe]));
+  const expressionByMotion = {};
+  for (const [slot, recipeId] of Object.entries(targetProject?.recipeMappings || {})) {
+    if (!recipeId) continue;
+    const recipe = recipesById.get(recipeId);
+    if (!recipe) fail('UNKNOWN_RECIPE_ID', `The ${targetId} recipe mapping ${slot} references an unknown recipe: ${recipeId}.`);
+    const mapping = targetProject.mappings?.[slot] || targetProject.reactions?.[slot];
+    if (typeof mapping !== 'string' || !mapping.startsWith('motion:')) fail('RECIPE_MAPPING_MISMATCH', `${targetId}.${slot} must map to a Motion before it can use recipe ${recipeId}.`);
+    const motionId = mapping.slice(7);
+    if (motionId !== recipe.motionId) fail('RECIPE_MAPPING_MISMATCH', `${targetId}.${slot} uses recipe ${recipeId}, which belongs to ${recipe.motionId}, not ${motionId}.`);
+    const expressionId = recipe.expressionId || null;
+    if (Object.hasOwn(expressionByMotion, motionId) && expressionByMotion[motionId] !== expressionId) {
+      fail('CONFLICTING_RECIPE_EXPRESSIONS', `${targetId} maps Motion ${motionId} with more than one Expression; split the Motion or use one Expression per Motion.`);
+    }
+    expressionByMotion[motionId] = expressionId;
+  }
+  return expressionByMotion;
+}
+
 function rendererMotionDescriptor(renderer, motionId) {
   const collections = [renderer && renderer.source && renderer.source.motions, renderer && renderer.motions].filter(Array.isArray);
   for (const collection of collections) {
@@ -318,7 +338,7 @@ function rendererMotionDescriptor(renderer, motionId) {
   return null;
 }
 
-async function renderMappedMotions({ renderer, motionIds, render = {}, signal, onProgress, target, cache, cacheContext } = {}) {
+async function renderMappedMotions({ renderer, motionIds, render = {}, signal, onProgress, target, cache, cacheContext, expressionByMotion = {} } = {}) {
   if (!renderer || typeof renderer.captureRgba !== 'function') fail('RENDERER_REQUIRED', 'A renderer implementing captureRgba is required when build inputs do not include captured frames.');
   if (!Array.isArray(motionIds) || !motionIds.length) fail('MOTION_MAPPING_REQUIRED', `No ${target || 'target'} Motion mappings are available for renderer capture.`);
   const { name: presetName, settings: preset } = resolveTargetRenderPreset(target, render);
@@ -340,13 +360,16 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
     const samples = configuredSamples || (target === 'codex-pet'
       ? Math.max(2, Math.ceil(duration * preset.samplesPerSecond))
       : Math.max(2, Math.ceil(duration * preset.fps)));
+    const expressionId = Object.hasOwn(expressionByMotion, motionId)
+      ? expressionByMotion[motionId]
+      : (cacheContext?.expressionId || null);
     const cacheKey = cacheEnabled ? createCacheKey({
       sourceFingerprint: cacheContext.sourceFingerprint,
       runtimeVersion: cacheContext.runtimeVersion,
       rendererVersion: cacheContext.rendererVersion,
       recipe: {
         motionId,
-        expressionId: cacheContext.expressionId || null,
+        expressionId,
         render: { width, height, samples, duration, fps: Number.isFinite(render.fps) ? render.fps : null },
       },
       targetProfile: target,
@@ -370,11 +393,12 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
       }
     }
     progress(onProgress, 'render', 'started', { target, motionId, width, height, samples, duration });
-    const result = await sampleMotionCandidates(renderer, { motionId, duration, samples, width, height });
+    const result = await sampleMotionCandidates(renderer, { motionId, duration, samples, width, height, expressionId });
     checkCancelled(signal);
     framesByMotion[motionId] = {
       frames: result.candidates,
       fps: Number.isFinite(render.fps) ? render.fps : (render.preset ? (preset.fps || (duration > 0 ? samples / duration : 10)) : (duration > 0 ? samples / duration : 10)),
+      expressionId,
     };
     if (cacheKey) cache.put(cacheKey, encodeFrameSet({ motionId, ...framesByMotion[motionId] }), { projectId: cacheContext.projectId, sourceFingerprint: cacheContext.sourceFingerprint, artifact: 'render-candidates' });
     progress(onProgress, 'render', 'completed', { target, motionId, samples: result.candidates.length });
@@ -587,7 +611,7 @@ function normalizeClawdFrameSet(value, motionId, defaults = {}) {
   if (!frames || !frames.length) fail('INVALID_CLAWD_FRAME_SET', `${motionId} must provide at least one RGBA frame.`);
   const options = Array.isArray(value) ? {} : value;
   const delay = options.delay ?? (Number.isFinite(options.fps) && options.fps > 0 ? Math.round(1000 / options.fps) : 100);
-  return { frames, ...(options.rgbaChunks === undefined ? {} : { rgbaChunks: options.rgbaChunks }), delay, loop: options.loop ?? 0, quality: options.quality ?? defaults.quality ?? 80, alphaQuality: options.alphaQuality ?? defaults.alphaQuality ?? 100, lossless: options.lossless ?? false };
+  return { frames, ...(options.rgbaChunks === undefined ? {} : { rgbaChunks: options.rgbaChunks }), expressionId: options.expressionId || null, delay, loop: options.loop ?? 0, quality: options.quality ?? defaults.quality ?? 80, alphaQuality: options.alphaQuality ?? defaults.alphaQuality ?? 100, lossless: options.lossless ?? false };
 }
 
 function clawdAssetSlug(motionId, used) {
@@ -748,6 +772,7 @@ async function buildClawdTheme(input = {}, options = {}) {
   const render = options.render || (options.renderPreset ? { preset: options.renderPreset } : {});
   const renderSelection = resolveTargetRenderPreset('clawd', render);
   const cacheContext = options.cacheContext;
+  const expressionByMotion = input.expressionByMotion || options.expressionByMotion || {};
   const cache = options.cache;
   const cacheEnabled = encodedCacheIdentityAvailable(cache, cacheContext);
   const cacheStats = { enabled: cacheEnabled, hits: 0, misses: 0 };
@@ -771,6 +796,10 @@ async function buildClawdTheme(input = {}, options = {}) {
   const jobs = motionIds.map((motionId, index) => {
     checkCancelled(signal);
     const frameSet = normalizeClawdFrameSet(framesByMotion[motionId], motionId, renderSelection.settings);
+    const expectedExpressionId = Object.hasOwn(expressionByMotion, motionId) ? (expressionByMotion[motionId] || null) : null;
+    if (frameSet.expressionId !== expectedExpressionId) {
+      fail('RECIPE_CAPTURE_MISMATCH', `Captured frames for ${motionId} use Expression ${frameSet.expressionId || 'none'}, but the project recipe requires ${expectedExpressionId || 'none'}.`);
+    }
     const firstFrame = frameSet.frames[0];
     const delays = Array.isArray(frameSet.delay) ? [...frameSet.delay] : Array(frameSet.frames.length).fill(frameSet.delay);
     const cacheKey = cacheEnabled ? encodedAssetCacheKey({
@@ -780,7 +809,7 @@ async function buildClawdTheme(input = {}, options = {}) {
       renderPreset: renderSelection.name,
       recipe: {
         motionId,
-        expressionId: cacheContext.expressionId || null,
+        expressionId: frameSet.expressionId || null,
         frameIds: frameSet.frames.map((frame, index) => typeof frame.id === 'string' && frame.id ? frame.id : `frame-${index}`),
         render: { width: firstFrame && firstFrame.width, height: firstFrame && firstFrame.height, delays, quality: frameSet.quality, alphaQuality: frameSet.alphaQuality, lossless: frameSet.lossless },
         encoderVersion: cacheContext.encoderVersion,
@@ -1028,6 +1057,7 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
     const targetProject = normalizedProject.targets[targetId];
     if (!targetProject || !targetProject.mappings || !Object.keys(targetProject.mappings).length) fail('TARGET_MAPPING_REQUIRED', `${targetId} has no mappings in the Live2Pet Project.`);
     const targetOptions = { ...(optionsByTarget[targetId] || {}), signal, onProgress: (event) => onProgress?.({ target: targetId, ...event }) };
+    const expressionByMotion = resolveProjectRecipeExpressions(normalizedProject, targetProject, targetId);
     const configuredRender = targetInput.render
       || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : null)
       || targetOptions.render
@@ -1039,11 +1069,11 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
     if (renderer) {
       if (targetId === 'clawd' && !targetInput.framesByMotion && !targetInput.frames) {
         const ids = mappedMotionIds({ ...targetProject.mappings, ...targetProject.reactions });
-        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext || { sourceFingerprint: normalizedProject.source.fingerprint, runtimeVersion: targetOptions.runtimeVersion, rendererVersion: targetOptions.rendererVersion, targetVersion: targetOptions.targetVersion || '1', encoderVersion: targetOptions.encoderVersion, projectId: normalizedProject.projectId } });
+        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext || { sourceFingerprint: normalizedProject.source.fingerprint, runtimeVersion: targetOptions.runtimeVersion, rendererVersion: targetOptions.rendererVersion, targetVersion: targetOptions.targetVersion || '1', encoderVersion: targetOptions.encoderVersion, projectId: normalizedProject.projectId } });
         renderedInput = { ...targetInput, framesByMotion };
       } else if (targetId === 'codex-pet' && !targetInput.candidatesByRow && !targetInput.candidates) {
         const ids = mappedMotionIds(targetProject.mappings);
-        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext || { sourceFingerprint: normalizedProject.source.fingerprint, runtimeVersion: targetOptions.runtimeVersion, rendererVersion: targetOptions.rendererVersion, targetVersion: targetOptions.targetVersion || '1', encoderVersion: targetOptions.encoderVersion, projectId: normalizedProject.projectId } });
+        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext || { sourceFingerprint: normalizedProject.source.fingerprint, runtimeVersion: targetOptions.runtimeVersion, rendererVersion: targetOptions.rendererVersion, targetVersion: targetOptions.targetVersion || '1', encoderVersion: targetOptions.encoderVersion, projectId: normalizedProject.projectId } });
         const candidatesByRow = Object.fromEntries(Object.entries(targetProject.mappings).map(([row, value]) => [row, framesByMotion[value.slice(7)]?.frames || []]));
         renderedInput = { ...targetInput, candidatesByRow };
       }
@@ -1053,6 +1083,7 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
       result = await buildClawdTheme({
         mapping: { sleepMode: targetProject.options.sleepMode || 'direct', states: targetProject.mappings, reactions: targetProject.reactions },
         framesByMotion: renderedInput.framesByMotion || renderedInput.frames,
+        expressionByMotion,
         behavior: targetProject.options.behavior,
         metadata: metadataByTarget[targetId] || renderedInput.metadata,
         readme: renderedInput.readme,

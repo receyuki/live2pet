@@ -97,6 +97,20 @@ test('rejects future schema versions, duplicate recipes, and malformed mappings'
   );
 });
 
+test('round-trips recipe assignments and rejects recipe-to-motion mismatches', () => {
+  const project = fixture();
+  project.targets.clawd.recipeMappings = { idle: 'idle-recipe', drag: 'smile-recipe' };
+  const parsed = parseProject(serializeProject(project));
+  assert.deepEqual(parsed.targets.clawd.recipeMappings, project.targets.clawd.recipeMappings);
+
+  const mismatch = fixture();
+  mismatch.targets.clawd.recipeMappings = { idle: 'smile-recipe' };
+  assert.throws(
+    () => serializeProject(mismatch),
+    (error) => error instanceof ProjectValidationError && error.code === 'RECIPE_MAPPING_MISMATCH',
+  );
+});
+
 test('normalizes a target Render Preset without retaining a duplicate option', () => {
   const project = createProject({
     projectId: 'preset',

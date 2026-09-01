@@ -60,6 +60,18 @@ test('capture cache identities isolate source, target, preset, and motion recipe
   assert.equal(differentMotion.entries[0].hit, false);
 });
 
+test('capture cache identities isolate Animation Recipe Expressions', async () => {
+  const { service } = setup();
+  const base = { sourceFingerprint: 'a'.repeat(64), cubismVersion: 4, target: 'clawd', renderPreset: 'balanced' };
+  const smile = recipe({ expressionId: 'smile' });
+  const baseRecipe = recipe({ expressionId: null });
+  await service.write(base, smile, { motionId: 'idle', expressionId: 'smile', ...frames() });
+  const smileHit = await service.status({ ...base, motions: [smile] });
+  const baseMiss = await service.status({ ...base, motions: [baseRecipe] });
+  assert.equal(smileHit.entries[0].hit, true);
+  assert.equal(baseMiss.entries[0].hit, false);
+});
+
 test('capture cache batches runtime resolution for a multi-motion build', async () => {
   const cache = new CacheStore({ rootDir: fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-capture-cache-batch-')), maxBytes: 1024 * 1024 });
   let runtimeLoads = 0;

@@ -2,6 +2,8 @@
 
 The `.live2pet` document is the editable source of truth for a mapping session. It is a small, reference-only JSON document: it may record the selected Source Package path, source fingerprint, Animation Recipes, target mappings, Render Presets, package metadata, and rights notes, but it must never embed model bytes, textures, Motion or Expression files, Cubism runtimes, rendered frames, or built packages.
 
+An Animation Recipe is a reusable `{ id, motionId, expressionId }` reference; `expressionId` may be `null` to use the model's base Expression. Target Profiles keep their direct `motion:<id>` mappings and may add a `recipeMappings` object that assigns a recipe id to a slot. This keeps older projects readable while making the selected Expression durable across save/reopen and build. A recipe must reference the same Motion as its target slot, and one target must not request different Expressions for the same Motion because capture and cache reuse are Motion-scoped. The Mapper creates or reuses a safe recipe id when the user assigns the currently previewed Motion/Expression; clearing or replacing a mapping removes the slot's recipe reference.
+
 ## Save and recovery
 
 The Mapper provides an explicit Save action. A dirty browser session also writes a bounded, reference-only autosave draft to the browser profile. Recovery is offered when a valid draft is present; an invalid or oversized draft is discarded and never presented as recoverable. Accepting a recovery loads the validated project document and marks it dirty so the user can save it explicitly. Opening another project or saving the current project clears the superseded browser draft.

@@ -626,6 +626,61 @@ test('buildProjectTargets can render mapped Motions through the shared renderer 
   assert.ok(events.includes('codex-pet:render:completed'));
 });
 
+test('buildProjectTargets applies project Animation Recipe Expressions during capture', async () => {
+  const renderer = new SyntheticRenderer();
+  await renderer.load({
+    motions: ['idle', 'thinking', 'working', 'error', 'attention'].map((id) => ({ id, duration: 0.1 })),
+    expressions: [{ id: 'smile', name: 'Smile' }],
+  });
+  const expressionCalls = [];
+  const setExpression = renderer.setExpression.bind(renderer);
+  renderer.setExpression = async (id) => { expressionCalls.push(id); return setExpression(id); };
+  const project = createProject({
+    projectId: 'recipe-target',
+    name: 'Recipe target',
+    source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'sha256:fixture' },
+    recipes: [{ id: 'idle-smile', motionId: 'idle', expressionId: 'smile' }],
+    targets: {
+      clawd: { profile: 'clawd', mappings: clawdMapping().states, reactions: clawdMapping().reactions, recipeMappings: { idle: 'idle-smile' }, options: { sleepMode: 'direct' } },
+    },
+  });
+  const result = await buildProjectTargets({
+    project,
+    targets: ['clawd'],
+    inputsByTarget: { clawd: { renderer, render: { width: 2, height: 2, samples: 2, fps: 10 } } },
+    optionsByTarget: { clawd: { sharpFactory: clawdSharpFactory() } },
+  });
+  assert.equal(result.builds.clawd.target, 'clawd');
+  assert.equal(expressionCalls[0], 'smile');
+  assert.equal(expressionCalls[1], null);
+  assert.equal(renderer.getState().expressionId, null);
+});
+
+test('buildProjectTargets rejects conflicting Expressions for one Motion', async () => {
+  const project = createProject({
+    projectId: 'recipe-conflict',
+    name: 'Recipe conflict',
+    source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'sha256:fixture' },
+    recipes: [
+      { id: 'idle-smile', motionId: 'idle', expressionId: 'smile' },
+      { id: 'idle-frown', motionId: 'idle', expressionId: 'frown' },
+    ],
+    targets: {
+      clawd: {
+        profile: 'clawd',
+        mappings: clawdMapping().states,
+        reactions: { drag: 'motion:idle' },
+        recipeMappings: { idle: 'idle-smile', drag: 'idle-frown' },
+        options: { sleepMode: 'direct' },
+      },
+    },
+  });
+  await assert.rejects(
+    () => buildProjectTargets({ project, targets: ['clawd'], inputsByTarget: { clawd: { framesByMotion: clawdFrames() } }, optionsByTarget: { clawd: { sharpFactory: clawdSharpFactory() } } }),
+    (error) => error instanceof PackageBuildError && error.code === 'CONFLICTING_RECIPE_EXPRESSIONS',
+  );
+});
+
 test('renderer capture uses named target Render Presets', async () => {
   const renderer = new SyntheticRenderer();
   await renderer.load({ motions: [{ id: 'idle', duration: 0.1 }] });
@@ -638,6 +693,34 @@ test('renderer capture uses named target Render Presets', async () => {
     () => renderMappedMotions({ renderer, motionIds: ['idle'], render: { preset: 'unknown' }, target: 'codex-pet' }),
     (error) => error instanceof PackageBuildError && error.code === 'INVALID_RENDER_PRESET',
   );
+});
+
+test('renderer capture applies the Expression selected by an Animation Recipe', async () => {
+  const renderer = new SyntheticRenderer();
+  await renderer.load({ motions: [{ id: 'idle', duration: 0.1 }], expressions: [{ id: 'smile' }] });
+  const expressionCalls = [];
+  const setExpression = renderer.setExpression.bind(renderer);
+  renderer.setExpression = async (id) => { expressionCalls.push(id); return setExpression(id); };
+  const result = await renderMappedMotions({ renderer, motionIds: ['idle'], expressionByMotion: { idle: 'smile' }, render: { preset: 'compact' }, target: 'codex-pet' });
+  assert.equal(result.idle.expressionId, 'smile');
+  assert.deepEqual(expressionCalls, ['smile', null]);
+  assert.equal(renderer.getState().expressionId, null);
+});
+
+test('render candidate cache preserves the Animation Recipe Expression on a hit', async () => {
+  const renderer = new SyntheticRenderer();
+  await renderer.load({ motions: [{ id: 'idle', duration: 0.1 }], expressions: [{ id: 'smile' }] });
+  let captureCount = 0;
+  const capture = renderer.captureRgba.bind(renderer);
+  renderer.captureRgba = (options) => { captureCount += 1; return capture(options); };
+  const cache = new CacheStore({ rootDir: require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'live2pet-recipe-render-cache-')) });
+  const cacheContext = { projectId: 'recipe-render-cache', sourceFingerprint: 'source-sha256', runtimeVersion: 'core-5', rendererVersion: 'renderer-1', targetVersion: '1' };
+  const first = await renderMappedMotions({ renderer, motionIds: ['idle'], expressionByMotion: { idle: 'smile' }, target: 'codex-pet', render: { preset: 'compact' }, cache, cacheContext });
+  const firstCaptureCount = captureCount;
+  const second = await renderMappedMotions({ renderer, motionIds: ['idle'], expressionByMotion: { idle: 'smile' }, target: 'codex-pet', render: { preset: 'compact' }, cache, cacheContext });
+  assert.equal(second.idle.expressionId, 'smile');
+  assert.deepEqual(second.idle.frames.map((frame) => frame.id), first.idle.frames.map((frame) => frame.id));
+  assert.equal(captureCount, firstCaptureCount);
 });
 
 test('reuses verified render candidates only with a complete cache identity', async () => {
