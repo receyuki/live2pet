@@ -47,7 +47,7 @@ The official modern Cubism Core download is available from [Live2D's SDK for Web
 
 ## Development status
 
-The core inspection, project, mapping, target-build, progress, cache, validation, generated-preview, and artifact-download seams are implemented. The remaining V1 work is to consolidate source playback into the center-column preview, qualify saved modern and legacy runtimes with locally owned models, prove both generated ZIPs in their real target hosts, harden the long-build experience, and accept a locally built macOS App on a clean user profile. A separate preview window is not a V1 feature or acceptance gate.
+The core inspection, project, mapping, center-column source preview, target-build, progress, cache, validation, generated-preview, and artifact-download seams are implemented. The remaining V1 work is to qualify saved modern and legacy runtimes with locally owned models, prove both generated ZIPs in their real target hosts, harden the long-build experience, and accept a locally built macOS App on a clean user profile. A separate preview window is not a V1 feature or acceptance gate.
 
 The official Cubism Web Framework adapter, Codex skill/Mapper Session product surface, Windows qualification, automatic installation as the primary flow, and public signed binaries are explicitly post-V1. See the [implementation plan](docs/plans/live2pet-v1-implementation-plan.md) for the current order and close criteria.
 

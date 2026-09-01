@@ -67,8 +67,8 @@ browser-only Mapper sessions keep the helper unavailable.
 
 The existing narrow App IPC renderer session remains covered for internal use,
 but its separate-window controls are outside the personal-use V1 workflow and
-are scheduled for removal from the normal Mapper UI. Both standard directories
-and reconstructed PCK inputs must use the center-column source preview. The
+have been removed from the normal Mapper UI. Both standard directories and
+reconstructed PCK inputs use the center-column source preview. The
 saved runtime is resolved in the main process, and neither runtime bytes nor
 absolute paths cross the App boundary. Pixi is the personal-use V1 modern renderer. An advanced
 host integration can opt into the experimental official Web Framework bridge by passing

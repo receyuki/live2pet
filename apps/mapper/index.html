@@ -337,10 +337,6 @@
       <input id="runtimeFolderInput" class="hidden" type="file" webkitdirectory directory>
       <button id="clearSavedRuntimes" data-i18n="runtime.clearSaved">Clear saved runtimes</button>
       <span id="runtimeStatus" class="runtime-status" role="status" aria-live="polite" data-i18n="runtime.status">Modern Core is optional for inspection; Cubism 2 preview requires a local runtime.</span>
-      <button id="openRendererPreview" data-i18n="runtime.preview.open">Open isolated preview</button>
-      <button id="restartRendererPreview" data-i18n="runtime.preview.restart" disabled>Restart preview</button>
-      <button id="closeRendererPreview" data-i18n="runtime.preview.close" disabled>Close preview</button>
-      <span id="rendererPreviewStatus" class="runtime-status" role="status" aria-live="polite" data-i18n="runtime.preview.status">Isolated preview is closed.</span>
     </section>
 
     <section class="skillbar" aria-labelledby="skillHeading">
@@ -641,23 +637,6 @@
           "skill.status.installed": "Live2Pet skill installed.",
           "skill.status.updated": "Live2Pet skill updated.",
           "skill.status.installFailed": "Skill installation failed: {message}",
-          "runtime.preview.open": "Open isolated preview",
-          "runtime.preview.restart": "Restart preview",
-          "runtime.preview.close": "Close preview",
-          "runtime.preview.status": "Isolated preview is closed.",
-          "runtime.preview.opening": "Opening isolated preview…",
-          "runtime.preview.ready": "Isolated preview is ready in a separate window.",
-          "runtime.preview.closed": "Isolated preview closed.",
-          "runtime.preview.unavailable": "Isolated preview needs the Desktop App, a local source directory, and a saved matching Cubism runtime.",
-          "runtime.preview.runtimeChecking": "Checking the saved Cubism runtime library…",
-          "runtime.preview.runtimeRequired": "Add and save a matching {runtime} before opening isolated preview.",
-          "runtime.preview.runtimeUnavailable": "Saved runtime status is unavailable; choose and save a runtime first.",
-          "runtime.preview.desktopOnly": "Open this Mapper in the Desktop App to use isolated preview.",
-          "runtime.preview.sourceRequired": "Choose a Source Package directory first.",
-          "runtime.preview.directoryOnly": "Isolated preview supports standard directories; PCK preview stays in this window.",
-          "runtime.preview.pathUnavailable": "The Desktop App could not resolve the selected directory path. Re-select the Source Package directory in the App.",
-          "runtime.preview.failed": "Isolated preview failed: {message}",
-          "runtime.preview.restarting": "Restarting isolated preview…",
           "project.eyebrow": "Live2Pet Project",
           "project.heading": "Save your mapping",
           "project.description": "Projects keep source references and Motion Mappings, never model bytes or runtime files.",
@@ -700,7 +679,6 @@
           "preview.status.resumed": "Motion preview resumed.",
           "preview.status.restarted": "Motion preview restarted.",
           "preview.status.updated": "Playback settings updated.",
-          "preview.status.isolatedOnly": "Speed and loop settings apply to the isolated preview when it is open.",
           "preview.codex.atlasCaption": "Generated atlas · package preview",
           "preview.codex.atlasAlt": "Generated Codex Pet atlas preview",
           "preview.codex.cellCaption": "First cell · 192 × 208 final size",
@@ -1059,23 +1037,6 @@
           "skill.status.installed": "Live2Pet skill 已安装。",
           "skill.status.updated": "Live2Pet skill 已更新。",
           "skill.status.installFailed": "Skill 安装失败：{message}",
-          "runtime.preview.open": "打开独立预览",
-          "runtime.preview.restart": "重启预览",
-          "runtime.preview.close": "关闭预览",
-          "runtime.preview.status": "独立预览已关闭。",
-          "runtime.preview.opening": "正在打开独立预览…",
-          "runtime.preview.ready": "独立预览已在单独窗口中就绪。",
-          "runtime.preview.closed": "独立预览已关闭。",
-          "runtime.preview.unavailable": "独立预览需要 Desktop App、本地资源目录和已保存且匹配的 Cubism 运行时。",
-          "runtime.preview.runtimeChecking": "正在检查已保存的 Cubism 运行时…",
-          "runtime.preview.runtimeRequired": "请先添加并保存匹配的 {runtime}，再打开独立预览。",
-          "runtime.preview.runtimeUnavailable": "无法获取已保存运行时状态，请先选择并保存运行时。",
-          "runtime.preview.desktopOnly": "请在 Desktop App 中打开此 Mapper 才能使用独立预览。",
-          "runtime.preview.sourceRequired": "请先选择 Source Package 目录。",
-          "runtime.preview.directoryOnly": "独立预览支持标准目录；PCK 预览继续在当前窗口中进行。",
-          "runtime.preview.pathUnavailable": "Desktop App 无法解析所选目录路径，请在 App 中重新选择 Source Package 目录。",
-          "runtime.preview.failed": "独立预览失败：{message}",
-          "runtime.preview.restarting": "正在重启独立预览…",
           "project.eyebrow": "Live2Pet 项目",
           "project.heading": "保存映射",
           "project.description": "项目只保存资源引用和动作映射，不保存模型字节或运行时文件。",
@@ -1118,7 +1079,6 @@
           "preview.status.resumed": "动作预览已继续。",
           "preview.status.restarted": "动作预览已重播。",
           "preview.status.updated": "播放设置已更新。",
-          "preview.status.isolatedOnly": "速度和循环设置会在独立预览打开时生效。",
           "preview.codex.atlasCaption": "生成图集 · 资源包预览",
           "preview.codex.atlasAlt": "生成的 Codex Pet 图集预览",
           "preview.codex.cellCaption": "第一格 · 192 × 208 最终尺寸",
@@ -1708,8 +1668,6 @@
     let activeSourceFiles = null;
     let activeSourceOptions = null;
     const runtimeScripts = new Map();
-    let runtimeLibrary = null;
-    let runtimeLibraryLoading = false;
     const RUNTIME_DB_NAME = "live2pet-mapper-runtime";
     const RUNTIME_DB_VERSION = 1;
     const RUNTIME_STORE_NAME = "runtimes";
@@ -1720,10 +1678,6 @@
     const live2dAdapterNamespaces = new Map();
     let mapperSession = null;
     let sessionProject = null;
-    let rendererPreviewSessionId = null;
-    let rendererPreviewBusy = false;
-    let rendererPreviewStatusText = "";
-    let rendererPreviewStatusLevel = "";
     let sourcePreviewPlaying = false;
     let sourcePreviewLoop = true;
     let sourcePreviewSpeed = 1;
@@ -1805,7 +1759,6 @@
       if (action.type === "LOAD_MODEL" || action.type === "INSPECTION_ERROR") {
         releaseClawdPreview();
         clawdArtifact = null;
-        if (rendererPreviewSessionId) void closeRendererPreview({ silent: true });
       }
       state = MotionMapping.reducer(state, action);
       if (action.type === "LOAD_MODEL" && sessionProject) {
@@ -2181,10 +2134,6 @@
       }
     }
 
-    function desktopRendererApi() {
-      return window.live2pet && typeof window.live2pet.startRendererPreview === "function" && typeof window.live2pet.loadRendererSource === "function" && typeof window.live2pet.rendererCommand === "function" ? window.live2pet : null;
-    }
-
     function localFilePath(file) {
       const value = file?.path;
       if (typeof value === "string" && /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value)) return value;
@@ -2229,150 +2178,6 @@
         } catch {}
       }
       return null;
-    }
-
-    function rendererPreviewAvailability() {
-      if (!desktopRendererApi()) return { source: null, reason: I18n.t("runtime.preview.desktopOnly") };
-      if (!state.model || !state.inspection) return { source: null, reason: I18n.t("runtime.preview.sourceRequired") };
-      if (state.inspection.source?.kind !== "standard-directory") return { source: null, reason: I18n.t("runtime.preview.directoryOnly") };
-      const sourceRoot = selectedSourcePath(activeSourceFiles || [], activeSourceOptions || {});
-      const modelConfig = state.inspection.source?.modelConfig;
-      if (!sourceRoot || !modelConfig || /\.pck$/i.test(sourceRoot) || !Number.isInteger(Number(state.model.cubism))) {
-        return { source: null, reason: I18n.t("runtime.preview.pathUnavailable") };
-      }
-      const cubismVersion = Number(state.model.cubism);
-      if (runtimeLibraryLoading) return { source: null, reason: I18n.t("runtime.preview.runtimeChecking") };
-      if (!runtimeLibrary || !Array.isArray(runtimeLibrary.runtimes)) {
-        return { source: null, reason: I18n.t("runtime.preview.runtimeUnavailable") };
-      }
-      const matchingRuntime = runtimeLibrary.runtimes.find(runtime => runtime?.available !== false && Array.isArray(runtime.cubismGenerations) && runtime.cubismGenerations.includes(cubismVersion));
-      if (!matchingRuntime) {
-        const runtime = cubismVersion === 2 ? I18n.t("runtime.name.legacy") : I18n.t("runtime.name.modern");
-        return { source: null, reason: I18n.t("runtime.preview.runtimeRequired", { runtime }) };
-      }
-      return { source: { sourceRoot, modelConfig, cubismVersion }, reason: "" };
-    }
-
-    function rendererPreviewSource() {
-      return rendererPreviewAvailability().source;
-    }
-
-    function setRendererPreviewStatus(message, level = "") {
-      rendererPreviewStatusText = message;
-      rendererPreviewStatusLevel = level;
-      const element = $("rendererPreviewStatus");
-      if (!element) return;
-      element.className = `runtime-status${level ? ` ${level}` : ""}`;
-      element.textContent = message;
-    }
-
-    function rendererPreviewError(response, fallback) {
-      if (response?.ok === true) return null;
-      return projectError(response?.error?.code || "RENDERER_PREVIEW_FAILED", response?.error?.message || fallback);
-    }
-
-    async function rendererPreviewCommand(method, args = []) {
-      const api = desktopRendererApi();
-      if (!api || !rendererPreviewSessionId) return null;
-      const response = await api.rendererCommand({ sessionId: rendererPreviewSessionId, method, args });
-      const error = rendererPreviewError(response, `Renderer command ${method} failed.`);
-      if (error) throw error;
-      return response.result;
-    }
-
-    async function closeRendererPreview({ silent = false } = {}) {
-      const api = desktopRendererApi();
-      const sessionId = rendererPreviewSessionId;
-      rendererPreviewSessionId = null;
-      if (!api || !sessionId) {
-        if (!silent) setRendererPreviewStatus(I18n.t("runtime.preview.closed"));
-        render();
-        return;
-      }
-      try {
-        const response = await api.closeRendererPreview(sessionId);
-        const error = rendererPreviewError(response, "The isolated preview could not be closed.");
-        if (error && !silent) throw error;
-        if (!silent) setRendererPreviewStatus(I18n.t("runtime.preview.closed"), "good");
-      } catch (error) {
-        if (!silent) setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad");
-      } finally {
-        render();
-      }
-    }
-
-    async function openRendererPreview() {
-      const api = desktopRendererApi();
-      const availability = rendererPreviewAvailability();
-      const source = availability.source;
-      if (!api || !source) {
-        setRendererPreviewStatus(availability.reason || I18n.t("runtime.preview.unavailable"), "bad");
-        render();
-        return;
-      }
-      rendererPreviewBusy = true;
-      setRendererPreviewStatus(I18n.t("runtime.preview.opening"), "busy");
-      render();
-      try {
-        const started = await api.startRendererPreview({ sourceRoot: source.sourceRoot, cubismVersion: source.cubismVersion, show: true });
-        const startError = rendererPreviewError(started, "The isolated preview could not be started.");
-        if (startError) throw startError;
-        rendererPreviewSessionId = started.result.sessionId;
-        const loaded = await api.loadRendererSource({
-          sessionId: rendererPreviewSessionId,
-          modelConfig: source.modelConfig,
-          cubismVersion: source.cubismVersion,
-          motions: state.motions.map(motion => ({ id: motion.id, name: motion.name, group: motion.group, index: motion.index, duration: motion.duration })),
-          expressions: state.expressions.map(expression => ({ id: expression.id, name: expression.name, runtimeId: expression.index })),
-        });
-        const loadError = rendererPreviewError(loaded, "The isolated preview could not load this Source Package.");
-        if (loadError) throw loadError;
-        if (state.selectedMotionId) {
-          await rendererPreviewCommand("playMotion", [state.selectedMotionId, { loop: sourcePreviewLoop, speed: sourcePreviewSpeed, start: 0 }]);
-          sourcePreviewPlaying = true;
-        }
-        setRendererPreviewStatus(I18n.t("runtime.preview.ready"), "good");
-      } catch (error) {
-        if (rendererPreviewSessionId) await closeRendererPreview({ silent: true });
-        setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad");
-      } finally {
-        rendererPreviewBusy = false;
-        render();
-      }
-    }
-
-    async function restartRendererPreview() {
-      const api = desktopRendererApi();
-      if (!api || !rendererPreviewSessionId) return;
-      rendererPreviewBusy = true;
-      setRendererPreviewStatus(I18n.t("runtime.preview.restarting"), "busy");
-      render();
-      try {
-        const response = await api.restartRendererPreview(rendererPreviewSessionId);
-        const error = rendererPreviewError(response, "The isolated preview could not be restarted.");
-        if (error) throw error;
-        const source = rendererPreviewSource();
-        if (!source) throw projectError("RENDERER_PREVIEW_SOURCE_UNAVAILABLE", I18n.t("runtime.preview.unavailable"));
-        const loaded = await api.loadRendererSource({
-          sessionId: rendererPreviewSessionId,
-          modelConfig: source.modelConfig,
-          cubismVersion: source.cubismVersion,
-          motions: state.motions.map(motion => ({ id: motion.id, name: motion.name, group: motion.group, index: motion.index, duration: motion.duration })),
-          expressions: state.expressions.map(expression => ({ id: expression.id, name: expression.name, runtimeId: expression.index })),
-        });
-        const loadError = rendererPreviewError(loaded, "The isolated preview could not reload this Source Package.");
-        if (loadError) throw loadError;
-        if (state.selectedMotionId) {
-          await rendererPreviewCommand("playMotion", [state.selectedMotionId, { loop: sourcePreviewLoop, speed: sourcePreviewSpeed, start: 0 }]);
-          sourcePreviewPlaying = true;
-        }
-        setRendererPreviewStatus(I18n.t("runtime.preview.ready"), "good");
-      } catch (error) {
-        setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad");
-      } finally {
-        rendererPreviewBusy = false;
-        render();
-      }
     }
 
     function selectedSourcePath(files, options = {}) {
@@ -2523,7 +2328,6 @@
         if (!response || response.ok !== true || !response.result) {
           throw projectError(response?.error?.code || "RUNTIME_SETTINGS_FAILED", response?.error?.message || "The Desktop App could not save the selected runtime setting.");
         }
-        runtimeLibrary = response.result;
         appSaved = true;
       }
       await loadRuntimeSource(source, file.name, kind, { appSaved });
@@ -2546,23 +2350,15 @@
     async function showDesktopRuntimeLibraryStatus() {
       const api = desktopRuntimeApi();
       if (!api || typeof api.getRuntimeSettings !== "function") return;
-      runtimeLibraryLoading = true;
-      render();
       try {
         const response = await api.getRuntimeSettings();
-        runtimeLibrary = response?.ok === true && response.result && Array.isArray(response.result.runtimes)
-          ? response.result
-          : null;
-        const runtimes = runtimeLibrary?.runtimes.filter(runtime => runtime.available !== false) || [];
+        const runtimes = response?.ok === true && response.result && Array.isArray(response.result.runtimes)
+          ? response.result.runtimes.filter(runtime => runtime.available !== false)
+          : [];
         if (!runtimes.length) return;
         const labels = runtimes.map(runtime => I18n.t(`runtime.name.${runtime.runtimeKind === "legacy-cubism2" ? "legacy" : "modern"}`));
         setRuntimeStatus(I18n.t("runtime.libraryReady", { runtimes: labels.join(" · ") }), "good");
-      } catch {
-        runtimeLibrary = null;
-      } finally {
-        runtimeLibraryLoading = false;
-        render();
-      }
+      } catch {}
     }
 
     async function initializeRuntimes() {
@@ -3015,16 +2811,6 @@
       $("codexRenderPreset").value = state.codexRenderPreset;
       $("outputPrefix").value = state.outputPrefix;
       $("saveProject").disabled = !state.model || !state.inspection;
-      const rendererApi = desktopRendererApi();
-      const rendererAvailability = rendererPreviewAvailability();
-      const rendererSource = rendererAvailability.source;
-      $("openRendererPreview").disabled = rendererPreviewBusy || Boolean(rendererPreviewSessionId) || !rendererApi || !rendererSource;
-      $("openRendererPreview").title = rendererAvailability.reason || I18n.t("runtime.preview.open");
-      $("restartRendererPreview").disabled = rendererPreviewBusy || !rendererPreviewSessionId || !rendererApi;
-      $("closeRendererPreview").disabled = rendererPreviewBusy || !rendererPreviewSessionId || !rendererApi;
-      const rendererStatus = $("rendererPreviewStatus");
-      rendererStatus.className = "runtime-status" + (rendererPreviewStatusLevel ? ` ${rendererPreviewStatusLevel}` : "");
-      rendererStatus.textContent = rendererPreviewStatusText || I18n.t("runtime.preview.status");
       const projectValidation = MotionMapping.validate(state).map(x => ({ level: x.level, text: x.text }));
       recipeExpressionByMotion("clawd").errors.forEach(text => projectValidation.push({ level: "error", text }));
       $("validation").innerHTML = projectValidation.map(x=>`<div class="${x.level}">${escapeHtml(x.text)}</div>`).join("");
@@ -3499,7 +3285,7 @@
       element.textContent = message;
     }
     function sourcePreviewAvailable() {
-      return Boolean(liveModel || rendererPreviewSessionId);
+      return Boolean(liveModel);
     }
     function renderPreviewPlayback() {
       const hasMotion = Boolean(selectedMotion());
@@ -3534,19 +3320,11 @@
         liveModel.autoUpdate = true;
         await liveModel.motion(motion.group,motion.index,3);
       }
-      if (rendererPreviewSessionId) {
-        try { await rendererPreviewCommand("playMotion", [id, { loop: sourcePreviewLoop, speed: sourcePreviewSpeed, start }]); }
-        catch (error) { setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad"); }
-      }
       renderPreviewPlayback();
     }
     async function pauseSourcePreview() {
       if (!sourcePreviewAvailable()) return;
       if (liveModel) liveModel.autoUpdate = false;
-      if (rendererPreviewSessionId) {
-        try { await rendererPreviewCommand("pause"); }
-        catch (error) { setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad"); }
-      }
       sourcePreviewPlaying = false;
       setSourcePreviewStatus(I18n.t("preview.status.paused"), "good");
       renderPreviewPlayback();
@@ -3554,10 +3332,6 @@
     async function resumeSourcePreview() {
       if (!sourcePreviewAvailable() || !state.selectedMotionId) return;
       if (liveModel) liveModel.autoUpdate = true;
-      if (rendererPreviewSessionId) {
-        try { await rendererPreviewCommand("resume"); }
-        catch (error) { setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad"); }
-      }
       sourcePreviewPlaying = true;
       setSourcePreviewStatus(I18n.t("preview.status.resumed"), "good");
       renderPreviewPlayback();
@@ -3565,12 +3339,7 @@
     async function restartSourcePreview() {
       if (!sourcePreviewAvailable() || !state.selectedMotionId) return;
       if (liveModel) liveModel.autoUpdate = true;
-      if (rendererPreviewSessionId) {
-        try { await rendererPreviewCommand("restart"); }
-        catch (error) { setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad"); }
-      } else {
-        await playMotion(state.selectedMotionId, { loop: sourcePreviewLoop, speed: sourcePreviewSpeed, start: 0 });
-      }
+      await playMotion(state.selectedMotionId, { loop: sourcePreviewLoop, speed: sourcePreviewSpeed, start: 0 });
       sourcePreviewPlaying = true;
       setSourcePreviewStatus(I18n.t("preview.status.restarted"), "good");
       renderPreviewPlayback();
@@ -3578,35 +3347,19 @@
     async function updateSourcePreviewSettings() {
       sourcePreviewLoop = $("previewLoop").checked;
       sourcePreviewSpeed = Number($("previewSpeed").value) || 1;
-      if (rendererPreviewSessionId) {
-        try {
-          await rendererPreviewCommand("setLoop", [sourcePreviewLoop]);
-          await rendererPreviewCommand("setSpeed", [sourcePreviewSpeed]);
-        } catch (error) {
-          setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad");
-        }
-      } else if (sourcePreviewAvailable()) {
-        setSourcePreviewStatus(I18n.t("preview.status.isolatedOnly"));
-      }
+      if (sourcePreviewAvailable()) setSourcePreviewStatus(I18n.t("preview.status.updated"), "good");
       renderPreviewPlayback();
     }
     async function playExpression(id) {
       const expression = state.expressions.find(item => item.id === id);
       if (!expression) return;
-      const applied = liveModel ? await liveModel.expression(expression.index) : true;
+      const applied = liveModel ? await liveModel.expression(expression.index) : false;
       if (applied !== false) dispatch({type:"SELECT_EXPRESSION",id});
-      if (applied !== false && rendererPreviewSessionId) {
-        try { await rendererPreviewCommand("setExpression", [id]); }
-        catch (error) { setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad"); }
-      }
     }
     function resetExpression() {
       const manager = liveModel?.internalModel?.motionManager?.expressionManager;
       if (manager) manager.resetExpression();
       dispatch({type:"SELECT_EXPRESSION",id:null});
-      if (rendererPreviewSessionId) {
-        void rendererPreviewCommand("setExpression", [null]).catch(error => setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad"));
-      }
     }
 
     function downloadJson() {
@@ -5088,7 +4841,6 @@
         if (api && typeof api.clearRuntimeSettings === "function") {
           const response = await api.clearRuntimeSettings();
           if (!response || response.ok !== true) throw projectError(response?.error?.code || "RUNTIME_SETTINGS_CLEAR_FAILED", response?.error?.message || "The Desktop App could not clear the saved runtime setting.");
-          runtimeLibrary = response.result || { runtimes: [] };
         }
         const cleared = await clearPersistedRuntimes();
         setRuntimeStatus(I18n.t(cleared || api ? "runtime.cleared" : "runtime.storageUnavailable"), cleared || api ? "good" : "");
@@ -5099,9 +4851,6 @@
     });
     $("refreshSkillStatus").addEventListener("click", () => { void refreshSkillStatus(); });
     $("installSkill").addEventListener("click", () => { void installSkillFromApp(); });
-    $("openRendererPreview").addEventListener("click", openRendererPreview);
-    $("restartRendererPreview").addEventListener("click", restartRendererPreview);
-    $("closeRendererPreview").addEventListener("click", () => { void closeRendererPreview(); });
     $("openProject").addEventListener("click",()=>$("projectInput").click());
     $("recoverProject").addEventListener("click", recoverProjectDraft);
     $("projectInput").addEventListener("change",async e=>{

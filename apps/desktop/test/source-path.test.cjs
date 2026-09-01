@@ -25,7 +25,7 @@ function loadSelectedSourcePath() {
 function loadLocalDirectoryPath() {
   const mapper = fs.readFileSync(mapperPath, 'utf8');
   const start = mapper.indexOf('function localFilePath');
-  const end = mapper.indexOf('\n    function rendererPreviewAvailability', start);
+  const end = mapper.indexOf('\n    function selectedSourcePath', start);
   assert.notEqual(start, -1, 'localFilePath must remain present in the Mapper');
   assert.notEqual(end, -1, 'localDirectoryPath must remain independently testable');
 
