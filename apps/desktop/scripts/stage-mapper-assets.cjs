@@ -6,6 +6,10 @@ const SOURCE_MAPPER = path.resolve(__dirname, '../../mapper/index.html');
 const DEFAULT_OUTPUT = path.resolve(__dirname, '../mapper-dist');
 const SUPPORT_FILES = Object.freeze([
   {
+    source: path.resolve(__dirname, '../../mapper/build-progress.js'),
+    target: 'build-progress.js',
+  },
+  {
     source: path.resolve(__dirname, '../../mapper/clawd-capture-plan.js'),
     target: 'clawd-capture-plan.js',
   },

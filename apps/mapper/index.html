@@ -579,6 +579,7 @@
   <script src="../../packages/live2d-exporter/node_modules/pixi.js/dist/browser/pixi.min.js"></script>
   <script src="../../packages/live2d-exporter/node_modules/@pixi/unsafe-eval/dist/browser/unsafe-eval.min.js"></script>
   <script src="../../node_modules/.pnpm/@zip.js+zip.js@2.7.57/node_modules/@zip.js/zip.js/dist/zip-no-worker.min.js"></script>
+  <script src="./build-progress.js"></script>
   <script src="./clawd-capture-plan.js"></script>
   <script>
     const I18n = (() => {
@@ -891,6 +892,8 @@
           "build.progress.stage.transfer": "Receive package",
           "build.progress.capture.current": "Capturing Motion {current} of {total}: {motion}",
           "build.progress.capture.done": "Captured {completed} of {total} Motions.",
+          "build.progress.capture.currentFrames": "Capturing frame {completed} of {total}: {motion}",
+          "build.progress.capture.doneFrames": "Captured {completed} of {total} frames.",
           "build.progress.stage.started": "{stage} started.",
           "build.progress.stage.completed": "{stage} completed.",
           "build.progress.stage.current": "{stage} · {motion}",
@@ -1294,6 +1297,8 @@
           "build.progress.stage.transfer": "接收主题包",
           "build.progress.capture.current": "正在捕获动作 {current}/{total}：{motion}",
           "build.progress.capture.done": "已捕获 {completed}/{total} 个动作。",
+          "build.progress.capture.currentFrames": "正在捕获帧 {completed}/{total}：{motion}",
+          "build.progress.capture.doneFrames": "已捕获 {completed}/{total} 帧。",
           "build.progress.stage.started": "{stage} 已开始。",
           "build.progress.stage.completed": "{stage} 已完成。",
           "build.progress.stage.current": "{stage} · {motion}",
@@ -3449,7 +3454,7 @@
 
     function createBuildProgress(target) {
       const config = BUILD_PROGRESS_CONFIG[target];
-      return { target, status: "idle", stage: "", stageStatus: "started", stageIndex: 0, percent: 0, captureCompleted: 0, captureTotal: 0, stageCompleted: 0, stageTotal: 0, completedMotionIds: new Set(), currentMotion: "", eventDetails: {}, error: "", buildId: null, cancelRequested: false, completed: false, stageCount: config.stages.length };
+      return { target, status: "idle", stage: "", stageStatus: "started", stageIndex: 0, percent: 0, captureCompleted: 0, captureTotal: 0, captureUnit: "motions", stageCompleted: 0, stageTotal: 0, completedMotionIds: new Set(), currentMotion: "", eventDetails: {}, error: "", buildId: null, cancelRequested: false, completed: false, stageCount: config.stages.length };
     }
 
     const buildProgress = { codex: createBuildProgress("codex"), clawd: createBuildProgress("clawd") };
@@ -3465,9 +3470,8 @@
       return progress.stage ? I18n.t(BUILD_PROGRESS_STAGE_KEYS[progress.stage] || progress.stage) : I18n.t("build.progress.waiting");
     }
 
-    function progressPercent(stageIndex, stageCount, fraction) {
-      if (stageIndex >= stageCount - 1 && fraction >= 1) return 100;
-      return Math.max(0, Math.min(99, Math.round(((stageIndex + fraction) / stageCount) * 100)));
+    function progressPercent(target, stage, fraction) {
+      return Live2PetBuildProgress.progressPercent(target, stage, fraction);
     }
 
     function formatBuildBytes(value) {
@@ -3488,6 +3492,14 @@
         return I18n.t("build.progress.transfer.current", { completed: formatBuildBytes(progress.stageCompleted), total });
       }
       if (progress.stage === "capture" && progress.captureTotal > 0) {
+        if (progress.captureUnit === "frames") {
+          if (progress.captureCompleted >= progress.captureTotal) return I18n.t("build.progress.capture.doneFrames", { completed: progress.captureCompleted, total: progress.captureTotal });
+          return I18n.t("build.progress.capture.currentFrames", {
+            completed: progress.captureCompleted,
+            total: progress.captureTotal,
+            motion: progress.currentMotion || I18n.t("mapping.selected.none"),
+          });
+        }
         if (progress.captureCompleted >= progress.captureTotal) return I18n.t("build.progress.capture.done", { completed: progress.captureCompleted, total: progress.captureTotal });
         return I18n.t("build.progress.capture.current", {
           current: Math.min(progress.captureCompleted + 1, progress.captureTotal),
@@ -3534,11 +3546,12 @@
       }
     }
 
-    function beginBuildProgress(target, captureTotal = 0) {
+    function beginBuildProgress(target, captureTotal = 0, captureUnit = "motions") {
       buildProgress[target] = createBuildProgress(target);
       buildProgress[target].status = "busy";
       buildProgress[target].stage = "capture";
       buildProgress[target].captureTotal = Math.max(0, Number(captureTotal) || 0);
+      buildProgress[target].captureUnit = captureUnit === "frames" ? "frames" : "motions";
       renderBuildProgress(target);
     }
 
@@ -3555,7 +3568,7 @@
       progress.completedMotionIds = new Set();
       progress.currentMotion = String(currentMotion || "").slice(0, 160);
       progress.eventDetails = {};
-      progress.percent = progressPercent(0, progress.stageCount, progress.captureTotal ? progress.captureCompleted / progress.captureTotal : 0);
+      progress.percent = progressPercent(target, "capture", progress.captureTotal ? progress.captureCompleted / progress.captureTotal : 0);
       renderBuildProgress(target);
     }
 
@@ -3599,7 +3612,7 @@
       const fraction = progress.stageTotal > 0
         ? Math.min(1, progress.stageCompleted / progress.stageTotal)
         : status === "completed" ? 1 : 0.05;
-      progress.percent = progressPercent(stageIndex, progress.stageCount, fraction);
+      progress.percent = progressPercent(target, canonicalStage, fraction);
       if (stageIndex === progress.stageCount - 1 && status === "completed") {
         progress.status = "good";
         progress.completed = true;
@@ -3842,6 +3855,7 @@
       if (!artifact?.blob) throw projectError("PREVIEW_UNAVAILABLE", I18n.t("preview.clawd.unavailable"));
       const zipApi = window.zip;
       if (!zipApi || typeof zipApi.ZipReader !== "function" || typeof zipApi.Uint8ArrayWriter !== "function" || (typeof zipApi.BlobReader !== "function" && typeof zipApi.Uint8ArrayReader !== "function")) throw projectError("ZIP_READER_UNAVAILABLE", I18n.t("preview.clawd.unavailable"));
+      if (typeof zipApi.configure === "function") zipApi.configure({ useWebWorkers: false });
       const source = typeof zipApi.BlobReader === "function"
         ? new zipApi.BlobReader(artifact.blob)
         : new zipApi.Uint8ArrayReader(new Uint8Array(await artifact.blob.arrayBuffer()));
@@ -4495,24 +4509,29 @@
           const plan = clawdCapturePlan(motion);
           return [motionId, { motionId, expressionId: expressionByMotion[motionId] || null, duration: plan.durationSeconds, width: settings.width, height: settings.height, frameCount: plan.frameCount, fps: settings.fps }];
         }));
-        beginBuildProgress("clawd", motionIds.length);
+        const captureFramesByMotion = Object.fromEntries(motionIds.map((motionId) => [motionId, clawdFrameCount(selectedMotionById(motionId))]));
+        const totalCaptureFrames = Object.values(captureFramesByMotion).reduce((sum, value) => sum + value, 0);
+        let completedCaptureFrames = 0;
+        beginBuildProgress("clawd", totalCaptureFrames, "frames");
         const captureCache = await prepareCaptureCache("clawd", captureRecipesByMotion, state.clawdRenderPreset, signal);
         if (!captureCache?.runtimeAvailable) throw projectError("CAPTURE_CACHE_UNAVAILABLE", I18n.t("build.status.captureCacheRequired"));
         setClawdBuildStatus(I18n.t("build.status.clawdCapture", { count: motionIds.length, width: settings.width }), "busy");
-        for (const [index, motionId] of motionIds.entries()) {
+        for (const motionId of motionIds) {
           checkMapperBuildCancelled(signal);
           const motion = selectedMotionById(motionId);
           if (!motion) throw projectError("INVALID_CLAWD_MAPPING", `${motionId} points to a Motion that is no longer loaded.`);
           const frameCount = clawdFrameCount(motion);
           if (captureCache?.hitsByMotion?.[motionId] === true) {
             setClawdBuildStatus(I18n.t("build.status.captureCached", { motion: motion.name }), "busy");
-            setBuildProgressCapture("clawd", index + 1, motionIds.length, motion.name);
+            completedCaptureFrames += frameCount;
+            setBuildProgressCapture("clawd", completedCaptureFrames, totalCaptureFrames, motion.name);
             continue;
           }
-          setBuildProgressCapture("clawd", index, motionIds.length, motion.name);
+          setBuildProgressCapture("clawd", completedCaptureFrames, totalCaptureFrames, motion.name);
           setClawdBuildStatus(I18n.t("build.status.capture", { slot: motionId, motion: motion.name, count: frameCount }), "busy");
           captures[motionId] = await captureClawdMotion(motion, (completed, total) => {
             setClawdBuildStatus(I18n.t("build.status.captureCompress", { motion: motion.name, current: completed, total }), "busy");
+            setBuildProgressCapture("clawd", completedCaptureFrames + completed, totalCaptureFrames, motion.name);
           }, signal, expressionByMotion[motionId] || null);
           if (captures[motionId].timing) {
             setClawdBuildStatus(I18n.t("build.status.captureTiming", {
@@ -4524,9 +4543,10 @@
           setClawdBuildStatus(I18n.t("build.status.captureSaving", { motion: motion.name }), "busy");
           await persistCaptureCacheEntry(captureCache, captureRecipesByMotion[motionId], captures[motionId], signal);
           delete captures[motionId];
-          setBuildProgressCapture("clawd", index + 1, motionIds.length, motion.name);
+          completedCaptureFrames += frameCount;
+          setBuildProgressCapture("clawd", completedCaptureFrames, totalCaptureFrames, motion.name);
         }
-        setBuildProgressCapture("clawd", motionIds.length, motionIds.length);
+        setBuildProgressCapture("clawd", totalCaptureFrames, totalCaptureFrames);
         await new Promise(resolve => setTimeout(resolve, 0));
         checkMapperBuildCancelled(signal);
         const desktopArtifact = await buildClawdThroughDesktop(project, captures, captureCache, signal);

@@ -113,6 +113,7 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /id="chooseClawdInstallRoot"/);
   assert.match(mapper, /confirmInstall: true/);
   assert.match(mapper, /async function prepareClawdPreview\(artifact, generation\)/);
+  assert.match(mapper, /zipApi\.configure\(\{ useWebWorkers: false \}\);[\s\S]*new zipApi\.ZipReader/);
   assert.match(mapper, /function startClawdPreview\(artifact\)/);
   assert.match(mapper, /void prepareClawdPreview\(artifact, generation\)/);
   assert.doesNotMatch(mapper, /await prepareClawdPreview\(desktopArtifact\)/);
@@ -130,6 +131,8 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /function subscribeBuildProgress\(\)/);
   assert.match(mapper, /function beginBuildProgress\(target/);
   assert.match(mapper, /function setBuildProgressCapture\(target/);
+  assert.match(mapper, /Live2PetBuildProgress\.progressPercent/);
+  assert.match(mapper, /completedCaptureFrames \+ completed/);
   assert.match(mapper, /function handleBuildProgress\(event\)/);
   assert.match(mapper, /function requestBuildCancellation\(target\)/);
   assert.match(mapper, /typeof api\.cancelBuild/);

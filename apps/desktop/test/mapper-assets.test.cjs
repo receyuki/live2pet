@@ -29,11 +29,12 @@ test('mapper asset staging creates a self-contained local document without Core'
       assert.match(asset.sha256, /^[a-f0-9]{64}$/);
     }
     assert.match(html, /src="vendor\/pixi\.min\.js"/);
+    assert.match(html, /src="\.\/build-progress\.js"/);
     assert.match(html, /src="\.\/clawd-capture-plan\.js"/);
+    assert.ok(fs.statSync(path.join(output, 'build-progress.js')).isFile());
     assert.ok(fs.statSync(path.join(output, 'clawd-capture-plan.js')).isFile());
-    assert.deepEqual(manifest.supportFiles.map((file) => file.path), ['clawd-capture-plan.js', 'renderer.html']);
-    assert.match(manifest.supportFiles[0].sha256, /^[a-f0-9]{64}$/);
-    assert.match(manifest.supportFiles[1].sha256, /^[a-f0-9]{64}$/);
+    assert.deepEqual(manifest.supportFiles.map((file) => file.path), ['build-progress.js', 'clawd-capture-plan.js', 'renderer.html']);
+    for (const file of manifest.supportFiles) assert.match(file.sha256, /^[a-f0-9]{64}$/);
     const rendererHtml = fs.readFileSync(path.join(output, 'renderer.html'), 'utf8');
     assert.match(rendererHtml, /vendorRoot = "\.\/vendor"/);
     assert.match(rendererHtml, /script-src 'self' 'nonce-live2pet-renderer-bootstrap' http:\/\/127\.0\.0\.1:\*/);
