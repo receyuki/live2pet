@@ -48,10 +48,11 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(preload, /const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';/);
   assert.match(preload, /webUtils\.getPathForFile/);
   assert.match(preload, /getFilePath,/);
-  for (const method of ['getVersion', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'buildProject', 'cancelBuild', 'getBuildArtifact', 'chooseInstallRoot', 'installArtifact', 'closeMapperSession', 'getCaptureCacheStatus', 'getSkillStatus', 'installSkill', 'startRendererPreview', 'loadRendererSource', 'rendererCommand', 'getRendererPreviewStatus', 'restartRendererPreview', 'closeRendererPreview']) {
+  for (const method of ['getVersion', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'buildProject', 'cancelBuild', 'getBuildArtifact', 'chooseInstallRoot', 'installArtifact', 'closeMapperSession', 'getCaptureCacheStatus', 'putCaptureCache', 'getSkillStatus', 'installSkill', 'startRendererPreview', 'loadRendererSource', 'rendererCommand', 'getRendererPreviewStatus', 'restartRendererPreview', 'closeRendererPreview']) {
     assert.match(preload, new RegExp(`invoke\\('${method}'`));
   }
   assert.match(preload, /getBuildArtifact: \(artifactId, offset = 0\) => invoke\('getBuildArtifact', \{ artifactId, offset \}\)/);
+  assert.match(main, /webContents\.on\('render-process-gone'/);
   assert.match(preload, /onBuildProgress/);
   assert.doesNotMatch(preload, /require\(['"]\.\.\/\.\.\/packages\/app-host/);
   assert.doesNotMatch(preload, /exposeInMainWorld\([^,]+,\s*\{\s*ipcRenderer/);
@@ -142,6 +143,8 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /liveModel\.update\(index === 0 \? 1 : plan\.stepMs\)/);
   assert.ok((mapper.match(/liveModel\.elapsedTime = performance\.now\(\);/g) || []).length >= 2);
   assert.match(mapper, /CLAWD_CAPTURE_COMPRESSION_REQUIRED/);
+  assert.match(mapper, /async function persistCaptureCacheEntry\(/);
+  assert.match(mapper, /delete captures\[motionId\]/);
   assert.match(mapper, /encodingConcurrency: Live2PetClawdCapture\.resolveClawdEncodingConcurrency/);
   assert.doesNotMatch(mapper, /maxFrames/);
   assert.match(mapper, /async function retrieveDesktopArtifact\(api, artifact, target, setStatus, signal = null\)/);

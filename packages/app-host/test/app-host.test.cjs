@@ -71,7 +71,7 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.deepEqual(normalizeSkillInstallRequest({ confirmInstall: true, overwrite: true }), { confirmInstall: true, overwrite: true });
   assert.throws(() => normalizeSkillInstallRequest({ overwrite: true }), (error) => error instanceof AppHostError && error.code === 'INSTALL_AUTHORIZATION_REQUIRED');
   assert.throws(() => normalizeSkillInstallRequest({ confirmInstall: true, path: '/tmp' }), (error) => error instanceof AppHostError && error.code === 'INVALID_SKILL_INSTALL_REQUEST');
-  assert.deepEqual(normalizeCaptureCacheStatusRequest({ sourceFingerprint: 'a'.repeat(64), cubismVersion: 3, target: 'clawd', renderPreset: 'balanced', motions: [{ motionId: 'idle', duration: 1.2, width: 768, height: 768, frameCount: 29, fps: 24 }] }), { sourceFingerprint: 'a'.repeat(64), cubismVersion: 3, target: 'clawd', renderPreset: 'balanced', motions: [{ motionId: 'idle', duration: 1.2, width: 768, height: 768, frameCount: 29, fps: 24 }] });
+  assert.deepEqual(normalizeCaptureCacheStatusRequest({ sourceFingerprint: 'a'.repeat(64), cubismVersion: 3, target: 'clawd', renderPreset: 'balanced', motions: [{ motionId: 'idle', duration: 1.2, width: 768, height: 768, frameCount: 29, fps: 24 }] }), { sourceFingerprint: 'a'.repeat(64), cubismVersion: 3, target: 'clawd', renderPreset: 'balanced', motions: [{ motionId: 'idle', expressionId: null, duration: 1.2, width: 768, height: 768, frameCount: 29, fps: 24 }] });
   assert.throws(() => normalizeCaptureCacheStatusRequest({ sourceFingerprint: 'not-a-digest', cubismVersion: 3, target: 'clawd', renderPreset: 'balanced', motions: [] }), (error) => error instanceof AppHostError && error.code === 'INVALID_CAPTURE_CACHE_REQUEST');
   assert.deepEqual(normalizeRendererPreviewStartRequest({ sourceRoot: '/tmp/source', cubismVersion: 2 }), { sourceRoot: '/tmp/source', cubismVersion: 2, width: 512, height: 512, show: true });
   assert.deepEqual(normalizeRendererPreviewStartRequest({ sourceRoot: '/tmp/source', cubismVersion: 4, modernAdapter: 'official', frameworkPath: '/tmp/live2pet-framework.js', frameworkGlobal: 'Live2Pet.bridge' }), { sourceRoot: '/tmp/source', cubismVersion: 4, width: 512, height: 512, show: true, modernAdapter: 'official', frameworkPath: '/tmp/live2pet-framework.js', frameworkGlobal: 'Live2Pet.bridge' });
@@ -199,14 +199,45 @@ test('routes bounded capture cache status without exposing local paths', async (
       },
     },
   });
-  const response = await router({ protocolVersion: 1, method: 'getCaptureCacheStatus', args: [{ sourceFingerprint: 'a'.repeat(64), cubismVersion: 4, target: 'clawd', renderPreset: 'balanced', motions: [{ motionId: 'idle', duration: 1.2, width: 768, height: 768, frameCount: 29, fps: 24 }] }] });
+  const response = await router({ protocolVersion: 1, method: 'getCaptureCacheStatus', args: [{ sourceFingerprint: 'a'.repeat(64), cubismVersion: 4, target: 'clawd', renderPreset: 'balanced', motions: [{ motionId: 'idle', expressionId: 'smile', duration: 1.2, width: 768, height: 768, frameCount: 29, fps: 24 }] }] });
   assert.equal(response.ok, true);
   assert.deepEqual(response.result.entries[0], { motionId: 'idle', key: 'b'.repeat(64), hit: true, byteLength: 1234 });
   assert.equal(JSON.stringify(response).includes('/Users/'), false);
   assert.equal(calls[0].motions[0].motionId, 'idle');
+  assert.equal(calls[0].motions[0].expressionId, 'smile');
   const unavailable = await createAppIpcRouter()({ protocolVersion: 1, method: 'getCaptureCacheStatus', args: [{ sourceFingerprint: 'a'.repeat(64), cubismVersion: 4, target: 'clawd', renderPreset: 'balanced', motions: [{ motionId: 'idle', duration: 1.2, width: 768, height: 768, frameCount: 29, fps: 24 }] }] });
   assert.equal(unavailable.ok, false);
   assert.equal(unavailable.error.code, 'APP_CAPTURE_CACHE_UNAVAILABLE');
+});
+
+test('persists one completed capture through the bounded cache IPC seam', async () => {
+  const calls = [];
+  const router = createAppIpcRouter({
+    captureCacheService: {
+      status: async () => ({ schemaVersion: 1, target: 'clawd', renderPreset: 'balanced', runtimeAvailable: true, entries: [] }),
+      write: async (context, recipe, frameSet) => {
+        calls.push({ context, recipe, frameSet });
+        return { stored: true, key: 'c'.repeat(64), byteLength: 321 };
+      },
+    },
+  });
+  const request = {
+    sourceFingerprint: 'a'.repeat(64), cubismVersion: 4, target: 'clawd', renderPreset: 'balanced',
+    recipe: { motionId: 'idle', expressionId: null, duration: 1.2, width: 2, height: 2, frameCount: 1, fps: 24 },
+    frameSet: {
+      motionId: 'idle', expressionId: null,
+      frames: [{ id: 'idle-0', width: 2, height: 2 }],
+      rgbaChunks: [{ width: 2, height: 2, startFrame: 0, frameCount: 1, compression: 'deflate-stack-v1', rgbaDeflate: Uint8Array.from([1, 2, 3]) }],
+      delay: [42],
+    },
+  };
+  const response = await router({ protocolVersion: 1, method: 'putCaptureCache', args: [request] });
+  assert.equal(response.ok, true);
+  assert.deepEqual(response.result, { stored: true, key: 'c'.repeat(64), byteLength: 321 });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].context.sourceFingerprint, 'a'.repeat(64));
+  assert.equal(calls[0].recipe.motionId, 'idle');
+  assert.equal(calls[0].frameSet.rgbaChunks[0].rgbaDeflate.byteLength, 3);
 });
 
 test('routes an isolated renderer preview without exposing source paths or binary commands', async () => {

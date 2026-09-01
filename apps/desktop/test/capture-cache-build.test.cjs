@@ -48,7 +48,8 @@ test('capture-cache build service replaces Clawd inputs with cache hits and stri
   const seen = [];
   const service = createCaptureCacheBuildService({
     getCaptureCacheService: () => ({
-      readMany: async (_context, recipes) => Object.fromEntries(recipes.map((recipe) => [recipe.motionId, {
+      readMany: async () => { throw new Error('builds must not inflate every cached Motion before encoding'); },
+      readEncodedMany: async (_context, recipes) => Object.fromEntries(recipes.map((recipe) => [recipe.motionId, {
         key: recipe.motionId === 'idle' ? 'b'.repeat(64) : 'c'.repeat(64),
         frameSet: frameSet(recipe.motionId, recipe.motionId === 'idle' ? 7 : 8),
       }])),

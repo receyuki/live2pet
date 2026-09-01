@@ -40,6 +40,7 @@ let sourceCache = null;
 let runtimeSettingsFile = null;
 let rendererWindowHost = null;
 let captureCacheService = null;
+let mainRendererRecoveryInProgress = false;
 
 function mapperPath() {
   return app.isPackaged ? PACKAGED_MAPPER_PATH : DEVELOPMENT_MAPPER_PATH;
@@ -194,6 +195,22 @@ async function createMainWindow() {
     if (url !== mapperUrl) event.preventDefault();
   });
   mainWindow.webContents.on('will-attach-webview', (event) => event.preventDefault());
+  mainWindow.webContents.on('render-process-gone', (_event, details = {}) => {
+    const reason = typeof details.reason === 'string' ? details.reason : 'unknown';
+    console.error(`Live2Pet Mapper renderer exited unexpectedly (${reason}).`);
+    const windowToRecover = mainWindow;
+    if (reason === 'clean-exit' || mainRendererRecoveryInProgress || !windowToRecover || windowToRecover.isDestroyed()) return;
+    mainRendererRecoveryInProgress = true;
+    setTimeout(() => {
+      if (!mainWindow || mainWindow !== windowToRecover || windowToRecover.isDestroyed()) {
+        mainRendererRecoveryInProgress = false;
+        return;
+      }
+      windowToRecover.loadFile(documentPath, { query: { rendererRecovered: reason } })
+        .catch((error) => console.error('Live2Pet could not recover the Mapper renderer.', error))
+        .finally(() => { mainRendererRecoveryInProgress = false; });
+    }, 100);
+  });
   mainWindow.on('closed', () => { mainWindow = null; });
   const showWindow = () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show(); };
   mainWindow.once('ready-to-show', showWindow);

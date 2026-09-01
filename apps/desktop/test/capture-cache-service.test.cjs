@@ -45,6 +45,11 @@ test('capture cache reports misses, stores validated frames, and returns hits', 
   const loaded = await service.read(context, recipe());
   assert.equal(loaded.key, stored.key);
   assert.deepEqual(Array.from(loaded.frameSet.frames[1].rgba), Array.from(frames().frames[1].rgba));
+  const encoded = await service.readEncodedMany(context, [recipe()]);
+  assert.equal(encoded.idle.key, stored.key);
+  assert.equal(encoded.idle.frameSet.frames[0].rgba, undefined);
+  assert.equal(encoded.idle.frameSet.rgbaChunks.length, 1);
+  assert.ok(encoded.idle.frameSet.rgbaChunks[0].rgbaDeflate.byteLength > 0);
 });
 
 test('capture cache identities isolate source, target, preset, and motion recipes', async () => {

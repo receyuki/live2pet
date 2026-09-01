@@ -67,6 +67,7 @@ contextBridge.exposeInMainWorld('live2pet', Object.freeze({
   getSkillStatus: () => invoke('getSkillStatus'),
   installSkill: (input) => invoke('installSkill', input),
   getCaptureCacheStatus: (input) => invoke('getCaptureCacheStatus', input),
+  putCaptureCache: (input) => invoke('putCaptureCache', input),
   getFilePath,
   startRendererPreview: (input) => invoke('startRendererPreview', input),
   loadRendererSource: (input) => invoke('loadRendererSource', input),

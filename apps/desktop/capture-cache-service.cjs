@@ -92,7 +92,7 @@ function createCaptureCacheService({ cache, getRuntimeForGeneration, rendererVer
       const cached = cache.get(identity);
       if (!cached) return { motionId: recipe.motionId, key: identity.digest, hit: false };
       try {
-        const frameSet = decodeCaptureSet(cached.data);
+        const frameSet = decodeCaptureSet(cached.data, { inflate: false });
         if (!validCachedFrameSet(frameSet, recipe)) throw new Error('Capture cache metadata does not match the requested recipe.');
         return { motionId: recipe.motionId, key: identity.digest, hit: true, byteLength: cached.byteLength };
       } catch {
@@ -129,6 +129,25 @@ function createCaptureCacheService({ cache, getRuntimeForGeneration, rendererVer
     return Object.fromEntries(normalized.motions.map((recipe) => [recipe.motionId, readFromContext(normalized, recipe)]));
   }
 
+  async function readEncodedMany(input, recipeInputs) {
+    if (!Array.isArray(recipeInputs) || !recipeInputs.length) return {};
+    const normalized = await context({ ...input, motions: recipeInputs });
+    return Object.fromEntries(normalized.motions.map((recipe) => {
+      if (!normalized.runtimeVersion) return [recipe.motionId, null];
+      const identity = identityFor(normalized, recipe, normalized.runtimeVersion);
+      const cached = cache.get(identity);
+      if (!cached) return [recipe.motionId, null];
+      try {
+        const frameSet = decodeCaptureSet(cached.data, { inflate: false });
+        if (!validCachedFrameSet(frameSet, recipe)) throw new Error('Capture cache metadata does not match the requested recipe.');
+        return [recipe.motionId, { key: identity.digest, frameSet }];
+      } catch {
+        if (typeof cache.removeFiles === 'function') cache.removeFiles(identity.digest);
+        return [recipe.motionId, null];
+      }
+    }));
+  }
+
   function writeFromContext(normalized, recipe, frameSet) {
     if (!normalized.runtimeVersion) return { stored: false, reason: 'runtime-unavailable' };
     if (!validCachedFrameSet(frameSet, recipe)) fail('INVALID_CAPTURE_CACHE', `Captured frames do not match Motion ${recipe.motionId}.`);
@@ -150,7 +169,7 @@ function createCaptureCacheService({ cache, getRuntimeForGeneration, rendererVer
     return entries.map((entry) => writeFromContext(normalized, recipes.get(entry.recipe.motionId), entry.frameSet));
   }
 
-  return Object.freeze({ status, read, readMany, write, writeMany, rendererVersion: rendererVersion.trim() });
+  return Object.freeze({ status, read, readMany, readEncodedMany, write, writeMany, rendererVersion: rendererVersion.trim() });
 }
 
 module.exports = {

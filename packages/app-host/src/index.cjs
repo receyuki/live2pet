@@ -71,6 +71,7 @@ const APP_IPC_METHODS = Object.freeze([
   'getSkillStatus',
   'installSkill',
   'getCaptureCacheStatus',
+  'putCaptureCache',
   'startMapperSession',
   'getMapperProject',
   'updateMapperProject',
@@ -227,7 +228,7 @@ function normalizeSkillInstallRequest(value) {
 
 function normalizeCaptureCacheRecipe(value, index) {
   if (!isRecord(value)) fail('INVALID_CAPTURE_CACHE_REQUEST', `Capture cache recipe ${index} must be an object.`);
-  const allowed = new Set(['motionId', 'duration', 'width', 'height', 'frameCount', 'fps']);
+  const allowed = new Set(['motionId', 'expressionId', 'duration', 'width', 'height', 'frameCount', 'fps']);
   const unknown = Object.keys(value).filter((key) => !allowed.has(key));
   if (unknown.length) fail('INVALID_CAPTURE_CACHE_REQUEST', `Capture cache recipe ${index} contains unsupported fields: ${unknown.join(', ')}.`);
   if (typeof value.motionId !== 'string' || !value.motionId.trim() || value.motionId.length > 256) fail('INVALID_CAPTURE_CACHE_REQUEST', `Capture cache recipe ${index} motionId is invalid.`);
@@ -237,7 +238,9 @@ function normalizeCaptureCacheRecipe(value, index) {
   const frameCount = Number(value.frameCount);
   const fps = Number(value.fps);
   if (!Number.isFinite(duration) || duration < 0 || duration > 3600 || !Number.isInteger(width) || width < 1 || width > 4096 || !Number.isInteger(height) || height < 1 || height > 4096 || !Number.isInteger(frameCount) || frameCount < 1 || frameCount > 4096 || !Number.isFinite(fps) || fps <= 0 || fps > 240) fail('INVALID_CAPTURE_CACHE_REQUEST', `Capture cache recipe ${index} contains invalid timing or dimensions.`);
-  return { motionId: value.motionId.trim(), duration, width, height, frameCount, fps };
+  const expressionId = value.expressionId == null ? null : String(value.expressionId).trim();
+  if (value.expressionId != null && !expressionId) fail('INVALID_CAPTURE_CACHE_REQUEST', `Capture cache recipe ${index} expressionId cannot be empty.`);
+  return { motionId: value.motionId.trim(), expressionId, duration, width, height, frameCount, fps };
 }
 
 function normalizeCaptureCacheStatusRequest(value) {
@@ -269,6 +272,51 @@ function summarizeCaptureCacheStatus(result) {
     return { motionId: entry.motionId.trim(), hit: entry.hit, ...(entry.key === undefined ? {} : { key: entry.key.toLowerCase() }), ...(entry.byteLength === undefined ? {} : { byteLength: entry.byteLength }) };
   });
   return { schemaVersion: 1, target: result.target, renderPreset: result.renderPreset, runtimeAvailable: result.runtimeAvailable !== false, entries };
+}
+
+function normalizeCaptureCacheWriteRequest(value) {
+  if (!isRecord(value)) fail('INVALID_CAPTURE_CACHE_REQUEST', 'Capture cache write input must be an object.');
+  const allowed = new Set(['sourceFingerprint', 'cubismVersion', 'target', 'renderPreset', 'recipe', 'frameSet']);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) fail('INVALID_CAPTURE_CACHE_REQUEST', `Capture cache write contains unsupported fields: ${unknown.join(', ')}.`);
+  const normalized = normalizeCaptureCacheStatusRequest({
+    sourceFingerprint: value.sourceFingerprint,
+    cubismVersion: value.cubismVersion,
+    target: value.target,
+    renderPreset: value.renderPreset,
+    motions: [value.recipe],
+  });
+  const recipe = normalized.motions[0];
+  const frameSet = value.frameSet;
+  if (!isRecord(frameSet) || frameSet.motionId !== recipe.motionId || !Array.isArray(frameSet.frames) || frameSet.frames.length !== recipe.frameCount || frameSet.frames.length > 4096) {
+    fail('INVALID_CAPTURE_CACHE_REQUEST', 'Capture cache frameSet must match the requested Motion and frame count.');
+  }
+  if (frameSet.rgbaChunks !== undefined && (!Array.isArray(frameSet.rgbaChunks) || !frameSet.rgbaChunks.length || frameSet.rgbaChunks.length > 512)) {
+    fail('INVALID_CAPTURE_CACHE_REQUEST', 'Capture cache frameSet rgbaChunks must contain between 1 and 512 chunks.');
+  }
+  return {
+    context: {
+      sourceFingerprint: normalized.sourceFingerprint,
+      cubismVersion: normalized.cubismVersion,
+      target: normalized.target,
+      renderPreset: normalized.renderPreset,
+    },
+    recipe,
+    frameSet,
+  };
+}
+
+function summarizeCaptureCacheWrite(result) {
+  if (!isRecord(result) || typeof result.stored !== 'boolean') fail('INVALID_CAPTURE_CACHE_RESULT', 'Capture cache write did not return the supported result contract.');
+  if (result.key !== undefined && (typeof result.key !== 'string' || !/^[a-f0-9]{64}$/i.test(result.key))) fail('INVALID_CAPTURE_CACHE_RESULT', 'Capture cache write key is invalid.');
+  if (result.byteLength !== undefined && (!Number.isSafeInteger(result.byteLength) || result.byteLength < 0)) fail('INVALID_CAPTURE_CACHE_RESULT', 'Capture cache write byteLength is invalid.');
+  if (result.reason !== undefined && (typeof result.reason !== 'string' || !result.reason.trim() || result.reason.length > 128)) fail('INVALID_CAPTURE_CACHE_RESULT', 'Capture cache write reason is invalid.');
+  return {
+    stored: result.stored,
+    ...(result.key === undefined ? {} : { key: result.key.toLowerCase() }),
+    ...(result.byteLength === undefined ? {} : { byteLength: result.byteLength }),
+    ...(result.reason === undefined ? {} : { reason: result.reason.trim() }),
+  };
 }
 
 function normalizeRendererSessionId(value, label = 'sessionId') {
@@ -728,6 +776,11 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, source
         const input = normalizeCaptureCacheStatusRequest(normalized.args[0]);
         return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeCaptureCacheStatus(await captureCacheService.status(input)) };
       }
+      if (normalized.method === 'putCaptureCache') {
+        if (!captureCacheService || typeof captureCacheService.write !== 'function') fail('APP_CAPTURE_CACHE_UNAVAILABLE', 'The App capture cache write service is not configured.');
+        const input = normalizeCaptureCacheWriteRequest(normalized.args[0]);
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeCaptureCacheWrite(await captureCacheService.write(input.context, input.recipe, input.frameSet)) };
+      }
       if (normalized.method === 'startRendererPreview') {
         if (!rendererPreviewService) fail('APP_RENDERER_PREVIEW_UNAVAILABLE', 'The App isolated renderer preview service is not configured.');
         const input = normalizeRendererPreviewStartRequest(normalized.args[0]);
@@ -991,6 +1044,7 @@ module.exports = {
   normalizeRuntimeRequest,
   normalizeSkillInstallRequest,
   normalizeCaptureCacheStatusRequest,
+  normalizeCaptureCacheWriteRequest,
   normalizeRendererPreviewStartRequest,
   normalizeRendererLoadRequest,
   normalizeRendererCommandRequest,
@@ -1011,6 +1065,7 @@ module.exports = {
   summarizeSkillInstall,
   summarizeSkillProgress,
   summarizeCaptureCacheStatus,
+  summarizeCaptureCacheWrite,
   summarizeRendererPreviewResult,
   RENDERER_PREVIEW_COMMANDS,
 };

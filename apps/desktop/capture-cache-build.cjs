@@ -50,8 +50,10 @@ function createCaptureCacheBuildService({ buildProjectTargets, getCaptureCacheSe
       const readableRecipes = mappedIds
         .map((motionId) => recipes[motionId])
         .filter((recipe) => recipe && typeof keys[recipe.motionId] === 'string' && /^[a-f0-9]{64}$/i.test(keys[recipe.motionId]));
-      const cachedByMotion = typeof service.readMany === 'function'
-        ? await service.readMany(context, readableRecipes)
+      const cachedByMotion = typeof service.readEncodedMany === 'function'
+        ? await service.readEncodedMany(context, readableRecipes)
+        : typeof service.readMany === 'function'
+          ? await service.readMany(context, readableRecipes)
         : Object.fromEntries(await Promise.all(readableRecipes.map(async (recipe) => [recipe.motionId, await service.read(context, recipe)])));
       for (const motionId of mappedIds) {
         const recipe = recipes[motionId];

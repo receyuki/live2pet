@@ -861,6 +861,9 @@
           "build.status.app": "Building through the shared App Package Build service…",
           "build.status.capture": "Capturing {slot} from {motion} ({count} frames)…",
           "build.status.captureCached": "Reusing {motion} from the capture cache…",
+          "build.status.captureSaving": "Saving {motion} and releasing capture memory…",
+          "build.status.captureCacheRequired": "The Desktop App could not open its capture cache. Restart the updated App and keep the matching Cubism runtime saved before building.",
+          "build.status.rendererRecovered": "The previous build was interrupted because the UI process exited ({reason}). Completed Motion captures were kept; retry the build.",
           "build.status.captureTiming": "Captured {motion} in {seconds}s · {rate} frames/s",
           "build.status.captureCompress": "Compressing {motion} for the Desktop App · {current}/{total} frames…",
           "build.status.transfer": "Receiving {filename} from the Desktop App · {completed} / {total}",
@@ -1261,6 +1264,9 @@
           "build.status.app": "正在通过共享 App 资源包构建服务处理…",
           "build.status.capture": "正在从 {motion} 捕获 {slot}（{count} 帧）…",
           "build.status.captureCached": "正在从捕获缓存复用 {motion}…",
+          "build.status.captureSaving": "正在保存 {motion} 并释放捕获内存…",
+          "build.status.captureCacheRequired": "Desktop App 无法打开捕获缓存。请重启更新后的 App，并确保已保存匹配的 Cubism runtime 后再构建。",
+          "build.status.rendererRecovered": "上一次构建因 UI 进程退出（{reason}）而中断。已完成的动作捕获已保留，请重试构建。",
           "build.status.captureTiming": "已在 {seconds} 秒内捕获 {motion} · {rate} 帧/秒",
           "build.status.captureCompress": "正在为 Desktop App 压缩 {motion} · {current}/{total} 帧…",
           "build.status.transfer": "正在从 Desktop App 接收 {filename} · {completed} / {total}",
@@ -4164,7 +4170,7 @@
     }
 
     function desktopCaptureCacheApi() {
-      return window.live2pet && typeof window.live2pet.getCaptureCacheStatus === "function" ? window.live2pet : null;
+      return window.live2pet && typeof window.live2pet.getCaptureCacheStatus === "function" && typeof window.live2pet.putCaptureCache === "function" ? window.live2pet : null;
     }
 
     async function prepareCaptureCache(target, recipesByMotion, renderPreset, signal = null) {
@@ -4186,11 +4192,34 @@
           if (typeof entry.key === "string") keysByMotion[entry.motionId] = entry.key;
           hitsByMotion[entry.motionId] = entry.hit === true;
         }
-        return { cubismVersion, renderPreset, recipesByMotion, keysByMotion, hitsByMotion };
+        return { sourceFingerprint, cubismVersion, target, renderPreset, recipesByMotion, keysByMotion, hitsByMotion, runtimeAvailable: response.result.runtimeAvailable !== false };
       } catch {
         if (signal?.aborted) throw projectError("BUILD_CANCELLED", I18n.t("build.progress.cancelled"));
         return null;
       }
+    }
+
+    async function persistCaptureCacheEntry(captureCache, recipe, frameSet, signal = null) {
+      checkMapperBuildCancelled(signal);
+      const api = desktopCaptureCacheApi();
+      if (!api || !captureCache?.runtimeAvailable) throw projectError("CAPTURE_CACHE_UNAVAILABLE", I18n.t("build.status.captureCacheRequired"));
+      const response = await api.putCaptureCache({
+        sourceFingerprint: captureCache.sourceFingerprint,
+        cubismVersion: captureCache.cubismVersion,
+        target: captureCache.target,
+        renderPreset: captureCache.renderPreset,
+        recipe,
+        frameSet,
+      });
+      checkMapperBuildCancelled(signal);
+      if (!response?.ok || response.result?.stored !== true || typeof response.result?.key !== "string") {
+        throw projectError(response?.error?.code || "CAPTURE_CACHE_WRITE_FAILED", response?.error?.message || I18n.t("build.status.captureCacheRequired"));
+      }
+      const expectedKey = captureCache.keysByMotion[recipe.motionId];
+      if (expectedKey && response.result.key !== expectedKey) throw projectError("CAPTURE_CACHE_IDENTITY_MISMATCH", `Capture cache identity changed for ${recipe.motionId}.`);
+      captureCache.keysByMotion[recipe.motionId] = response.result.key;
+      captureCache.hitsByMotion[recipe.motionId] = true;
+      return response.result;
     }
 
     function desktopInstallApi() {
@@ -4468,6 +4497,7 @@
         }));
         beginBuildProgress("clawd", motionIds.length);
         const captureCache = await prepareCaptureCache("clawd", captureRecipesByMotion, state.clawdRenderPreset, signal);
+        if (!captureCache?.runtimeAvailable) throw projectError("CAPTURE_CACHE_UNAVAILABLE", I18n.t("build.status.captureCacheRequired"));
         setClawdBuildStatus(I18n.t("build.status.clawdCapture", { count: motionIds.length, width: settings.width }), "busy");
         for (const [index, motionId] of motionIds.entries()) {
           checkMapperBuildCancelled(signal);
@@ -4491,6 +4521,9 @@
               rate: captures[motionId].timing.frameRate.toFixed(1),
             }), "busy");
           }
+          setClawdBuildStatus(I18n.t("build.status.captureSaving", { motion: motion.name }), "busy");
+          await persistCaptureCacheEntry(captureCache, captureRecipesByMotion[motionId], captures[motionId], signal);
+          delete captures[motionId];
           setBuildProgressCapture("clawd", index + 1, motionIds.length, motion.name);
         }
         setBuildProgressCapture("clawd", motionIds.length, motionIds.length);
@@ -4992,6 +5025,13 @@
     setProjectStatus(I18n.t("project.status.empty"));
     setBuildStatus(I18n.t("build.codex.status.empty"));
     setClawdBuildStatus(I18n.t("build.clawd.status.empty"));
+    const rendererRecovered = new URLSearchParams(location.search).get("rendererRecovered");
+    if (rendererRecovered) {
+      const message = I18n.t("build.status.rendererRecovered", { reason: rendererRecovered });
+      setBuildStatus(message, "bad");
+      setClawdBuildStatus(message, "bad");
+      history.replaceState(null, "", location.pathname);
+    }
     render();
     if (recoveredDraft) setProjectStatus(I18n.t("project.recovery.available", { time: projectDraftTime(recoveredDraft.savedAt) }));
     void refreshSkillStatus();

@@ -130,7 +130,7 @@ function encodeCaptureSet({ motionId, frames, rgbaChunks, fps, delay, loop = 0, 
   return Buffer.concat([prefix, header, ...chunks.map((chunk) => chunk.bytes)]);
 }
 
-function decodeCaptureSet(value) {
+function decodeCaptureSet(value, { inflate = true } = {}) {
   const bytes = normalizeBytes(value, 'Capture cache bytes');
   if (bytes.byteLength < 4) fail('INVALID_CAPTURE_CACHE', 'Capture cache bytes are truncated before the header.');
   const headerLength = bytes.readUInt32LE(0);
@@ -153,6 +153,30 @@ function decodeCaptureSet(value) {
   });
   if (nextOffset !== payloadLength) fail('INVALID_CAPTURE_CACHE', 'Capture cache payload contains trailing or missing bytes.');
   const chunks = normalizeChunkList(chunkInputs, frames);
+  const common = {
+    motionId: metadata.motionId,
+    expressionId: metadata.expressionId || null,
+    frames,
+    ...(metadata.fps === undefined ? {} : { fps: metadata.fps }),
+    ...(metadata.delay === undefined ? {} : { delay: metadata.delay }),
+    loop: metadata.loop,
+    quality: metadata.quality,
+    alphaQuality: metadata.alphaQuality,
+    lossless: metadata.lossless,
+  };
+  if (!inflate) {
+    return {
+      ...common,
+      rgbaChunks: chunks.map((chunk) => ({
+        startFrame: chunk.startFrame,
+        frameCount: chunk.frameCount,
+        width: chunk.width,
+        height: chunk.height,
+        rgbaDeflate: chunk.bytes,
+        compression: metadata.compression,
+      })),
+    };
+  }
   const decodedFrames = [];
   for (const chunk of chunks) {
     let raw;
@@ -166,17 +190,7 @@ function decodeCaptureSet(value) {
       decodedFrames[frameIndex] = { ...metadataFrame, rgba: Uint8Array.from(raw.subarray(index * frameBytes, (index + 1) * frameBytes)) };
     }
   }
-  return {
-    motionId: metadata.motionId,
-    expressionId: metadata.expressionId || null,
-    frames: decodedFrames,
-    ...(metadata.fps === undefined ? {} : { fps: metadata.fps }),
-    ...(metadata.delay === undefined ? {} : { delay: metadata.delay }),
-    loop: metadata.loop,
-    quality: metadata.quality,
-    alphaQuality: metadata.alphaQuality,
-    lossless: metadata.lossless,
-  };
+  return { ...common, frames: decodedFrames };
 }
 
 module.exports = {
