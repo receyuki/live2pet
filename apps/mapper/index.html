@@ -1681,6 +1681,9 @@
     let sourcePreviewPlaying = false;
     let sourcePreviewLoop = true;
     let sourcePreviewSpeed = 1;
+    let sourcePreviewTickerEnabled = false;
+    let sourcePreviewTickerAttached = false;
+    let sourcePreviewMotionFinishBinding = null;
     let sourcePreviewStatusText = "";
     let sourcePreviewStatusLevel = "";
     let skillStatus = null;
@@ -3260,10 +3263,40 @@
       return files.map(file => file === modelFile ? previewFile : file);
     }
     async function mountModel(modelUrl) {
+      sourcePreviewTickerEnabled = false;
+      if (sourcePreviewMotionFinishBinding?.manager?.off) sourcePreviewMotionFinishBinding.manager.off("motionFinish", sourcePreviewMotionFinishBinding.handler);
+      sourcePreviewMotionFinishBinding = null;
       if (liveModel) { liveModel.destroy({children:true}); liveModel = null; }
       if (!app) app = new PIXI.Application({view:$("live2dCanvas"),resizeTo:$("stage"),backgroundAlpha:0,antialias:true,autoStart:true});
+      if (!sourcePreviewTickerAttached && app.ticker?.add) {
+        app.ticker.add(() => {
+          if (!sourcePreviewTickerEnabled || !liveModel) return;
+          const deltaMs = Math.min(100, Math.max(0, Number(app.ticker.deltaMS) || 16.67));
+          liveModel.update(deltaMs * sourcePreviewSpeed);
+        });
+        sourcePreviewTickerAttached = true;
+      }
       liveModel = await PIXI.live2d.Live2DModel.from(modelUrl,{autoInteract:false,autoHitTest:false});
       app.stage.addChild(liveModel);
+      liveModel.autoUpdate = false;
+      const motionManager = liveModel.internalModel?.motionManager;
+      if (motionManager?.on) {
+        const handler = () => {
+          if (!sourcePreviewTickerEnabled || !sourcePreviewPlaying) return;
+          if (!sourcePreviewLoop) {
+            sourcePreviewTickerEnabled = false;
+            sourcePreviewPlaying = false;
+            renderPreviewPlayback();
+            return;
+          }
+          const motionId = state.selectedMotionId;
+          if (!motionId) return;
+          sourcePreviewTickerEnabled = false;
+          void playMotion(motionId).catch(error => setSourcePreviewStatus(`MOTION_LOOP_FAILED: ${error.message}`, "bad"));
+        };
+        motionManager.on("motionFinish", handler);
+        sourcePreviewMotionFinishBinding = { manager: motionManager, handler };
+      }
       sourcePreviewPlaying = false;
       fitModel();
     }
@@ -3317,28 +3350,31 @@
       sourcePreviewStatusLevel = "";
       dispatch({type:"SELECT_MOTION",id});
       if (liveModel) {
-        liveModel.autoUpdate = true;
-        await liveModel.motion(motion.group,motion.index,3);
+        liveModel.autoUpdate = false;
+        const started = await liveModel.motion(motion.group,motion.index,3);
+        if (started === false) throw projectError("MOTION_PREVIEW_FAILED", `Motion ${motion.name || motion.id} could not be started for preview.`);
+        sourcePreviewTickerEnabled = true;
       }
       renderPreviewPlayback();
     }
     async function pauseSourcePreview() {
       if (!sourcePreviewAvailable()) return;
-      if (liveModel) liveModel.autoUpdate = false;
+      sourcePreviewTickerEnabled = false;
       sourcePreviewPlaying = false;
       setSourcePreviewStatus(I18n.t("preview.status.paused"), "good");
       renderPreviewPlayback();
     }
     async function resumeSourcePreview() {
       if (!sourcePreviewAvailable() || !state.selectedMotionId) return;
-      if (liveModel) liveModel.autoUpdate = true;
+      sourcePreviewTickerEnabled = true;
       sourcePreviewPlaying = true;
       setSourcePreviewStatus(I18n.t("preview.status.resumed"), "good");
       renderPreviewPlayback();
     }
     async function restartSourcePreview() {
       if (!sourcePreviewAvailable() || !state.selectedMotionId) return;
-      if (liveModel) liveModel.autoUpdate = true;
+      sourcePreviewTickerEnabled = false;
+      liveModel.internalModel?.motionManager?.stopAllMotions?.();
       await playMotion(state.selectedMotionId, { loop: sourcePreviewLoop, speed: sourcePreviewSpeed, start: 0 });
       sourcePreviewPlaying = true;
       setSourcePreviewStatus(I18n.t("preview.status.restarted"), "good");
@@ -4079,11 +4115,13 @@
       const duration = Math.max(0.8, Math.min(8, Number(motion.duration) || 1.2));
       const plan = Live2PetClawdCapture.createFixedStepPlan(duration, count);
       const previousAutoUpdate = liveModel.autoUpdate;
+      const previousTickerEnabled = sourcePreviewTickerEnabled;
       const previousExpressionId = state.selectedExpressionId;
       const motionManager = liveModel.internalModel?.motionManager;
       const frames = [];
       const startedAt = performance.now();
       try {
+        sourcePreviewTickerEnabled = false;
         liveModel.autoUpdate = false;
         motionManager?.stopAllMotions();
         liveModel.deltaTime = 0;
@@ -4107,6 +4145,7 @@
         liveModel.deltaTime = 0;
         liveModel.elapsedTime = performance.now();
         liveModel.autoUpdate = previousAutoUpdate;
+        sourcePreviewTickerEnabled = previousTickerEnabled;
         try { await applyCaptureExpression(previousExpressionId); } catch (error) { console.warn("Live2Pet could not restore the previous Expression after capture", error); }
       }
       const captureMs = Math.max(0, performance.now() - startedAt);
@@ -4227,6 +4266,7 @@
       const settings = clawdRenderSettings();
       const plan = clawdCapturePlan(motion);
       const previousAutoUpdate = liveModel.autoUpdate;
+      const previousTickerEnabled = sourcePreviewTickerEnabled;
       const previousExpressionId = state.selectedExpressionId;
       const motionManager = liveModel.internalModel?.motionManager;
       const frames = [];
@@ -4257,6 +4297,7 @@
         }
       };
       try {
+        sourcePreviewTickerEnabled = false;
         liveModel.autoUpdate = false;
         motionManager?.stopAllMotions();
         // MotionManager starts from wall time, so each fixed-step capture must
@@ -4294,6 +4335,7 @@
         liveModel.deltaTime = 0;
         liveModel.elapsedTime = performance.now();
         liveModel.autoUpdate = previousAutoUpdate;
+        sourcePreviewTickerEnabled = previousTickerEnabled;
         try { await applyCaptureExpression(previousExpressionId); } catch (error) { console.warn("Live2Pet could not restore the previous Expression after capture", error); }
       }
       const finishedAt = performance.now();

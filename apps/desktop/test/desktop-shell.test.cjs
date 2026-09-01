@@ -103,6 +103,9 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /function restartSourcePreview\(\)/);
   assert.match(mapper, /function updateSourcePreviewSettings\(\)/);
   assert.doesNotMatch(mapper, /rendererPreviewCommand/);
+  assert.match(mapper, /sourcePreviewTickerEnabled/);
+  assert.match(mapper, /liveModel\.update\(deltaMs \* sourcePreviewSpeed\)/);
+  assert.match(mapper, /motionManager\.on\("motionFinish"/);
   assert.match(mapper, /id="installCodex"/);
   assert.match(mapper, /id="installClawd"/);
   assert.match(mapper, /id="chooseCodexInstallRoot"/);
