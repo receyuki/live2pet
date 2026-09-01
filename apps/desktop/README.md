@@ -138,6 +138,13 @@ they remain user-provided and local.
 The package does not include models, examples, or generated packages. Those
 remain user-provided and local.
 
+The source-release policy and the separate installer gate are documented in
+[`../../docs/release-checklist.md`](../../docs/release-checklist.md). The
+dependency and native-binary boundary is recorded in
+[`../../docs/dependency-inventory.md`](../../docs/dependency-inventory.md);
+security reporting and contribution rules live in [`../../SECURITY.md`](../../SECURITY.md)
+and [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md).
+
 The Mapper also keeps a bounded, reference-only draft in the browser profile
 while a project is dirty. It offers explicit recovery on the next launch and
 shows the affected recipe ids when a loaded Source Package fingerprint changes;

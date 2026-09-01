@@ -13,5 +13,6 @@ test('source-release check passes without tracked models, runtimes, examples, or
   assert.equal(report.ok, true);
   assert.equal(report.errors.length, 0);
   assert.ok(report.scannedFiles > 20);
+  assert.deepEqual(report.requiredFiles, ['LICENSE', 'NOTICE', 'SECURITY.md', 'CONTRIBUTING.md', 'docs/dependency-inventory.md', 'docs/release-checklist.md', 'apps/desktop/THIRD-PARTY-NOTICES.md']);
   assert.deepEqual(report.ignoredLocalInputs.slice(0, 3), ['examples/', 'archive/', 'artifacts/']);
 });

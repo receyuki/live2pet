@@ -19,7 +19,7 @@ Live2Pet is an early-stage local toolchain for loading Cubism models, previewing
 - `packages/installation/` — portable ZIP export plus explicit, conflict-aware, atomic installation with side-by-side and rollback semantics, and platform adapters for the documented Clawd and Codex user-data roots.
 - `packages/mapper-session/` — loopback-only, token-authenticated, short-lived project session, token-hiding client, and bounded browser-host bootstrap for a shared visual mapper.
 - `packages/app-host/` — Electron-ready typed IPC router, preload API, artifact download/install boundary, opaque native install-folder selection, and hardened window defaults for the future desktop shell.
-- `apps/desktop/` — dependency-light Electron development shell that loads the mapper, keeps the App main/preload boundary typed, provides a separate sandboxed Live2D renderer window host, and opens native install-folder selection without bundling user runtimes or models.
+- `apps/desktop/` — dependency-light Electron development shell that loads the mapper, keeps the App main/preload boundary typed, provides a separate sandboxed Live2D renderer window host, exposes explicit Codex skill status/install controls, and opens native install-folder selection without bundling user runtimes or models.
 - `packages/clawd-target/` — guide-aligned Clawd Target Profile validation for states, sleep modes, fallbacks, and reactions.
 - `packages/codex-target/` — Codex Pet V1 atlas geometry, nine-row mapping, frame-reference layout planning, RGBA composition, and package-shape validation.
 - `packages/live2d-exporter/` — deterministic transparent-frame exporter and Destiny Child PCK unpacker.
@@ -35,6 +35,8 @@ Live2Pet is an early-stage local toolchain for loading Cubism models, previewing
 - [`docs/specs/live2pet-skill-protocol.md`](docs/specs/live2pet-skill-protocol.md) — CLI handshake, skill boundaries, and authorization contract.
 - [`docs/agents/project-workflow.md`](docs/agents/project-workflow.md) — save/recovery, source relinking, review gating, and project privacy rules.
 - [`docs/plans/live2pet-v1-implementation-plan.md`](docs/plans/live2pet-v1-implementation-plan.md) — dependency-ordered work packages, issue map, verification gates, and milestones.
+- [`docs/dependency-inventory.md`](docs/dependency-inventory.md) — pinned runtime dependencies, native modules, and user-provided asset boundaries.
+- [`docs/release-checklist.md`](docs/release-checklist.md) — source-publication, private macOS validation, and installer-release gates.
 
 ## Local-only data
 

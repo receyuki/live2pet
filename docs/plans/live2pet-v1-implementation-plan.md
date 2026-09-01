@@ -256,7 +256,7 @@ Deliverables:
 - Apache-2.0 license, third-party notices, dependency and native-binary inventory, security policy, contribution guidance, and release checklist; and
 - automated scans that reject Core, model, example-theme, generated-character, token, and absolute-path leakage.
 
-Current implementation update: the repository now carries an Apache-2.0 `LICENSE`, a project `NOTICE`, and `pnpm release:check`, which scans tracked and non-ignored source entries for copyrighted model/derived-package paths, runtime files, binary payloads, oversized release entries, and missing attribution files. The check reports the deliberately ignored local-input patterns without reading or publishing those files; clean-machine packaging and the external Live2D binary-release gate remain open.
+Current implementation update: the repository now carries an Apache-2.0 `LICENSE`, a project `NOTICE`, English `SECURITY.md` and `CONTRIBUTING.md` guidance, a pinned dependency/native-binary inventory, a staged source/installer release checklist, and `pnpm release:check`, which scans tracked and non-ignored source entries for copyrighted model/derived-package paths, runtime files, binary payloads, oversized release entries, and missing release documentation. The check reports the deliberately ignored local-input patterns without reading or publishing those files; clean-machine packaging and the external Live2D binary-release gate remain open.
 
 Exit gate:
 

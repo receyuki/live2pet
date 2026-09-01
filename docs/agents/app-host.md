@@ -59,4 +59,8 @@ Live2D capture remains sequential because it is tied to one renderer and one ani
 
 `startMapperSession` accepts the same explicit options as `startMapperSessionHost` (`project`, `mapperPath` or `mapperHtml`, optional `mapperUrl`, and session lifetime). Only one session is active per App window. The host must call `closeMapperSession` when the mapping task ends.
 
-This package is the seam for the future Electron Forge shell. The shell still needs to package local mapper dependencies and replace the prototype's development-relative scripts before it can be released as a runnable desktop installer.
+This package is the seam for the future Electron Forge shell. The shell now
+has a self-contained staged Mapper bundle and text-only skill resource path;
+it still needs a real Forge assembly, native-module smoke tests, and the
+external release gates before it can be shipped as a runnable desktop
+installer.

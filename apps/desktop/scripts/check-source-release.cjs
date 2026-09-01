@@ -3,7 +3,15 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const repositoryRoot = path.resolve(__dirname, '../../..');
-const requiredFiles = ['LICENSE', 'NOTICE', 'apps/desktop/THIRD-PARTY-NOTICES.md'];
+const requiredFiles = [
+  'LICENSE',
+  'NOTICE',
+  'SECURITY.md',
+  'CONTRIBUTING.md',
+  'docs/dependency-inventory.md',
+  'docs/release-checklist.md',
+  'apps/desktop/THIRD-PARTY-NOTICES.md',
+];
 const forbiddenDirectory = /(?:^|\/)(?:examples?|archive|artifacts?)(?:\/|$)/i;
 const forbiddenExtension = /\.(?:pck|lpk|moc|moc3|dat|webp|zip)$/i;
 const forbiddenRuntime = /(?:^|\/)(?:live2dcubismcore|minified-live2d(?:core)?|live2d\.min)\.(?:js|wasm)$/i;
@@ -60,6 +68,7 @@ function run() {
   const report = {
     contractVersion: 1,
     ok: errors.length === 0,
+    requiredFiles: [...requiredFiles],
     scannedFiles: files.length,
     ignoredLocalInputs: ['examples/', 'archive/', 'artifacts/', '*.pck', '*.lpk', '*.moc', '*.moc3', '*.webp', '*.zip', 'Cubism Core'],
     errors,
