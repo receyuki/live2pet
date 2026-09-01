@@ -123,6 +123,13 @@
     .motion strong, .motion small, .expression strong, .expression small { display: block; }
     .motion small, .expression small { color: var(--muted); margin-top: 2px; }
     .controls { display: flex; gap: 8px; margin-bottom: 12px; }
+    .preview-playback { display: grid; grid-template-columns: repeat(3, auto) minmax(120px, 1fr) auto; gap: 8px; align-items: end; margin-bottom: 13px; }
+    .preview-playback .field { min-width: 0; }
+    .preview-loop { display: flex; align-items: center; gap: 6px; min-height: 44px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .preview-loop input { width: 18px; height: 18px; margin: 0; }
+    .preview-status { min-height: 18px; margin: -5px 0 12px; color: var(--muted); font-size: 12px; }
+    .preview-status.good { color: var(--good); }
+    .preview-status.bad { color: var(--bad); }
     .mapping-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
     label.field { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
@@ -284,6 +291,9 @@
       .resource-row { grid-template-columns: 1fr auto; }
       .resource-kind { grid-column: 1 / -1; }
       .quick-map { grid-template-columns: 1fr; align-items: stretch; }
+      .preview-playback { grid-template-columns: repeat(3, 1fr); }
+      .preview-playback .field { grid-column: span 2; }
+      .preview-loop { justify-content: center; }
       .codex-row { grid-template-columns: 1fr auto; }
       .codex-row strong { grid-column: 1 / -1; }
       table { table-layout: auto; }
@@ -411,6 +421,22 @@
           <button id="replay" disabled data-i18n="preview.replay">Replay selected Motion</button>
           <button id="playIdle" disabled data-i18n="preview.playIdle">Play idle</button>
         </div>
+        <div class="preview-playback" role="group" data-i18n-aria-label="preview.playback.label" aria-label="Motion playback controls">
+          <button id="previewPause" disabled data-i18n="preview.pause">Pause</button>
+          <button id="previewResume" disabled data-i18n="preview.resume">Resume</button>
+          <button id="previewRestart" disabled data-i18n="preview.restart">Restart</button>
+          <label class="field"><span data-i18n="preview.speed">Speed</span>
+            <select id="previewSpeed" data-i18n-aria-label="preview.speed">
+              <option value="0.5">0.5×</option>
+              <option value="0.75">0.75×</option>
+              <option value="1" selected>1×</option>
+              <option value="1.5">1.5×</option>
+              <option value="2">2×</option>
+            </select>
+          </label>
+          <label class="preview-loop"><input id="previewLoop" type="checkbox" checked><span data-i18n="preview.loop">Loop</span></label>
+        </div>
+        <div id="previewPlaybackStatus" class="preview-status" role="status" aria-live="polite"></div>
         <div class="quick-map">
           <label class="field"><span data-i18n="mapping.quickState">Quick target state</span>
             <select id="quickState" aria-label="Quick target state" data-i18n-aria-label="mapping.quickState"></select>
@@ -657,6 +683,17 @@
           "preview.description": "Preview the selected source Motion before mapping it.",
           "preview.replay": "Replay selected Motion",
           "preview.playIdle": "Play idle",
+          "preview.playback.label": "Motion playback controls",
+          "preview.pause": "Pause",
+          "preview.resume": "Resume",
+          "preview.restart": "Restart",
+          "preview.speed": "Speed",
+          "preview.loop": "Loop",
+          "preview.status.paused": "Motion preview paused.",
+          "preview.status.resumed": "Motion preview resumed.",
+          "preview.status.restarted": "Motion preview restarted.",
+          "preview.status.updated": "Playback settings updated.",
+          "preview.status.isolatedOnly": "Speed and loop settings apply to the isolated preview when it is open.",
           "preview.codex.atlasCaption": "Generated atlas · package preview",
           "preview.codex.atlasAlt": "Generated Codex Pet atlas preview",
           "preview.codex.cellCaption": "First cell · 192 × 208 final size",
@@ -1057,6 +1094,17 @@
           "preview.description": "在映射前预览选中的资源动作。",
           "preview.replay": "重播选中动作",
           "preview.playIdle": "播放待机",
+          "preview.playback.label": "动作播放控制",
+          "preview.pause": "暂停",
+          "preview.resume": "继续",
+          "preview.restart": "重播",
+          "preview.speed": "速度",
+          "preview.loop": "循环",
+          "preview.status.paused": "动作预览已暂停。",
+          "preview.status.resumed": "动作预览已继续。",
+          "preview.status.restarted": "动作预览已重播。",
+          "preview.status.updated": "播放设置已更新。",
+          "preview.status.isolatedOnly": "速度和循环设置会在独立预览打开时生效。",
           "preview.codex.atlasCaption": "生成图集 · 资源包预览",
           "preview.codex.atlasAlt": "生成的 Codex Pet 图集预览",
           "preview.codex.cellCaption": "第一格 · 192 × 208 最终尺寸",
@@ -1618,6 +1666,11 @@
     let rendererPreviewBusy = false;
     let rendererPreviewStatusText = "";
     let rendererPreviewStatusLevel = "";
+    let sourcePreviewPlaying = false;
+    let sourcePreviewLoop = true;
+    let sourcePreviewSpeed = 1;
+    let sourcePreviewStatusText = "";
+    let sourcePreviewStatusLevel = "";
     let skillStatus = null;
     let skillBusy = false;
     let skillStatusText = "";
@@ -2162,7 +2215,10 @@
         });
         const loadError = rendererPreviewError(loaded, "The isolated preview could not load this Source Package.");
         if (loadError) throw loadError;
-        if (state.selectedMotionId) await rendererPreviewCommand("playMotion", [state.selectedMotionId, { loop: true, speed: 1, start: 0 }]);
+        if (state.selectedMotionId) {
+          await rendererPreviewCommand("playMotion", [state.selectedMotionId, { loop: sourcePreviewLoop, speed: sourcePreviewSpeed, start: 0 }]);
+          sourcePreviewPlaying = true;
+        }
         setRendererPreviewStatus(I18n.t("runtime.preview.ready"), "good");
       } catch (error) {
         if (rendererPreviewSessionId) await closeRendererPreview({ silent: true });
@@ -2194,7 +2250,10 @@
         });
         const loadError = rendererPreviewError(loaded, "The isolated preview could not reload this Source Package.");
         if (loadError) throw loadError;
-        if (state.selectedMotionId) await rendererPreviewCommand("playMotion", [state.selectedMotionId, { loop: true, speed: 1, start: 0 }]);
+        if (state.selectedMotionId) {
+          await rendererPreviewCommand("playMotion", [state.selectedMotionId, { loop: sourcePreviewLoop, speed: sourcePreviewSpeed, start: 0 }]);
+          sourcePreviewPlaying = true;
+        }
         setRendererPreviewStatus(I18n.t("runtime.preview.ready"), "good");
       } catch (error) {
         setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad");
@@ -2783,7 +2842,7 @@
     }
 
     function render() {
-      renderProjectWorkflow(); renderProjectHistory(); renderInspection(); renderMetrics(); renderMotions(); renderExpressions(); renderMappings(); renderScenario();
+      renderProjectWorkflow(); renderProjectHistory(); renderInspection(); renderMetrics(); renderMotions(); renderExpressions(); renderPreviewPlayback(); renderMappings(); renderScenario();
       renderBuildProgress("codex"); renderBuildProgress("clawd");
       renderSkillStatus();
       $("sleepMode").value = state.sleepMode;
@@ -3252,6 +3311,7 @@
       if (!app) app = new PIXI.Application({view:$("live2dCanvas"),resizeTo:$("stage"),backgroundAlpha:0,antialias:true,autoStart:true});
       liveModel = await PIXI.live2d.Live2DModel.from(modelUrl,{autoInteract:false,autoHitTest:false});
       app.stage.addChild(liveModel);
+      sourcePreviewPlaying = false;
       fitModel();
     }
     function fitModel() {
@@ -3263,15 +3323,105 @@
       liveModel.x = (app.renderer.width-bounds.width*scale)/2-bounds.x*scale;
       liveModel.y = (app.renderer.height-bounds.height*scale)/2-bounds.y*scale;
     }
-    async function playMotion(id) {
+    function setSourcePreviewStatus(message, level = "") {
+      sourcePreviewStatusText = message;
+      sourcePreviewStatusLevel = level;
+      const element = $("previewPlaybackStatus");
+      if (!element) return;
+      element.className = `preview-status${level ? ` ${level}` : ""}`;
+      element.textContent = message;
+    }
+    function sourcePreviewAvailable() {
+      return Boolean(liveModel || rendererPreviewSessionId);
+    }
+    function renderPreviewPlayback() {
+      const hasMotion = Boolean(selectedMotion());
+      const available = sourcePreviewAvailable() && hasMotion;
+      const pause = $("previewPause");
+      const resume = $("previewResume");
+      const restart = $("previewRestart");
+      const speed = $("previewSpeed");
+      const loop = $("previewLoop");
+      const status = $("previewPlaybackStatus");
+      if (!pause || !resume || !restart || !speed || !loop || !status) return;
+      pause.disabled = !available || !sourcePreviewPlaying;
+      resume.disabled = !available || sourcePreviewPlaying;
+      restart.disabled = !available;
+      speed.disabled = !sourcePreviewAvailable();
+      loop.disabled = !sourcePreviewAvailable();
+      speed.value = String(sourcePreviewSpeed);
+      loop.checked = sourcePreviewLoop;
+      status.className = `preview-status${sourcePreviewStatusLevel ? ` ${sourcePreviewStatusLevel}` : ""}`;
+      status.textContent = sourcePreviewStatusText;
+    }
+    async function playMotion(id, { loop = sourcePreviewLoop, speed = sourcePreviewSpeed, start = 0 } = {}) {
       const motion = MotionMapping.motion(state,id);
       if (!motion) return;
+      sourcePreviewLoop = Boolean(loop);
+      sourcePreviewSpeed = Number(speed) || 1;
+      sourcePreviewPlaying = true;
+      sourcePreviewStatusText = "";
+      sourcePreviewStatusLevel = "";
       dispatch({type:"SELECT_MOTION",id});
-      if (liveModel) await liveModel.motion(motion.group,motion.index,3);
+      if (liveModel) {
+        liveModel.autoUpdate = true;
+        await liveModel.motion(motion.group,motion.index,3);
+      }
       if (rendererPreviewSessionId) {
-        try { await rendererPreviewCommand("playMotion", [id, { loop: true, speed: 1, start: 0 }]); }
+        try { await rendererPreviewCommand("playMotion", [id, { loop: sourcePreviewLoop, speed: sourcePreviewSpeed, start }]); }
         catch (error) { setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad"); }
       }
+      renderPreviewPlayback();
+    }
+    async function pauseSourcePreview() {
+      if (!sourcePreviewAvailable()) return;
+      if (liveModel) liveModel.autoUpdate = false;
+      if (rendererPreviewSessionId) {
+        try { await rendererPreviewCommand("pause"); }
+        catch (error) { setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad"); }
+      }
+      sourcePreviewPlaying = false;
+      setSourcePreviewStatus(I18n.t("preview.status.paused"), "good");
+      renderPreviewPlayback();
+    }
+    async function resumeSourcePreview() {
+      if (!sourcePreviewAvailable() || !state.selectedMotionId) return;
+      if (liveModel) liveModel.autoUpdate = true;
+      if (rendererPreviewSessionId) {
+        try { await rendererPreviewCommand("resume"); }
+        catch (error) { setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad"); }
+      }
+      sourcePreviewPlaying = true;
+      setSourcePreviewStatus(I18n.t("preview.status.resumed"), "good");
+      renderPreviewPlayback();
+    }
+    async function restartSourcePreview() {
+      if (!sourcePreviewAvailable() || !state.selectedMotionId) return;
+      if (liveModel) liveModel.autoUpdate = true;
+      if (rendererPreviewSessionId) {
+        try { await rendererPreviewCommand("restart"); }
+        catch (error) { setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad"); }
+      } else {
+        await playMotion(state.selectedMotionId, { loop: sourcePreviewLoop, speed: sourcePreviewSpeed, start: 0 });
+      }
+      sourcePreviewPlaying = true;
+      setSourcePreviewStatus(I18n.t("preview.status.restarted"), "good");
+      renderPreviewPlayback();
+    }
+    async function updateSourcePreviewSettings() {
+      sourcePreviewLoop = $("previewLoop").checked;
+      sourcePreviewSpeed = Number($("previewSpeed").value) || 1;
+      if (rendererPreviewSessionId) {
+        try {
+          await rendererPreviewCommand("setLoop", [sourcePreviewLoop]);
+          await rendererPreviewCommand("setSpeed", [sourcePreviewSpeed]);
+        } catch (error) {
+          setRendererPreviewStatus(I18n.t("runtime.preview.failed", { message: error.message }), "bad");
+        }
+      } else if (sourcePreviewAvailable()) {
+        setSourcePreviewStatus(I18n.t("preview.status.isolatedOnly"));
+      }
+      renderPreviewPlayback();
     }
     async function playExpression(id) {
       const expression = state.expressions.find(item => item.id === id);
@@ -4759,6 +4909,11 @@
     $("ackSourceReview").addEventListener("click", relinkSource);
     $("replay").addEventListener("click",()=>playMotion(state.selectedMotionId));
     $("playIdle").addEventListener("click",()=>{const idle=state.motions.find(m=>/idle/i.test(m.name))||state.motions[0];if(idle)playMotion(idle.id);});
+    $("previewPause").addEventListener("click", () => { void pauseSourcePreview(); });
+    $("previewResume").addEventListener("click", () => { void resumeSourcePreview(); });
+    $("previewRestart").addEventListener("click", () => { void restartSourcePreview(); });
+    $("previewSpeed").addEventListener("change", () => { void updateSourcePreviewSettings(); });
+    $("previewLoop").addEventListener("change", () => { void updateSourcePreviewSettings(); });
     $("resetExpression").addEventListener("click",resetExpression);
     $("assignCurrent").addEventListener("click",()=>dispatch({type:"MAP",key:$("quickState").value,value:state.selectedMotionId?`motion:${state.selectedMotionId}`:""}));
     $("sleepMode").addEventListener("change",e=>dispatch({type:"SET_SLEEP",value:e.target.value}));

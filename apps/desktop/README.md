@@ -162,3 +162,8 @@ Undo and Redo buttons are keyboard accessible (`⌘Z`/`Ctrl+Z` and
 `⇧⌘Z`/`Ctrl+Y`), and source/project loads start a fresh history boundary. Only
 project metadata and mappings enter that history; source files, runtime bytes,
 renderer objects, and generated packages remain outside it.
+
+The source-preview panel exposes Pause, Resume, Restart, Loop, and speed
+controls. With an isolated Desktop renderer open these use the typed renderer
+command seam; the in-window browser fallback supports pause/resume/restart and
+clearly reports that loop and speed settings apply to the isolated renderer.

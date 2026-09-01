@@ -93,6 +93,17 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /optionsByTarget: \{ clawd: \{ package: true/);
   assert.match(mapper, /id="buildClawd"/);
   assert.match(mapper, /id="downloadClawd"/);
+  assert.match(mapper, /id="previewPause"/);
+  assert.match(mapper, /id="previewResume"/);
+  assert.match(mapper, /id="previewRestart"/);
+  assert.match(mapper, /id="previewSpeed"/);
+  assert.match(mapper, /id="previewLoop"/);
+  assert.match(mapper, /function pauseSourcePreview\(\)/);
+  assert.match(mapper, /function resumeSourcePreview\(\)/);
+  assert.match(mapper, /function restartSourcePreview\(\)/);
+  assert.match(mapper, /function updateSourcePreviewSettings\(\)/);
+  assert.match(mapper, /rendererPreviewCommand\("setSpeed"/);
+  assert.match(mapper, /rendererPreviewCommand\("setLoop"/);
   assert.match(mapper, /id="installCodex"/);
   assert.match(mapper, /id="installClawd"/);
   assert.match(mapper, /id="chooseCodexInstallRoot"/);
