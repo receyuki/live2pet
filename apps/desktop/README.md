@@ -105,6 +105,11 @@ Clawd WebP assets are encoded with a bounded worker pool (two concurrent assets
 by default) while output order stays stable. The event stream includes stage
 transitions and per-Motion encoding updates, so long builds remain observable
 without exposing frame bytes or local paths to the renderer.
+While a build is active, the Mapper also exposes a target-scoped Cancel build
+control. It aborts local renderer capture immediately and requests cancellation
+from the main-process Package Build service through the active opaque build id.
+Cancellation does not replace the last successful artifact, and it never
+installs or downloads a partial package.
 
 From the repository root, install workspace dependencies and run:
 

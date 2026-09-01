@@ -75,6 +75,7 @@ const APP_IPC_METHODS = Object.freeze([
   'getMapperProject',
   'updateMapperProject',
   'buildProject',
+  'cancelBuild',
   'getBuildArtifact',
   'chooseInstallRoot',
   'installArtifact',
@@ -160,6 +161,15 @@ function normalizeBuildRequest(value) {
     metadataByTarget: value.metadataByTarget || {},
     optionsByTarget: value.optionsByTarget || {},
   };
+}
+
+function normalizeCancelBuildRequest(value) {
+  if (!isRecord(value)) fail('INVALID_BUILD_CANCEL_REQUEST', 'App Package Build cancellation input must be an object.');
+  const allowed = new Set(['buildId']);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) fail('INVALID_BUILD_CANCEL_REQUEST', `App Package Build cancellation contains unsupported fields: ${unknown.join(', ')}.`);
+  if (typeof value.buildId !== 'string' || !value.buildId.trim() || value.buildId.length > 128 || !/^[A-Za-z0-9_-]{8,128}$/.test(value.buildId.trim())) fail('INVALID_BUILD_CANCEL_REQUEST', 'buildId must be an opaque active build identifier.');
+  return { buildId: value.buildId.trim() };
 }
 
 function normalizeInspectRequest(value) {
@@ -627,9 +637,12 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, source
   let activeHost = null;
   let activeClient = null;
   let buildArtifacts = new Map();
+  let activeBuilds = new Map();
   let installLocations = new Map();
 
   const closeActive = async () => {
+    for (const { controller } of activeBuilds.values()) controller.abort();
+    activeBuilds = new Map();
     if (!activeHost) {
       buildArtifacts = new Map();
       installLocations = new Map();
@@ -745,11 +758,10 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, source
         if (!buildProjectService) fail('APP_BUILD_UNAVAILABLE', 'The App Package Build service is not configured.');
         const input = normalizeBuildRequest(normalized.args[0]);
         const buildTargets = input.targets || ['clawd', 'codex-pet'];
-        for (const [artifactId, artifact] of buildArtifacts) {
-          if (buildTargets.includes(artifact.target)) buildArtifacts.delete(artifactId);
-        }
         const progress = [];
         const buildId = crypto.randomUUID();
+        const controller = new AbortController();
+        activeBuilds.set(buildId, { controller, targets: [...buildTargets] });
         let sequence = 0;
         const emitBuildProgress = (event) => {
           const safeEvent = normalizeBuildProgressEvent(event);
@@ -763,23 +775,38 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, source
             }
           }
         };
-        const built = await buildProjectService({ ...input, onProgress: emitBuildProgress });
-        const artifacts = collectBuildArtifacts(built);
-        for (const artifact of artifacts) {
-          for (const [artifactId, previous] of buildArtifacts) {
-            if (previous.target === artifact.target) buildArtifacts.delete(artifactId);
+        try {
+          const built = await buildProjectService({ ...input, signal: controller.signal, onProgress: emitBuildProgress });
+          if (controller.signal.aborted) fail('BUILD_CANCELLED', 'Package Build was cancelled before the next stage completed.');
+          const artifacts = collectBuildArtifacts(built);
+          for (const [artifactId, artifact] of buildArtifacts) {
+            if (buildTargets.includes(artifact.target)) buildArtifacts.delete(artifactId);
           }
-          buildArtifacts.set(artifact.artifactId, artifact);
+          for (const artifact of artifacts) {
+            for (const [artifactId, previous] of buildArtifacts) {
+              if (previous.target === artifact.target) buildArtifacts.delete(artifactId);
+            }
+            buildArtifacts.set(artifact.artifactId, artifact);
+          }
+          return {
+            protocolVersion: APP_IPC_PROTOCOL_VERSION,
+            ok: true,
+            progress,
+            result: {
+              ...summarizeBuildTargets(built),
+              artifacts: artifacts.map(({ bytes, ...metadata }) => metadata),
+            },
+          };
+        } finally {
+          activeBuilds.delete(buildId);
         }
-        return {
-          protocolVersion: APP_IPC_PROTOCOL_VERSION,
-          ok: true,
-          progress,
-          result: {
-            ...summarizeBuildTargets(built),
-            artifacts: artifacts.map(({ bytes, ...metadata }) => metadata),
-          },
-        };
+      }
+      if (normalized.method === 'cancelBuild') {
+        const input = normalizeCancelBuildRequest(normalized.args[0]);
+        const active = activeBuilds.get(input.buildId);
+        if (!active) return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: { buildId: input.buildId, cancelled: false, active: false } };
+        active.controller.abort();
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: { buildId: input.buildId, cancelled: true, active: true } };
       }
       if (normalized.method === 'getBuildArtifact') {
         const [request = {}] = normalized.args;
@@ -891,6 +918,7 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
     getMapperProject: () => invoke('getMapperProject'),
     updateMapperProject: (project) => invoke('updateMapperProject', project),
     buildProject: (input) => invoke('buildProject', input),
+    cancelBuild: (buildId) => invoke('cancelBuild', { buildId }),
     onBuildProgress,
     getBuildArtifact: (artifactId, offset = 0) => invoke('getBuildArtifact', { artifactId, offset }),
     chooseInstallRoot: (target) => invoke('chooseInstallRoot', { target }),
@@ -944,6 +972,7 @@ module.exports = {
   normalizeRendererCommandRequest,
   normalizeRendererSessionRequest,
   normalizeBuildRequest,
+  normalizeCancelBuildRequest,
   normalizeInstallRequest,
   normalizeInstallRootRequest,
   normalizeBuildProgressEvent,

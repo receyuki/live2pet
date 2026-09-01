@@ -48,7 +48,7 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(preload, /const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';/);
   assert.match(preload, /webUtils\.getPathForFile/);
   assert.match(preload, /getFilePath,/);
-  for (const method of ['getVersion', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'buildProject', 'getBuildArtifact', 'chooseInstallRoot', 'installArtifact', 'closeMapperSession', 'getCaptureCacheStatus', 'getSkillStatus', 'installSkill', 'startRendererPreview', 'loadRendererSource', 'rendererCommand', 'getRendererPreviewStatus', 'restartRendererPreview', 'closeRendererPreview']) {
+  for (const method of ['getVersion', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'buildProject', 'cancelBuild', 'getBuildArtifact', 'chooseInstallRoot', 'installArtifact', 'closeMapperSession', 'getCaptureCacheStatus', 'getSkillStatus', 'installSkill', 'startRendererPreview', 'loadRendererSource', 'rendererCommand', 'getRendererPreviewStatus', 'restartRendererPreview', 'closeRendererPreview']) {
     assert.match(preload, new RegExp(`invoke\\('${method}'`));
   }
   assert.match(preload, /getBuildArtifact: \(artifactId, offset = 0\) => invoke\('getBuildArtifact', \{ artifactId, offset \}\)/);
@@ -89,7 +89,7 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /optionsByTarget: \{ "codex-pet": \{ package: true/);
   assert.match(mapper, /if \(desktopArtifact\) \{/);
   assert.match(mapper, /Encoding transparent WebP atlas/);
-  assert.match(mapper, /function buildClawdThroughDesktop\(project, framesByMotion, captureCache\)/);
+  assert.match(mapper, /function buildClawdThroughDesktop\(project, framesByMotion, captureCache, signal = null\)/);
   assert.match(mapper, /optionsByTarget: \{ clawd: \{ package: true/);
   assert.match(mapper, /id="buildClawd"/);
   assert.match(mapper, /id="downloadClawd"/);
@@ -117,6 +117,11 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /function beginBuildProgress\(target/);
   assert.match(mapper, /function setBuildProgressCapture\(target/);
   assert.match(mapper, /function handleBuildProgress\(event\)/);
+  assert.match(mapper, /function requestBuildCancellation\(target\)/);
+  assert.match(mapper, /typeof api\.cancelBuild/);
+  assert.match(mapper, /id="cancelCodexBuild"/);
+  assert.match(mapper, /id="cancelClawdBuild"/);
+  assert.match(mapper, /BUILD_CANCELLED/);
   assert.match(mapper, /async function compressClawdChunk\(bytes, width, height, startFrame, frameCount\)/);
   assert.match(mapper, /<script src="\.\/clawd-capture-plan\.js"><\/script>/);
   assert.match(mapper, /Live2PetClawdCapture\.createClawdCapturePlan/);
@@ -126,7 +131,7 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /CLAWD_CAPTURE_COMPRESSION_REQUIRED/);
   assert.match(mapper, /encodingConcurrency: Live2PetClawdCapture\.resolveClawdEncodingConcurrency/);
   assert.doesNotMatch(mapper, /maxFrames/);
-  assert.match(mapper, /async function retrieveDesktopArtifact\(api, artifact, target, setStatus\)/);
+  assert.match(mapper, /async function retrieveDesktopArtifact\(api, artifact, target, setStatus, signal = null\)/);
   assert.match(mapper, /getBuildArtifact\(artifact\.artifactId, offset\)/);
   assert.match(mapper, /build\.progress\.stage\.transfer/);
   assert.match(mapper, /new zipApi\.BlobReader\(artifact\.blob\)/);

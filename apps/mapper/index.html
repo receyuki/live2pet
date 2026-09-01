@@ -187,6 +187,8 @@
     .output-actions { display: flex; gap: 8px; }
     .build-panel { margin-top: 18px; }
     .build-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .build-actions .build-cancel { border-color: #a55a64; color: #ffd2d8; background: transparent; }
+    .build-actions .build-cancel:hover { border-color: var(--bad); background: #3a1b2a; }
     .build-status { min-height: 22px; margin-top: 10px; color: var(--muted); }
     .build-status.good { color: var(--good); }
     .build-status.bad { color: var(--bad); }
@@ -194,6 +196,7 @@
     .build-progress { display: grid; gap: 7px; margin-top: 10px; padding: 10px 12px; background: #0b1628; border: 1px solid var(--line); border-radius: 10px; }
     .build-progress.good { border-color: #3e735f; }
     .build-progress.bad { border-color: var(--bad); }
+    .build-progress.cancelled { border-color: #8c7130; }
     .build-progress.busy { border-color: #8c7130; }
     .build-progress-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; min-width: 0; }
     .build-progress-stage { min-width: 0; overflow-wrap: anywhere; font-weight: 650; }
@@ -458,6 +461,7 @@
       </div>
       <div class="build-actions">
         <button id="buildCodex" class="primary" disabled data-i18n="build.codex.build">Build Codex Pet ZIP</button>
+        <button id="cancelCodexBuild" class="build-cancel hidden" disabled data-i18n="build.cancel">Cancel build</button>
         <button id="downloadCodex" disabled data-i18n="build.codex.download">Download last ZIP</button>
       </div>
       <div id="codexInstallControls" class="install-controls hidden">
@@ -499,6 +503,7 @@
       </div>
       <div class="build-actions">
         <button id="buildClawd" class="primary" disabled data-i18n="build.clawd.build">Build Clawd Theme ZIP</button>
+        <button id="cancelClawdBuild" class="build-cancel hidden" disabled data-i18n="build.cancel">Cancel build</button>
         <button id="downloadClawd" disabled data-i18n="build.clawd.download">Download last ZIP</button>
       </div>
       <div id="clawdInstallControls" class="install-controls hidden">
@@ -707,6 +712,7 @@
           "build.codex.description": "Captures the selected Codex mappings into a transparent 1536 × 1872 atlas, then creates pet.json and spritesheet.webp. This prototype validates the atlas and package shape; host-compatibility validation remains a later gate.",
           "build.codex.build": "Build Codex Pet ZIP",
           "build.codex.building": "Building Codex Pet ZIP…",
+          "build.cancel": "Cancel build",
           "build.codex.download": "Download last ZIP",
           "build.install.conflictLabel": "If this package already exists",
           "build.install.conflict.cancel": "Ask before replacing",
@@ -850,6 +856,8 @@
           "build.progress.transfer.current": "Received {completed} of {total}.",
           "build.progress.transfer.done": "Package transfer completed · {total}.",
           "build.progress.done": "Build complete.",
+          "build.progress.cancelRequested": "Cancellation requested…",
+          "build.progress.cancelled": "Build cancelled. The previous successful package is still available.",
           "build.progress.failed": "Build failed: {message}",
           "build.progress.unknownFailure": "Unknown build error.",
           "build.progress.waiting": "Build progress will appear here.",
@@ -1096,6 +1104,7 @@
           "build.codex.description": "将选中的 Codex 映射捕获为透明 1536 × 1872 图集，然后创建 pet.json 和 spritesheet.webp。当前原型会校验图集与资源包结构；宿主兼容性校验仍是后续门槛。",
           "build.codex.build": "构建 Codex Pet ZIP",
           "build.codex.building": "正在构建 Codex Pet ZIP…",
+          "build.cancel": "取消构建",
           "build.codex.download": "下载上一次 ZIP",
           "build.install.conflictLabel": "如果目标包已存在",
           "build.install.conflict.cancel": "替换前询问",
@@ -1239,6 +1248,8 @@
           "build.progress.transfer.current": "已接收 {completed} / {total}。",
           "build.progress.transfer.done": "主题包传输完成 · {total}。",
           "build.progress.done": "构建完成。",
+          "build.progress.cancelRequested": "已请求取消…",
+          "build.progress.cancelled": "构建已取消；上一次成功生成的资源包仍可用。",
           "build.progress.failed": "构建失败：{message}",
           "build.progress.unknownFailure": "未知构建错误。",
           "build.progress.waiting": "构建进度会显示在这里。",
@@ -3191,6 +3202,7 @@
     const CODEX_PACKAGE_VERSION = "1.0.0";
     const CLAWD_PACKAGE_VERSION = "1.0.0";
     let codexBuildBusy = false;
+    let codexBuildAbortController = null;
     let codexArtifact = null;
     const codexRowPlayback = { rowId: null, frameIndex: 0, timer: null, playing: false };
     const installLocations = { clawd: null, codex: null };
@@ -3199,6 +3211,7 @@
     const CODEX_CAPTURE_MEMORY_LIMIT = 256 * 1024 * 1024;
     let codexInstallBusy = false;
     let clawdBuildBusy = false;
+    let clawdBuildAbortController = null;
     let clawdArtifact = null;
     let clawdInstallBusy = false;
     let clawdPreview = null;
@@ -3225,7 +3238,7 @@
 
     function createBuildProgress(target) {
       const config = BUILD_PROGRESS_CONFIG[target];
-      return { target, status: "idle", stage: "", stageStatus: "started", stageIndex: 0, percent: 0, captureCompleted: 0, captureTotal: 0, stageCompleted: 0, stageTotal: 0, completedMotionIds: new Set(), currentMotion: "", eventDetails: {}, error: "", completed: false, stageCount: config.stages.length };
+      return { target, status: "idle", stage: "", stageStatus: "started", stageIndex: 0, percent: 0, captureCompleted: 0, captureTotal: 0, stageCompleted: 0, stageTotal: 0, completedMotionIds: new Set(), currentMotion: "", eventDetails: {}, error: "", buildId: null, cancelRequested: false, completed: false, stageCount: config.stages.length };
     }
 
     const buildProgress = { codex: createBuildProgress("codex"), clawd: createBuildProgress("clawd") };
@@ -3254,6 +3267,7 @@
     }
 
     function buildProgressDetail(progress) {
+      if (progress.status === "cancelled") return I18n.t("build.progress.cancelled");
       if (progress.status === "bad") return I18n.t("build.progress.failed", { message: progress.error || I18n.t("build.progress.unknownFailure") });
       if (progress.completed) return I18n.t("build.progress.done");
       const stage = progressStageName(progress);
@@ -3301,6 +3315,12 @@
       $(`${prefix}BuildProgressBar`).value = progress.percent;
       $(`${prefix}BuildProgressBar`).setAttribute("aria-valuetext", `${I18n.t("build.progress.percent", { percent: progress.percent })} · ${stage} · ${detail}`);
       $(`${prefix}BuildProgressDetail`).textContent = detail;
+      const cancelButton = $(`cancel${prefix === "clawd" ? "Clawd" : "Codex"}Build`);
+      if (cancelButton) {
+        const busy = progress.status === "busy";
+        cancelButton.classList.toggle("hidden", !busy);
+        cancelButton.disabled = !busy || progress.cancelRequested;
+      }
     }
 
     function beginBuildProgress(target, captureTotal = 0) {
@@ -3386,6 +3406,7 @@
       progress.percent = 100;
       progress.completed = true;
       progress.error = "";
+      progress.cancelRequested = false;
       renderBuildProgress(target);
     }
 
@@ -3394,8 +3415,42 @@
       progress.status = "bad";
       progress.stageStatus = "failed";
       progress.error = String(error?.message || error || I18n.t("build.progress.unknownFailure")).slice(0, 240);
+      progress.cancelRequested = false;
       progress.completed = false;
       renderBuildProgress(target);
+    }
+
+    function cancelBuildProgress(target) {
+      const progress = buildProgress[target];
+      progress.status = "cancelled";
+      progress.stageStatus = "cancelled";
+      progress.error = "";
+      progress.cancelRequested = false;
+      progress.completed = false;
+      renderBuildProgress(target);
+    }
+
+    async function requestBuildCancellation(target) {
+      const progress = buildProgress[target];
+      const busy = target === "clawd" ? clawdBuildBusy : codexBuildBusy;
+      if (!busy || progress.status !== "busy" || progress.cancelRequested) return;
+      progress.cancelRequested = true;
+      renderBuildProgress(target);
+      const message = I18n.t("build.progress.cancelRequested");
+      if (target === "clawd") setClawdBuildStatus(message, "busy");
+      else setBuildStatus(message, "busy");
+      const controller = target === "clawd" ? clawdBuildAbortController : codexBuildAbortController;
+      controller?.abort();
+      const api = desktopBuildApi();
+      if (!api || !progress.buildId || typeof api.cancelBuild !== "function") return;
+      try {
+        const response = await api.cancelBuild(progress.buildId);
+        if (!response?.ok) console.warn("Live2Pet App build cancellation was rejected", response?.error || response);
+      } catch (error) {
+        // The local signal still stops renderer capture. The App request is
+        // best-effort because the build may have completed between events.
+        console.warn("Live2Pet App build cancellation unavailable", error);
+      }
     }
 
     function handleBuildProgress(event) {
@@ -3403,6 +3458,10 @@
       if (!codexBuildBusy && !clawdBuildBusy) return;
       const target = progressTargetKey(event.target) || (clawdBuildBusy ? "clawd" : codexBuildBusy ? "codex" : null);
       if (!target || typeof event.stage !== "string") return;
+      const progress = buildProgress[target];
+      if (event.buildId && progress.buildId && event.buildId !== progress.buildId) return;
+      if (typeof event.buildId === "string" && event.buildId.trim()) progress.buildId = event.buildId.trim().slice(0, 128);
+      if (progress.cancelRequested) return;
       const status = ["completed", "started", "failed", "motion-started", "motion-completed"].includes(event.status) ? event.status : null;
       if (!status) return;
       if (status === "failed") {
@@ -3765,6 +3824,10 @@
       return new Promise(resolve => requestAnimationFrame(() => resolve()));
     }
 
+    function checkMapperBuildCancelled(signal) {
+      if (signal?.aborted) throw projectError("BUILD_CANCELLED", I18n.t("build.progress.cancelled"));
+    }
+
     function captureSurface(width, height, current) {
       if (!current || current.canvas.width !== width || current.canvas.height !== height) {
         const canvas = document.createElement("canvas");
@@ -3828,7 +3891,8 @@
       return cached.frames;
     }
 
-    async function captureCodexMotion(motion, count) {
+    async function captureCodexMotion(motion, count, signal = null) {
+      checkMapperBuildCancelled(signal);
       const duration = Math.max(0.8, Math.min(8, Number(motion.duration) || 1.2));
       const plan = Live2PetClawdCapture.createFixedStepPlan(duration, count);
       const previousAutoUpdate = liveModel.autoUpdate;
@@ -3841,12 +3905,17 @@
         liveModel.deltaTime = 0;
         liveModel.elapsedTime = performance.now();
         const started = await liveModel.motion(motion.group, motion.index, 3);
+        checkMapperBuildCancelled(signal);
         if (started === false) throw projectError("MOTION_CAPTURE_FAILED", `Motion ${motion.name || motion.id} could not be started for capture.`);
         for (let index = 0; index < plan.frameCount; index += 1) {
+          checkMapperBuildCancelled(signal);
           liveModel.update(index === 0 ? 1 : plan.stepMs);
           app.renderer.render(app.stage);
           frames.push(captureCodexCell());
-          if ((index + 1) % 8 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+          if ((index + 1) % 8 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+            checkMapperBuildCancelled(signal);
+          }
         }
       } finally {
         motionManager?.stopAllMotions();
@@ -3872,7 +3941,8 @@
       return window.live2pet && typeof window.live2pet.getCaptureCacheStatus === "function" ? window.live2pet : null;
     }
 
-    async function prepareCaptureCache(target, recipesByMotion, renderPreset) {
+    async function prepareCaptureCache(target, recipesByMotion, renderPreset, signal = null) {
+      checkMapperBuildCancelled(signal);
       const api = desktopCaptureCacheApi();
       const sourceFingerprint = state.inspection?.source?.fingerprint;
       const cubismVersion = Number(state.model?.cubism);
@@ -3881,6 +3951,7 @@
       if (!motions.length) return null;
       try {
         const response = await api.getCaptureCacheStatus({ sourceFingerprint, cubismVersion, target, renderPreset, motions });
+        checkMapperBuildCancelled(signal);
         if (!response?.ok || !Array.isArray(response.result?.entries)) return null;
         const keysByMotion = {};
         const hitsByMotion = {};
@@ -3891,6 +3962,7 @@
         }
         return { cubismVersion, renderPreset, recipesByMotion, keysByMotion, hitsByMotion };
       } catch {
+        if (signal?.aborted) throw projectError("BUILD_CANCELLED", I18n.t("build.progress.cancelled"));
         return null;
       }
     }
@@ -3963,7 +4035,8 @@
       return { width, height, startFrame, frameCount, rgbaDeflate: compressed, compression: "deflate-stack-v1" };
     }
 
-    async function captureClawdMotion(motion, onFrame = null) {
+    async function captureClawdMotion(motion, onFrame = null, signal = null) {
+      checkMapperBuildCancelled(signal);
       const settings = clawdRenderSettings();
       const plan = clawdCapturePlan(motion);
       const previousAutoUpdate = liveModel.autoUpdate;
@@ -3980,11 +4053,15 @@
       let compressionStartedAt = null;
       let compressionFinishedAt = null;
       const enqueueChunk = async () => {
+        checkMapperBuildCancelled(signal);
         if (compressionStartedAt === null) compressionStartedAt = performance.now();
         const pending = compressClawdChunk(chunkBytes, settings.width, settings.height, chunkSpec.startFrame, chunkSpec.frameCount);
         pendingCompression.push(pending);
         chunkIndex += 1;
-        if (pendingCompression.length >= 2) compressedChunks.push(await pendingCompression.shift());
+        if (pendingCompression.length >= 2) {
+          compressedChunks.push(await pendingCompression.shift());
+          checkMapperBuildCancelled(signal);
+        }
         if (chunkIndex < chunkPlan.length) {
           chunkSpec = chunkPlan[chunkIndex];
           chunkBytes = new Uint8Array(chunkSpec.byteLength);
@@ -3999,8 +4076,10 @@
         liveModel.deltaTime = 0;
         liveModel.elapsedTime = performance.now();
         const started = await liveModel.motion(motion.group, motion.index, 3);
+        checkMapperBuildCancelled(signal);
         if (started === false) throw projectError("MOTION_CAPTURE_FAILED", `Motion ${motion.name || motion.id} could not be started for capture.`);
         for (let index = 0; index < plan.frameCount; index += 1) {
+          checkMapperBuildCancelled(signal);
           liveModel.update(index === 0 ? 1 : plan.stepMs);
           app.renderer.render(app.stage);
           const captured = captureClawdFrame();
@@ -4009,11 +4088,19 @@
           frames.push({ id: `${motion.id}-capture-${index}`, index, time: plan.durationSeconds * (plan.frameCount === 1 ? 0 : index / (plan.frameCount - 1)), width: captured.width, height: captured.height });
           if (typeof onFrame === "function") onFrame(index + 1, plan.frameCount);
           if (chunkOffset === chunkSpec.byteLength) await enqueueChunk();
-          if ((index + 1) % 8 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+          if ((index + 1) % 8 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+            checkMapperBuildCancelled(signal);
+          }
         }
-        while (pendingCompression.length) compressedChunks.push(await pendingCompression.shift());
+        checkMapperBuildCancelled(signal);
+        while (pendingCompression.length) {
+          compressedChunks.push(await pendingCompression.shift());
+          checkMapperBuildCancelled(signal);
+        }
         compressionFinishedAt = performance.now();
       } finally {
+        if (pendingCompression.length) await Promise.allSettled(pendingCompression);
         motionManager?.stopAllMotions();
         liveModel.deltaTime = 0;
         liveModel.elapsedTime = performance.now();
@@ -4044,7 +4131,7 @@
       throw projectError("APP_BUILD_ARTIFACT_FAILED", "The Desktop App returned an invalid artifact chunk.");
     }
 
-    async function retrieveDesktopArtifact(api, artifact, target, setStatus) {
+    async function retrieveDesktopArtifact(api, artifact, target, setStatus, signal = null) {
       if (!artifact?.artifactId) throw projectError("APP_BUILD_ARTIFACT_MISSING", "The App build completed without a downloadable artifact.");
       const chunks = [];
       let offset = 0;
@@ -4052,7 +4139,9 @@
       let iterations = 0;
       setBuildProgressStage(target, "transfer", "started", { completed: 0, total });
       while (true) {
+        checkMapperBuildCancelled(signal);
         const payload = await api.getBuildArtifact(artifact.artifactId, offset);
+        checkMapperBuildCancelled(signal);
         if (!payload?.ok || !payload.result?.bytes) throw projectError(payload?.error?.code || "APP_BUILD_ARTIFACT_FAILED", payload?.error?.message || "The App could not retrieve the built artifact.");
         const result = payload.result;
         const bytes = artifactChunkBytes(result.bytes);
@@ -4075,13 +4164,15 @@
         if (iterations > 4096) throw projectError("APP_BUILD_ARTIFACT_FAILED", "The Desktop App returned too many artifact chunks.");
         await new Promise(resolve => setTimeout(resolve, 0));
       }
+      checkMapperBuildCancelled(signal);
       if (offset !== total) throw projectError("APP_BUILD_ARTIFACT_FAILED", `The Desktop App returned ${offset} of ${total} artifact bytes.`);
       return new Blob(chunks, { type: "application/zip" });
     }
 
-    async function buildClawdThroughDesktop(project, framesByMotion, captureCache) {
+    async function buildClawdThroughDesktop(project, framesByMotion, captureCache, signal = null) {
       const api = desktopBuildApi();
       if (!api) return null;
+      checkMapperBuildCancelled(signal);
       const prefix = state.outputPrefix.trim() || project.projectId;
       const metadata = {
         id: projectId(prefix),
@@ -4099,11 +4190,13 @@
         metadataByTarget: { clawd: metadata },
         optionsByTarget: { clawd: { package: true, render: { preset: state.clawdRenderPreset }, encodingConcurrency: Live2PetClawdCapture.resolveClawdEncodingConcurrency(state.clawdRenderPreset) } },
       });
+      checkMapperBuildCancelled(signal);
       if (!response?.ok) throw projectError(response?.error?.code || "APP_BUILD_FAILED", response?.error?.message || "The App Package Build service rejected the request.");
       consumeBuildProgressEvents(response.progress);
       const artifact = response.result?.artifacts?.find(item => item.target === "clawd");
       if (!artifact?.artifactId) throw projectError("APP_BUILD_ARTIFACT_MISSING", "The App Package Build completed without a downloadable Clawd artifact.");
-      const blob = await retrieveDesktopArtifact(api, artifact, "clawd", setClawdBuildStatus);
+      const blob = await retrieveDesktopArtifact(api, artifact, "clawd", setClawdBuildStatus, signal);
+      checkMapperBuildCancelled(signal);
       const build = response.result.builds?.clawd || {};
       return {
         blob,
@@ -4122,11 +4215,14 @@
       const readiness = clawdBuildReadiness();
       if (!readiness.ready) throw projectError(state.sourceReview?.required ? "PROJECT_REVIEW_REQUIRED" : "INVALID_CLAWD_MAPPING", readiness.message);
       clawdBuildBusy = true;
+      clawdBuildAbortController = new AbortController();
+      const previousClawdArtifact = clawdArtifact;
       clawdArtifact = null;
       releaseClawdPreview();
       $("clawdBuildSummary").classList.add("hidden");
       render();
       try {
+        const signal = clawdBuildAbortController.signal;
         const project = buildProjectDocument();
         const captures = {};
         const motionIds = clawdMappedMotionIds();
@@ -4136,10 +4232,11 @@
           const plan = clawdCapturePlan(motion);
           return [motionId, { motionId, duration: plan.durationSeconds, width: settings.width, height: settings.height, frameCount: plan.frameCount, fps: settings.fps }];
         }));
-        const captureCache = await prepareCaptureCache("clawd", captureRecipesByMotion, state.clawdRenderPreset);
         beginBuildProgress("clawd", motionIds.length);
+        const captureCache = await prepareCaptureCache("clawd", captureRecipesByMotion, state.clawdRenderPreset, signal);
         setClawdBuildStatus(I18n.t("build.status.clawdCapture", { count: motionIds.length, width: settings.width }), "busy");
         for (const [index, motionId] of motionIds.entries()) {
+          checkMapperBuildCancelled(signal);
           const motion = selectedMotionById(motionId);
           if (!motion) throw projectError("INVALID_CLAWD_MAPPING", `${motionId} points to a Motion that is no longer loaded.`);
           const frameCount = clawdFrameCount(motion);
@@ -4152,7 +4249,7 @@
           setClawdBuildStatus(I18n.t("build.status.capture", { slot: motionId, motion: motion.name, count: frameCount }), "busy");
           captures[motionId] = await captureClawdMotion(motion, (completed, total) => {
             setClawdBuildStatus(I18n.t("build.status.captureCompress", { motion: motion.name, current: completed, total }), "busy");
-          });
+          }, signal);
           if (captures[motionId].timing) {
             setClawdBuildStatus(I18n.t("build.status.captureTiming", {
               motion: motion.name,
@@ -4164,7 +4261,8 @@
         }
         setBuildProgressCapture("clawd", motionIds.length, motionIds.length);
         await new Promise(resolve => setTimeout(resolve, 0));
-        const desktopArtifact = await buildClawdThroughDesktop(project, captures, captureCache);
+        checkMapperBuildCancelled(signal);
+        const desktopArtifact = await buildClawdThroughDesktop(project, captures, captureCache, signal);
         if (!desktopArtifact) throw projectError("APP_BUILD_UNAVAILABLE", I18n.t("build.clawdNoApp"));
         clawdArtifact = desktopArtifact;
         const states = Object.keys(desktopArtifact.manifest?.states || {}).length;
@@ -4175,9 +4273,17 @@
         completeBuildProgress("clawd");
         startClawdPreview(desktopArtifact);
       } catch (error) {
-        setClawdBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad");
-        failBuildProgress("clawd", error);
+        if (error?.code === "BUILD_CANCELLED") {
+          clawdArtifact = previousClawdArtifact;
+          setClawdBuildStatus(I18n.t("build.progress.cancelled"));
+          cancelBuildProgress("clawd");
+          if (previousClawdArtifact) startClawdPreview(previousClawdArtifact);
+        } else {
+          setClawdBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad");
+          failBuildProgress("clawd", error);
+        }
       } finally {
+        clawdBuildAbortController = null;
         clawdBuildBusy = false;
         render();
       }
@@ -4257,9 +4363,10 @@
       }
     }
 
-    async function buildCodexThroughDesktop(project, captures) {
+    async function buildCodexThroughDesktop(project, captures, signal = null) {
       const api = desktopBuildApi();
       if (!api) return null;
+      checkMapperBuildCancelled(signal);
       const candidatesByRow = {};
       for (const row of MotionMapping.codexRows) {
         const value = state.codexMappings[row.id];
@@ -4277,11 +4384,13 @@
         metadataByTarget: { "codex-pet": { id: project.projectId, displayName: project.name, description: `A Codex pet generated locally by Live2Pet from ${project.name}.`, version: CODEX_PACKAGE_VERSION } },
         optionsByTarget: { "codex-pet": { package: true, quality, render: { preset: state.codexRenderPreset } } },
       });
+      checkMapperBuildCancelled(signal);
       if (!response?.ok) throw projectError(response?.error?.code || "APP_BUILD_FAILED", response?.error?.message || "The App Package Build service rejected the request.");
       consumeBuildProgressEvents(response.progress);
       const artifact = response.result?.artifacts?.find(item => item.target === "codex-pet");
       if (!artifact?.artifactId) throw projectError("APP_BUILD_ARTIFACT_MISSING", "The App Package Build completed without a downloadable Codex artifact.");
-      const blob = await retrieveDesktopArtifact(api, artifact, "codex", setBuildStatus);
+      const blob = await retrieveDesktopArtifact(api, artifact, "codex", setBuildStatus, signal);
+      checkMapperBuildCancelled(signal);
       return { blob, artifactId: artifact.artifactId, filename: artifact.filename, manifest: response.result.builds?.["codex-pet"]?.manifest || null };
     }
 
@@ -4300,6 +4409,8 @@
       const zipApi = window.zip;
       if (!zipApi || typeof zipApi.ZipWriter !== "function") throw projectError("ZIP_BUILDER_UNAVAILABLE", "The browser ZIP library did not load. Check network access, then refresh the Mapper.");
       codexBuildBusy = true;
+      codexBuildAbortController = new AbortController();
+      const previousCodexArtifact = codexArtifact;
       releaseCodexPreview();
       codexArtifact = null;
       render();
@@ -4307,9 +4418,11 @@
       beginBuildProgress("codex", captureMotionIds.length);
       const previewUrls = [];
       try {
+        const signal = codexBuildAbortController.signal;
         const captures = new Map();
         let capturedCount = 0;
         for (const row of MotionMapping.codexRows) {
+          checkMapperBuildCancelled(signal);
           const value = state.codexMappings[row.id];
           const motion = selectedMotionById(value.slice(7));
           if (!motion) throw projectError("INVALID_CODEX_MAPPING", `${row.id} points to a Motion that is no longer loaded.`);
@@ -4323,7 +4436,7 @@
             } else {
               setBuildProgressCapture("codex", capturedCount, captureMotionIds.length, motion.name);
               setBuildStatus(I18n.t("build.status.capture", { slot: row.id, motion: motion.name, count: needed }), "busy");
-              const captured = await captureCodexMotion(motion, needed);
+              const captured = await captureCodexMotion(motion, needed, signal);
               rememberCodexCapture(memoryKey, captured);
               captures.set(motion.id, captured);
               setBuildStatus(I18n.t("build.status.captureTiming", {
@@ -4337,6 +4450,7 @@
           }
         }
         setBuildProgressCapture("codex", captureMotionIds.length, captureMotionIds.length);
+        checkMapperBuildCancelled(signal);
         const rowPreviewFrames = Object.fromEntries(MotionMapping.codexRows.map(row => {
           const motionId = state.codexMappings[row.id].slice(7);
           return [row.id, (captures.get(motionId) || []).slice(0, row.frames)];
@@ -4348,6 +4462,7 @@
         context.clearRect(0, 0, atlas.width, atlas.height);
         const manifestRows = [];
         for (let rowIndex = 0; rowIndex < MotionMapping.codexRows.length; rowIndex += 1) {
+          checkMapperBuildCancelled(signal);
           const row = MotionMapping.codexRows[rowIndex];
           const motion = selectedMotionById(state.codexMappings[row.id].slice(7));
           const frames = captures.get(motion.id).slice(0, row.frames);
@@ -4362,16 +4477,20 @@
           setBuildProgressStage("codex", "compose", "started");
           setBuildProgressStage("codex", "compose", "completed");
         }
-        const atlasPreviewUrl = URL.createObjectURL(await canvasToBlob(atlas, "image/png"));
+        const atlasPreviewBlob = await canvasToBlob(atlas, "image/png");
+        checkMapperBuildCancelled(signal);
+        const atlasPreviewUrl = URL.createObjectURL(atlasPreviewBlob);
         previewUrls.push(atlasPreviewUrl);
         const cell = document.createElement("canvas");
         cell.width = CODEX_ATLAS.cellWidth;
         cell.height = CODEX_ATLAS.cellHeight;
         cell.getContext("2d").drawImage(atlas, 0, 0, CODEX_ATLAS.cellWidth, CODEX_ATLAS.cellHeight, 0, 0, CODEX_ATLAS.cellWidth, CODEX_ATLAS.cellHeight);
-        const cellPreviewUrl = URL.createObjectURL(await canvasToBlob(cell, "image/png"));
+        const cellPreviewBlob = await canvasToBlob(cell, "image/png");
+        checkMapperBuildCancelled(signal);
+        const cellPreviewUrl = URL.createObjectURL(cellPreviewBlob);
         previewUrls.push(cellPreviewUrl);
         const project = buildProjectDocument();
-        const desktopArtifact = await buildCodexThroughDesktop(project, captures);
+        const desktopArtifact = await buildCodexThroughDesktop(project, captures, signal);
         if (desktopArtifact) {
           codexArtifact = { ...desktopArtifact, previewUrl: atlasPreviewUrl, cellPreviewUrl, rowFrames: rowPreviewFrames };
           previewUrls.length = 0;
@@ -4384,6 +4503,7 @@
         const renderPreset = state.codexRenderPreset;
         const quality = renderPreset === "compact" ? 0.76 : renderPreset === "high" ? 0.88 : 0.82;
         const spritesheet = await canvasToBlob(atlas, "image/webp", quality);
+        checkMapperBuildCancelled(signal);
         setBuildProgressStage("codex", "encode", "completed");
         setBuildProgressStage("codex", "manifest", "started");
         setBuildProgressStage("codex", "manifest", "completed");
@@ -4395,8 +4515,10 @@
         if (typeof zipApi.configure === "function") zipApi.configure({ useWebWorkers: false });
         const writer = new zipApi.ZipWriter(new zipApi.BlobWriter("application/zip"));
         await writer.add("pet.json", new zipApi.TextReader(`${JSON.stringify(manifest, null, 2)}\n`));
+        checkMapperBuildCancelled(signal);
         await writer.add("spritesheet.webp", new zipApi.BlobReader(spritesheet));
         const blob = await writer.close();
+        checkMapperBuildCancelled(signal);
         const filename = `${projectId(state.projectName || "live2pet-codex")}-codex-pet-${CODEX_PACKAGE_VERSION}.zip`;
         codexArtifact = { blob, filename, manifest, previewUrl: atlasPreviewUrl, cellPreviewUrl, rowFrames: rowPreviewFrames };
         previewUrls.length = 0;
@@ -4405,9 +4527,18 @@
         completeBuildProgress("codex", "package");
       } catch (error) {
         previewUrls.forEach(url => URL.revokeObjectURL(url));
-        setBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad");
-        failBuildProgress("codex", error);
+        if (error?.code === "BUILD_CANCELLED") {
+          codexArtifact = previousCodexArtifact
+            ? { ...previousCodexArtifact, previewUrl: null, cellPreviewUrl: null }
+            : null;
+          setBuildStatus(I18n.t("build.progress.cancelled"));
+          cancelBuildProgress("codex");
+        } else {
+          setBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad");
+          failBuildProgress("codex", error);
+        }
       } finally {
+        codexBuildAbortController = null;
         codexBuildBusy = false;
         render();
       }
@@ -4535,10 +4666,12 @@
     $("outputPrefix").addEventListener("change",e=>dispatch({type:"SET_PREFIX",value:e.target.value.trim()||"live2pet"}));
     $("downloadJson").addEventListener("click",downloadJson);
     $("buildCodex").addEventListener("click", async () => { try { await buildCodexPackage(); } catch (error) { setBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad"); } });
+    $("cancelCodexBuild").addEventListener("click", () => { void requestBuildCancellation("codex"); });
     $("downloadCodex").addEventListener("click",downloadCodexPackage);
     $("chooseCodexInstallRoot").addEventListener("click", async () => { await chooseInstallRoot("codex-pet"); });
     $("installCodex").addEventListener("click", async () => { await installTargetArtifact("codex-pet"); });
     $("buildClawd").addEventListener("click", async () => { try { await buildClawdPackage(); } catch (error) { setClawdBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad"); } });
+    $("cancelClawdBuild").addEventListener("click", () => { void requestBuildCancellation("clawd"); });
     $("downloadClawd").addEventListener("click",downloadClawdPackage);
     $("chooseClawdInstallRoot").addEventListener("click", async () => { await chooseInstallRoot("clawd"); });
     $("installClawd").addEventListener("click", async () => { await installTargetArtifact("clawd"); });

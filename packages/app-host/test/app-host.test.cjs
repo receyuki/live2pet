@@ -31,6 +31,7 @@ const {
   normalizeInstallRequest,
   normalizeInstallRootRequest,
   normalizeBuildProgressEvent,
+  normalizeCancelBuildRequest,
   normalizeRequest,
   summarizeSkillStatus,
 } = require('../src/index.cjs');
@@ -53,6 +54,7 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.throws(() => normalizeRequest({ protocolVersion: 1, method: 'shell', args: [] }), (error) => error instanceof AppHostError && error.code === 'UNKNOWN_APP_METHOD');
   assert.equal(APP_IPC_METHODS.includes('startMapperSession'), true);
   assert.equal(APP_IPC_METHODS.includes('buildProject'), true);
+  assert.equal(APP_IPC_METHODS.includes('cancelBuild'), true);
   assert.equal(APP_IPC_METHODS.includes('getBuildArtifact'), true);
   assert.equal(APP_IPC_METHODS.includes('installArtifact'), true);
   assert.equal(APP_IPC_METHODS.includes('chooseInstallRoot'), true);
@@ -81,6 +83,9 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.deepEqual(normalizeInstallRootRequest({ target: 'clawd' }), { target: 'clawd' });
   assert.throws(() => normalizeInstallRootRequest({ target: 'codex-pet', path: '/tmp' }), (error) => error instanceof AppHostError && error.code === 'INVALID_INSTALL_ROOT_REQUEST');
   assert.throws(() => normalizeInstallRequest({ artifactId: 'artifact', target: 'codex-pet' }), (error) => error instanceof AppHostError && error.code === 'INSTALL_AUTHORIZATION_REQUIRED');
+  assert.deepEqual(normalizeCancelBuildRequest({ buildId: 'build_1234' }), { buildId: 'build_1234' });
+  assert.throws(() => normalizeCancelBuildRequest({ buildId: 'short' }), (error) => error instanceof AppHostError && error.code === 'INVALID_BUILD_CANCEL_REQUEST');
+  assert.throws(() => normalizeCancelBuildRequest({ buildId: 'build_1234', extra: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_BUILD_CANCEL_REQUEST');
 });
 
 test('routes a multi-runtime library without exposing App storage paths', async () => {
@@ -418,6 +423,55 @@ test('forwards safe, sequenced build progress to the App listener without leakin
   assert.equal(events[2].packageByteLength, 42);
 });
 
+test('cancels an active build by opaque id and preserves the previous artifact', async () => {
+  const events = [];
+  let buildCount = 0;
+  let entered;
+  const enteredPromise = new Promise((resolve) => { entered = resolve; });
+  const router = createAppIpcRouter({
+    onBuildProgress: (event) => {
+      events.push(event);
+      if (event.stage === 'validate') entered();
+    },
+    buildProjectService: async (input) => {
+      buildCount += 1;
+      if (buildCount === 1) {
+        return {
+          projectId: 'cancel-fixture',
+          targets: ['clawd'],
+          builds: {
+            clawd: {
+              target: 'clawd',
+              package: { artifactName: 'cancel-fixture.zip', byteLength: 3, files: ['theme.json'], buffer: Uint8Array.from([1, 2, 3]) },
+            },
+          },
+        };
+      }
+      input.onProgress({ target: 'clawd', stage: 'validate', status: 'started' });
+      await new Promise((resolve, reject) => {
+        input.signal.addEventListener('abort', () => reject(Object.assign(new Error('cancelled'), { code: 'BUILD_CANCELLED' })), { once: true });
+      });
+      return { projectId: 'cancel-fixture', targets: ['clawd'], builds: {} };
+    },
+  });
+  const first = await router({ protocolVersion: 1, method: 'buildProject', args: [{ project: { projectId: 'cancel-fixture' }, targets: ['clawd'] }] });
+  assert.equal(first.ok, true);
+  const previousArtifactId = first.result.artifacts[0].artifactId;
+
+  const pending = router({ protocolVersion: 1, method: 'buildProject', args: [{ project: { projectId: 'cancel-fixture' }, targets: ['clawd'] }] });
+  await enteredPromise;
+  const buildId = events.at(-1).buildId;
+  assert.match(buildId, /^[A-Za-z0-9_-]{8,128}$/);
+  const cancelled = await router({ protocolVersion: 1, method: 'cancelBuild', args: [{ buildId }] });
+  assert.deepEqual(cancelled.result, { buildId, cancelled: true, active: true });
+  const result = await pending;
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'BUILD_CANCELLED');
+  assert.equal((await router({ protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: previousArtifactId }] })).ok, true);
+  const stale = await router({ protocolVersion: 1, method: 'cancelBuild', args: [{ buildId }] });
+  assert.deepEqual(stale.result, { buildId, cancelled: false, active: false });
+});
+
 test('rejects malformed or unavailable App Package Build requests with typed errors', async () => {
   const withoutService = createAppIpcRouter({ mapperHostFactory: async () => fakeHost() });
   const unavailable = await withoutService({ protocolVersion: 1, method: 'buildProject', args: [{ project: {} }] });
@@ -667,6 +721,7 @@ test('preload exposes only typed methods and the window options keep Electron sa
   await api.chooseInstallRoot('clawd');
   await api.getSkillStatus();
   await api.installSkill({ confirmInstall: true, overwrite: true });
+  await api.cancelBuild('build_1234');
   assert.equal(calls[0][0], APP_IPC_CHANNEL);
   assert.deepEqual(calls[0][1], { protocolVersion: 1, method: 'getVersion', args: [] });
   assert.deepEqual(calls[1][1], { protocolVersion: 1, method: 'startMapperSession', args: [{}] });
@@ -687,6 +742,7 @@ test('preload exposes only typed methods and the window options keep Electron sa
   assert.deepEqual(calls[16][1], { protocolVersion: 1, method: 'chooseInstallRoot', args: [{ target: 'clawd' }] });
   assert.deepEqual(calls[17][1], { protocolVersion: 1, method: 'getSkillStatus', args: [] });
   assert.deepEqual(calls[18][1], { protocolVersion: 1, method: 'installSkill', args: [{ confirmInstall: true, overwrite: true }] });
+  assert.deepEqual(calls[19][1], { protocolVersion: 1, method: 'cancelBuild', args: [{ buildId: 'build_1234' }] });
   assert.equal(Object.hasOwn(api, 'ipcRenderer'), false);
   const options = createAppWindowOptions({ preload: '/app/preload.cjs' });
   assert.equal(options.webPreferences.nodeIntegration, false);
