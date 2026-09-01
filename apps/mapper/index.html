@@ -332,7 +332,9 @@
     <section class="runtimebar" aria-labelledby="runtimeHeading">
       <span id="runtimeHeading" class="runtime-label" data-i18n="runtime.heading">Local Cubism runtime</span>
       <button id="chooseRuntime" data-i18n="runtime.choose">Add Cubism runtime</button>
+      <button id="chooseRuntimeFolder" data-i18n="runtime.chooseFolder">Add SDK folder</button>
       <input id="runtimeInput" class="hidden" type="file" accept=".js,.mjs,application/javascript">
+      <input id="runtimeFolderInput" class="hidden" type="file" webkitdirectory directory>
       <button id="clearSavedRuntimes" data-i18n="runtime.clearSaved">Clear saved runtimes</button>
       <span id="runtimeStatus" class="runtime-status" role="status" aria-live="polite" data-i18n="runtime.status">Modern Core is optional for inspection; Cubism 2 preview requires a local runtime.</span>
       <button id="openRendererPreview" data-i18n="runtime.preview.open">Open isolated preview</button>
@@ -603,6 +605,8 @@
           "source.loadHint": "Supports .pck, .model3.json, or Cubism 2 model.json",
           "runtime.heading": "Local Cubism runtime",
           "runtime.choose": "Add Cubism runtime",
+          "runtime.chooseFolder": "Add SDK folder",
+          "runtime.entrypointNotFound": "No JavaScript runtime entrypoint was found in the selected SDK folder.",
           "runtime.clearSaved": "Clear saved runtimes",
           "runtime.status": "Add each runtime once. Live2Pet detects its Cubism generation and keeps a private local copy.",
           "runtime.name.modern": "Modern Core",
@@ -1016,6 +1020,8 @@
           "source.loadHint": "支持 .pck、.model3.json 或 Cubism 2 model.json",
           "runtime.heading": "本地 Cubism 运行时",
           "runtime.choose": "添加 Cubism 运行时",
+          "runtime.chooseFolder": "添加 SDK 文件夹",
+          "runtime.entrypointNotFound": "所选 SDK 文件夹中未找到 JavaScript 运行时入口文件。",
           "runtime.clearSaved": "清除已保存运行时",
           "runtime.status": "每种运行时只需添加一次；Live2Pet 会自动识别 Cubism 代际并保存私有本地副本。",
           "runtime.name.modern": "现代 Core",
@@ -2184,6 +2190,18 @@
       return null;
     }
 
+    function localDirectoryPath(file) {
+      const absoluteFile = localFilePath(file);
+      const relative = String(file?.webkitRelativePath || "").replaceAll("\\", "/").replace(/^\/+/, "");
+      const segments = relative.split("/").filter(Boolean);
+      if (!absoluteFile || segments.length < 2) return null;
+      const suffix = `/${segments.join("/")}`;
+      const normalized = absoluteFile.replaceAll("\\", "/");
+      if (!normalized.endsWith(suffix)) return null;
+      const parent = normalized.slice(0, -suffix.length);
+      return `${parent}/${segments[0]}`;
+    }
+
     function rendererPreviewAvailability() {
       if (!desktopRendererApi()) return { source: null, reason: I18n.t("runtime.preview.desktopOnly") };
       if (!state.model || !state.inspection) return { source: null, reason: I18n.t("runtime.preview.sourceRequired") };
@@ -2454,12 +2472,12 @@
       }
     }
 
-    async function loadLocalRuntime(file) {
+    async function loadLocalRuntime(file, { directory = false } = {}) {
       if (!file) return;
       const source = await file.text();
       const kind = detectRuntimeKind(source);
       const api = desktopRuntimeApi();
-      const inputPath = localFilePath(file);
+      const inputPath = directory ? (localDirectoryPath(file) || localFilePath(file)) : localFilePath(file);
       let appSaved = false;
       if (api && inputPath) {
         const response = await api.configureRuntime({ inputPath });
@@ -4991,6 +5009,26 @@
       try {
         setRuntimeStatus(I18n.t("runtime.detecting", { name: runtimeFile.name }));
         await loadLocalRuntime(runtimeFile);
+      } catch (error) {
+        setRuntimeStatus(`${error.code || "RUNTIME_LOAD_FAILED"}: ${error.message}`, "bad");
+      } finally {
+        e.target.value = "";
+      }
+    });
+    $("chooseRuntimeFolder").addEventListener("click", () => $("runtimeFolderInput").click());
+    $("runtimeFolderInput").addEventListener("change", async e => {
+      const files = [...(e.target.files || [])];
+      const runtimeFile = files.find(file => /live2dcubismcore(?:\.min)?\.m?js$/i.test(file.name))
+        || files.find(file => /live2d(?:\.min)?\.m?js$/i.test(file.name))
+        || files.find(file => /\.m?js$/i.test(file.name));
+      if (!runtimeFile) {
+        setRuntimeStatus(`RUNTIME_ENTRYPOINT_NOT_FOUND: ${I18n.t("runtime.entrypointNotFound")}`, "bad");
+        e.target.value = "";
+        return;
+      }
+      try {
+        setRuntimeStatus(I18n.t("runtime.detecting", { name: runtimeFile.name }));
+        await loadLocalRuntime(runtimeFile, { directory: true });
       } catch (error) {
         setRuntimeStatus(`${error.code || "RUNTIME_LOAD_FAILED"}: ${error.message}`, "bad");
       } finally {

@@ -25,15 +25,15 @@ user-data directory; the renderer receives metadata and warnings, never source
 or runtime bytes.
 
 Runtime provisioning is exposed through `getRuntimeSettings`,
-`configureRuntime`, and `clearRuntimeSettings`. One picker accepts either a
-modern Core or Cubism 2 JavaScript runtime; the main process validates its
-contents, detects the runtime family, and copies the entrypoint into a private
-library under the App user-data directory. Modern and legacy entries coexist,
-and the renderer selects one from the inspected Cubism generation. A valid
-legacy path-based setting is migrated into this library automatically. The
-renderer receives metadata, never runtime bytes or a path. The current Mapper
-also keeps its bounded browser-profile copy so a selected runtime can refresh
-the in-page preview; neither copy is part of a project, cache artifact, package,
+`configureRuntime`, and `clearRuntimeSettings`. The Mapper offers both a file
+picker and an SDK-folder picker; the main process validates the selected
+entrypoint, detects the runtime family, and copies it into a private library
+under the App user-data directory. Modern and legacy entries coexist, and the
+renderer selects one from the inspected Cubism generation. A valid legacy
+path-based setting is migrated into this library automatically. The renderer
+receives metadata, never runtime bytes or a path. The current Mapper also
+keeps its bounded browser-profile copy so a selected runtime can refresh the
+in-page preview; neither copy is part of a project, cache artifact, package,
 source checkout, or release.
 
 The Desktop App also exposes the repository's text-only Codex skill bundle
@@ -72,8 +72,8 @@ the loopback server can safely serve. Preview commands are limited to Motion /
 Expression playback, playback controls, state, and bounds; RGBA capture and
 filesystem operations are not exposed through this UI. The saved runtime is
 resolved in the main process, and neither runtime bytes nor absolute paths cross
-the App boundary. Pixi remains the default modern renderer. An advanced host
-integration can opt into the official Web Framework bridge by passing
+the App boundary. Pixi is the personal-use V1 modern renderer. An advanced
+host integration can opt into the experimental official Web Framework bridge by passing
 `modernAdapter: 'official'` and a user-provided `frameworkPath`; the bundle is
 served only through the same loopback asset server and must expose the
 documented `createRenderer` bridge global. The official Framework and Cubism

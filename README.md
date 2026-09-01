@@ -72,6 +72,12 @@ node packages/cli/bin/live2pet.cjs cache-clear --cache-dir /path/to/cache --proj
 node packages/cli/bin/live2pet.cjs skill-status --input skills/live2pet --pretty
 node packages/cli/bin/live2pet.cjs skill-install --input skills/live2pet --target-root /path/to/codex/skills --confirm-install --pretty
 node --test packages/skill-client/test/*.test.cjs
+
+# Optional real-runtime smoke tests (local inputs only; never commit these paths)
+LIVE2PET_MODERN_RUNTIME=/path/to/live2dcubismcore.min.js LIVE2PET_MODERN_SOURCE=/path/to/modern-model \
+  node --test packages/renderer/test/modern-runtime.integration.test.cjs
+LIVE2PET_CUBISM2_RUNTIME=/path/to/live2d.min.js LIVE2PET_CUBISM2_SOURCE=/path/to/destiny-child-model \
+  node --test packages/renderer/test/legacy-runtime.integration.test.cjs
 ```
 
 Inspection output is metadata-only: it contains relative resource identities, fingerprints, warnings, and Motion/Expression catalogs, not model bytes, runtime binaries, bearer tokens, or unrelated absolute paths. The browser preview uses the version-matched Pixi `@pixi/unsafe-eval` compatibility bundle and allows only generated `blob:` resource URLs under the existing strict CSP; it does not enable general `unsafe-eval`.

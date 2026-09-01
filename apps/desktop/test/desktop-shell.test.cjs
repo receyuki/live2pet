@@ -165,6 +165,9 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /async function refreshSkillStatus\(\)/);
   assert.match(mapper, /async function installSkillFromApp\(\)/);
   assert.match(mapper, /id="chooseRuntime"/);
+  assert.match(mapper, /id="chooseRuntimeFolder"/);
+  assert.match(mapper, /id="runtimeFolderInput"[^>]+webkitdirectory/);
+  assert.match(mapper, /function localDirectoryPath\(file\)/);
   assert.match(mapper, /function detectRuntimeKind\(source\)/);
   assert.doesNotMatch(mapper, /id="chooseModernRuntime"|id="chooseLegacyRuntime"/);
   assert.match(mapper, /const RUNTIME_DB_NAME = "live2pet-mapper-runtime"/);
