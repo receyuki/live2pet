@@ -225,7 +225,7 @@ test('persists one completed capture through the bounded cache IPC seam', async 
     sourceFingerprint: 'a'.repeat(64), cubismVersion: 4, target: 'clawd', renderPreset: 'balanced',
     recipe: { motionId: 'idle', expressionId: null, duration: 1.2, width: 2, height: 2, frameCount: 1, fps: 24 },
     frameSet: {
-      motionId: 'idle', expressionId: null,
+      expressionId: null,
       frames: [{ id: 'idle-0', width: 2, height: 2 }],
       rgbaChunks: [{ width: 2, height: 2, startFrame: 0, frameCount: 1, compression: 'deflate-stack-v1', rgbaDeflate: Uint8Array.from([1, 2, 3]) }],
       delay: [42],
@@ -237,7 +237,11 @@ test('persists one completed capture through the bounded cache IPC seam', async 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].context.sourceFingerprint, 'a'.repeat(64));
   assert.equal(calls[0].recipe.motionId, 'idle');
+  assert.equal(calls[0].frameSet.motionId, 'idle');
   assert.equal(calls[0].frameSet.rgbaChunks[0].rgbaDeflate.byteLength, 3);
+  const conflicting = await router({ protocolVersion: 1, method: 'putCaptureCache', args: [{ ...request, frameSet: { ...request.frameSet, motionId: 'working' } }] });
+  assert.equal(conflicting.ok, false);
+  assert.equal(conflicting.error.code, 'INVALID_CAPTURE_CACHE_REQUEST');
 });
 
 test('routes an isolated renderer preview without exposing source paths or binary commands', async () => {

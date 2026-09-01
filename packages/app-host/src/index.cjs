@@ -288,7 +288,7 @@ function normalizeCaptureCacheWriteRequest(value) {
   });
   const recipe = normalized.motions[0];
   const frameSet = value.frameSet;
-  if (!isRecord(frameSet) || frameSet.motionId !== recipe.motionId || !Array.isArray(frameSet.frames) || frameSet.frames.length !== recipe.frameCount || frameSet.frames.length > 4096) {
+  if (!isRecord(frameSet) || (frameSet.motionId !== undefined && frameSet.motionId !== recipe.motionId) || !Array.isArray(frameSet.frames) || frameSet.frames.length !== recipe.frameCount || frameSet.frames.length > 4096) {
     fail('INVALID_CAPTURE_CACHE_REQUEST', 'Capture cache frameSet must match the requested Motion and frame count.');
   }
   if (frameSet.rgbaChunks !== undefined && (!Array.isArray(frameSet.rgbaChunks) || !frameSet.rgbaChunks.length || frameSet.rgbaChunks.length > 512)) {
@@ -302,7 +302,7 @@ function normalizeCaptureCacheWriteRequest(value) {
       renderPreset: normalized.renderPreset,
     },
     recipe,
-    frameSet,
+    frameSet: { ...frameSet, motionId: recipe.motionId },
   };
 }
 
