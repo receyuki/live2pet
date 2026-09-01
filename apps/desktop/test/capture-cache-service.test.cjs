@@ -52,6 +52,32 @@ test('capture cache reports misses, stores validated frames, and returns hits', 
   assert.ok(encoded.idle.frameSet.rgbaChunks[0].rgbaDeflate.byteLength > 0);
 });
 
+test('capture cache exposes aggregate storage and clears all entries without leaking metadata', async () => {
+  const { cache, service } = setup();
+  const context = { sourceFingerprint: '1'.repeat(64), cubismVersion: 4, target: 'clawd', renderPreset: 'balanced' };
+  const recipes = [recipe({ motionId: 'idle' }), recipe({ motionId: 'working' })];
+  await service.writeMany(context, recipes.map((item) => ({ recipe: item, frameSet: { motionId: item.motionId, ...frames() } })));
+
+  const expected = cache.status();
+  assert.deepEqual(await service.overview(), {
+    schemaVersion: 1,
+    maxBytes: 1024 * 1024,
+    byteLength: expected.byteLength,
+    entryCount: 2,
+  });
+  assert.equal(JSON.stringify(await service.overview()).includes('entries'), false);
+
+  assert.deepEqual(await service.clearAll(), {
+    removedEntries: 2,
+    removedBytes: expected.byteLength,
+    schemaVersion: 1,
+    maxBytes: 1024 * 1024,
+    byteLength: 0,
+    entryCount: 0,
+  });
+  assert.equal(cache.status().entryCount, 0);
+});
+
 test('capture cache identities isolate source, target, preset, and motion recipes', async () => {
   const { service } = setup();
   const base = { sourceFingerprint: 'c'.repeat(64), cubismVersion: 4, target: 'clawd', renderPreset: 'balanced' };

@@ -1,6 +1,10 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 
+const { CacheStore, createCacheKey } = require('../../../packages/package-build/src/index.cjs');
 const { createCaptureCacheBuildService, mappedMotionIds } = require('../capture-cache-build.cjs');
 
 function project() {
@@ -149,4 +153,128 @@ test('capture-cache build service preserves Codex recipe Expressions when writin
   assert.equal(writes.length, 1);
   assert.equal(writes[0].recipe.expressionId, 'smile');
   assert.equal(writes[0].frameSet.expressionId, 'smile');
+});
+
+test('Desktop Package Builds reuse encoded assets through the persistent capture CacheStore', async () => {
+  const cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-desktop-encoded-cache-'));
+  const cache = new CacheStore({ rootDir: cacheRoot, maxBytes: 1024 * 1024 });
+  let encodes = 0;
+  const buildProjectTargets = async (input) => {
+    const target = input.targets[0];
+    const options = input.optionsByTarget[target];
+    const context = options.cacheContext;
+    assert.equal(options.cache, cache);
+    assert.deepEqual(context, {
+      projectId: 'capture-cache-build-test',
+      sourceFingerprint: 'a'.repeat(64),
+      runtimeVersion: 'd'.repeat(64),
+      rendererVersion: 'pixi-live2d-capture-v2',
+      targetVersion: '1',
+      renderPreset: 'balanced',
+      encoderVersion: 'sharp-0.34.5',
+    });
+    assert.equal(JSON.stringify(context).includes('/'), false);
+    const key = createCacheKey({
+      sourceFingerprint: context.sourceFingerprint,
+      runtimeVersion: context.runtimeVersion,
+      rendererVersion: context.rendererVersion,
+      recipe: { motion: 'idle', encoderVersion: context.encoderVersion },
+      targetProfile: target,
+      targetVersion: context.targetVersion,
+      renderPreset: context.renderPreset,
+      artifact: 'encoded-webp',
+    });
+    const hit = options.cache.get(key);
+    if (!hit) {
+      encodes += 1;
+      options.cache.put(key, Buffer.from('encoded-webp'), { projectId: context.projectId, sourceFingerprint: context.sourceFingerprint, artifact: 'encoded-webp' });
+    }
+    return { targets: [target], builds: { [target]: { cache: { hits: hit ? 1 : 0, misses: hit ? 0 : 1 } } } };
+  };
+  const createService = () => createCaptureCacheBuildService({
+    buildProjectTargets,
+    getCaptureCacheService: () => ({ readEncodedMany: async () => ({}), writeMany: async () => [] }),
+    getEncodedCache: () => cache,
+    resolveEncodedCacheContext: async () => ({
+      runtimeVersion: 'd'.repeat(64),
+      rendererVersion: 'pixi-live2d-capture-v2',
+      targetVersion: '1',
+      encoderVersion: 'sharp-0.34.5',
+    }),
+  });
+  const input = {
+    project: project(),
+    targets: ['clawd'],
+    inputsByTarget: { clawd: { framesByMotion: { idle: frameSet('idle', 1), working: frameSet('working', 2) }, captureCache: plan(['idle', 'working']) } },
+    optionsByTarget: { clawd: { package: true } },
+  };
+
+  const first = await createService()(input);
+  const second = await createService()(input);
+
+  assert.deepEqual(first.builds.clawd.cache, { hits: 0, misses: 1 });
+  assert.deepEqual(second.builds.clawd.cache, { hits: 1, misses: 0 });
+  assert.equal(encodes, 1);
+  assert.equal(cache.status().entryCount, 1);
+});
+
+test('Desktop Package Builds inject one shared encoded cache into both Target Profiles', async () => {
+  const cache = new CacheStore({ rootDir: fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-desktop-both-targets-')), maxBytes: 1024 * 1024 });
+  const dualProject = project();
+  dualProject.targets['codex-pet'].mappings = { idle: 'motion:idle' };
+  const seen = [];
+  const service = createCaptureCacheBuildService({
+    getCaptureCacheService: () => ({ readEncodedMany: async () => ({}), writeMany: async () => [] }),
+    getEncodedCache: () => cache,
+    resolveEncodedCacheContext: async () => ({ runtimeVersion: 'd'.repeat(64), rendererVersion: 'renderer-v1', targetVersion: '1', encoderVersion: 'sharp-0.34.5' }),
+    buildProjectTargets: async (input) => {
+      for (const target of input.targets) {
+        seen.push({ target, options: input.optionsByTarget[target] });
+      }
+      return { builds: {} };
+    },
+  });
+
+  await service({
+    project: dualProject,
+    targets: ['clawd', 'codex-pet'],
+    inputsByTarget: {
+      clawd: { framesByMotion: { idle: frameSet('idle', 1), working: frameSet('working', 2) }, captureCache: plan(['idle', 'working']) },
+      'codex-pet': { candidatesByRow: { idle: frameSet('idle', 1).frames }, captureCache: plan(['idle'], { renderPreset: 'high' }) },
+    },
+  });
+
+  assert.deepEqual(seen.map(({ target, options }) => ({ target, sameCache: options.cache === cache, preset: options.cacheContext.renderPreset })), [
+    { target: 'clawd', sameCache: true, preset: 'balanced' },
+    { target: 'codex-pet', sameCache: true, preset: 'high' },
+  ]);
+});
+
+test('Desktop encoded cache misses when its path-free build identity changes', async () => {
+  const cache = new CacheStore({ rootDir: fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-desktop-encoded-identity-')), maxBytes: 1024 * 1024 });
+  let runtimeVersion = 'd'.repeat(64);
+  let misses = 0;
+  const service = createCaptureCacheBuildService({
+    getCaptureCacheService: () => ({ readEncodedMany: async () => ({}), writeMany: async () => [] }),
+    getEncodedCache: () => cache,
+    resolveEncodedCacheContext: async () => ({ runtimeVersion, rendererVersion: 'renderer-v1', targetVersion: '1', encoderVersion: 'sharp-0.34.5' }),
+    buildProjectTargets: async (input) => {
+      const context = input.optionsByTarget.clawd.cacheContext;
+      const key = createCacheKey({ sourceFingerprint: context.sourceFingerprint, runtimeVersion: context.runtimeVersion, rendererVersion: context.rendererVersion, recipe: { encoderVersion: context.encoderVersion }, targetProfile: 'clawd', targetVersion: context.targetVersion, renderPreset: context.renderPreset, artifact: 'encoded-webp' });
+      if (!cache.get(key)) {
+        misses += 1;
+        cache.put(key, Buffer.from(`encoded-${misses}`), { projectId: context.projectId, sourceFingerprint: context.sourceFingerprint, artifact: 'encoded-webp' });
+      }
+      return { builds: { clawd: { ok: true } } };
+    },
+  });
+  const input = { project: project(), targets: ['clawd'], inputsByTarget: { clawd: { framesByMotion: { idle: frameSet('idle', 1) }, captureCache: plan(['idle']) } } };
+
+  await service(input);
+  await service(input);
+  runtimeVersion = 'e'.repeat(64);
+  await service(input);
+
+  assert.equal(misses, 2);
+  assert.equal(cache.status().entryCount, 2);
 });

@@ -784,6 +784,28 @@ test('reuses the encoded Codex atlas when frame selections and encoder settings 
   assert.equal(cache.status({ projectId: 'encoded-codex' }).entryCount, 2);
 });
 
+test('a cancelled Codex WebP encode does not leave a partial cache entry', async () => {
+  const cache = new CacheStore({ rootDir: require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'live2pet-cancelled-codex-cache-')) });
+  const cacheContext = { projectId: 'cancelled-codex', sourceFingerprint: 'source-sha256', runtimeVersion: 'core-5', rendererVersion: 'renderer-1', encoderVersion: 'sharp-0.34.5' };
+  const controller = new AbortController();
+  const sharpFactory = () => ({
+    webp() {
+      return {
+        toBuffer: async () => {
+          controller.abort();
+          return { data: Buffer.from('RIFF-cancelled'), info: { width: 1536, height: 1872 } };
+        },
+      };
+    },
+  });
+
+  await assert.rejects(
+    () => buildCodexPet({ mapping: { mappings: mapping() }, candidatesByRow: candidatesByRow() }, { encode: true, cache, cacheContext, sharpFactory, signal: controller.signal }),
+    (error) => error instanceof PackageBuildError && error.code === 'BUILD_CANCELLED',
+  );
+  assert.equal(cache.status({ projectId: 'cancelled-codex' }).entryCount, 0);
+});
+
 test('target Render Preset controls Clawd WebP quality and provenance stays path-free', async () => {
   const calls = [];
   const sharpFactory = (input, options) => ({

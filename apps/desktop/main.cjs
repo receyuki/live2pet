@@ -17,6 +17,7 @@ const { createRendererWindowHost } = require('./renderer-host.cjs');
 const { createRendererPreviewService } = require('./renderer-preview-service.cjs');
 const { createCaptureCacheService } = require('./capture-cache-service.cjs');
 const { createCaptureCacheBuildService } = require('./capture-cache-build.cjs');
+const packageBuildPackage = require('../../packages/package-build/package.json');
 const {
   clearRuntimeSettings,
   loadRuntimeForGeneration,
@@ -34,11 +35,14 @@ const DEVELOPMENT_SKILL_PATH = path.resolve(__dirname, '../../skills/live2pet');
 const PACKAGED_SKILL_PATH = path.join(process.resourcesPath, 'live2pet-skill');
 const SOURCE_CACHE_LIMIT = 1024 * 1024 * 1024;
 const CAPTURE_CACHE_LIMIT = 1024 * 1024 * 1024;
+const ENCODED_CACHE_TARGET_VERSION = '1';
+const ENCODED_CACHE_ENCODER_VERSION = `sharp-${packageBuildPackage.dependencies.sharp}`;
 let mainWindow = null;
 let route = null;
 let sourceCache = null;
 let runtimeSettingsFile = null;
 let rendererWindowHost = null;
+let captureCacheStore = null;
 let captureCacheService = null;
 let mainRendererRecoveryInProgress = false;
 
@@ -129,14 +133,20 @@ const rendererPreviewService = createRendererPreviewService({
   createHost: (options) => createRendererPreviewHost(options),
 });
 
-function getCaptureCacheService() {
-  if (!captureCacheService) {
-    const cache = new CacheStore({
+function getCaptureCacheStore() {
+  if (!captureCacheStore) {
+    captureCacheStore = new CacheStore({
       rootDir: path.join(app.getPath('userData'), 'cache', 'captures'),
       maxBytes: CAPTURE_CACHE_LIMIT,
     });
+  }
+  return captureCacheStore;
+}
+
+function getCaptureCacheService() {
+  if (!captureCacheService) {
     captureCacheService = createCaptureCacheService({
-      cache,
+      cache: getCaptureCacheStore(),
       getRuntimeForGeneration: (cubismVersion) => loadRuntimeForGeneration(runtimeSettingsPath(), cubismVersion),
     });
   }
@@ -146,6 +156,16 @@ function getCaptureCacheService() {
 const buildProjectWithCaptureCache = createCaptureCacheBuildService({
   buildProjectTargets,
   getCaptureCacheService,
+  getEncodedCache: getCaptureCacheStore,
+  resolveEncodedCacheContext: async ({ plan }) => {
+    const runtime = await loadRuntimeForGeneration(runtimeSettingsPath(), Number(plan.cubismVersion));
+    return {
+      runtimeVersion: runtime.descriptor.fingerprint,
+      rendererVersion: getCaptureCacheService().rendererVersion,
+      targetVersion: ENCODED_CACHE_TARGET_VERSION,
+      encoderVersion: ENCODED_CACHE_ENCODER_VERSION,
+    };
+  },
 });
 
 async function chooseInstallRoot({ target } = {}) {

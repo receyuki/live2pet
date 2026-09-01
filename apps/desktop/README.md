@@ -100,12 +100,14 @@ shown in the Mapper for both targets. Live2D capture stays sequential on the
 single preview renderer, but it now advances the animation with deterministic
 fixed steps, reuses its capture surfaces, and batches Clawd RGBA frames into
 bounded deflate stacks before the IPC handoff. The App keeps those validated
-capture stacks in a private one-GiB LRU cache keyed by the source fingerprint,
-saved runtime, renderer, Motion plus optional Animation Recipe Expression, Target
-Profile, and Render Preset; a
-repeat build can therefore skip the renderer capture entirely. After capture,
-Clawd WebP assets are encoded with a bounded worker pool (two concurrent assets
-by default) while output order stays stable. The event stream includes stage
+capture stacks and encoded WebP/atlas assets in one private one-GiB LRU cache
+keyed by the source fingerprint, saved runtime, renderer, Motion plus optional
+Animation Recipe Expression, Target Profile, Render Preset, and encoder version.
+An unchanged repeat build can therefore reuse both capture and encoding work.
+The Mapper shows only aggregate cache usage and requires explicit confirmation
+before clearing it; paths and per-entry metadata remain in the main process.
+After capture, Clawd WebP assets are encoded with a bounded worker pool (two
+concurrent assets by default) while output order stays stable. The event stream includes stage
 transitions and per-Motion encoding updates, so long builds remain observable
 without exposing frame bytes or local paths to the renderer.
 While a build is active, the Mapper also exposes a target-scoped Cancel build

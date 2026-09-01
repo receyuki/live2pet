@@ -24,6 +24,8 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(main, /mapperAssetRoot: app\.isPackaged \? path\.dirname\(documentPath\) : undefined,/);
   assert.match(main, /buildProjectService: buildProjectWithCaptureCache/);
   assert.match(main, /getCaptureCacheService/);
+  assert.match(main, /getCaptureCacheStore/);
+  assert.match(main, /getEncodedCache: getCaptureCacheStore/);
   assert.match(main, /DEVELOPMENT_SKILL_PATH = path\.resolve\(__dirname, '\.\.\/\.\.\/skills\/live2pet'\)/);
   assert.match(main, /PACKAGED_SKILL_PATH = path\.join\(process\.resourcesPath, 'live2pet-skill'\)/);
   assert.match(main, /getSkillStatus/);
@@ -48,7 +50,7 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(preload, /const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';/);
   assert.match(preload, /webUtils\.getPathForFile/);
   assert.match(preload, /getFilePath,/);
-  for (const method of ['getVersion', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'buildProject', 'cancelBuild', 'getBuildArtifact', 'chooseInstallRoot', 'installArtifact', 'closeMapperSession', 'getCaptureCacheStatus', 'putCaptureCache', 'getSkillStatus', 'installSkill', 'startRendererPreview', 'loadRendererSource', 'rendererCommand', 'getRendererPreviewStatus', 'restartRendererPreview', 'closeRendererPreview']) {
+  for (const method of ['getVersion', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'buildProject', 'cancelBuild', 'getBuildArtifact', 'chooseInstallRoot', 'installArtifact', 'closeMapperSession', 'getCaptureCacheStatus', 'putCaptureCache', 'getBuildCacheStatus', 'clearBuildCache', 'getSkillStatus', 'installSkill', 'startRendererPreview', 'loadRendererSource', 'rendererCommand', 'getRendererPreviewStatus', 'restartRendererPreview', 'closeRendererPreview']) {
     assert.match(preload, new RegExp(`invoke\\('${method}'`));
   }
   assert.match(preload, /getBuildArtifact: \(artifactId, offset = 0\) => invoke\('getBuildArtifact', \{ artifactId, offset \}\)/);
@@ -94,6 +96,12 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /optionsByTarget: \{ clawd: \{ package: true/);
   assert.match(mapper, /id="buildClawd"/);
   assert.match(mapper, /id="downloadClawd"/);
+  assert.match(mapper, /id="refreshBuildCache"/);
+  assert.match(mapper, /id="clearBuildCache"/);
+  assert.match(mapper, /getBuildCacheStatus/);
+  assert.match(mapper, /clearBuildCache\(\{ confirmClear: true \}\)/);
+  assert.match(mapper, /cache\.status\.ready/);
+  assert.match(mapper, /inputsByTarget: \{ "codex-pet": \{ candidatesByRow, captureCache: encodedCachePlan \} \}/);
   assert.match(mapper, /id="previewPause"/);
   assert.match(mapper, /id="previewResume"/);
   assert.match(mapper, /id="previewRestart"/);

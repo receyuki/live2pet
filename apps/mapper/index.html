@@ -60,12 +60,19 @@
     .runtimebar .runtime-status { min-width: 16ch; color: var(--muted); font-size: 12px; }
     .runtimebar .runtime-status.good { color: var(--good); }
     .runtimebar .runtime-status.bad { color: var(--bad); }
-    .skillbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -6px 0 18px; padding: 11px 13px; background: #0b1628; border: 1px solid var(--line); border-radius: 11px; }
+    .skillbar, .cachebar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -6px 0 18px; padding: 11px 13px; background: #0b1628; border: 1px solid var(--line); border-radius: 11px; }
     .skillbar .skill-label { color: var(--muted); font-size: 12px; }
     .skillbar .skill-status { min-width: 18ch; color: var(--muted); font-size: 12px; }
     .skillbar .skill-status.good { color: var(--good); }
     .skillbar .skill-status.bad { color: var(--bad); }
     .skillbar .skill-status.busy { color: var(--warn); }
+    .cachebar .cache-label { color: var(--muted); font-size: 12px; }
+    .cachebar .cache-status { min-width: 24ch; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+    .cachebar .cache-status.good { color: var(--good); }
+    .cachebar .cache-status.bad { color: var(--bad); }
+    .cachebar .cache-status.busy { color: var(--warn); }
+    .cachebar button.danger { border-color: #a55a64; color: #ffd2d8; background: transparent; }
+    .cachebar button.danger:hover { border-color: var(--bad); background: #3a1b2a; }
     .projectbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 18px; align-items: center; margin-bottom: 18px; padding: 14px 17px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
     .project-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
     .project-history { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -337,6 +344,13 @@
       <input id="runtimeFolderInput" class="hidden" type="file" webkitdirectory directory>
       <button id="clearSavedRuntimes" data-i18n="runtime.clearSaved">Clear saved runtimes</button>
       <span id="runtimeStatus" class="runtime-status" role="status" aria-live="polite" data-i18n="runtime.status">Modern Core is optional for inspection; Cubism 2 preview requires a local runtime.</span>
+    </section>
+
+    <section class="cachebar" aria-labelledby="buildCacheHeading">
+      <span id="buildCacheHeading" class="cache-label" data-i18n="cache.heading">Build cache</span>
+      <button id="refreshBuildCache" data-i18n="cache.refresh">Refresh</button>
+      <button id="clearBuildCache" class="danger" data-i18n="cache.clear" disabled>Clear cache</button>
+      <span id="buildCacheStatus" class="cache-status" role="status" aria-live="polite" data-i18n="cache.status.browserOnly">Build cache management is available in the Desktop App.</span>
     </section>
 
     <section class="skillbar" aria-labelledby="skillHeading">
@@ -620,6 +634,18 @@
           "runtime.clearing": "Clearing saved runtimes…",
           "runtime.cleared": "Saved runtimes cleared. The currently loaded runtime remains active.",
           "runtime.refreshing": "{runtime} loaded; refreshing preview…",
+          "cache.heading": "Build cache",
+          "cache.refresh": "Refresh",
+          "cache.clear": "Clear cache",
+          "cache.status.browserOnly": "Build cache management is available in the Desktop App.",
+          "cache.status.checking": "Checking the local build cache…",
+          "cache.status.empty": "Cache is empty · {limit} limit.",
+          "cache.status.ready": "{entries} entries · {used} of {limit} used.",
+          "cache.status.failed": "Cache status failed: {message}",
+          "cache.confirm.clear": "Clear all locally cached captured frames and encoded assets? Projects and downloaded packages will not be removed.",
+          "cache.status.clearing": "Clearing the local build cache…",
+          "cache.status.cleared": "Cleared {entries} entries ({bytes}).",
+          "cache.status.clearFailed": "Cache clear failed: {message}",
           "skill.heading": "Codex skill",
           "skill.refresh": "Check skill",
           "skill.install": "Install skill",
@@ -1025,6 +1051,18 @@
           "runtime.clearing": "正在清除已保存运行时…",
           "runtime.cleared": "已清除保存的运行时；当前已加载的运行时仍在使用。",
           "runtime.refreshing": "已加载 {runtime}；正在刷新预览…",
+          "cache.heading": "构建缓存",
+          "cache.refresh": "刷新",
+          "cache.clear": "清除缓存",
+          "cache.status.browserOnly": "构建缓存管理功能仅在 Desktop App 中可用。",
+          "cache.status.checking": "正在检查本机构建缓存…",
+          "cache.status.empty": "缓存为空 · 上限 {limit}。",
+          "cache.status.ready": "{entries} 个条目 · 已使用 {used} / {limit}。",
+          "cache.status.failed": "缓存状态检查失败：{message}",
+          "cache.confirm.clear": "清除本机缓存的全部捕获帧和编码资源吗？项目与已下载的资源包不会被删除。",
+          "cache.status.clearing": "正在清除本机构建缓存…",
+          "cache.status.cleared": "已清除 {entries} 个条目（{bytes}）。",
+          "cache.status.clearFailed": "清除缓存失败：{message}",
           "skill.heading": "Codex skill",
           "skill.refresh": "检查 skill",
           "skill.install": "安装 skill",
@@ -1697,6 +1735,9 @@
     let sourcePreviewMotionFinishBinding = null;
     let sourcePreviewStatusText = "";
     let sourcePreviewStatusLevel = "";
+    let buildCacheStatus = null;
+    let buildCacheBusy = false;
+    let buildCacheFeedback = null;
     let skillStatus = null;
     let skillBusy = false;
     let skillStatusText = "";
@@ -2039,6 +2080,91 @@
 
     function desktopRuntimeApi() {
       return window.live2pet && typeof window.live2pet.configureRuntime === "function" ? window.live2pet : null;
+    }
+
+    function desktopBuildCacheApi() {
+      return window.live2pet && typeof window.live2pet.getBuildCacheStatus === "function" && typeof window.live2pet.clearBuildCache === "function" ? window.live2pet : null;
+    }
+
+    function normalizeBuildCacheStatus(value) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) throw projectError("APP_BUILD_CACHE_STATUS_INVALID", "The Desktop App returned an invalid build cache status.");
+      const maxBytes = Number(value.maxBytes);
+      const byteLength = Number(value.byteLength);
+      const entryCount = Number(value.entryCount);
+      if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || !Number.isSafeInteger(byteLength) || byteLength < 0 || byteLength > maxBytes || !Number.isSafeInteger(entryCount) || entryCount < 0) {
+        throw projectError("APP_BUILD_CACHE_STATUS_INVALID", "The Desktop App returned invalid build cache totals.");
+      }
+      return { schemaVersion: Number(value.schemaVersion) || 1, maxBytes, byteLength, entryCount };
+    }
+
+    function renderBuildCacheStatus() {
+      const api = desktopBuildCacheApi();
+      const refresh = $("refreshBuildCache");
+      const clear = $("clearBuildCache");
+      const status = $("buildCacheStatus");
+      if (!refresh || !clear || !status) return;
+      refresh.disabled = buildCacheBusy || !api;
+      clear.disabled = buildCacheBusy || !api || !buildCacheStatus?.entryCount;
+      let display = { key: "cache.status.browserOnly", vars: {}, level: "" };
+      if (api && buildCacheBusy) display = buildCacheFeedback || { key: "cache.status.checking", vars: {}, level: "busy" };
+      else if (api && buildCacheFeedback) display = buildCacheFeedback;
+      else if (api && buildCacheStatus) display = buildCacheStatus.entryCount > 0
+        ? { key: "cache.status.ready", vars: { entries: buildCacheStatus.entryCount, used: formatBuildBytes(buildCacheStatus.byteLength), limit: formatBuildBytes(buildCacheStatus.maxBytes) }, level: "good" }
+        : { key: "cache.status.empty", vars: { limit: formatBuildBytes(buildCacheStatus.maxBytes) }, level: "good" };
+      status.className = `cache-status${display.level ? ` ${display.level}` : ""}`;
+      status.textContent = I18n.t(display.key, display.vars || {});
+    }
+
+    async function refreshBuildCacheStatus() {
+      const api = desktopBuildCacheApi();
+      if (!api) {
+        buildCacheStatus = null;
+        buildCacheBusy = false;
+        buildCacheFeedback = null;
+        renderBuildCacheStatus();
+        return null;
+      }
+      buildCacheBusy = true;
+      buildCacheFeedback = { key: "cache.status.checking", vars: {}, level: "busy" };
+      renderBuildCacheStatus();
+      try {
+        const response = await api.getBuildCacheStatus();
+        if (!response || response.ok !== true || !response.result) throw projectError(response?.error?.code || "APP_BUILD_CACHE_STATUS_FAILED", response?.error?.message || "The Desktop App did not return build cache status.");
+        buildCacheStatus = normalizeBuildCacheStatus(response.result);
+        buildCacheFeedback = null;
+        return buildCacheStatus;
+      } catch (error) {
+        buildCacheStatus = null;
+        buildCacheFeedback = { key: "cache.status.failed", vars: { message: error.message }, level: "bad" };
+        return null;
+      } finally {
+        buildCacheBusy = false;
+        renderBuildCacheStatus();
+      }
+    }
+
+    async function clearLocalBuildCache() {
+      const api = desktopBuildCacheApi();
+      if (!api || buildCacheBusy || !window.confirm(I18n.t("cache.confirm.clear"))) return;
+      buildCacheBusy = true;
+      buildCacheFeedback = { key: "cache.status.clearing", vars: {}, level: "busy" };
+      renderBuildCacheStatus();
+      try {
+        const response = await api.clearBuildCache({ confirmClear: true });
+        if (!response || response.ok !== true || !response.result) throw projectError(response?.error?.code || "APP_BUILD_CACHE_CLEAR_FAILED", response?.error?.message || "The Desktop App did not clear the build cache.");
+        const result = response.result;
+        buildCacheStatus = normalizeBuildCacheStatus(result.status || result);
+        buildCacheFeedback = {
+          key: "cache.status.cleared",
+          vars: { entries: Math.max(0, Number(result.removedEntries) || 0), bytes: formatBuildBytes(result.removedBytes) },
+          level: "good",
+        };
+      } catch (error) {
+        buildCacheFeedback = { key: "cache.status.clearFailed", vars: { message: error.message }, level: "bad" };
+      } finally {
+        buildCacheBusy = false;
+        renderBuildCacheStatus();
+      }
     }
 
     function desktopSkillApi() {
@@ -2819,6 +2945,7 @@
     function render() {
       renderProjectWorkflow(); renderProjectHistory(); renderInspection(); renderMetrics(); renderMotions(); renderExpressions(); renderPreviewPlayback(); renderMappings(); renderScenario();
       renderBuildProgress("codex"); renderBuildProgress("clawd");
+      renderBuildCacheStatus();
       renderSkillStatus();
       $("sleepMode").value = state.sleepMode;
       $("clawdRenderPreset").value = state.clawdRenderPreset;
@@ -4573,6 +4700,7 @@
         clawdBuildAbortController = null;
         clawdBuildBusy = false;
         render();
+        void refreshBuildCacheStatus();
       }
     }
 
@@ -4664,10 +4792,16 @@
       setBuildProgressStage("codex", "select", "started");
       setBuildStatus(I18n.t("build.status.app"), "busy");
       const quality = state.codexRenderPreset === "compact" ? 76 : state.codexRenderPreset === "high" ? 88 : 82;
+      const encodedCachePlan = {
+        cubismVersion: Number(state.model?.cubism),
+        renderPreset: state.codexRenderPreset,
+        recipesByMotion: {},
+        keysByMotion: {},
+      };
       const response = await api.buildProject({
         project,
         targets: ["codex-pet"],
-        inputsByTarget: { "codex-pet": { candidatesByRow } },
+        inputsByTarget: { "codex-pet": { candidatesByRow, captureCache: encodedCachePlan } },
         metadataByTarget: { "codex-pet": { id: project.projectId, displayName: project.name, description: `A Codex pet generated locally by Live2Pet from ${project.name}.`, version: CODEX_PACKAGE_VERSION } },
         optionsByTarget: { "codex-pet": { package: true, quality, render: { preset: state.codexRenderPreset } } },
       });
@@ -4829,6 +4963,7 @@
         codexBuildAbortController = null;
         codexBuildBusy = false;
         render();
+        void refreshBuildCacheStatus();
       }
     }
 
@@ -4944,6 +5079,8 @@
         setRuntimeStatus(`${error.code || "RUNTIME_STORAGE_CLEAR_FAILED"}: ${error.message}`, "bad");
       }
     });
+    $("refreshBuildCache").addEventListener("click", () => { void refreshBuildCacheStatus(); });
+    $("clearBuildCache").addEventListener("click", () => { void clearLocalBuildCache(); });
     $("refreshSkillStatus").addEventListener("click", () => { void refreshSkillStatus(); });
     $("installSkill").addEventListener("click", () => { void installSkillFromApp(); });
     $("openProject").addEventListener("click",()=>$("projectInput").click());
@@ -5054,6 +5191,7 @@
     }
     render();
     if (recoveredDraft) setProjectStatus(I18n.t("project.recovery.available", { time: projectDraftTime(recoveredDraft.savedAt) }));
+    void refreshBuildCacheStatus();
     void refreshSkillStatus();
     void initializeRuntimes();
     void connectMapperSession();

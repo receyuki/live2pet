@@ -20,6 +20,7 @@ const {
   createAppIpcRouter,
   createAppPreloadApi,
   createAppWindowOptions,
+  normalizeBuildCacheClearRequest,
   normalizeCaptureCacheStatusRequest,
   normalizeInspectRequest,
   normalizeRuntimeRequest,
@@ -61,6 +62,8 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.equal(APP_IPC_METHODS.includes('inspectSource'), true);
   assert.equal(APP_IPC_METHODS.includes('getSkillStatus'), true);
   assert.equal(APP_IPC_METHODS.includes('installSkill'), true);
+  assert.equal(APP_IPC_METHODS.includes('getBuildCacheStatus'), true);
+  assert.equal(APP_IPC_METHODS.includes('clearBuildCache'), true);
   assert.equal(APP_IPC_METHODS.includes('startRendererPreview'), true);
   assert.deepEqual(RENDERER_PREVIEW_COMMANDS, ['playMotion', 'pause', 'resume', 'restart', 'setLoop', 'setSpeed', 'setExpression', 'step', 'getState', 'getBounds']);
   assert.deepEqual(normalizeInspectRequest({ inputPath: '/tmp/source', projectId: 'fixture' }), { inputPath: '/tmp/source', projectId: 'fixture' });
@@ -73,6 +76,9 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.throws(() => normalizeSkillInstallRequest({ confirmInstall: true, path: '/tmp' }), (error) => error instanceof AppHostError && error.code === 'INVALID_SKILL_INSTALL_REQUEST');
   assert.deepEqual(normalizeCaptureCacheStatusRequest({ sourceFingerprint: 'a'.repeat(64), cubismVersion: 3, target: 'clawd', renderPreset: 'balanced', motions: [{ motionId: 'idle', duration: 1.2, width: 768, height: 768, frameCount: 29, fps: 24 }] }), { sourceFingerprint: 'a'.repeat(64), cubismVersion: 3, target: 'clawd', renderPreset: 'balanced', motions: [{ motionId: 'idle', expressionId: null, duration: 1.2, width: 768, height: 768, frameCount: 29, fps: 24 }] });
   assert.throws(() => normalizeCaptureCacheStatusRequest({ sourceFingerprint: 'not-a-digest', cubismVersion: 3, target: 'clawd', renderPreset: 'balanced', motions: [] }), (error) => error instanceof AppHostError && error.code === 'INVALID_CAPTURE_CACHE_REQUEST');
+  assert.deepEqual(normalizeBuildCacheClearRequest({ confirmClear: true }), { confirmClear: true });
+  assert.throws(() => normalizeBuildCacheClearRequest({}), (error) => error instanceof AppHostError && error.code === 'CACHE_CLEAR_AUTHORIZATION_REQUIRED');
+  assert.throws(() => normalizeBuildCacheClearRequest({ confirmClear: true, path: '/tmp/cache' }), (error) => error instanceof AppHostError && error.code === 'INVALID_BUILD_CACHE_REQUEST');
   assert.deepEqual(normalizeRendererPreviewStartRequest({ sourceRoot: '/tmp/source', cubismVersion: 2 }), { sourceRoot: '/tmp/source', cubismVersion: 2, width: 512, height: 512, show: true });
   assert.deepEqual(normalizeRendererPreviewStartRequest({ sourceRoot: '/tmp/source', cubismVersion: 4, modernAdapter: 'official', frameworkPath: '/tmp/live2pet-framework.js', frameworkGlobal: 'Live2Pet.bridge' }), { sourceRoot: '/tmp/source', cubismVersion: 4, width: 512, height: 512, show: true, modernAdapter: 'official', frameworkPath: '/tmp/live2pet-framework.js', frameworkGlobal: 'Live2Pet.bridge' });
   assert.throws(() => normalizeRendererPreviewStartRequest({ sourceRoot: '/tmp/source', cubismVersion: 4, modernAdapter: 'official' }), (error) => error instanceof AppHostError && error.code === 'OFFICIAL_FRAMEWORK_REQUIRED');
@@ -208,6 +214,44 @@ test('routes bounded capture cache status without exposing local paths', async (
   const unavailable = await createAppIpcRouter()({ protocolVersion: 1, method: 'getCaptureCacheStatus', args: [{ sourceFingerprint: 'a'.repeat(64), cubismVersion: 4, target: 'clawd', renderPreset: 'balanced', motions: [{ motionId: 'idle', duration: 1.2, width: 768, height: 768, frameCount: 29, fps: 24 }] }] });
   assert.equal(unavailable.ok, false);
   assert.equal(unavailable.error.code, 'APP_CAPTURE_CACHE_UNAVAILABLE');
+});
+
+test('routes aggregate build cache status and requires explicit confirmation before clearing all entries', async () => {
+  const calls = [];
+  const captureCacheService = {
+    status: async () => ({ schemaVersion: 1, target: 'clawd', renderPreset: 'balanced', runtimeAvailable: true, entries: [] }),
+    overview: async () => ({ schemaVersion: 1, maxBytes: 1024, byteLength: 640, entryCount: 3, entries: [{ path: '/private/cache/item' }] }),
+    clearAll: async () => {
+      calls.push('clear');
+      return { removedEntries: 3, removedBytes: 640, schemaVersion: 1, maxBytes: 1024, byteLength: 0, entryCount: 0, rootDir: '/private/cache' };
+    },
+  };
+  const router = createAppIpcRouter({ captureCacheService });
+
+  const status = await router({ protocolVersion: 1, method: 'getBuildCacheStatus', args: [] });
+  assert.deepEqual(status, { protocolVersion: 1, ok: true, result: { schemaVersion: 1, maxBytes: 1024, byteLength: 640, entryCount: 3 } });
+  assert.equal(JSON.stringify(status).includes('/private/cache'), false);
+
+  const unauthorized = await router({ protocolVersion: 1, method: 'clearBuildCache', args: [{}] });
+  assert.equal(unauthorized.ok, false);
+  assert.equal(unauthorized.error.code, 'CACHE_CLEAR_AUTHORIZATION_REQUIRED');
+  assert.equal(calls.length, 0);
+
+  const cleared = await router({ protocolVersion: 1, method: 'clearBuildCache', args: [{ confirmClear: true }] });
+  assert.deepEqual(cleared, { protocolVersion: 1, ok: true, result: { removedEntries: 3, removedBytes: 640, schemaVersion: 1, maxBytes: 1024, byteLength: 0, entryCount: 0 } });
+  assert.equal(calls.length, 1);
+  assert.equal(JSON.stringify(cleared).includes('/private/cache'), false);
+});
+
+test('preload exposes typed aggregate build cache operations', async () => {
+  const calls = [];
+  const api = createAppPreloadApi({ ipcRenderer: { invoke: async (...args) => (calls.push(args), { ok: true }) } });
+  await api.getBuildCacheStatus();
+  await api.clearBuildCache({ confirmClear: true });
+  assert.deepEqual(calls.map((call) => call[1]), [
+    { protocolVersion: 1, method: 'getBuildCacheStatus', args: [] },
+    { protocolVersion: 1, method: 'clearBuildCache', args: [{ confirmClear: true }] },
+  ]);
 });
 
 test('persists one completed capture through the bounded cache IPC seam', async () => {

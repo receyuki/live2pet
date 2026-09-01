@@ -504,6 +504,7 @@ async function encodeAnimatedWebp({ frames, rgbaChunks, width, height, delay = 1
     const result = await sharp(stacked, { animated: frames.length > 1, raw: { width, height: height * frames.length, channels: 4, pageHeight: height } })
       .webp({ quality, alphaQuality, lossless, loop, delay: delays })
       .toBuffer({ resolveWithObject: true });
+    checkCancelled(signal);
     const buffer = Buffer.isBuffer(result) ? result : result && result.data;
     if (!buffer || !buffer.length) fail('WEBP_ENCODER_INVALID_OUTPUT', 'The WebP encoder returned an empty buffer.');
     return { format: 'webp', buffer, frameCount: frames.length, width, height, delays, info: result && result.info ? result.info : null };
@@ -972,7 +973,7 @@ async function buildCodexPet(input = {}, options = {}) {
     }
     if (!encoded) {
       if (cacheEnabled) cacheStats.misses += 1;
-      encoded = await encodeAnimatedWebp({ frames: [{ width: atlas.width, height: atlas.height, rgba: atlas.rgba }], width: atlas.width, height: atlas.height, quality, alphaQuality, lossless }, { sharpFactory: options.sharpFactory });
+      encoded = await encodeAnimatedWebp({ frames: [{ width: atlas.width, height: atlas.height, rgba: atlas.rgba }], width: atlas.width, height: atlas.height, quality, alphaQuality, lossless }, { sharpFactory: options.sharpFactory, signal });
       if (cacheKey) cache.put(cacheKey, encodeAsset({ format: encoded.format, width: encoded.width, height: encoded.height, frameCount: encoded.frameCount, delays: encoded.delays, bytes: encoded.buffer }), { projectId: cacheContext.projectId, sourceFingerprint: cacheContext.sourceFingerprint, artifact: 'encoded-webp' });
     }
     checkCancelled(signal);

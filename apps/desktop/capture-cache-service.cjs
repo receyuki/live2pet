@@ -46,7 +46,7 @@ function normalizeContext(input = {}) {
 }
 
 function createCaptureCacheService({ cache, getRuntimeForGeneration, rendererVersion = DEFAULT_CAPTURE_RENDERER_VERSION } = {}) {
-  if (!cache || typeof cache.get !== 'function' || typeof cache.put !== 'function') fail('INVALID_CAPTURE_CACHE_SERVICE', 'Capture cache service requires a CacheStore-compatible cache.');
+  if (!cache || typeof cache.get !== 'function' || typeof cache.put !== 'function' || typeof cache.status !== 'function' || typeof cache.clearAll !== 'function') fail('INVALID_CAPTURE_CACHE_SERVICE', 'Capture cache service requires a CacheStore-compatible cache.');
   if (typeof getRuntimeForGeneration !== 'function') fail('INVALID_CAPTURE_CACHE_SERVICE', 'Capture cache service requires a runtime resolver.');
   if (typeof rendererVersion !== 'string' || !rendererVersion.trim()) fail('INVALID_CAPTURE_CACHE_SERVICE', 'Capture cache service requires a renderer version.');
 
@@ -169,7 +169,29 @@ function createCaptureCacheService({ cache, getRuntimeForGeneration, rendererVer
     return entries.map((entry) => writeFromContext(normalized, recipes.get(entry.recipe.motionId), entry.frameSet));
   }
 
-  return Object.freeze({ status, read, readMany, readEncodedMany, write, writeMany, rendererVersion: rendererVersion.trim() });
+  function overview() {
+    const current = cache.status();
+    return {
+      schemaVersion: current.schemaVersion,
+      maxBytes: current.maxBytes,
+      byteLength: current.byteLength,
+      entryCount: current.entryCount,
+    };
+  }
+
+  function clearAll() {
+    const cleared = cache.clearAll();
+    return {
+      removedEntries: cleared.removedEntries,
+      removedBytes: cleared.removedBytes,
+      schemaVersion: cleared.schemaVersion,
+      maxBytes: cleared.maxBytes,
+      byteLength: cleared.byteLength,
+      entryCount: cleared.entryCount,
+    };
+  }
+
+  return Object.freeze({ status, read, readMany, readEncodedMany, write, writeMany, overview, clearAll, rendererVersion: rendererVersion.trim() });
 }
 
 module.exports = {

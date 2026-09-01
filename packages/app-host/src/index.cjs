@@ -72,6 +72,8 @@ const APP_IPC_METHODS = Object.freeze([
   'installSkill',
   'getCaptureCacheStatus',
   'putCaptureCache',
+  'getBuildCacheStatus',
+  'clearBuildCache',
   'startMapperSession',
   'getMapperProject',
   'updateMapperProject',
@@ -316,6 +318,38 @@ function summarizeCaptureCacheWrite(result) {
     ...(result.key === undefined ? {} : { key: result.key.toLowerCase() }),
     ...(result.byteLength === undefined ? {} : { byteLength: result.byteLength }),
     ...(result.reason === undefined ? {} : { reason: result.reason.trim() }),
+  };
+}
+
+function normalizeBuildCacheClearRequest(value) {
+  if (!isRecord(value)) fail('INVALID_BUILD_CACHE_REQUEST', 'Build cache clear input must be an object.');
+  const allowed = new Set(['confirmClear']);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) fail('INVALID_BUILD_CACHE_REQUEST', `Build cache clear input contains unsupported fields: ${unknown.join(', ')}.`);
+  if (value.confirmClear !== true) fail('CACHE_CLEAR_AUTHORIZATION_REQUIRED', 'Clearing the build cache requires explicit confirmation.');
+  return { confirmClear: true };
+}
+
+function summarizeBuildCacheStatus(result) {
+  if (!isRecord(result) || result.schemaVersion !== 1 || !Number.isSafeInteger(result.maxBytes) || result.maxBytes < 1 || !Number.isSafeInteger(result.byteLength) || result.byteLength < 0 || result.byteLength > result.maxBytes || !Number.isSafeInteger(result.entryCount) || result.entryCount < 0) {
+    fail('INVALID_BUILD_CACHE_RESULT', 'Build cache status did not return the supported aggregate contract.');
+  }
+  return {
+    schemaVersion: 1,
+    maxBytes: result.maxBytes,
+    byteLength: result.byteLength,
+    entryCount: result.entryCount,
+  };
+}
+
+function summarizeBuildCacheClear(result) {
+  if (!isRecord(result) || !Number.isSafeInteger(result.removedEntries) || result.removedEntries < 0 || !Number.isSafeInteger(result.removedBytes) || result.removedBytes < 0) {
+    fail('INVALID_BUILD_CACHE_RESULT', 'Build cache clear did not return the supported result contract.');
+  }
+  return {
+    removedEntries: result.removedEntries,
+    removedBytes: result.removedBytes,
+    ...summarizeBuildCacheStatus(result),
   };
 }
 
@@ -781,6 +815,16 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, source
         const input = normalizeCaptureCacheWriteRequest(normalized.args[0]);
         return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeCaptureCacheWrite(await captureCacheService.write(input.context, input.recipe, input.frameSet)) };
       }
+      if (normalized.method === 'getBuildCacheStatus') {
+        if (!captureCacheService || typeof captureCacheService.overview !== 'function') fail('APP_BUILD_CACHE_UNAVAILABLE', 'The App build cache service is not configured.');
+        if (normalized.args.length) fail('INVALID_BUILD_CACHE_REQUEST', 'getBuildCacheStatus does not accept arguments.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeBuildCacheStatus(await captureCacheService.overview()) };
+      }
+      if (normalized.method === 'clearBuildCache') {
+        if (!captureCacheService || typeof captureCacheService.clearAll !== 'function') fail('APP_BUILD_CACHE_UNAVAILABLE', 'The App build cache service is not configured.');
+        normalizeBuildCacheClearRequest(normalized.args[0]);
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeBuildCacheClear(await captureCacheService.clearAll()) };
+      }
       if (normalized.method === 'startRendererPreview') {
         if (!rendererPreviewService) fail('APP_RENDERER_PREVIEW_UNAVAILABLE', 'The App isolated renderer preview service is not configured.');
         const input = normalizeRendererPreviewStartRequest(normalized.args[0]);
@@ -984,6 +1028,8 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
     getSkillStatus: () => invoke('getSkillStatus'),
     installSkill: (input) => invoke('installSkill', input),
     getCaptureCacheStatus: (input) => invoke('getCaptureCacheStatus', input),
+    getBuildCacheStatus: () => invoke('getBuildCacheStatus'),
+    clearBuildCache: (input) => invoke('clearBuildCache', input),
     getFilePath: resolveFilePath,
     startRendererPreview: (input) => invoke('startRendererPreview', input),
     loadRendererSource: (input) => invoke('loadRendererSource', input),
@@ -1043,6 +1089,7 @@ module.exports = {
   normalizeInspectRequest,
   normalizeRuntimeRequest,
   normalizeSkillInstallRequest,
+  normalizeBuildCacheClearRequest,
   normalizeCaptureCacheStatusRequest,
   normalizeCaptureCacheWriteRequest,
   normalizeRendererPreviewStartRequest,
@@ -1066,6 +1113,8 @@ module.exports = {
   summarizeSkillProgress,
   summarizeCaptureCacheStatus,
   summarizeCaptureCacheWrite,
+  summarizeBuildCacheStatus,
+  summarizeBuildCacheClear,
   summarizeRendererPreviewResult,
   RENDERER_PREVIEW_COMMANDS,
 };

@@ -27,12 +27,37 @@ function captureCacheContext(project, target, plan) {
   };
 }
 
-function createCaptureCacheBuildService({ buildProjectTargets, getCaptureCacheService } = {}) {
+function encodedCacheContext(project, target, plan, resolved) {
+  const captureContext = captureCacheContext(project, target, plan);
+  if (!captureContext || !project || typeof project.projectId !== 'string' || !project.projectId.trim() || !resolved || typeof resolved !== 'object') return null;
+  const runtimeVersion = typeof resolved.runtimeVersion === 'string' && /^[a-f0-9]{64}$/i.test(resolved.runtimeVersion.trim()) ? resolved.runtimeVersion.trim().toLowerCase() : null;
+  const rendererVersion = typeof resolved.rendererVersion === 'string' && resolved.rendererVersion.trim() ? resolved.rendererVersion.trim() : null;
+  const targetVersion = typeof resolved.targetVersion === 'string' && resolved.targetVersion.trim() ? resolved.targetVersion.trim() : null;
+  const encoderVersion = typeof resolved.encoderVersion === 'string' && resolved.encoderVersion.trim() ? resolved.encoderVersion.trim() : null;
+  if (!runtimeVersion || !rendererVersion || !targetVersion || !encoderVersion) return null;
+  return {
+    projectId: project.projectId.trim(),
+    sourceFingerprint: captureContext.sourceFingerprint.toLowerCase(),
+    runtimeVersion,
+    rendererVersion,
+    targetVersion,
+    renderPreset: captureContext.renderPreset,
+    encoderVersion,
+  };
+}
+
+function createCaptureCacheBuildService({ buildProjectTargets, getCaptureCacheService, getEncodedCache = null, resolveEncodedCacheContext = null } = {}) {
   if (typeof buildProjectTargets !== 'function') fail('buildProjectTargets must be a function.');
   if (typeof getCaptureCacheService !== 'function') fail('getCaptureCacheService must be a function.');
+  if (getEncodedCache !== null && typeof getEncodedCache !== 'function') fail('getEncodedCache must be a function when provided.');
+  if (resolveEncodedCacheContext !== null && typeof resolveEncodedCacheContext !== 'function') fail('resolveEncodedCacheContext must be a function when provided.');
 
   return async function buildProjectWithCaptureCache(input = {}) {
     const targetInputs = { ...(input.inputsByTarget || {}) };
+    const targetOptions = Object.fromEntries(Object.entries(input.optionsByTarget || {}).map(([target, options]) => {
+      const { cache: _cache, cacheContext: _cacheContext, ...cleanOptions } = options && typeof options === 'object' ? options : {};
+      return [target, cleanOptions];
+    }));
     const pendingWrites = [];
     const service = getCaptureCacheService();
     for (const target of input.targets || ['clawd', 'codex-pet']) {
@@ -99,6 +124,21 @@ function createCaptureCacheBuildService({ buildProjectTargets, getCaptureCacheSe
         }
       }
     }
+    if (getEncodedCache && resolveEncodedCacheContext) {
+      const cache = getEncodedCache();
+      if (cache && typeof cache.get === 'function' && typeof cache.put === 'function') {
+        for (const target of input.targets || ['clawd', 'codex-pet']) {
+          const plan = input.inputsByTarget && input.inputsByTarget[target] && input.inputsByTarget[target].captureCache;
+          const targetProject = input.project && input.project.targets && input.project.targets[target];
+          if (!plan || !targetProject) continue;
+          let resolved = null;
+          try { resolved = await resolveEncodedCacheContext({ project: input.project, target, targetProject, plan }); } catch {}
+          const context = encodedCacheContext(input.project, target, plan, resolved);
+          if (!context) continue;
+          targetOptions[target] = { ...(targetOptions[target] || {}), cache, cacheContext: context };
+        }
+      }
+    }
     const persistCaptures = async () => {
       if (typeof service.writeMany === 'function' && pendingWrites.length) {
         const groups = new Map();
@@ -115,7 +155,7 @@ function createCaptureCacheBuildService({ buildProjectTargets, getCaptureCacheSe
       }
     };
     try {
-      return await buildProjectTargets({ ...input, inputsByTarget: targetInputs });
+      return await buildProjectTargets({ ...input, inputsByTarget: targetInputs, optionsByTarget: targetOptions });
     } finally {
       // Keep completed captures even when package validation or cancellation
       // aborts the build; a retry can then skip Live2D capture.
@@ -124,4 +164,4 @@ function createCaptureCacheBuildService({ buildProjectTargets, getCaptureCacheSe
   };
 }
 
-module.exports = { captureCacheContext, createCaptureCacheBuildService, mappedMotionIds };
+module.exports = { captureCacheContext, createCaptureCacheBuildService, encodedCacheContext, mappedMotionIds };
