@@ -47,8 +47,8 @@ receives the destination path or skill contents. Development builds read from
 `live2pet-skill` resource path. User-provided skill edits are not overwritten
 unless the user explicitly confirms an upgrade.
 
-The desktop shell also includes a separate renderer-realm host for Live2D
-preview. It creates a transparent BrowserWindow with Node integration off,
+The desktop shell also includes a renderer-realm host that can isolate Live2D
+execution from the Mapper. It creates a transparent BrowserWindow with Node integration off,
 context isolation, sandboxing, strict CSP, and a loopback-only asset server for
 the selected Source Package plus runtime file. Adapter selection follows the
 inspected Cubism generation (legacy Cubism 2 versus modern Cubism 3–5). If the
@@ -57,22 +57,20 @@ adapter and destroys that window; the main Mapper window remains available and
 an explicit restart creates a fresh realm. Its `loadSource()` helper accepts the
 inspection manifest's relative `modelConfig`, resolves it through the same
 loopback server, and rejects a mismatched Cubism generation before touching the
-renderer.
+renderer. This realm is an internal capture, recovery, and diagnostic seam; it
+is not a second V1 preview product.
 
 Electron 44 no longer guarantees the legacy `File.path` property in a sandboxed
 renderer. The App preload therefore exposes only the typed `webUtils.getPathForFile`
-result needed to resolve the selected Source Package directory for the isolated
-preview; browser-only Mapper sessions keep the helper unavailable.
+result needed to resolve explicitly selected local Source Package directories;
+browser-only Mapper sessions keep the helper unavailable.
 
-The Mapper exposes this host through a narrow App IPC session: **Open isolated
-preview**, **Restart preview**, and **Close preview**. Only a standard local
-Source Package directory can be opened in this window; reconstructed PCK files
-continue to use the browser preview because they do not have a directory that
-the loopback server can safely serve. Preview commands are limited to Motion /
-Expression playback, playback controls, state, and bounds; RGBA capture and
-filesystem operations are not exposed through this UI. The saved runtime is
-resolved in the main process, and neither runtime bytes nor absolute paths cross
-the App boundary. Pixi is the personal-use V1 modern renderer. An advanced
+The existing narrow App IPC renderer session remains covered for internal use,
+but its separate-window controls are outside the personal-use V1 workflow and
+are scheduled for removal from the normal Mapper UI. Both standard directories
+and reconstructed PCK inputs must use the center-column source preview. The
+saved runtime is resolved in the main process, and neither runtime bytes nor
+absolute paths cross the App boundary. Pixi is the personal-use V1 modern renderer. An advanced
 host integration can opt into the experimental official Web Framework bridge by passing
 `modernAdapter: 'official'` and a user-provided `frameworkPath`; the bundle is
 served only through the same loopback asset server and must expose the
@@ -168,7 +166,6 @@ Undo and Redo buttons are keyboard accessible (`⌘Z`/`Ctrl+Z` and
 project metadata and mappings enter that history; source files, runtime bytes,
 renderer objects, and generated packages remain outside it.
 
-The source-preview panel exposes Pause, Resume, Restart, Loop, and speed
-controls. With an isolated Desktop renderer open these use the typed renderer
-command seam; the in-window browser fallback supports pause/resume/restart and
-clearly reports that loop and speed settings apply to the isolated renderer.
+The source-preview panel is the only V1 user-visible source playback surface.
+Pause, Resume, Restart, Loop, and speed must work there without opening or
+managing a second window; typed renderer commands remain an implementation seam.

@@ -18,7 +18,7 @@ Live2Pet is an early-stage local desktop toolchain for loading Cubism models, pr
 - `packages/installation/` — explicit, conflict-aware installation support retained as optional functionality; portable ZIP download is the V1 handoff.
 - `packages/mapper-session/` — implemented authenticated browser-host seam retained for post-V1 Codex integration.
 - `packages/app-host/` — typed IPC router, preload API, artifact download/install boundary, opaque native location handles, and hardened window defaults.
-- `apps/desktop/` — Electron development App that loads the mapper, provides a separate sandboxed Live2D renderer window host, and builds/downloads artifacts without bundling user runtimes or models.
+- `apps/desktop/` — Electron development App that loads the Mapper, keeps renderer isolation as an internal implementation seam, and builds/downloads artifacts without bundling user runtimes or models. The center column is the only V1 user-visible source preview.
 - `packages/clawd-target/` — guide-aligned Clawd Target Profile validation for states, sleep modes, fallbacks, and reactions.
 - `packages/codex-target/` — Codex Pet V1 atlas geometry, nine-row mapping, frame-reference layout planning, RGBA composition, and package-shape validation.
 - `packages/live2d-exporter/` — deterministic transparent-frame exporter and Destiny Child PCK unpacker.
@@ -47,7 +47,7 @@ The official modern Cubism Core download is available from [Live2D's SDK for Web
 
 ## Development status
 
-The core inspection, project, mapping, target-build, progress, cache, validation, generated-preview, and artifact-download seams are implemented. The remaining V1 work is to qualify saved modern and legacy runtimes with locally owned models, prove both generated ZIPs in their real target hosts, harden the long-build experience, and accept a locally built macOS App on a clean user profile.
+The core inspection, project, mapping, target-build, progress, cache, validation, generated-preview, and artifact-download seams are implemented. The remaining V1 work is to consolidate source playback into the center-column preview, qualify saved modern and legacy runtimes with locally owned models, prove both generated ZIPs in their real target hosts, harden the long-build experience, and accept a locally built macOS App on a clean user profile. A separate preview window is not a V1 feature or acceptance gate.
 
 The official Cubism Web Framework adapter, Codex skill/Mapper Session product surface, Windows qualification, automatic installation as the primary flow, and public signed binaries are explicitly post-V1. See the [implementation plan](docs/plans/live2pet-v1-implementation-plan.md) for the current order and close criteria.
 

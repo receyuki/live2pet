@@ -1,6 +1,6 @@
 # Live2Pet Personal-Use V1 Specification
 
-Status: Rescoped on 2026-09-01
+Status: Rescoped on 2026-09-01 — single visible preview surface
 
 ## Product outcome
 
@@ -8,12 +8,14 @@ V1 is successful when one macOS user can take a permitted local Live2D model fro
 
 The Desktop App is the V1 product. Existing CLI, installation, Mapper Session, Codex skill, and official Cubism Web Framework seams may remain in the repository, but they are not release gates for this milestone.
 
+The center column of the Mapper is the only user-visible Source Package preview. Process isolation may remain behind that surface for crash recovery or Package Build capture, but V1 does not expose or require a separate preview window.
+
 ## Primary workflow
 
 1. Open the macOS Desktop App.
 2. Select a standard Cubism model directory or a supported Destiny Child PCK.
 3. Let Live2Pet identify the Cubism generation and use a previously saved compatible runtime; select a runtime only when none is available.
-4. Browse Motions and Expressions, play them on the original model, and create a Motion-plus-optional-Expression Animation Recipe.
+4. Browse Motions and Expressions, play them in the center-column preview, and create a Motion-plus-optional-Expression Animation Recipe.
 5. Assign the currently selected recipe to Clawd or Codex slots in the separate target mapping.
 6. Review missing mappings and choose a fixed Render Preset.
 7. Build while observing progress and, when needed, cancel safely.
@@ -41,13 +43,14 @@ The Desktop App is the V1 product. Existing CLI, installation, Mapper Session, C
 ### Runtime management and rendering
 
 - Modern Cubism preview uses the existing Pixi renderer adapter with a user-provided official Cubism Core.
-- Legacy Cubism 2 preview uses the isolated legacy Pixi adapter with a user-provided compatible `live2d.min.js`.
+- Legacy Cubism 2 preview uses its legacy Pixi adapter with a user-provided compatible `live2d.min.js`.
 - The App copies an explicitly selected runtime into App-managed local storage, validates it, records its detected compatibility, and automatically reuses it for matching models on later launches.
 - A user can replace or clear a saved runtime. Runtime changes do not require rebuilding Live2Pet.
 - The App chooses modern or legacy rendering from inspected model generation; it must not ask the user to make that technical choice for every model.
-- Preview supports Motion play, pause, restart, loop, speed control, and optional Expression apply/clear.
+- The center column is the only visible source preview and supports Motion play, pause, restart, loop, speed control, and optional Expression apply/clear.
 - Preview fits the full animated model bounds instead of silently cropping it.
-- Renderer failure is isolated from the main mapping window and produces a recoverable error.
+- A separate preview window, renderer selector, and duplicate playback controls are excluded from the V1 user workflow.
+- Renderer failure must leave the project and Mapper usable and produce a recoverable error; process isolation is an internal implementation choice.
 - The official Cubism Web Framework bridge remains experimental and is not selectable or required in V1.
 - No Cubism Core, legacy runtime, model, texture, or copyrighted example is bundled in source or release artifacts.
 
@@ -98,11 +101,11 @@ The Desktop App is the V1 product. Existing CLI, installation, Mapper Session, C
 
 ### Modern model path
 
-On a clean macOS user profile, select a permitted standard Cubism 3+ model and official Core once. Restart the App, reopen the model without selecting Core again, preview at least one Motion and Expression, map it, build one target, preview generated output, validate it, and download the ZIP.
+On a clean macOS user profile, select a permitted standard Cubism 3+ model and official Core once. Restart the App, reopen the model without selecting Core again, preview at least one Motion and Expression in the center column, map it, build one target, preview generated output, validate it, and download the ZIP.
 
 ### Legacy PCK path
 
-On the same App, select the locally owned tested Destiny Child PCK and a compatible Cubism 2 runtime once. Reopen it without selecting the runtime again, preview a Motion, map it, and complete at least one target build and ZIP download.
+On the same App, select the locally owned tested Destiny Child PCK and a compatible Cubism 2 runtime once. Reopen it without selecting the runtime again, preview a Motion in the same center column, map it, and complete at least one target build and ZIP download.
 
 ### Both-target project path
 
@@ -124,6 +127,7 @@ Verify that incompatible runtime, unsupported PCK, missing resource, cancelled b
 ## Explicitly deferred until after V1
 
 - Official Cubism Web Framework as the production renderer.
+- A separate user-visible preview window, renderer chooser, or duplicated preview lifecycle controls.
 - Codex skill installation, CLI automation as a product surface, and browser Mapper Session.
 - Windows x64 qualification and platform installers.
 - Automatic target-host installation as part of the happy path.

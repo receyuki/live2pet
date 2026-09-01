@@ -20,14 +20,17 @@ For the personal-use V1:
 - `LegacyPixiLive2dAdapter` remains the isolated Cubism 2 integration;
 - the App automatically selects between them from Source Package inspection;
 - users provide and explicitly save compatible runtimes in App-managed local storage;
-- both adapters remain behind the shared renderer contract and isolated render-realm boundary; and
+- both adapters remain behind the shared renderer contract and may use an isolated render-realm boundary internally, without exposing a second preview workflow; and
 - the official Cubism Web Framework bridge remains experimental, hidden from the required workflow, and does not block V1.
+
+The center column of the Mapper is the only user-visible Source Package preview in V1. A separate preview BrowserWindow and its open/restart/close controls are not part of the product contract; existing code for that realm may remain only as an internal capture, recovery, or diagnostic seam.
 
 The official Framework may replace the modern adapter after V1 only when a concrete compatibility, maintenance, performance, or distribution requirement justifies the migration and the replacement passes the same renderer contract and real-model acceptance suite.
 
 ## Consequences
 
 - V1 can focus on renderer reliability, target-host compatibility, and a complete App workflow rather than a second rendering integration.
+- Users do not choose between renderer surfaces or manage a second preview window.
 - Modern models still execute a user-provided official Cubism Core; Live2Pet does not claim that the surrounding Pixi integration is first-party Live2D Framework code.
 - The existing renderer contract preserves a future migration path without changing projects, mappings, Target Profiles, or Package Builds.
 - Community adapter compatibility risk is accepted for a personal-use V1 and must be measured with locally owned modern fixtures.

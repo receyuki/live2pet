@@ -1,6 +1,6 @@
 # Live2Pet Personal-Use V1 Implementation Plan
 
-Status: Rescoped on 2026-09-01
+Status: Rescoped on 2026-09-01 — single visible preview surface
 
 ## Outcome and boundary
 
@@ -8,13 +8,17 @@ The only current release outcome is a dependable personal-use macOS Desktop App 
 
 V1 does not wait for the official Cubism Web Framework integration, Codex skill/Mapper Session productization, Windows qualification, automatic installation, signing, notarization, or public binary distribution. Implemented seams for those capabilities stay in the codebase but do not expand the current acceptance path.
 
+The center column of the three-column Mapper is the only user-visible Source Package preview in V1. A separate renderer process may remain as an internal crash-isolation or capture mechanism, but a separate preview window, its lifecycle controls, and parity work are not product outcomes and are removed from V1 acceptance.
+
+Success is measured by one continuous workflow: one-time runtime setup, center-column Motion/Expression playback, direct target assignment, a terminal Package Build, generated-asset preview, and ZIP download. The accepted workflow must contain zero prompts to choose between preview implementations and zero separate preview windows.
+
 ## Current baseline
 
 The repository already contains:
 
 - standard-folder and supported Destiny Child PCK inspection;
 - versioned reference-only projects, recipes, separate target mappings, autosave, relinking, and review gates;
-- Pixi-based modern and Cubism 2 adapters, runtime diagnosis/persistence, an isolated renderer realm, and App preview IPC;
+- Pixi-based modern and Cubism 2 adapters, runtime diagnosis/persistence, and internal renderer isolation seams;
 - Clawd and Codex target validators and builders;
 - transparent WebP/atlas generation, build progress, cancellation, reports, and bounded caches;
 - generated target previews and artifact download handles;
@@ -26,41 +30,27 @@ The remaining work is primarily real-runtime acceptance and product-path hardeni
 
 ## Prioritized delivery sequence
 
-### P0 — Close the renderer acceptance gap
+### P0 — Make one preview-and-mapping flow dependable
 
-Issues: [#3](https://github.com/receyuki/live2pet/issues/3), [#4](https://github.com/receyuki/live2pet/issues/4)
+Issues: [#3](https://github.com/receyuki/live2pet/issues/3), [#4](https://github.com/receyuki/live2pet/issues/4), [#5](https://github.com/receyuki/live2pet/issues/5)
 
-Outcome: after a one-time runtime selection, modern and legacy inputs reopen and preview through the correct renderer without repeated setup or a crashed main window.
+Outcome: after a one-time runtime selection, the user can preview a modern or supported legacy Source Package in the center column, create an Animation Recipe, assign it, and resume the saved project without choosing or managing a second preview implementation.
 
 Work:
 
 1. Make the App-managed runtime library the sole V1 setup path and automatically select saved runtimes by inspected Cubism generation.
 2. Keep modern production rendering on the existing Pixi adapter with user-provided official Cubism Core.
-3. Keep Cubism 2 on the isolated legacy adapter and qualify the locally owned Destiny Child fixture.
-4. Complete Motion/Expression controls, full-bounds framing, renderer teardown, and actionable mismatch errors.
-5. Hide or label the official Framework bridge experimental so it cannot confuse the V1 workflow.
+3. Keep Cubism 2 behind its legacy adapter and qualify the locally owned Destiny Child fixture through the same visible preview controls.
+4. Remove the separate-preview controls from the normal UI; retain renderer-realm code only when it supports background capture, crash recovery, or diagnostics without adding a user step.
+5. Complete center-column Motion/Expression controls, full-bounds framing, recoverable failure handling, and actionable mismatch errors.
+6. Verify Motion-plus-Expression recipes, separate Clawd/Codex mappings, validation, undo/redo, keyboard operation, autosave, explicit save/reopen, and source relinking.
+7. Keep the official Framework bridge experimental and hidden from the V1 workflow.
 
 Acceptance gate:
 
-- one real standard modern model and the locally owned legacy PCK each pass import, reopen, preview, unload, and failure-recovery checks in the Desktop App;
+- one real standard modern model and the locally owned legacy PCK each pass import, reopen, center-column playback, mapping, and capture checks in the Desktop App;
 - neither path asks for an already saved matching runtime again; and
-- no runtime or model bytes appear in Git, project files, diagnostics, or outputs.
-
-### P0 — Close the durable mapper gap
-
-Issue: [#5](https://github.com/receyuki/live2pet/issues/5)
-
-Outcome: a user can select one source Animation Recipe, assign it directly to either target, save the project, and resume without losing or silently changing mappings.
-
-Work:
-
-1. Finish the real Electron happy-path test for the three-column selection/preview/assignment flow.
-2. Verify Motion-plus-Expression recipes, separate Clawd/Codex mappings, validation, undo/redo, keyboard operation, autosave, and explicit save/reopen.
-3. Verify source relinking preserves stable identities and blocks changed identities pending review.
-4. Remove any remaining duplicated selector or browser-only behavior from the required App path.
-
-Acceptance gate:
-
+- the accepted workflow exposes one visible source preview and no renderer-selection or separate-window controls;
 - a real project saves and reopens with equivalent mappings and Render Presets;
 - the right column always assigns the currently selected recipe; and
 - no Source Package or runtime bytes are embedded.
@@ -137,12 +127,10 @@ Acceptance gate:
 
 ```mermaid
 flowchart LR
-    I2[#2 Source inspection - closed] --> I3[#3 Modern renderer]
-    I3 --> I4[#4 Legacy renderer]
-    I3 --> I5[#5 Durable mapper]
-    I3 --> I6[#6 Clawd package]
+    I2[#2 Source inspection - closed] --> I3[#3 Modern center preview and capture]
+    I2 --> I4[#4 Legacy center preview and capture]
+    I3 --> I5[#5 Single-preview durable mapper]
     I5 --> I6
-    I3 --> I7[#7 Codex package]
     I5 --> I7
     I6 --> I8[#8 Build and export]
     I7 --> I8
@@ -160,9 +148,9 @@ flowchart LR
 | Issue | V1 role | Close when |
 | --- | --- | --- |
 | #2 Source inspection | Complete | Already closed |
-| #3 Modern preview | P0 | Real modern model passes saved-runtime App preview |
-| #4 Legacy preview | P0 | Locally owned PCK passes isolated App preview |
-| #5 Durable mapper | P0 | Save/reopen and real Electron mapping path pass |
+| #3 Modern preview | P0 | Real modern model plays in the center column and captures with a saved runtime |
+| #4 Legacy preview | P0 | Locally owned PCK plays in the center column and captures with a saved runtime |
+| #5 Durable mapper | P0 | The single-preview three-column flow saves and reopens without mapping drift |
 | #6 Clawd package | P0 | Core-state ZIP imports into pinned Clawd |
 | #7 Codex package | P0 | Nine-row ZIP loads in Codex |
 | #8 Build/export | P1 | Progress, cancel, cache, preview, and download pass |
@@ -178,7 +166,7 @@ An issue closes when its observable acceptance evidence exists, even if optional
 | --- | --- | --- |
 | Source inspection | Synthetic standard/PCK contracts and malformed-input tests | Owned modern model and Destiny Child PCK |
 | Runtime library | Validation, persistence, generation selection, clear/replace tests | Restart and reopen without reselection |
-| Renderer | Shared deterministic contract and realm teardown tests | Motion/Expression playback on both generations |
+| Renderer | Shared deterministic playback/capture contract and failure-recovery tests | Center-column Motion/Expression playback on both generations |
 | Project/mapper | Schema, save/recovery, relink, mapping validation tests | Electron save/reopen and keyboard flow |
 | Clawd | Synthetic manifest/WebP/size/package validation | Import into pinned Clawd version |
 | Codex | Synthetic atlas/manifest/transparency validation | Load through current custom-pet workflow |
@@ -190,6 +178,7 @@ An issue closes when its observable acceptance evidence exists, even if optional
 - [#9](https://github.com/receyuki/live2pet/issues/9): Codex skill, installed-CLI product surface, and authenticated Mapper Session.
 - [#11](https://github.com/receyuki/live2pet/issues/11): Windows x64 qualification.
 - Official Cubism Web Framework production adapter.
+- A separate user-visible preview window and its playback/lifecycle controls.
 - Automatic Clawd/Codex installation as the primary workflow.
 - Public signed/notarized installers and update channel.
 - Large configurable cache policy and cache-management UI beyond current bounded controls.
