@@ -18,6 +18,7 @@ export interface ProjectSession {
   id: string;
   name: string;
   sourcePath?: string;
+  inspection?: import('./app-host').SourceInspection;
   selectedMotionId: string | null;
   selectedExpressionId: string | null;
 }

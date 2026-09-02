@@ -38,8 +38,11 @@ import {
   getAppVersion,
   getCacheStatus,
   getRuntimeSettings,
+  getDesktopFilePath,
   hasDesktopApi,
+  inspectSource,
   RuntimeSettings,
+  SourceInspection,
 } from "./app-host";
 import {
   appReducer,
@@ -48,6 +51,7 @@ import {
   SettingsSection,
 } from "./app-state";
 import { Locale, MessageKey, translate } from "./i18n";
+import { projectIdFromSourceName, sourcePathFromSelection } from "./source-selection";
 
 const SETUP_KEY = "live2pet.desktop.setup-completed";
 const LOCALE_KEY = "live2pet.desktop.locale";
@@ -209,8 +213,15 @@ function SetupView({ locale, onComplete }: { locale: Locale; onComplete: () => v
   );
 }
 
-function WelcomeView({ locale, onOpenProject }: { locale: Locale; onOpenProject: () => void }) {
+function WelcomeView({ locale, busy, error, onImport, onOpenProject }: { locale: Locale; busy: boolean; error: string; onImport: (files: File[]) => void; onOpenProject: () => void }) {
   const t = (key: MessageKey) => translate(locale, key);
+  const folderInput = useRef<HTMLInputElement>(null);
+  const pckInput = useRef<HTMLInputElement>(null);
+  function selected(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (files.length) onImport(files);
+  }
   return (
     <main className="welcome-view">
       <section className="welcome-hero">
@@ -219,9 +230,15 @@ function WelcomeView({ locale, onOpenProject }: { locale: Locale; onOpenProject:
           <h1>{t("welcomeTitle")}</h1>
           <p>{t("welcomeBody")}</p>
           <div className="welcome-actions">
-            <Button variant="primary" size="lg" isDisabled><Upload size={18} />{t("importSource")}</Button>
+            <input ref={folderInput} className="visually-hidden" type="file" multiple {...{ webkitdirectory: "" }} onChange={selected} />
+            <input ref={pckInput} className="visually-hidden" type="file" accept=".pck" onChange={selected} />
+            <Button variant="primary" size="lg" isDisabled={busy || !hasDesktopApi()} onPress={() => folderInput.current?.click()}><Upload size={18} />{t("importFolder")}</Button>
+            <Button variant="secondary" size="lg" isDisabled={busy || !hasDesktopApi()} onPress={() => pckInput.current?.click()}><Box size={18} />{t("importPck")}</Button>
             <Button variant="secondary" size="lg" isDisabled><FolderOpen size={18} />{t("openProject")}</Button>
           </div>
+          <p className="import-hint">{busy ? t("loading") : t("importHint")}</p>
+          {busy && <ProgressBar aria-label={t("loading")} isIndeterminate className="mt-4" />}
+          {error && <p className="inline-error" role="alert">{error}</p>}
           <Button className="button--ghost" variant="ghost" onPress={onOpenProject}>{t("sampleProject")}<ChevronRight size={15} /></Button>
         </div>
         <div className="welcome-visual" aria-hidden="true">
@@ -238,14 +255,20 @@ function WelcomeView({ locale, onOpenProject }: { locale: Locale; onOpenProject:
   );
 }
 
-function SourceView({ locale, onMap }: { locale: Locale; onMap: () => void }) {
+function SourceView({ locale, inspection, onMap }: { locale: Locale; inspection?: SourceInspection; onMap: () => void }) {
   const t = (key: MessageKey) => translate(locale, key);
+  const facts = inspection
+    ? [["sourceModel", inspection.model.modelFile ?? "—"], ["sourceTextures", String(inspection.model.textures.length)], ["sourceMotions", String(inspection.motions.length)], ["sourceExpressions", String(inspection.expressions.length)]]
+    : [["sourceModel", "model3.json"], ["sourceTextures", "4"], ["sourceMotions", "5"], ["sourceExpressions", "3"]];
+  const summary = inspection
+    ? `Cubism ${inspection.model.cubism} · ${inspection.motions.length} ${t("sourceMotions")} · ${inspection.expressions.length} ${t("sourceExpressions")}`
+    : t("sourceSummary");
   return (
     <main className="page">
       <PageHeading eyebrow={t("source")} title={t("sourceTitle")} body={t("sourceBody")} />
       <div className="source-grid">
-        <Card className="surface-card"><Card.Content><div className="model-placeholder"><BrandMark large /></div><div className="ready-box"><CircleCheck size={20} /><span><strong>{t("sourceReady")}</strong><small>{t("sourceSummary")}</small></span></div><Button variant="primary" onPress={onMap}>{t("map")}<ChevronRight size={16} /></Button></Card.Content></Card>
-        <Card className="surface-card source-facts"><Card.Content>{[["sourceModel", "model3.json"], ["sourceTextures", "4"], ["sourceMotions", "5"], ["sourceExpressions", "3"]].map(([key, value]) => <div className="fact" key={key}><span>{t(key as MessageKey)}</span><strong>{value}</strong></div>)}</Card.Content></Card>
+        <Card className="surface-card"><Card.Content><div className="model-placeholder"><BrandMark large /></div><div className="ready-box"><CircleCheck size={20} /><span><strong>{t("sourceReady")}</strong><small>{summary}</small></span></div><Button variant="primary" onPress={onMap}>{t("map")}<ChevronRight size={16} /></Button></Card.Content></Card>
+        <Card className="surface-card source-facts"><Card.Content>{facts.map(([key, value]) => <div className="fact" key={key}><span>{t(key as MessageKey)}</span><strong title={value}>{value}</strong></div>)}</Card.Content></Card>
       </div>
     </main>
   );
@@ -255,31 +278,37 @@ function PanelHeading({ icon, title, body }: { icon: ReactNode; title: string; b
   return <header className="panel-heading"><span className="square-icon">{icon}</span><div><h2>{title}</h2><p>{body}</p></div></header>;
 }
 
-function MapView({ locale, selectedMotionId, selectedExpressionId, onSelectMotion, onSelectExpression }: { locale: Locale; selectedMotionId: string | null; selectedExpressionId: string | null; onSelectMotion: (id: string) => void; onSelectExpression: (id: string) => void }) {
+function MapView({ locale, inspection, selectedMotionId, selectedExpressionId, onSelectMotion, onSelectExpression }: { locale: Locale; inspection?: SourceInspection; selectedMotionId: string | null; selectedExpressionId: string | null; onSelectMotion: (id: string) => void; onSelectExpression: (id: string) => void }) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
-  const selected = motions.find((motion) => motion.id === selectedMotionId) ?? motions[0];
-  const selectedExpression = expressions.find((expression) => expression.id === selectedExpressionId) ?? expressions[0];
-  const selectedName = t(selected.nameKey);
+  const displayedMotions = inspection?.motions.length
+    ? inspection.motions.map((motion) => ({ id: motion.id, name: motion.name, seconds: motion.duration?.toFixed(1) ?? "—", tint: "" }))
+    : motions.map((motion) => ({ ...motion, name: t(motion.nameKey) }));
+  const displayedExpressions = inspection?.expressions.length
+    ? inspection.expressions.map((expression) => ({ id: expression.id, name: expression.name }))
+    : expressions.map((expression) => ({ ...expression, name: t(expression.nameKey) }));
+  const selected = displayedMotions.find((motion) => motion.id === selectedMotionId) ?? displayedMotions[0];
+  const selectedExpression = displayedExpressions.find((expression) => expression.id === selectedExpressionId) ?? displayedExpressions[0];
+  const selectedName = selected?.name ?? "—";
   return (
     <main className="map-workspace">
       <section className="workspace-panel">
         <PanelHeading icon={<SlidersHorizontal size={16} />} title={t("motions")} body={t("motionsHint")} />
         <label className="search-field"><Search size={14} /><input aria-label={t("searchMotions")} placeholder={t("search")} /></label>
         <div className="motion-list">
-          {motions.map((motion) => (
-            <Button key={motion.id} variant={motion.id === selected.id ? "secondary" : "ghost"} className={`motion-item ${motion.tint}`} onPress={() => onSelectMotion(motion.id)}>
-              <span className="motion-icon"><Play size={15} /></span><span className="grow-copy"><strong>{t(motion.nameKey)}</strong><small>{t("motionDuration", { value: motion.seconds })}</small></span>{motion.id === selected.id && <small>{t("selected")}</small>}
+          {displayedMotions.map((motion) => (
+            <Button key={motion.id} variant={motion.id === selected?.id ? "secondary" : "ghost"} className={`motion-item ${motion.tint}`} onPress={() => onSelectMotion(motion.id)}>
+              <span className="motion-icon"><Play size={15} /></span><span className="grow-copy"><strong>{motion.name}</strong><small>{t("motionDuration", { value: motion.seconds })}</small></span>{motion.id === selected?.id && <small>{t("selected")}</small>}
             </Button>
           ))}
           <p className="library-subheading">{t("expressions")}</p>
           <div className="expression-grid">
-            {expressions.map((expression) => <Button key={expression.id} size="sm" variant={expression.id === selectedExpression.id ? "secondary" : "ghost"} onPress={() => onSelectExpression(expression.id)}>{t(expression.nameKey)}</Button>)}
+            {displayedExpressions.map((expression) => <Button key={expression.id} size="sm" variant={expression.id === selectedExpression?.id ? "secondary" : "ghost"} onPress={() => onSelectExpression(expression.id)}>{expression.name}</Button>)}
           </div>
         </div>
       </section>
       <section className="workspace-panel">
         <PanelHeading icon={<Sparkles size={16} />} title={t("preview")} body={t("previewHint")} />
-        <div className="preview-stage"><i className="stage-grid" /><i className="stage-glow" /><Chip className="stage-chip" variant="soft">{selectedName} · {t(selectedExpression.nameKey)}</Chip><div className="character"><BrandMark large /><i /></div></div>
+        <div className="preview-stage"><i className="stage-grid" /><i className="stage-glow" /><Chip className="stage-chip" variant="soft">{selectedName} · {selectedExpression?.name ?? "—"}</Chip><div className="character"><BrandMark large /><i /></div></div>
         <div className="playback"><Button isIconOnly aria-label={t("play")} variant="primary" size="sm" isDisabled><Play size={15} /></Button><span className="timeline"><i /></span><small>00:01 / 00:04</small></div>
       </section>
       <section className="workspace-panel assignment-panel">
@@ -326,6 +355,8 @@ export function App() {
     return { ...initial, settings: { ...initial.settings, language: storedLocale(), appearance: storedAppearance() } };
   });
   const [appVersion, setAppVersion] = useState("0.1.0");
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState("");
   const locale = state.settings.language;
   const appearance = state.settings.appearance;
   const t = (key: MessageKey) => translate(locale, key);
@@ -343,6 +374,31 @@ export function App() {
 
   function completeSetup() { localStorage.setItem(SETUP_KEY, "true"); dispatch({ type: "COMPLETE_SETUP" }); }
   function openPreview() { dispatch({ type: "OPEN_PROJECT", project: { id: "design-preview", name: t("project"), selectedMotionId: motions[0].id } }); }
+  async function importSourceFiles(files: File[]) {
+    setImportBusy(true);
+    setImportError("");
+    try {
+      const inputPath = sourcePathFromSelection(files, getDesktopFilePath);
+      if (!inputPath) throw new Error(t("sourcePathUnavailable"));
+      const sourceName = files[0]?.webkitRelativePath?.split('/')[0] || files[0]?.name.replace(/\.pck$/i, '') || 'Live2Pet';
+      const inspection = await inspectSource(inputPath, projectIdFromSourceName(sourceName));
+      dispatch({
+        type: "OPEN_PROJECT",
+        project: {
+          id: projectIdFromSourceName(inspection.source.name),
+          name: inspection.source.name,
+          sourcePath: inputPath,
+          inspection,
+          selectedMotionId: inspection.motions[0]?.id ?? null,
+          selectedExpressionId: inspection.expressions[0]?.id ?? null,
+        },
+      });
+    } catch (cause) {
+      setImportError(cause instanceof Error ? cause.message : t("error"));
+    } finally {
+      setImportBusy(false);
+    }
+  }
 
   if (state.destination === "setup") return <SetupView locale={locale} onComplete={completeSetup} />;
   if (state.destination === "settings") return <SettingsView locale={locale} section={state.settingsSection} appearance={appearance} onSection={(section) => dispatch({ type: "SELECT_SETTINGS_SECTION", section })} onLocale={(language) => dispatch({ type: "UPDATE_LANGUAGE", language })} onAppearance={(value) => dispatch({ type: "UPDATE_APPEARANCE", appearance: value })} onClose={() => dispatch({ type: "CLOSE_SETTINGS" })} />;
@@ -356,9 +412,9 @@ export function App() {
         <div className="toolbar-actions"><Chip className="chip" size="sm" variant="soft"><span className="status-dot" />{t("designPreview")}</Chip><Button isIconOnly aria-label={t("settings")} variant="ghost" onPress={() => dispatch({ type: "OPEN_SETTINGS" })}><SettingsIcon size={18} /></Button></div>
       </header>
       <div className="app-content">
-        {state.destination === "welcome" && <WelcomeView locale={locale} onOpenProject={openPreview} />}
-        {state.destination === "source" && <SourceView locale={locale} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
-        {state.destination === "map" && <MapView locale={locale} selectedMotionId={state.project?.selectedMotionId ?? null} selectedExpressionId={state.project?.selectedExpressionId ?? null} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} />}
+        {state.destination === "welcome" && <WelcomeView locale={locale} busy={importBusy} error={importError} onImport={(files) => void importSourceFiles(files)} onOpenProject={openPreview} />}
+        {state.destination === "source" && <SourceView locale={locale} inspection={state.project?.inspection} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
+        {state.destination === "map" && <MapView locale={locale} inspection={state.project?.inspection} selectedMotionId={state.project?.selectedMotionId ?? null} selectedExpressionId={state.project?.selectedExpressionId ?? null} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} />}
         {state.destination === "build" && <BuildView locale={locale} />}
       </div>
       <footer className="status-bar"><span><i className="status-dot" />{hasDesktopApi() ? t("saved") : t("notConnected")}</span><span>Live2Pet {appVersion}</span></footer>

@@ -6,18 +6,33 @@ import { App } from './App';
 const emptyRuntimes = { schemaVersion: 2 as const, configured: false, restartRequired: false, runtimes: [] };
 
 function installDesktopApi() {
+  const inspectSource = vi.fn(async () => ({
+    protocolVersion: 1 as const,
+    ok: true,
+    result: {
+      schemaVersion: 1 as const,
+      source: { kind: 'destiny-child-pck' as const, name: 'Vicious Khepri', fingerprint: 'fixture', modelConfig: 'model.json' },
+      model: { cubism: 2, configFile: 'model.json', modelFile: 'model.moc', textures: ['texture.png'] },
+      motions: [{ id: 'idle:0', group: 'idle', index: 0, name: 'Breathing', sourceFile: 'idle.mtn', duration: 2.5 }],
+      expressions: [{ id: '0', index: 0, name: 'Smile', sourceFile: 'smile.exp.json' }],
+      resources: [],
+      warnings: [],
+    },
+  }));
   Object.defineProperty(window, 'live2pet', {
     configurable: true,
     value: {
       getVersion: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { appVersion: '0.1.0', protocolVersion: 1, methods: [] } })),
+      inspectSource,
       getRuntimeSettings: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: emptyRuntimes })),
       configureRuntime: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: emptyRuntimes })),
       clearRuntimeSettings: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: emptyRuntimes })),
       getBuildCacheStatus: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { byteLength: 0, entryCount: 0, maxBytes: 1024 } })),
       clearBuildCache: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { removedEntries: 0, removedBytes: 0 } })),
-      getFilePath: vi.fn(() => null),
+      getFilePath: vi.fn(() => '/Users/test/Vicious Khepri.pck'),
     },
   });
+  return { inspectSource };
 }
 
 function setSystemDarkMode(matches: boolean) {
@@ -46,6 +61,21 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('Live2Pet desktop shell', () => {
+  it('imports a PCK through the Desktop inspection service and shows its real inventory', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const { inspectSource } = installDesktopApi();
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    const input = container.querySelector('input[accept=".pck"]') as HTMLInputElement;
+
+    await user.upload(input, new File(['fixture'], 'Vicious Khepri.pck'));
+
+    expect(await screen.findByText('Vicious Khepri')).toBeVisible();
+    expect(screen.getByText(/Cubism 2/)).toBeVisible();
+    expect(screen.getByText('model.moc')).toBeVisible();
+    expect(inspectSource).toHaveBeenCalledWith({ inputPath: '/Users/test/Vicious Khepri.pck', projectId: 'vicious-khepri' });
+  });
+
   it('shows full-page setup once and continues to Welcome', async () => {
     const user = userEvent.setup();
     render(<App />);

@@ -13,6 +13,32 @@ export type RuntimeSettings = {
   runtimes: RuntimeDescriptor[];
 };
 
+export type SourceMotion = {
+  id: string;
+  group: string;
+  index: number;
+  name: string;
+  sourceFile: string;
+  duration: number | null;
+};
+
+export type SourceExpression = {
+  id: string;
+  index: number;
+  name: string;
+  sourceFile: string;
+};
+
+export type SourceInspection = {
+  schemaVersion: 1;
+  source: { kind: 'standard-directory' | 'destiny-child-pck'; name: string; fingerprint: string; modelConfig: string };
+  model: { cubism: number; configFile: string; modelFile: string | null; textures: string[] };
+  motions: SourceMotion[];
+  expressions: SourceExpression[];
+  resources: Array<{ kind: string; path: string; required: boolean; exists: boolean }>;
+  warnings: Array<{ code: string; resource?: string; kind?: string }>;
+};
+
 type AppResponse<T> = {
   protocolVersion: 1;
   ok: boolean;
@@ -28,6 +54,7 @@ type Live2PetApi = {
       methods: string[];
     }>
   >;
+  inspectSource(input: { inputPath: string; projectId: string }): Promise<AppResponse<SourceInspection>>;
   getRuntimeSettings(): Promise<AppResponse<RuntimeSettings>>;
   configureRuntime(input: { inputPath: string }): Promise<AppResponse<RuntimeSettings>>;
   clearRuntimeSettings(): Promise<AppResponse<RuntimeSettings>>;
@@ -105,4 +132,14 @@ export async function getAppVersion() {
   if (!api) return '0.1.0';
   const result = await unwrap(api.getVersion());
   return result.appVersion;
+}
+
+export async function inspectSource(inputPath: string, projectId: string): Promise<SourceInspection> {
+  const api = desktopApi();
+  if (!api) throw new DesktopApiError('DESKTOP_REQUIRED', 'Source Packages can only be inspected from the Desktop App.');
+  return unwrap(api.inspectSource({ inputPath, projectId }));
+}
+
+export function getDesktopFilePath(file: File): string | null {
+  return desktopApi()?.getFilePath(file) ?? null;
 }
