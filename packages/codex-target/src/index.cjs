@@ -1,5 +1,5 @@
 const CONTRACT_VERSION = 1;
-const { selectMotionFrames } = require('../../frame-selection/src/index.cjs');
+const { selectMotionFrames } = require('@live2pet/frame-selection');
 const PACKAGE_FILES = ['pet.json', 'spritesheet.webp'];
 const ATLAS = Object.freeze({ width: 1536, height: 1872, columns: 8, rows: 9, cellWidth: 192, cellHeight: 208 });
 const ROWS = Object.freeze([

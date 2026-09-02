@@ -14,8 +14,8 @@ install anything. Renderer requests cannot choose arbitrary mapper files,
 invoke shell commands, or access the bearer token. Forge makers/signing are not
 configured until the macOS source-release gates pass. `forge.config.cjs` records
 the future packager resource path, but the Forge CLI is not a workspace
-dependency yet because its current rebuild chain is rejected by the repository's
-exotic-subdependency policy.
+dependency because a local unsigned App needs only the smaller
+`@electron/packager` build dependency.
 
 The main process also injects the shared Source Package inspector into the typed
 `inspectSource` method. Standard directories and supported Destiny Child PCK
@@ -127,6 +127,34 @@ Before a package build, stage the browser dependencies into a self-contained Map
 ```text
 pnpm --filter @live2pet/desktop prepare:mapper
 ```
+
+## Build the local unsigned macOS App
+
+The personal-use V1 can be assembled for the current Mac architecture with
+Node.js 22.12 or newer:
+
+```text
+pnpm --filter @live2pet/desktop run package:mac
+pnpm --filter @live2pet/desktop run smoke:mac
+```
+
+The first command stages the Mapper, creates an isolated production dependency
+tree, and writes `apps/desktop/out/Live2Pet-darwin-<arch>/Live2Pet.app`. The
+deployment-only dependency tree is hoisted so Sharp and its platform-specific
+`@img` libraries can be unpacked from ASAR without changing the workspace's
+normal pnpm layout. The packager reuses an official Electron archive from its
+standard cache when present.
+
+The smoke command checks the packaged resources, enumerates the ASAR through
+the packaged Electron runtime, loads Sharp and libvips without system helper
+tools, and briefly opens the Mapper window until it reports ready. Both commands
+reject unsupported architectures and scan for models, Cubism runtimes,
+copyrighted examples, and generated character packages.
+
+This output is deliberately unsigned and is not a public distributable. It has
+no maker, signing, notarization, update, or publication step. macOS may require
+the local user to approve launching it. Public binaries remain blocked by the
+separate installer release gate.
 
 To compare the bounded stacked transport with the former per-frame transport
 using a copyright-safe synthetic RGBA workload, run:

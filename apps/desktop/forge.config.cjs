@@ -2,7 +2,7 @@ const path = require('node:path');
 
 module.exports = {
   packagerConfig: {
-    asar: true,
+    asar: { unpack: '**/node_modules/{sharp,@img}/**/*' },
     name: 'Live2Pet',
     executableName: 'live2pet',
     extraResource: [

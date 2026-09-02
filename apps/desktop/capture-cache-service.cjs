@@ -1,5 +1,4 @@
-const { createCacheKey } = require('../../packages/package-build/src/cache.cjs');
-const { decodeCaptureSet, encodeCaptureSet } = require('../../packages/package-build/src/capture-cache.cjs');
+const { createCacheKey, decodeCaptureSet, encodeCaptureSet } = require('@live2pet/package-build');
 
 const CAPTURE_CACHE_ARTIFACT = 'captured-rgba';
 const CAPTURE_CACHE_TARGET_VERSION = '1';

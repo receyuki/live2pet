@@ -1,8 +1,8 @@
 const crypto = require('node:crypto');
 const path = require('node:path');
 
-const { MapperSessionError, startMapperSessionHost } = require('../../mapper-session/src/index.cjs');
-const { installPackage } = require('../../installation/src/index.cjs');
+const { MapperSessionError, startMapperSessionHost } = require('@live2pet/mapper-session');
+const { installPackage } = require('@live2pet/installation');
 
 const APP_IPC_PROTOCOL_VERSION = 1;
 const APP_IPC_CHANNEL = 'live2pet:app';

@@ -8,6 +8,10 @@
     "test": "node --test test/*.test.cjs"
   },
   "dependencies": {
+    "@live2pet/clawd-target": "workspace:*",
+    "@live2pet/codex-target": "workspace:*",
+    "@live2pet/project": "workspace:*",
+    "@live2pet/renderer": "workspace:*",
     "@zip.js/zip.js": "2.7.57",
     "sharp": "0.34.5"
   }

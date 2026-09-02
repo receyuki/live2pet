@@ -4,7 +4,7 @@ const http = require('node:http');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
-const { ProjectValidationError, validateProject } = require('../../project/src/index.cjs');
+const { ProjectValidationError, validateProject } = require('@live2pet/project');
 
 const PROTOCOL_VERSION = 1;
 const DEFAULT_IDLE_TIMEOUT_MS = 15 * 60 * 1000;

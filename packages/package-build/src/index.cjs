@@ -2,13 +2,13 @@ const {
   ATLAS,
   createCodexAtlasPlan,
   createCodexTarget,
+  composeCodexAtlasRgba,
   selectCodexFrameSets,
-} = require('../../codex-target/src/index.cjs');
-const { composeCodexAtlasRgba } = require('../../codex-target/src/index.cjs');
-const { createClawdTarget, validateClawdThemePackage } = require('../../clawd-target/src/index.cjs');
-const { validateCodexPetPackage } = require('../../codex-target/src/index.cjs');
-const { assertProjectBuildable, validateProject } = require('../../project/src/index.cjs');
-const { sampleMotionCandidates } = require('../../renderer/src/index.cjs');
+  validateCodexPetPackage,
+} = require('@live2pet/codex-target');
+const { createClawdTarget, validateClawdThemePackage } = require('@live2pet/clawd-target');
+const { assertProjectBuildable, validateProject } = require('@live2pet/project');
+const { sampleMotionCandidates } = require('@live2pet/renderer');
 const { CacheError, CacheStore, DEFAULT_CACHE_LIMIT, createCacheKey } = require('./cache.cjs');
 const { createClawdPreview, createCodexPreview, createTargetPreview, PREVIEW_CONTRACT_VERSION, TargetPreviewError } = require('./preview.cjs');
 const { decodeFrameSet, encodeFrameSet, FRAME_CACHE_SCHEMA_VERSION, FrameCacheError } = require('./frame-cache.cjs');
@@ -28,6 +28,7 @@ const { decodeAsset, encodeAsset, ASSET_CACHE_SCHEMA_VERSION, AssetCacheError } 
 const { createInflate } = require('node:zlib');
 
 const BUILD_CONTRACT_VERSION = 1;
+const SHARP_ENCODER_VERSION = 'sharp-0.34.5';
 const STAGES = Object.freeze(['select', 'layout', 'compose', 'encode', 'manifest', 'preview', 'package', 'report']);
 const CLAWD_STAGES = Object.freeze(['validate', 'encode', 'manifest', 'preview', 'package', 'report']);
 const MAX_ENCODE_FRAMES = 4096;
@@ -1105,6 +1106,7 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
 
 module.exports = {
   BUILD_CONTRACT_VERSION,
+  SHARP_ENCODER_VERSION,
   BUILD_REPORT_SCHEMA_VERSION,
   ASSET_CACHE_SCHEMA_VERSION,
   AssetCacheError,

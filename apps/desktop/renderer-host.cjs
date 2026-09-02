@@ -9,7 +9,7 @@ const {
   createRendererWindowOptions,
   safeRelativePath,
   selectRendererAdapter,
-} = require('../../packages/renderer/src/index.cjs');
+} = require('@live2pet/renderer');
 
 const DEFAULT_READY_TIMEOUT_MS = 30 * 1000;
 const DEFAULT_READY_POLL_MS = 25;

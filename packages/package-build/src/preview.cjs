@@ -3,11 +3,11 @@ const {
   CORE_STATES,
   FULL_SLEEP_STATES,
   REACTIONS,
-} = require('../../clawd-target/src/index.cjs');
+} = require('@live2pet/clawd-target');
 const {
   ATLAS,
   ROWS,
-} = require('../../codex-target/src/index.cjs');
+} = require('@live2pet/codex-target');
 
 const PREVIEW_CONTRACT_VERSION = 1;
 

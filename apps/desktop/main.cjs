@@ -7,17 +7,16 @@ const {
   APP_IPC_CHANNEL,
   createAppIpcRouter,
   createAppWindowOptions,
-} = require('../../packages/app-host/src/index.cjs');
-const { startMapperSessionHost } = require('../../packages/mapper-session/src/index.cjs');
-const { CacheStore, buildProjectTargets } = require('../../packages/package-build/src/index.cjs');
-const { installPackage } = require('../../packages/installation/src/index.cjs');
-const { getSkillStatus, installSkill } = require('../../packages/skill-manager/src/index.cjs');
-const { inspectSourcePackage } = require('../../packages/source-inspector/src/index.cjs');
+} = require('@live2pet/app-host');
+const { startMapperSessionHost } = require('@live2pet/mapper-session');
+const { CacheStore, SHARP_ENCODER_VERSION, buildProjectTargets } = require('@live2pet/package-build');
+const { installPackage } = require('@live2pet/installation');
+const { getSkillStatus, installSkill } = require('@live2pet/skill-manager');
+const { inspectSourcePackage } = require('@live2pet/source-inspector');
 const { createRendererWindowHost } = require('./renderer-host.cjs');
 const { createRendererPreviewService } = require('./renderer-preview-service.cjs');
 const { createCaptureCacheService } = require('./capture-cache-service.cjs');
 const { createCaptureCacheBuildService } = require('./capture-cache-build.cjs');
-const packageBuildPackage = require('../../packages/package-build/package.json');
 const {
   clearRuntimeSettings,
   loadRuntimeForGeneration,
@@ -25,7 +24,7 @@ const {
   redactRuntimeSettings,
   resolveRuntimeEntrypoint,
   saveRuntimeSettings,
-} = require('../../packages/runtime/src/index.cjs');
+} = require('@live2pet/runtime');
 
 const DEVELOPMENT_MAPPER_PATH = path.resolve(__dirname, '../mapper/index.html');
 const PACKAGED_MAPPER_PATH = path.join(process.resourcesPath, 'mapper-dist', 'index.html');
@@ -36,7 +35,8 @@ const PACKAGED_SKILL_PATH = path.join(process.resourcesPath, 'live2pet-skill');
 const SOURCE_CACHE_LIMIT = 1024 * 1024 * 1024;
 const CAPTURE_CACHE_LIMIT = 1024 * 1024 * 1024;
 const ENCODED_CACHE_TARGET_VERSION = '1';
-const ENCODED_CACHE_ENCODER_VERSION = `sharp-${packageBuildPackage.dependencies.sharp}`;
+const ENCODED_CACHE_ENCODER_VERSION = SHARP_ENCODER_VERSION;
+const APP_BUNDLE_SMOKE_ARGUMENT = '--live2pet-smoke-test';
 let mainWindow = null;
 let route = null;
 let sourceCache = null;
@@ -239,6 +239,13 @@ async function createMainWindow() {
   // fallback so a renderer that has no first paint still cannot leave the
   // development shell permanently hidden.
   if (mainWindow && !mainWindow.isVisible()) showWindow();
+  if (process.argv.includes(APP_BUNDLE_SMOKE_ARGUMENT)) {
+    process.stdout.write(`LIVE2PET_BUNDLE_READY ${JSON.stringify({ packaged: app.isPackaged, mapper: path.basename(documentPath) })}\n`);
+    // Give the renderer one event-loop turn to settle its local subresources;
+    // quitting immediately can make Electron report a false ERR_FAILED after
+    // the ready marker even though the packaged Mapper loaded successfully.
+    setTimeout(() => app.quit(), 500);
+  }
   return mainWindow;
 }
 

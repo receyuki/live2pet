@@ -39,6 +39,8 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(main, /event\.sender !== mainWindow\.webContents/);
   assert.match(main, /setWindowOpenHandler\(\(\) => \(\{ action: 'deny' \}\)\)/);
   assert.match(main, /mainWindow\.once\('ready-to-show', showWindow\);[\s\S]*await mainWindow\.loadFile\(documentPath\);[\s\S]*!mainWindow\.isVisible\(\)/);
+  assert.match(main, /APP_BUNDLE_SMOKE_ARGUMENT = '--live2pet-smoke-test'/);
+  assert.match(main, /LIVE2PET_BUNDLE_READY/);
   assert.match(main, /webContents\.on\('will-navigate'/);
   assert.match(main, /webContents\.on\('will-attach-webview'/);
   assert.match(main, /setPermissionRequestHandler/);
@@ -76,8 +78,11 @@ test('desktop package keeps Electron and future Forge settings explicit', () => 
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const forge = fs.readFileSync(path.join(root, 'forge.config.cjs'), 'utf8');
   assert.equal(manifest.devDependencies.electron, '44.0.0');
+  assert.equal(manifest.devDependencies['@electron/packager'], '20.3.0');
   assert.equal(manifest.scripts.start, 'electron .');
-  assert.match(forge, /asar:\s*true/);
+  assert.equal(manifest.scripts['package:mac'], 'node scripts/stage-mapper-assets.cjs && node scripts/package-macos.cjs');
+  assert.equal(manifest.scripts['smoke:mac'], 'node scripts/smoke-packaged-app.cjs');
+  assert.match(forge, /asar:\s*\{\s*unpack:\s*'\*\*\/node_modules\/\{sharp,@img\}\/\*\*\/\*'\s*\}/);
   assert.match(forge, /executableName:\s*'live2pet'/);
   assert.match(forge, /extraResource:\s*\[[\s\S]*path\.resolve\(__dirname, 'mapper-dist'\)[\s\S]*live2pet-skill/);
   assert.equal(manifest.scripts['prepare:mapper'], 'node scripts/stage-mapper-assets.cjs');

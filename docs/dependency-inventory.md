@@ -9,6 +9,7 @@ the corresponding notices when a release dependency changes.
 | Dependency | Version | Use | Release boundary |
 | --- | --- | --- | --- |
 | Electron | 44.0.0 | Desktop shell, sandboxed windows, and typed IPC | App packaging only; the Forge maker remains release-gated |
+| `@electron/packager` | 20.3.0 | Current-machine local unsigned `.app` assembly | Build-time only; excluded from the packaged App |
 | `sharp` | 0.34.5 | Transparent WebP encoding and image composition | Package Build; uses platform-specific optional `@img/*` libvips packages |
 | `@zip.js/zip.js` | 2.7.57 | ZIP reading, validation, export, and installation | CLI, Package Build, and staged Mapper bundle |
 | `pixi.js` | 6.5.10 | Temporary browser Live2D bridge and preview host | Staged Mapper browser asset; MIT notice required |
@@ -42,6 +43,9 @@ and generated character packages follow the same user-provided boundary.
 
 - Electron distributes its platform binary through the package manager and is
   not checked into source.
+- Electron Packager is a development dependency used only to assemble the
+  current-machine unsigned App. Forge makers, signing, notarization, and
+  installer publication remain outside this dependency boundary.
 - `sharp` resolves a platform-specific prebuilt libvips package when available;
   the Package Build service does not shell out to ImageMagick, FFmpeg,
   `libwebp`, or a system ZIP executable.

@@ -23,6 +23,8 @@ The repository already contains:
 - transparent WebP/atlas generation, build progress, cancellation, reports, and bounded caches;
 - generated target previews and artifact download handles;
 - an Electron development shell and English/Simplified Chinese UI layer;
+- a current-machine unsigned macOS App assembly command with packaged resource,
+  Sharp/libvips, excluded-asset, and Mapper-window smoke checks;
 - CLI, installation, skill, Mapper Session, and official Framework bridge seams that are preserved but not required by this milestone; and
 - release scans that exclude runtimes, models, copyrighted examples, and generated character packages.
 

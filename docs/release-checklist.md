@@ -20,6 +20,15 @@ macOS or Windows release.
 
 ## Private macOS validation gate
 
+- [x] The current x64 machine produces an unsigned `.app` with staged Mapper
+      and skill resources, ASAR integrity metadata, an unpacked Sharp/libvips
+      runtime, no prohibited character/runtime assets, and a passing packaged
+      window smoke test.
+- [ ] A clean current-machine user profile completes the personal-use V1 flow
+      from runtime selection and model import through both ZIP downloads.
+
+## Cross-architecture binary validation gate
+
 - [ ] A clean arm64 account can select a permitted local runtime and model,
       inspect and preview it, save and recover a project, build both targets,
       preview and export both packages, use the skill, and explicitly install
@@ -37,4 +46,3 @@ macOS or Windows release.
       channel, and privacy disclosures are recorded.
 - [ ] Only after the previous items pass may Electron Forge makers and public
       installer publication be enabled.
-

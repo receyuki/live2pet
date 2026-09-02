@@ -1,0 +1,198 @@
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+
+const repositoryRoot = path.resolve(__dirname, '../../..');
+const desktopRoot = path.resolve(__dirname, '..');
+const mapperRoot = path.join(desktopRoot, 'mapper-dist');
+const skillRoot = path.join(repositoryRoot, 'skills', 'live2pet');
+const outputRoot = path.join(desktopRoot, 'out');
+const ELECTRON_VERSION = '44.0.0';
+const APP_NAME = 'Live2Pet';
+const FORBIDDEN_BUNDLE_ENTRY = /(?:^|\/)(?:examples?|archive|artifacts?|models?)(?:\/|$)|\.(?:pck|lpk|moc|moc3|dat|webp|zip)$|(?:^|\/)(?:live2dcubismcore|minified-live2d(?:core)?|live2d\.min)\.(?:js|wasm)$/i;
+
+function fail(code, message, details = {}) {
+  const error = new Error(message);
+  error.code = code;
+  error.details = details;
+  throw error;
+}
+
+function currentMacArch(platform = process.platform, architecture = process.arch) {
+  if (platform !== 'darwin') fail('UNSUPPORTED_PACKAGE_HOST', 'The personal-use V1 package command currently builds macOS only.');
+  if (!['x64', 'arm64'].includes(architecture)) fail('UNSUPPORTED_PACKAGE_ARCH', `Unsupported macOS architecture: ${architecture}.`);
+  return architecture;
+}
+
+function pnpmInvocation(environment = process.env) {
+  const entrypoint = environment.npm_execpath;
+  if (typeof entrypoint !== 'string' || !entrypoint.trim()) {
+    fail('PNPM_REQUIRED', 'Run this command through pnpm so the production deployment can use the locked workspace graph.');
+  }
+  return { command: process.execPath, prefix: [entrypoint] };
+}
+
+function requireDirectory(directory, code, message) {
+  let stat;
+  try { stat = fs.statSync(directory); } catch { fail(code, message); }
+  if (!stat.isDirectory()) fail(code, message);
+}
+
+function copyResources(tempRoot) {
+  requireDirectory(mapperRoot, 'MAPPER_NOT_STAGED', 'Stage the Mapper assets before packaging the App.');
+  requireDirectory(skillRoot, 'SKILL_SOURCE_MISSING', 'The bundled Live2Pet skill source is missing.');
+  const resourcesRoot = path.join(tempRoot, 'resources');
+  const mapperTarget = path.join(resourcesRoot, 'mapper-dist');
+  const skillTarget = path.join(resourcesRoot, 'live2pet-skill');
+  fs.mkdirSync(resourcesRoot, { recursive: true });
+  fs.cpSync(mapperRoot, mapperTarget, { recursive: true, dereference: true });
+  fs.cpSync(skillRoot, skillTarget, { recursive: true, dereference: true });
+  return [mapperTarget, skillTarget];
+}
+
+function deployProductionStage(stageRoot, environment = process.env) {
+  const invocation = pnpmInvocation(environment);
+  execFileSync(invocation.command, [
+    ...invocation.prefix,
+    '--config.inject-workspace-packages=true',
+    '--config.node-linker=hoisted',
+    '--filter',
+    '@live2pet/desktop',
+    'deploy',
+    '--prod',
+    stageRoot,
+  ], { cwd: repositoryRoot, env: environment, stdio: 'inherit' });
+
+  for (const relative of ['mapper-dist', 'test', 'scripts', 'out', 'make', 'forge.config.cjs']) {
+    fs.rmSync(path.join(stageRoot, relative), { recursive: true, force: true });
+  }
+  const internalPackages = path.join(stageRoot, 'node_modules', '@live2pet');
+  if (fs.existsSync(internalPackages)) {
+    for (const packageName of fs.readdirSync(internalPackages)) {
+      fs.rmSync(path.join(internalPackages, packageName, 'test'), { recursive: true, force: true });
+    }
+  }
+  for (const relative of ['node_modules/.pnpm', 'node_modules/.modules.yaml', 'node_modules/.pnpm-workspace-state-v1.json', 'pnpm-lock.yaml']) {
+    fs.rmSync(path.join(stageRoot, relative), { recursive: true, force: true });
+  }
+}
+
+function createPackagerOptions({ stageRoot, extraResource, arch = currentMacArch() } = {}) {
+  const electronZipDir = findElectronZipDir(arch);
+  return {
+    dir: stageRoot,
+    name: APP_NAME,
+    executableName: 'live2pet',
+    appBundleId: 'dev.live2pet.desktop',
+    appVersion: '0.1.0',
+    buildVersion: '0.1.0',
+    platform: 'darwin',
+    arch,
+    electronVersion: ELECTRON_VERSION,
+    ...(electronZipDir ? { electronZipDir } : {}),
+    out: outputRoot,
+    overwrite: true,
+    prune: false,
+    derefSymlinks: true,
+    asar: { unpack: '**/node_modules/{sharp,@img}/**/*' },
+    extraResource,
+  };
+}
+
+function findElectronZipDir(arch = currentMacArch(), cacheRoot = path.join(os.homedir(), 'Library', 'Caches', 'electron')) {
+  const expected = `electron-v${ELECTRON_VERSION}-darwin-${arch}.zip`;
+  const pending = [{ directory: cacheRoot, depth: 0 }];
+  while (pending.length) {
+    const { directory, depth } = pending.shift();
+    let entries;
+    try { entries = fs.readdirSync(directory, { withFileTypes: true }); } catch { continue; }
+    if (entries.some((entry) => entry.isFile() && entry.name === expected)) return directory;
+    if (depth >= 2) continue;
+    for (const entry of entries) if (entry.isDirectory()) pending.push({ directory: path.join(directory, entry.name), depth: depth + 1 });
+  }
+  return null;
+}
+
+function walkFiles(root, prefix = '') {
+  const files = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const absolute = path.join(root, entry.name);
+    if (entry.isDirectory()) files.push(...walkFiles(absolute, relative));
+    else files.push(relative);
+  }
+  return files;
+}
+
+function verifyBundleLayout(appPath) {
+  const resources = path.join(appPath, 'Contents', 'Resources');
+  const required = [
+    path.join(resources, 'app.asar'),
+    path.join(resources, 'mapper-dist', 'index.html'),
+    path.join(resources, 'mapper-dist', 'renderer.html'),
+    path.join(resources, 'live2pet-skill', 'SKILL.md'),
+  ];
+  const missing = required.filter((entry) => !fs.existsSync(entry));
+  if (missing.length) fail('PACKAGE_LAYOUT_INVALID', 'The packaged App is missing required resources.', { missing });
+  const visibleEntries = walkFiles(resources).filter((entry) => !entry.startsWith('app.asar'));
+  const forbidden = visibleEntries.filter((entry) => FORBIDDEN_BUNDLE_ENTRY.test(entry));
+  if (forbidden.length) fail('FORBIDDEN_PACKAGE_ASSET', 'The packaged App contains a user-provided or generated asset.', { forbidden });
+  const nativeRoot = path.join(resources, 'app.asar.unpacked', 'node_modules');
+  const nativeEntries = fs.existsSync(nativeRoot) ? walkFiles(nativeRoot) : [];
+  if (!nativeEntries.some((entry) => /sharp-darwin-(?:x64|arm64)\.node$/i.test(entry))) {
+    fail('SHARP_NATIVE_BINARY_MISSING', 'The packaged App does not contain an unpacked Sharp native module.');
+  }
+  return {
+    appPath,
+    resources: ['mapper-dist', 'live2pet-skill'],
+    nativeSharp: true,
+    forbiddenAssetCount: 0,
+  };
+}
+
+async function packageMacApp() {
+  const arch = currentMacArch();
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-package-'));
+  const stageRoot = path.join(tempRoot, 'app');
+  try {
+    const extraResource = copyResources(tempRoot);
+    deployProductionStage(stageRoot);
+    const { packager } = await import('@electron/packager');
+    const outputPaths = await packager(createPackagerOptions({ stageRoot, extraResource, arch }));
+    if (!Array.isArray(outputPaths) || outputPaths.length !== 1) fail('PACKAGE_OUTPUT_INVALID', 'Electron Packager did not return exactly one current-machine build.');
+    const appPath = path.join(outputPaths[0], `${APP_NAME}.app`);
+    const verification = verifyBundleLayout(appPath);
+    const report = {
+      contractVersion: 1,
+      platform: 'darwin',
+      arch,
+      electronVersion: ELECTRON_VERSION,
+      signed: false,
+      distributable: false,
+      ...verification,
+    };
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    return report;
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+}
+
+if (require.main === module) packageMacApp().catch((error) => {
+  process.stderr.write(`${error.code || 'PACKAGE_FAILED'}: ${error.message}\n`);
+  if (error.details && Object.keys(error.details).length) process.stderr.write(`${JSON.stringify(error.details, null, 2)}\n`);
+  process.exitCode = 1;
+});
+
+module.exports = {
+  APP_NAME,
+  ELECTRON_VERSION,
+  FORBIDDEN_BUNDLE_ENTRY,
+  createPackagerOptions,
+  currentMacArch,
+  findElectronZipDir,
+  packageMacApp,
+  pnpmInvocation,
+  verifyBundleLayout,
+};
