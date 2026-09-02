@@ -17,6 +17,9 @@ macOS or Windows release.
       browser assets and license notices.
 - [ ] The source archive contains no `examples/`, `archive/`, `artifacts/`,
       `.pck`, `.lpk`, `.moc`, `.moc3`, `.webp`, or `.zip` input.
+- [ ] The source archive contains no downloaded Spine renderer pack, proprietary
+      Spine model, or generated derivative; public tests use only synthetic or
+      explicitly redistributable fixtures.
 
 ## Private macOS validation gate
 
@@ -26,6 +29,11 @@ macOS or Windows release.
       window smoke test.
 - [ ] A clean current-machine user profile completes the personal-use V1 flow
       from runtime selection and model import through both ZIP downloads.
+- [ ] A profile without Spine support can inspect a supported Spine source,
+      explicitly download the exact optional pack, verify its integrity,
+      reopen without another download, and remove it from Settings.
+- [ ] A permitted local Spine fixture and a permitted Live2D fixture each pass
+      shared visibility, preview, bounds, capture, and both-target build checks.
 
 ## Cross-architecture binary validation gate
 
@@ -42,6 +50,9 @@ macOS or Windows release.
 
 - [ ] Live2D's Expandable Application position is documented for the exact
       runtime/model distribution plan.
+- [ ] The Spine Runtime License, any required Spine Editor license, notices,
+      download host, and optional-pack distribution model are reviewed for the
+      exact public binary; local V1 acceptance alone does not satisfy this gate.
 - [ ] Any required Live2D approval, signing identity, notarization, update
       channel, and privacy disclosures are recorded.
 - [ ] Only after the previous items pass may Electron Forge makers and public

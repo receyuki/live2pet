@@ -1,11 +1,11 @@
 # Live2Pet
 
-Live2Pet turns user-supplied Live2D content into portable packages for agent-pet hosts. This glossary defines the language shared by its desktop application and command-line interface.
+Live2Pet turns user-supplied animated 2D content into portable packages for agent-pet hosts. This glossary defines the language shared by its desktop application and command-line interface.
 
 ## Language
 
 **Source Package**:
-A user-selected collection containing one Live2D model and the resources needed to inspect its available animations.
+A user-selected collection containing one supported animated 2D model and the local resources needed to inspect and render its available animations. V1 recognizes Live2D and one versioned Spine source layout.
 _Avoid_: Resource pack, model pack, asset bundle
 
 **Motion**:
@@ -13,8 +13,16 @@ A named animation available in a Source Package.
 _Avoid_: Action, clip
 
 **Expression**:
-A named parameter overlay available in a Source Package that can be applied while a Motion plays.
+A named Live2D parameter overlay available in a Source Package that can be applied while a Motion plays. A renderer without Expressions exposes none rather than relabeling another concept.
 _Avoid_: Emotion, face preset
+
+**Visual Element**:
+A stable, renderer-owned grouping that a user can show or hide without modifying the Source Package. V1 exposes Live2D Parts and Spine Slots through this common concept.
+_Avoid_: Layer, mesh, background object
+
+**Visual Settings**:
+The project-scoped set of hidden Visual Element identities applied identically to source preview, bounds analysis, capture, and Package Builds. Temporary inspection actions such as Solo are not saved.
+_Avoid_: Runtime settings, render preset
 
 **Animation Recipe**:
 A reusable visual definition that combines one Motion with an optional Expression. It is independent of output size and encoding.
@@ -37,7 +45,7 @@ One execution that transforms a Source Package and Motion Mapping into a validat
 _Avoid_: Conversion, export job
 
 **Live2Pet Project**:
-A `.live2pet` JSON document that reconnects a Source Package to its Animation Recipes, Motion Mappings, Target Profiles, Render Presets, and package metadata without containing the source assets themselves. Generated Pet Packages are not editable project sources.
+A `.live2pet` JSON document that reconnects a Source Package to its Animation Recipes, Visual Settings, Motion Mappings, Target Profiles, Render Presets, and package metadata without containing the source assets themselves. Generated Pet Packages are not editable project sources.
 _Avoid_: Mapping file, project bundle
 
 **Pet Package**:

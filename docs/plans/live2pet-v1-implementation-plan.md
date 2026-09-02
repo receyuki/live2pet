@@ -1,16 +1,16 @@
 # Live2Pet Personal-Use V1 Implementation Plan
 
-Status: Rescoped on 2026-09-02 — project-oriented desktop App shell
+Status: Expanded on 2026-09-03 — shared visual settings and optional Spine support
 
 ## Outcome and boundary
 
-The only current release outcome is a dependable personal-use macOS Desktop App that completes one-time setup, converts a permitted Live2D model folder or supported PCK file into a previewed, validated, downloadable Clawd or Codex ZIP, and explicitly installs the generated package when the user chooses Install or Build & Install.
+The only current release outcome is a dependable personal-use macOS Desktop App that converts a permitted Live2D model folder, supported Live2D PCK file, or one supported Spine folder into a previewed, validated, downloadable Clawd or Codex ZIP, lets the user hide removable model backgrounds, and explicitly installs the generated package when the user chooses Install or Build & Install.
 
 V1 does not include the official Cubism Web Framework integration, a Codex skill, Mapper Session, Windows qualification, signing, notarization, or public binary distribution. Only Windows and public distribution remain possible future milestones; the other removed product surfaces are not part of the current roadmap.
 
 The center column of the three-column Mapper is the only user-visible Source Package preview in V1. A separate renderer process may remain as an internal crash-isolation or capture mechanism, but a separate preview window, its lifecycle controls, and parity work are not product outcomes and are removed from V1 acceptance.
 
-Success is measured by one continuous desktop workflow: skippable first-run setup, Welcome, Source inspection, center-column Motion/Expression playback in Map, direct target assignment, a terminal Package Build, generated-asset preview, ZIP download, and a user-triggered Install action. Runtime, cache, and installation-destination configuration live in Settings rather than inside the project workspace. Build and download must never install implicitly. The accepted workflow must contain zero prompts to choose between preview implementations and zero separate preview windows.
+Success is measured by one continuous desktop workflow: skippable first-run setup, Welcome, Source inspection, center-column Motion/Expression playback and model visibility in Map, direct target assignment, a terminal Package Build, generated-asset preview, ZIP download, and a user-triggered Install action. Runtime, optional renderer-pack, cache, and installation-destination configuration live in Settings rather than inside the project workspace. A missing Spine pack may also be downloaded through one inline action after Spine detection. Build and download must never install implicitly. The accepted workflow must contain zero prompts to choose between preview implementations and zero separate preview windows.
 
 ## Current baseline
 
@@ -28,7 +28,7 @@ The repository already contains:
 - a shared CLI for build, validation, export, and explicit target-package installation; and
 - release scans that exclude runtimes, models, copyrighted examples, and generated character packages.
 
-The current renderer still exposes the implemented features as one long document, mixing App-global runtime/cache controls with project inspection, mapping, and two target build panels. The remaining work is therefore both a focused desktop-shell restructuring and real-runtime product-path hardening, not another renderer or build architecture expansion.
+The current renderer still exposes the implemented features as one long document, mixing App-global runtime/cache controls with project inspection, mapping, and two target build panels. The remaining work therefore starts with a focused desktop-shell restructuring and real-runtime product-path hardening. V1 adds only two bounded renderer capabilities after that foundation: renderer-neutral Visual Settings for removable backgrounds and one isolated, optional Spine version line. Neither addition creates a second mapping UI or target build pipeline.
 
 ## Prioritized delivery sequence
 
@@ -43,8 +43,8 @@ Work:
 1. Establish the React, TypeScript, and Vite production renderer with HeroUI v3 and its required Tailwind CSS v4 foundation. Use HeroUI as the only general-purpose component system.
 2. Add a production App shell with platform title bar, application menu, compact toolbar, status bar, and Welcome versus Project states.
 3. Provide Source, Map, and Build destinations that preserve one project and renderer session while changing the visible task surface.
-4. Add a full in-window Settings destination with General, Runtimes, Targets & Installation, and Storage section navigation. Move the existing runtime and cache controls out of the project document and restore the previous project context when Settings closes.
-5. Add a skippable full-page Setup Assistant that reuses runtime Settings, detects existing runtimes, supports one or both families, and remains available from Help.
+4. Add a full in-window Settings destination with General, Runtimes, Targets & Installation, and Storage section navigation. Move the existing runtime, optional renderer-pack, and cache controls out of the project document and restore the previous project context when Settings closes.
+5. Add a skippable full-page Setup Assistant that reuses Live2D runtime Settings, detects existing runtimes, supports one or both Cubism families, and remains available from Help. Do not download optional Spine support during first-run setup.
 6. Persist locale, appearance, recent projects, reopen behavior, installation destinations, and window bounds as App settings; do not put them in `.live2pet`.
 7. Add native Open, Save, Undo, Redo, Settings, and Build menu commands and shortcuts.
 8. Replace hand-written standard controls with HeroUI components; keep custom presentation limited to the shell, three-column workspace, Live2D canvas and timeline, and restrained brand surfaces.
@@ -94,6 +94,29 @@ Acceptance gate:
 - the right column always assigns the currently selected recipe; and
 - no Source Package or runtime bytes are embedded.
 
+### P0 — Share model visibility between preview and builds
+
+Issue: [#13](https://github.com/receyuki/live2pet/issues/13)
+
+Outcome: a user can hide a removable Live2D background once, retain useful character framing, and get the same visible result in the center preview and every generated package.
+
+Work:
+
+1. Extend the renderer contract with capability discovery, Visual Element listing, and atomic Visual Settings application without exposing Cubism-specific APIs to project or build packages.
+2. Map Live2D Parts to stable Visual Element identities and reapply project-hidden Parts after animation and pose updates.
+3. Add a searchable Visibility drawer beside the center preview with show/hide, transient Solo, and Restore all actions.
+4. Store hidden identities in the next `.live2pet` schema revision and migrate existing projects to an empty hidden set.
+5. Compute framing from visible animated bounds and explain when a background shares an inseparable ArtMesh with the character.
+6. Include a canonical Visual Settings digest in capture-cache identity and pass the same settings through Clawd and Codex builds.
+
+Acceptance gate:
+
+- one permitted Live2D model can hide and restore a background Part in the center preview;
+- save/reopen preserves the hidden identities but not temporary Solo state;
+- visible framing and both generated targets exclude the same hidden content;
+- animation playback cannot restore a project-hidden Part; and
+- changing visibility invalidates only cache entries that depend on it.
+
 ### P0 — Prove both target packages in their hosts
 
 Issues: [#6](https://github.com/receyuki/live2pet/issues/6), [#7](https://github.com/receyuki/live2pet/issues/7)
@@ -118,6 +141,31 @@ Acceptance gate:
 - explicit post-build installation succeeds for both hosts without making build or download install implicitly;
 - generated previews match the artifact rather than source playback; and
 - any host mismatch is captured as a narrow compatibility fix, not a new framework project.
+
+### P1 — Add one optional Spine renderer path
+
+Issue: [#14](https://github.com/receyuki/live2pet/issues/14)
+
+Outcome: a user with a supported Spine folder can explicitly install its optional renderer pack once, then use the same preview, visibility, mapping, build, download, and target-installation workflow as Live2D.
+
+Work:
+
+1. Detect a standard Spine folder with skeleton `.json` or `.skel`, `.atlas`, and referenced texture pages before any renderer download.
+2. Select one pinned Spine `major.minor` line from a permitted real fixture; use the current official 4.3 line only when no fixture establishes another requirement, and reject mismatches actionably.
+3. Add an optional renderer-pack service with a fixed exact-version HTTPS source, explicit user consent, byte limit, pinned integrity verification, atomic App-private installation, automatic reuse, and Settings removal.
+4. Show one inline Download Spine Support action after a matching source is detected. Dismissal must preserve inspection and must not produce repeated modal prompts.
+5. Run Spine in an isolated renderer realm. First test the official `spine-player` distribution; if deterministic stepping/capture is insufficient, use official `spine-pixi-v8` plus matching PixiJS behind the same internal adapter.
+6. Implement the shared renderer contract for Motion playback, deterministic stepping, transparent RGBA capture, visible bounds, failure isolation, and Spine Slot visibility.
+7. Reuse existing recipes and target builders. Keep Expressions empty for Spine and use the default skin in V1 rather than relabeling skins.
+8. Add synthetic public tests and a permitted local fixture acceptance run without committing model or runtime artifacts.
+
+Acceptance gate:
+
+- Spine inspection works before optional-pack installation;
+- download occurs only after a user click and the verified pack is reused after restart;
+- one permitted real fixture passes center preview, mapping, Slot visibility, deterministic capture, and project reopen;
+- that project builds and validates at least one Clawd package and one Codex Pet package; and
+- an unsupported version and failed integrity check each provide actionable recovery without losing project state.
 
 ### P1 — Harden build, cache, progress, download, and installation
 
@@ -152,7 +200,7 @@ Outcome: the user can launch a local macOS App and complete the entire workflow 
 Work:
 
 1. Produce and smoke-test the current-machine macOS App bundle with packaged renderer assets and native image dependencies.
-2. Run the first-launch, deferred-setup, Settings, modern, legacy, both-target, cancellation, restart, and runtime-reuse acceptance scenarios from the V1 specification.
+2. Run the first-launch, deferred-setup, Settings, modern, legacy, visibility, optional Spine, both-target, cancellation, restart, and runtime-reuse acceptance scenarios from the V1 specification.
 3. Complete the required English/Chinese, keyboard, focus, contrast, reduced-motion, progress-announcement, and error-state review.
 4. Verify the project window remains usable at the supported minimum size and restores its previous bounds.
 5. Run dependency, source-release, path/privacy, and excluded-asset scans.
@@ -172,9 +220,15 @@ flowchart LR
     I2[#2 Source inspection - closed] --> I3[#3 Modern center preview and capture]
     I2 --> I4[#4 Legacy center preview and capture]
     UI[#12 Desktop shell and Settings] --> I5
+    UI --> I13[#13 Shared model visibility]
     I3 --> I5[#5 Single-preview durable mapper]
     I5 --> I6
     I5 --> I7
+    I5 --> I14[#14 Optional Spine renderer]
+    I6 --> I14
+    I7 --> I14
+    I13 --> I14
+    UI --> I14
     I6 --> I8[#8 Build and export]
     I7 --> I8
     I4 --> I10[#10 macOS personal-use V1]
@@ -182,6 +236,8 @@ flowchart LR
     I6 --> I10
     I7 --> I10
     I8 --> I10
+    I13 --> I10
+    I14 --> I10
 ```
 
 [#11](https://github.com/receyuki/live2pet/issues/11) is post-V1 and is not on this dependency graph. #9 is closed as removed scope rather than carried as a hidden product surface.
@@ -195,8 +251,10 @@ flowchart LR
 | #3 Modern preview | P0 | Real modern model plays in the center column and captures with a saved runtime |
 | #4 Legacy preview | P0 | Locally owned PCK plays in the center column and captures with a saved runtime |
 | #5 Durable mapper | P0 | The single-preview three-column flow saves and reopens without mapping drift |
+| #13 Model visibility | P0 | Hidden Live2D Parts persist and match preview, visible bounds, cache identity, and both builds |
 | #6 Clawd package | P0 | Core-state ZIP imports into pinned Clawd |
 | #7 Codex package | P0 | Nine-row ZIP loads in Codex |
+| #14 Optional Spine renderer | P1 | One pinned Spine line completes preview, visibility, capture, and both target builds after an explicit verified download |
 | #8 Build/export | P1 | Progress, cancel, cache, preview, download, and explicit install pass |
 | #10 macOS V1 | Final | Clean-profile full workflow passes |
 | #9 Codex skill/session | Removed scope | Close after the unused implementation and documentation are removed |
@@ -212,6 +270,8 @@ An issue closes when its observable acceptance evidence exists, even if optional
 | Runtime library | Validation, persistence, generation selection, clear/replace tests | Restart and reopen without reselection |
 | Desktop shell | First-run state, Settings ownership, menu routing, destination-state, and window-bounds tests | Clean-profile setup and returning-project flow |
 | Renderer | Shared deterministic playback/capture contract and failure-recovery tests | Center-column Motion/Expression playback on both generations |
+| Visual Settings | Contract, project migration, animation reapply, visible-bounds, and cache-identity tests | Hide a Live2D background and compare preview with both generated targets |
+| Optional Spine pack | Consent, fixed-version, size, integrity, atomic-install, reuse, removal, and mismatch tests | Permitted Spine fixture through preview, Slot visibility, mapping, and both target builds |
 | Project/mapper | Schema, save/recovery, relink, mapping validation tests | Electron save/reopen and keyboard flow |
 | Clawd | Synthetic manifest/WebP/size/package validation | Import into pinned Clawd version |
 | Codex | Synthetic atlas/manifest/transparency validation | Load through current custom-pet workflow |
@@ -225,6 +285,7 @@ An issue closes when its observable acceptance evidence exists, even if optional
 - Large configurable cache policy and cache-management UI beyond current bounded controls.
 - Advanced Clawd behavior as mandatory target-host acceptance.
 - Multi-window projects, panel docking, and a separate public browser workflow.
+- Multiple Spine runtime lines, advanced skin/attachment authoring, and unsupported Spine containers.
 
 ## Definition of done for V1 implementation issues
 
@@ -236,7 +297,8 @@ An issue closes when its observable acceptance evidence exists, even if optional
 6. No runtime, model, generated character package, secret, token, or unrelated absolute path is introduced.
 7. The Issue body and native GitHub dependencies match the actual remaining work.
 
-The desktop information architecture is recorded in ADR-0012, and the HeroUI
-interface foundation is recorded in ADR-0013. The first UI review uses the
+The desktop information architecture is recorded in ADR-0012, the HeroUI
+interface foundation is recorded in ADR-0013, and optional Spine plus shared
+Visual Settings are recorded in ADR-0014. The first UI review uses the
 production Electron shell with synthetic representative data, not a separate
 throwaway browser prototype.
