@@ -14,7 +14,7 @@ const {
 } = require('../scripts/package-macos.cjs');
 
 test('macOS package options remain local, unsigned, current-architecture, and Sharp-safe', () => {
-  const options = createPackagerOptions({ stageRoot: '/tmp/live2pet-stage', extraResource: ['/tmp/mapper-dist', '/tmp/live2pet-skill'], arch: 'x64' });
+  const options = createPackagerOptions({ stageRoot: '/tmp/live2pet-stage', extraResource: ['/tmp/mapper-dist'], arch: 'x64' });
   assert.equal(options.platform, 'darwin');
   assert.equal(options.arch, 'x64');
   assert.equal(options.electronVersion, '44.0.0');
@@ -22,7 +22,7 @@ test('macOS package options remain local, unsigned, current-architecture, and Sh
   assert.equal(options.prune, false);
   assert.equal(options.overwrite, true);
   assert.equal(options.osxSign, undefined);
-  assert.deepEqual(options.extraResource, ['/tmp/mapper-dist', '/tmp/live2pet-skill']);
+  assert.deepEqual(options.extraResource, ['/tmp/mapper-dist']);
 });
 
 test('macOS package command rejects unsupported hosts and requires a pnpm invocation', () => {
@@ -51,7 +51,7 @@ test('bundle verification requires staged resources, unpacked Sharp, and no user
   const appPath = path.join(root, 'Live2Pet.app');
   const resources = path.join(appPath, 'Contents', 'Resources');
   try {
-    for (const relative of ['mapper-dist/index.html', 'mapper-dist/renderer.html', 'live2pet-skill/SKILL.md', 'app.asar', 'app.asar.unpacked/node_modules/@img/sharp-darwin-x64/lib/sharp-darwin-x64.node']) {
+    for (const relative of ['mapper-dist/index.html', 'app.asar', 'app.asar.unpacked/node_modules/@img/sharp-darwin-x64/lib/sharp-darwin-x64.node']) {
       const absolute = path.join(resources, relative);
       fs.mkdirSync(path.dirname(absolute), { recursive: true });
       fs.writeFileSync(absolute, 'test');
@@ -70,7 +70,7 @@ test('forbidden package matcher covers model, runtime, example, and generated in
   for (const entry of ['examples/a.json', 'models/a.json', 'runtime/live2d.min.js', 'input/model.moc3', 'output/theme.webp', 'theme.zip']) {
     assert.match(entry, FORBIDDEN_BUNDLE_ENTRY);
   }
-  for (const entry of ['mapper-dist/index.html', 'node_modules/sharp/package.json', 'node_modules/@live2pet/runtime/package.json', 'live2pet-skill/SKILL.md']) {
+  for (const entry of ['mapper-dist/index.html', 'node_modules/sharp/package.json', 'node_modules/@live2pet/runtime/package.json']) {
     assert.doesNotMatch(entry, FORBIDDEN_BUNDLE_ENTRY);
   }
 });

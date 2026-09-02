@@ -1,6 +1,6 @@
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, protocol } = require('electron');
 
 const {
   APP_BUILD_PROGRESS_CHANNEL,
@@ -8,30 +8,22 @@ const {
   createAppIpcRouter,
   createAppWindowOptions,
 } = require('@live2pet/app-host');
-const { startMapperSessionHost } = require('@live2pet/mapper-session');
 const { CacheStore, SHARP_ENCODER_VERSION, buildProjectTargets } = require('@live2pet/package-build');
 const { installPackage } = require('@live2pet/installation');
-const { getSkillStatus, installSkill } = require('@live2pet/skill-manager');
 const { inspectSourcePackage } = require('@live2pet/source-inspector');
-const { createRendererWindowHost } = require('./renderer-host.cjs');
-const { createRendererPreviewService } = require('./renderer-preview-service.cjs');
 const { createCaptureCacheService } = require('./capture-cache-service.cjs');
 const { createCaptureCacheBuildService } = require('./capture-cache-build.cjs');
+const { RUNTIME_PROTOCOL_SCHEME, createRuntimeProtocolHandler } = require('./runtime-protocol.cjs');
 const {
   clearRuntimeSettings,
   loadRuntimeForGeneration,
   loadRuntimeSettings,
   redactRuntimeSettings,
-  resolveRuntimeEntrypoint,
   saveRuntimeSettings,
 } = require('@live2pet/runtime');
 
 const DEVELOPMENT_MAPPER_PATH = path.resolve(__dirname, '../mapper/index.html');
 const PACKAGED_MAPPER_PATH = path.join(process.resourcesPath, 'mapper-dist', 'index.html');
-const DEVELOPMENT_RENDERER_PATH = path.resolve(__dirname, 'renderer/index.html');
-const PACKAGED_RENDERER_PATH = path.join(process.resourcesPath, 'mapper-dist', 'renderer.html');
-const DEVELOPMENT_SKILL_PATH = path.resolve(__dirname, '../../skills/live2pet');
-const PACKAGED_SKILL_PATH = path.join(process.resourcesPath, 'live2pet-skill');
 const SOURCE_CACHE_LIMIT = 1024 * 1024 * 1024;
 const CAPTURE_CACHE_LIMIT = 1024 * 1024 * 1024;
 const ENCODED_CACHE_TARGET_VERSION = '1';
@@ -41,57 +33,17 @@ let mainWindow = null;
 let route = null;
 let sourceCache = null;
 let runtimeSettingsFile = null;
-let rendererWindowHost = null;
 let captureCacheStore = null;
 let captureCacheService = null;
 let mainRendererRecoveryInProgress = false;
 
+protocol.registerSchemesAsPrivileged([{
+  scheme: RUNTIME_PROTOCOL_SCHEME,
+  privileges: { standard: true, secure: true },
+}]);
+
 function mapperPath() {
   return app.isPackaged ? PACKAGED_MAPPER_PATH : DEVELOPMENT_MAPPER_PATH;
-}
-
-function rendererPath() {
-  return app.isPackaged ? PACKAGED_RENDERER_PATH : DEVELOPMENT_RENDERER_PATH;
-}
-
-function skillSourcePath() {
-  return app.isPackaged ? PACKAGED_SKILL_PATH : DEVELOPMENT_SKILL_PATH;
-}
-
-/**
- * Create the isolated Live2D renderer only for an explicit preview operation.
- * The main Mapper window never receives model/runtime bytes; this host owns a
- * separate sandboxed BrowserWindow and a loopback asset server instead.
- */
-function createRendererPreviewHost(options = {}) {
-  if (rendererWindowHost && rendererWindowHost.getStatus().state !== 'closed') return rendererWindowHost;
-  rendererWindowHost = null;
-  rendererWindowHost = createRendererWindowHost({
-    ...options,
-    BrowserWindow,
-    rendererDocument: rendererPath(),
-    preload: path.join(__dirname, 'renderer-preload.cjs'),
-  });
-  return rendererWindowHost;
-}
-
-async function closeRendererPreviewHost() {
-  if (!rendererWindowHost) return;
-  const host = rendererWindowHost;
-  rendererWindowHost = null;
-  await host.close();
-}
-
-function mapperHostFactory(options = {}) {
-  if (!options || typeof options !== 'object' || Array.isArray(options)) throw new TypeError('Mapper Session options must be an object.');
-  const documentPath = mapperPath();
-  return startMapperSessionHost({
-    project: options.project,
-    mapperPath: documentPath,
-    mapperUrl: pathToFileURL(documentPath).href,
-    mapperAssetRoot: app.isPackaged ? path.dirname(documentPath) : undefined,
-    idleTimeoutMs: options.idleTimeoutMs,
-  });
 }
 
 function sourceInspectionService({ inputPath, projectId } = {}) {
@@ -113,24 +65,6 @@ const runtimeSettingsService = Object.freeze({
   get: async () => redactRuntimeSettings(await loadRuntimeSettings(runtimeSettingsPath())),
   configure: async ({ inputPath } = {}) => redactRuntimeSettings(await saveRuntimeSettings(runtimeSettingsPath(), inputPath)),
   clear: async () => redactRuntimeSettings(clearRuntimeSettings(runtimeSettingsPath())),
-});
-
-const skillService = Object.freeze({
-  get: async () => getSkillStatus({ sourceDir: skillSourcePath(), homeDir: app.getPath('home'), env: process.env }),
-  install: async ({ confirmInstall = false, overwrite = false, onProgress } = {}) => installSkill({
-    sourceDir: skillSourcePath(),
-    homeDir: app.getPath('home'),
-    env: process.env,
-    confirmInstall: confirmInstall === true,
-    overwrite: overwrite === true,
-    onProgress,
-  }),
-});
-
-const rendererPreviewService = createRendererPreviewService({
-  loadRuntime: (cubismVersion) => loadRuntimeForGeneration(runtimeSettingsPath(), cubismVersion),
-  resolveRuntimeEntrypoint,
-  createHost: (options) => createRendererPreviewHost(options),
 });
 
 function getCaptureCacheStore() {
@@ -178,12 +112,9 @@ async function chooseInstallRoot({ target } = {}) {
 
 function registerIpc() {
   route = createAppIpcRouter({
-    mapperHostFactory,
     sourceInspectionService,
     runtimeSettingsService,
-    skillService,
     captureCacheService: getCaptureCacheService(),
-    rendererPreviewService,
     buildProjectService: buildProjectWithCaptureCache,
     installPackageService: installPackage,
     installRootPickerService: chooseInstallRoot,
@@ -200,9 +131,7 @@ function registerIpc() {
 }
 
 async function closeActiveSession() {
-  if (route) await route({ protocolVersion: 1, method: 'closeMapperSession', args: [] });
-  if (route) await route({ protocolVersion: 1, method: 'closeRendererPreview', args: [] });
-  else await closeRendererPreviewHost();
+  if (route && typeof route.close === 'function') await route.close();
 }
 
 async function createMainWindow() {
@@ -251,6 +180,9 @@ async function createMainWindow() {
 
 app.whenReady().then(async () => {
   const defaultSession = require('electron').session.defaultSession;
+  defaultSession.protocol.handle(RUNTIME_PROTOCOL_SCHEME, createRuntimeProtocolHandler({
+    getRuntimeForGeneration: (cubismVersion) => loadRuntimeForGeneration(runtimeSettingsPath(), cubismVersion),
+  }));
   defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   defaultSession.setPermissionCheckHandler(() => false);
   registerIpc();

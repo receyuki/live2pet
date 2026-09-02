@@ -10,28 +10,24 @@ Live2Pet is an early-stage local desktop toolchain for loading Cubism models, pr
 - `packages/source-inspector/` — normalized Source Package inspection API and versioned `live2pet-inspect` CLI for standard Cubism directories and the supported Destiny Child PCK shape.
 - `packages/project/` — reference-only `.live2pet` Project schema, reusable Motion-plus-Expression Animation Recipes, target Render Preset persistence, deterministic serialization, atomic file I/O, autosave recovery, source relinking, and review gating.
 - `packages/runtime/` — user-provided Cubism runtime discovery, bounded validation, redacted diagnosis, persistent App-managed copies, and generation-aware selection metadata.
-- `packages/renderer/` — versioned playback/capture contract, deterministic motion candidate sampling, copyright-safe synthetic renderer for CI, V1 Pixi modern/legacy adapters, automatic Cubism-generation adapter selection, a restartable isolated renderer-realm host, a loopback-confined asset server, and an experimental official Framework bridge seam.
+- `packages/renderer/` — versioned playback/capture contract, deterministic motion candidate sampling, copyright-safe synthetic renderer for CI, and automatic selection between the V1 Pixi modern and legacy adapters.
 - `packages/frame-selection/` — deterministic motion-aware candidate deduplication and ordered frame selection for target atlases.
 - `packages/package-build/` — cancellable project-target builds for Codex Pet and guide-shaped Clawd themes, including shared-renderer RGBA capture, target-owned Render Presets, verified candidate-frame and encoded-WebP cache reuse, path-free build provenance and concise build reports, generated-asset target preview plans, pre-package Target Profile validation, safe versioned artifact names, RGBA composition, Sharp WebP encoding, deterministic manifests, size limits, zip.js package creation, review gating, and integrity-checked bounded disk caches for derived build assets.
 - `packages/cli/` — stable JSON CLI envelope over source inspection, runtime diagnosis, `.live2pet` project validation, shared Package Build from transient pre-captured inputs, ZIP package validation, export/install, and cache management.
-- `packages/skill-client/` and `packages/skill-manager/` — implemented Codex automation seams retained for post-V1 productization.
-- `packages/installation/` — explicit, conflict-aware installation support retained as optional functionality; portable ZIP download is the V1 handoff.
-- `packages/mapper-session/` — implemented authenticated browser-host seam retained for post-V1 Codex integration.
+- `packages/installation/` — explicit, conflict-aware installation for generated Codex Pet and Clawd Theme packages; building and downloading never install implicitly.
 - `packages/app-host/` — typed IPC router, preload API, artifact download/install boundary, opaque native location handles, and hardened window defaults.
-- `apps/desktop/` — Electron development App that loads the Mapper, keeps renderer isolation as an internal implementation seam, and builds/downloads artifacts without bundling user runtimes or models. The center column is the only V1 user-visible source preview.
+- `apps/desktop/` — Electron App that loads the Mapper and builds, downloads, previews, and explicitly installs generated artifacts without bundling user runtimes or models. The center column is the V1 source preview.
 - `packages/clawd-target/` — guide-aligned Clawd Target Profile validation for states, sleep modes, fallbacks, and reactions.
 - `packages/codex-target/` — Codex Pet V1 atlas geometry, nine-row mapping, frame-reference layout planning, RGBA composition, and package-shape validation.
 - `packages/live2d-exporter/` — deterministic transparent-frame exporter and Destiny Child PCK unpacker.
 - `docs/research/` — architecture, integration, and ecosystem research.
 - `docs/agents/` — repository conventions consumed by engineering skills.
-- `skills/live2pet/` — the existing thin Codex skill prototype, deferred from the personal-use V1 acceptance path.
 
 ## Planning
 
 - [`CONTEXT.md`](CONTEXT.md) — shared domain vocabulary.
 - [`docs/adr/`](docs/adr/) — accepted architecture and product decisions.
 - [`docs/specs/live2pet-v1.md`](docs/specs/live2pet-v1.md) — scoped personal-use V1 product and acceptance specification.
-- [`docs/specs/live2pet-skill-protocol.md`](docs/specs/live2pet-skill-protocol.md) — CLI handshake, skill boundaries, and authorization contract.
 - [`docs/agents/project-workflow.md`](docs/agents/project-workflow.md) — save/recovery, source relinking, review gating, and project privacy rules.
 - [`docs/plans/live2pet-v1-implementation-plan.md`](docs/plans/live2pet-v1-implementation-plan.md) — outcome-ordered remaining work, issue map, and verification gates.
 - [`docs/dependency-inventory.md`](docs/dependency-inventory.md) — pinned runtime dependencies, native modules, and user-provided asset boundaries.
@@ -47,9 +43,9 @@ The official modern Cubism Core download is available from [Live2D's SDK for Web
 
 ## Development status
 
-The core inspection, project, mapping, center-column source preview, target-build, progress, cache, validation, generated-preview, and artifact-download seams are implemented. The remaining V1 work is to qualify saved modern and legacy runtimes with locally owned models, prove both generated ZIPs in their real target hosts, harden the long-build experience, and accept a locally built macOS App on a clean user profile. A separate preview window is not a V1 feature or acceptance gate.
+The core inspection, project, mapping, center-column source preview, target-build, progress, cache, validation, generated-preview, artifact-download, and explicit package-install seams are implemented. The remaining V1 work is to qualify saved modern and legacy runtimes with locally owned models, prove both generated ZIPs and their explicit installation in the real target hosts, harden the long-build experience, and accept a locally built macOS App on a clean user profile.
 
-The official Cubism Web Framework adapter, Codex skill/Mapper Session product surface, Windows qualification, automatic installation as the primary flow, and public signed binaries are explicitly post-V1. See the [implementation plan](docs/plans/live2pet-v1-implementation-plan.md) for the current order and close criteria.
+Codex Skill integration, a hosted Mapper Session, a separate preview window, the official Cubism Web Framework bridge, Windows qualification, and public signed binaries are outside the V1 product. See the [implementation plan](docs/plans/live2pet-v1-implementation-plan.md) for the current order and close criteria.
 
 ## Local verification
 
@@ -69,10 +65,6 @@ node packages/cli/bin/live2pet.cjs export --input /path/to/package.zip --output 
 node packages/cli/bin/live2pet.cjs install --input /path/to/package.zip --target codex-pet --target-root /path/to/pets --confirm-install --pretty
 node packages/cli/bin/live2pet.cjs cache-status --cache-dir /path/to/cache --pretty
 node packages/cli/bin/live2pet.cjs cache-clear --cache-dir /path/to/cache --project-id my-project --pretty
-node packages/cli/bin/live2pet.cjs skill-status --input skills/live2pet --pretty
-node packages/cli/bin/live2pet.cjs skill-install --input skills/live2pet --target-root /path/to/codex/skills --confirm-install --pretty
-node --test packages/skill-client/test/*.test.cjs
-
 # Optional real-runtime smoke tests (local inputs only; never commit these paths)
 LIVE2PET_MODERN_RUNTIME=/path/to/live2dcubismcore.min.js LIVE2PET_MODERN_SOURCE=/path/to/modern-model \
   node --test packages/renderer/test/modern-runtime.integration.test.cjs

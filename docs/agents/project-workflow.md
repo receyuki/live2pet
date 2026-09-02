@@ -21,7 +21,7 @@ Opening a project does not imply that its Source Package is still available. The
 
 The acknowledgement records the current source fingerprint in `sourceReview.reviewedFingerprint` and clears `sourceReview.required`. It does not guess new semantic mappings. Until acknowledgement, every Package Build must fail with the typed `PROJECT_REVIEW_REQUIRED` error and identify the affected recipe ids where available.
 
-These rules are shared by the App, CLI, Mapper Session, and Codex skill. UI copy may be translated, but project keys and error codes remain language-neutral. Source paths and fingerprints may be used locally for relinking; build reports and exported packages must continue to redact absolute paths.
+These rules are shared by the App and CLI. UI copy may be translated, but project keys and error codes remain language-neutral. Source paths and fingerprints may be used locally for relinking; build reports and exported packages must continue to redact absolute paths.
 
 ## Verification
 

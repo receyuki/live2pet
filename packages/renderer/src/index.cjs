@@ -319,7 +319,6 @@ module.exports = {
   assertRenderer,
   sampleMotionCandidates,
   ...require('./pixi-live2d-adapter.cjs'),
-  ...require('./official-cubism-adapter.cjs'),
   ...require('./renderer-selection.cjs'),
   ...require('./host.cjs'),
   ...require('./asset-server.cjs'),

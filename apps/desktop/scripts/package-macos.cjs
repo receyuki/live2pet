@@ -6,7 +6,6 @@ const { execFileSync } = require('node:child_process');
 const repositoryRoot = path.resolve(__dirname, '../../..');
 const desktopRoot = path.resolve(__dirname, '..');
 const mapperRoot = path.join(desktopRoot, 'mapper-dist');
-const skillRoot = path.join(repositoryRoot, 'skills', 'live2pet');
 const outputRoot = path.join(desktopRoot, 'out');
 const ELECTRON_VERSION = '44.0.0';
 const APP_NAME = 'Live2Pet';
@@ -41,14 +40,11 @@ function requireDirectory(directory, code, message) {
 
 function copyResources(tempRoot) {
   requireDirectory(mapperRoot, 'MAPPER_NOT_STAGED', 'Stage the Mapper assets before packaging the App.');
-  requireDirectory(skillRoot, 'SKILL_SOURCE_MISSING', 'The bundled Live2Pet skill source is missing.');
   const resourcesRoot = path.join(tempRoot, 'resources');
   const mapperTarget = path.join(resourcesRoot, 'mapper-dist');
-  const skillTarget = path.join(resourcesRoot, 'live2pet-skill');
   fs.mkdirSync(resourcesRoot, { recursive: true });
   fs.cpSync(mapperRoot, mapperTarget, { recursive: true, dereference: true });
-  fs.cpSync(skillRoot, skillTarget, { recursive: true, dereference: true });
-  return [mapperTarget, skillTarget];
+  return [mapperTarget];
 }
 
 function deployProductionStage(stageRoot, environment = process.env) {
@@ -130,8 +126,6 @@ function verifyBundleLayout(appPath) {
   const required = [
     path.join(resources, 'app.asar'),
     path.join(resources, 'mapper-dist', 'index.html'),
-    path.join(resources, 'mapper-dist', 'renderer.html'),
-    path.join(resources, 'live2pet-skill', 'SKILL.md'),
   ];
   const missing = required.filter((entry) => !fs.existsSync(entry));
   if (missing.length) fail('PACKAGE_LAYOUT_INVALID', 'The packaged App is missing required resources.', { missing });
@@ -145,7 +139,7 @@ function verifyBundleLayout(appPath) {
   }
   return {
     appPath,
-    resources: ['mapper-dist', 'live2pet-skill'],
+    resources: ['mapper-dist'],
     nativeSharp: true,
     forbiddenAssetCount: 0,
   };

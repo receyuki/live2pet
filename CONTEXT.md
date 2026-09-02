@@ -1,6 +1,6 @@
 # Live2Pet
 
-Live2Pet turns user-supplied Live2D content into portable packages for agent-pet hosts. This glossary defines the language shared by its desktop application, command-line interface, and agent skill.
+Live2Pet turns user-supplied Live2D content into portable packages for agent-pet hosts. This glossary defines the language shared by its desktop application and command-line interface.
 
 ## Language
 
@@ -39,10 +39,6 @@ _Avoid_: Conversion, export job
 **Live2Pet Project**:
 A `.live2pet` JSON document that reconnects a Source Package to its Animation Recipes, Motion Mappings, Target Profiles, Render Presets, and package metadata without containing the source assets themselves. Generated Pet Packages are not editable project sources.
 _Avoid_: Mapping file, project bundle
-
-**Mapper Session**:
-An authenticated, short-lived loopback web session that exposes the shared mapping UI inside Codex without exposing general filesystem access. It edits one Live2Pet Project and stops when the mapping task ends or times out.
-_Avoid_: Local daemon, web app, public server
 
 **Pet Package**:
 A portable artifact containing rendered animations, target metadata, and the files required by a supported agent-pet host.

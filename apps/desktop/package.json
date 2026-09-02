@@ -10,16 +10,13 @@
     "package:mac": "node scripts/stage-mapper-assets.cjs && node scripts/package-macos.cjs",
     "smoke:mac": "node scripts/smoke-packaged-app.cjs",
     "start": "electron .",
-    "typecheck": "node --check main.cjs preload.cjs renderer-host.cjs renderer-preview-service.cjs forge.config.cjs scripts/*.cjs"
+    "typecheck": "node --check main.cjs preload.cjs forge.config.cjs scripts/*.cjs"
   },
   "dependencies": {
     "@live2pet/app-host": "workspace:*",
     "@live2pet/installation": "workspace:*",
-    "@live2pet/mapper-session": "workspace:*",
     "@live2pet/package-build": "workspace:*",
-    "@live2pet/renderer": "workspace:*",
     "@live2pet/runtime": "workspace:*",
-    "@live2pet/skill-manager": "workspace:*",
     "@live2pet/source-inspector": "workspace:*"
   },
   "devDependencies": {

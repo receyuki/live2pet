@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob: http://127.0.0.1:*; font-src 'self' data:; worker-src 'self' blob:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'none'; script-src 'self' 'unsafe-inline' blob: live2pet-runtime:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob: http://127.0.0.1:*; font-src 'self' data:; worker-src 'self' blob:;">
   <title>Live2Pet Mapper</title>
   <style>
     :root {
@@ -60,12 +60,7 @@
     .runtimebar .runtime-status { min-width: 16ch; color: var(--muted); font-size: 12px; }
     .runtimebar .runtime-status.good { color: var(--good); }
     .runtimebar .runtime-status.bad { color: var(--bad); }
-    .skillbar, .cachebar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -6px 0 18px; padding: 11px 13px; background: #0b1628; border: 1px solid var(--line); border-radius: 11px; }
-    .skillbar .skill-label { color: var(--muted); font-size: 12px; }
-    .skillbar .skill-status { min-width: 18ch; color: var(--muted); font-size: 12px; }
-    .skillbar .skill-status.good { color: var(--good); }
-    .skillbar .skill-status.bad { color: var(--bad); }
-    .skillbar .skill-status.busy { color: var(--warn); }
+    .cachebar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -6px 0 18px; padding: 11px 13px; background: #0b1628; border: 1px solid var(--line); border-radius: 11px; }
     .cachebar .cache-label { color: var(--muted); font-size: 12px; }
     .cachebar .cache-status { min-width: 24ch; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
     .cachebar .cache-status.good { color: var(--good); }
@@ -87,9 +82,6 @@
     .project-review p { color: #f7deb0; }
     .project-review ul { display: grid; gap: 3px; margin: 0; padding-left: 20px; color: #f7deb0; font: 12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; }
     .project-review button { justify-self: start; }
-    .session-status { grid-column: 1 / -1; min-height: 18px; color: var(--muted); font-size: 12px; }
-    .session-status.good { color: var(--good); }
-    .session-status.bad { color: var(--bad); }
     .hidden { display: none !important; }
     .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 18px; }
     .metric { padding: 11px 13px; background: var(--panel2); border: 1px solid var(--line); border-radius: 11px; }
@@ -347,13 +339,6 @@
       <span id="buildCacheStatus" class="cache-status" role="status" aria-live="polite" data-i18n="cache.status.browserOnly">Build cache management is available in the Desktop App.</span>
     </section>
 
-    <section class="skillbar" aria-labelledby="skillHeading">
-      <span id="skillHeading" class="skill-label" data-i18n="skill.heading">Codex skill</span>
-      <button id="refreshSkillStatus" data-i18n="skill.refresh">Check skill</button>
-      <button id="installSkill" class="primary" data-i18n="skill.install" disabled>Install skill</button>
-      <span id="skillStatus" class="skill-status" role="status" aria-live="polite" data-i18n="skill.status.browserOnly">Skill installation is available in the Desktop App.</span>
-    </section>
-
     <section class="projectbar" aria-labelledby="projectHeading">
       <div>
         <div class="eyebrow" data-i18n="project.eyebrow">Live2Pet Project</div>
@@ -379,7 +364,6 @@
         <ul id="projectReviewList"></ul>
         <button id="ackSourceReview" class="primary" data-i18n="project.review.acknowledge">Acknowledge source review</button>
       </div>
-      <div id="sessionStatus" class="session-status" role="status" aria-live="polite"></div>
     </section>
 
     <section class="panel inspection-panel" aria-labelledby="inspectionHeading">
@@ -575,7 +559,13 @@
   <script src="../../node_modules/.pnpm/@zip.js+zip.js@2.7.57/node_modules/@zip.js/zip.js/dist/zip-no-worker.min.js"></script>
   <script src="./build-progress.js"></script>
   <script src="./clawd-capture-plan.js"></script>
+  <script src="../../packages/clawd-target/src/profile.js"></script>
+  <script src="../../packages/codex-target/src/profile.js"></script>
   <script>
+    const CLAWD_PROFILE = window.Live2PetTargetProfiles?.clawd;
+    const CODEX_PROFILE = window.Live2PetTargetProfiles?.codexPet;
+    if (!CLAWD_PROFILE || !CODEX_PROFILE) throw new Error("Live2Pet Target Profiles are unavailable.");
+
     const I18n = (() => {
       const STORAGE_KEY = "live2pet.mapper.locale";
       const supported = ["en", "zh-CN"];
@@ -626,24 +616,6 @@
           "cache.status.clearing": "Clearing the local build cache…",
           "cache.status.cleared": "Cleared {entries} entries ({bytes}).",
           "cache.status.clearFailed": "Cache clear failed: {message}",
-          "skill.heading": "Codex skill",
-          "skill.refresh": "Check skill",
-          "skill.install": "Install skill",
-          "skill.update": "Update skill",
-          "skill.status.browserOnly": "Skill installation is available in the Desktop App.",
-          "skill.status.checking": "Checking the local Codex skill…",
-          "skill.status.ready": "Live2Pet skill is ready ({files} files).",
-          "skill.status.update": "A newer Live2Pet skill is ready to install.",
-          "skill.status.missing": "Live2Pet skill is not installed.",
-          "skill.status.invalid": "The installed Live2Pet skill is invalid; reinstall to repair it.",
-          "skill.status.unavailable": "The Desktop App skill service is unavailable.",
-          "skill.status.failed": "Skill status failed: {message}",
-          "skill.confirm.install": "Install the Live2Pet Codex skill now?",
-          "skill.confirm.update": "Replace the installed Live2Pet skill with the current App version?",
-          "skill.status.installing": "Installing the Live2Pet Codex skill…",
-          "skill.status.installed": "Live2Pet skill installed.",
-          "skill.status.updated": "Live2Pet skill updated.",
-          "skill.status.installFailed": "Skill installation failed: {message}",
           "project.eyebrow": "Live2Pet Project",
           "project.heading": "Save your mapping",
           "project.description": "Projects keep source references and Motion Mappings, never model bytes or runtime files.",
@@ -950,11 +922,6 @@
           "codex.motion.title": "No Motion assigned",
           "codex.row.assign": "Assign selected Motion to {id}",
           "codex.row.clear": "Clear {id} mapping",
-          "project.session.loaded": "Loaded {name} from the Mapper Session.",
-          "project.session.waiting": "The Mapper Session project is waiting for its matching Source Package.",
-          "project.session.ready": "Mapper Session project “{name}” is ready; choose its matching Source Package.",
-          "project.session.connected": "Connected to Mapper Session {id}… · changes sync on Save.",
-          "project.session.saved": "Connected to Mapper Session {id}… · project saved.",
           "project.saved": "Saved {filename}. Source assets remain on this computer.",
           "project.open.match": "Opened {filename}. The Source Package fingerprint matches.",
           "project.open.diff": "Opened {filename}. Source fingerprint differs; review affected mappings before building.",
@@ -1018,24 +985,6 @@
           "cache.status.clearing": "正在清除本机构建缓存…",
           "cache.status.cleared": "已清除 {entries} 个条目（{bytes}）。",
           "cache.status.clearFailed": "清除缓存失败：{message}",
-          "skill.heading": "Codex skill",
-          "skill.refresh": "检查 skill",
-          "skill.install": "安装 skill",
-          "skill.update": "更新 skill",
-          "skill.status.browserOnly": "Skill 安装功能仅在 Desktop App 中可用。",
-          "skill.status.checking": "正在检查本机 Codex skill…",
-          "skill.status.ready": "Live2Pet skill 已就绪（{files} 个文件）。",
-          "skill.status.update": "检测到更新版 Live2Pet skill，可以安装。",
-          "skill.status.missing": "尚未安装 Live2Pet skill。",
-          "skill.status.invalid": "已安装的 Live2Pet skill 无效；重新安装可修复。",
-          "skill.status.unavailable": "Desktop App skill 服务不可用。",
-          "skill.status.failed": "Skill 状态检查失败：{message}",
-          "skill.confirm.install": "现在安装 Live2Pet Codex skill 吗？",
-          "skill.confirm.update": "用当前 App 版本替换已安装的 Live2Pet skill 吗？",
-          "skill.status.installing": "正在安装 Live2Pet Codex skill…",
-          "skill.status.installed": "Live2Pet skill 已安装。",
-          "skill.status.updated": "Live2Pet skill 已更新。",
-          "skill.status.installFailed": "Skill 安装失败：{message}",
           "project.eyebrow": "Live2Pet 项目",
           "project.heading": "保存映射",
           "project.description": "项目只保存资源引用和动作映射，不保存模型字节或运行时文件。",
@@ -1342,11 +1291,6 @@
           "codex.motion.title": "未分配动作",
           "codex.row.assign": "将选中动作分配到 {id}",
           "codex.row.clear": "清除 {id} 映射",
-          "project.session.loaded": "已从 Mapper Session 加载 {name}。",
-          "project.session.waiting": "Mapper Session 项目正在等待匹配的资源包。",
-          "project.session.ready": "Mapper Session 项目“{name}”已准备好；请选择匹配的资源包。",
-          "project.session.connected": "已连接 Mapper Session {id}… · 保存时同步变更。",
-          "project.session.saved": "已连接 Mapper Session {id}… · 项目已保存。",
           "project.saved": "已保存 {filename}。资源仍保留在本机。",
           "project.open.match": "已打开 {filename}，资源包指纹匹配。",
           "project.open.diff": "已打开 {filename}，资源指纹不同；构建前请检查受影响的映射。",
@@ -1398,49 +1342,48 @@
     })();
 
     const MotionMapping = (() => {
+      const fallbackAllowed = new Set(CLAWD_PROFILE.states.fallbackAllowed);
+      const statePresentation = {
+        idle: ["No Agent activity", "mapping.meaning.idle"],
+        thinking: ["User prompt submitted", "mapping.meaning.thinking"],
+        working: ["Agent is using a tool", "mapping.meaning.working"],
+        sleeping: ["After a sleep sequence", "mapping.meaning.sleeping"],
+        error: ["Tool execution failed", "mapping.meaning.error"],
+        attention: ["Task complete", "mapping.meaning.attention"],
+        notification: ["Permission request or reminder", "mapping.meaning.notification"],
+        sweeping: ["Context compaction", "mapping.meaning.sweeping"],
+        carrying: ["Worktree created", "mapping.meaning.carrying"],
+        juggling: ["Subagent active", "mapping.meaning.juggling"],
+        roam: ["Free roam (asset faces right)", "mapping.meaning.roam"],
+        yawning: ["Starting sleep", "mapping.meaning.yawning"],
+        dozing: ["After yawning", "mapping.meaning.dozing"],
+        collapsing: ["Falling asleep", "mapping.meaning.collapsing"],
+        waking: ["Woken by the user", "mapping.meaning.waking"],
+      };
+      const stateDefinition = (id, options = {}) => ({
+        id,
+        meaning: statePresentation[id]?.[0] || id,
+        meaningKey: statePresentation[id]?.[1] || id,
+        ...(options.required ? { required: true } : {}),
+        ...(options.full ? { full: true } : {}),
+        ...(fallbackAllowed.has(id) ? { fallback: true } : {}),
+      });
       const groups = [
-        { id: "core", label: "Core states", hint: "validator/runtime baseline", states: [
-          { id: "idle", meaning: "No Agent activity", meaningKey: "mapping.meaning.idle", required: true },
-          { id: "thinking", meaning: "User prompt submitted", meaningKey: "mapping.meaning.thinking", required: true },
-          { id: "working", meaning: "Agent is using a tool", meaningKey: "mapping.meaning.working", required: true },
-          { id: "sleeping", meaning: "After a sleep sequence", meaningKey: "mapping.meaning.sleeping", required: true, fallback: true }
-        ]},
-        { id: "optional", label: "Common optional states", hint: "Exported when mapped", states: [
-          { id: "error", meaning: "Tool execution failed", meaningKey: "mapping.meaning.error", fallback: true },
-          { id: "attention", meaning: "Task complete", meaningKey: "mapping.meaning.attention", fallback: true },
-          { id: "notification", meaning: "Permission request or reminder", meaningKey: "mapping.meaning.notification", fallback: true },
-          { id: "sweeping", meaning: "Context compaction", meaningKey: "mapping.meaning.sweeping", fallback: true },
-          { id: "carrying", meaning: "Worktree created", meaningKey: "mapping.meaning.carrying", fallback: true },
-          { id: "juggling", meaning: "Subagent active", meaningKey: "mapping.meaning.juggling" },
-          { id: "roam", meaning: "Free roam (asset faces right)", meaningKey: "mapping.meaning.roam", fallback: true }
-        ]},
-        { id: "sleep", label: "Full sleep sequence", hint: "Every slot needs a Motion in full mode", states: [
-          { id: "yawning", meaning: "Starting sleep", meaningKey: "mapping.meaning.yawning", full: true },
-          { id: "dozing", meaning: "After yawning", meaningKey: "mapping.meaning.dozing", full: true },
-          { id: "collapsing", meaning: "Falling asleep", meaningKey: "mapping.meaning.collapsing", full: true },
-          { id: "waking", meaning: "Woken by the user", meaningKey: "mapping.meaning.waking", full: true }
-        ]}
+        { id: "core", label: "Core states", hint: "validator/runtime baseline", states: CLAWD_PROFILE.states.core.map(id => stateDefinition(id, { required: true })) },
+        { id: "optional", label: "Common optional states", hint: "Exported when mapped", states: CLAWD_PROFILE.states.optional.map(id => stateDefinition(id)) },
+        { id: "sleep", label: "Full sleep sequence", hint: "Every slot needs a Motion in full mode", states: CLAWD_PROFILE.states.fullSleep.map(id => stateDefinition(id, { full: true })) }
       ];
-      const reactions = [
-        { id: "drag", meaning: "Loop while dragging", meaningKey: "mapping.meaning.drag" },
-        { id: "clickLeft", meaning: "Double-click left side", meaningKey: "mapping.meaning.clickLeft" },
-        { id: "clickRight", meaning: "Double-click right side", meaningKey: "mapping.meaning.clickRight" },
-        { id: "annoyed", meaning: "50% double-click alternative", meaningKey: "mapping.meaning.annoyed" },
-        { id: "double", meaning: "Rapid four-click", meaningKey: "mapping.meaning.double" }
-      ];
-      const codexRows = [
-        { id: "idle", label: "Idle", frames: 6 },
-        { id: "running-right", label: "Running right", frames: 8 },
-        { id: "running-left", label: "Running left", frames: 8 },
-        { id: "waving", label: "Waving", frames: 4 },
-        { id: "jumping", label: "Jumping", frames: 5 },
-        { id: "failed", label: "Failed", frames: 8 },
-        { id: "waiting", label: "Waiting", frames: 6 },
-        { id: "running", label: "Running", frames: 6 },
-        { id: "review", label: "Review", frames: 6 },
-      ];
+      const reactionPresentation = {
+        drag: ["Loop while dragging", "mapping.meaning.drag"],
+        clickLeft: ["Double-click left side", "mapping.meaning.clickLeft"],
+        clickRight: ["Double-click right side", "mapping.meaning.clickRight"],
+        annoyed: ["50% double-click alternative", "mapping.meaning.annoyed"],
+        double: ["Rapid four-click", "mapping.meaning.double"],
+      };
+      const reactions = CLAWD_PROFILE.reactions.map(id => ({ id, meaning: reactionPresentation[id]?.[0] || id, meaningKey: reactionPresentation[id]?.[1] || id }));
+      const codexRowLabels = { idle: "Idle", "running-right": "Running right", "running-left": "Running left", waving: "Waving", jumping: "Jumping", failed: "Failed", waiting: "Waiting", running: "Running", review: "Review" };
+      const codexRows = CODEX_PROFILE.rows.map(row => ({ ...row, label: codexRowLabels[row.id] || row.id }));
       const allStates = groups.flatMap(group => group.states);
-      const fallbackAllowed = new Set(["error","attention","notification","sweeping","carrying","sleeping","roam"]);
       const behaviorFields = ["idleAnimations", "workingTiers", "jugglingTiers"];
       function emptyBehavior() {
         return { idleAnimations: [], workingTiers: [], jugglingTiers: [], roamFlipAssets: false };
@@ -1486,7 +1429,7 @@
       }
 
       function initial() {
-        return { model: null, motions: [], expressions: [], inspection: null, inspectionError: null, selectedMotionId: null, selectedExpressionId: null, mappings: {}, reactionMappings: {}, codexMappings: {}, recipeMappings: {}, reactionRecipeMappings: {}, codexRecipeMappings: {}, recipes: [], clawdBehavior: emptyBehavior(), sleepMode: "direct", clawdRenderPreset: "balanced", codexRenderPreset: "balanced", outputPrefix: "live2pet", projectName: "Untitled Live2Pet Project", projectSourceFingerprint: null, projectRecipeIds: [], sourceReview: null, projectDirty: false, lastChange: "Waiting for a Source Package" };
+        return { model: null, motions: [], expressions: [], inspection: null, inspectionError: null, selectedMotionId: null, selectedExpressionId: null, mappings: {}, reactionMappings: {}, codexMappings: {}, recipeMappings: {}, reactionRecipeMappings: {}, codexRecipeMappings: {}, recipes: [], clawdBehavior: emptyBehavior(), sleepMode: CLAWD_PROFILE.sleepModes[0], clawdRenderPreset: CLAWD_PROFILE.defaultRenderPreset, codexRenderPreset: CODEX_PROFILE.defaultRenderPreset, outputPrefix: "live2pet", projectName: "Untitled Live2Pet Project", projectSourceFingerprint: null, projectRecipeIds: [], sourceReview: null, projectDirty: false, lastChange: "Waiting for a Source Package" };
       }
       function reducer(state, action) {
         if (action.type === "LOAD_MODEL") {
@@ -1502,7 +1445,7 @@
           const target = action.project.targets?.clawd || {};
           const codexTarget = action.project.targets?.["codex-pet"] || {};
           const options = target.options || {};
-          const validPreset = value => ["compact", "balanced", "high"].includes(String(value || "").toLowerCase()) ? String(value).toLowerCase() : "balanced";
+          const validPreset = (profile, value) => Object.hasOwn(profile.renderPresets, String(value || "").toLowerCase()) ? String(value).toLowerCase() : profile.defaultRenderPreset;
           const selected = Object.values(target.mappings || {}).find(value => value?.startsWith("motion:"))?.slice(7);
           const recipes = normalizeRecipes(action.project.recipes);
           const currentFingerprint = state.inspection?.source?.fingerprint || null;
@@ -1515,7 +1458,7 @@
           const targetRecipeMappings = target.recipeMappings || {};
           const recipeMappings = Object.fromEntries(Object.entries(targetRecipeMappings).filter(([key]) => Object.hasOwn(target.mappings || {}, key)));
           const reactionRecipeMappings = Object.fromEntries(Object.entries(targetRecipeMappings).filter(([key]) => Object.hasOwn(target.reactions || {}, key)));
-          return { ...state, projectName: action.project.name, mappings: { ...(target.mappings || {}) }, reactionMappings: { ...(target.reactions || {}) }, codexMappings: { ...(codexTarget.mappings || {}) }, recipeMappings, reactionRecipeMappings, codexRecipeMappings: { ...(codexTarget.recipeMappings || {}) }, recipes, clawdBehavior: normalizeBehavior(options.behavior), sleepMode: options.sleepMode === "full" ? "full" : "direct", clawdRenderPreset: validPreset(target.renderPreset || options.renderPreset), codexRenderPreset: validPreset(codexTarget.renderPreset || codexTarget.options?.renderPreset), outputPrefix: typeof options.outputPrefix === "string" && options.outputPrefix.trim() ? options.outputPrefix : "live2pet", selectedMotionId: selected && MotionMapping.motion(state, selected) ? selected : state.selectedMotionId, projectSourceFingerprint: action.project.source?.fingerprint || null, projectRecipeIds: recipes.map(recipe => recipe.id), sourceReview, projectDirty: Boolean(action.dirty), lastChange: `Opened ${action.project.name}` };
+          return { ...state, projectName: action.project.name, mappings: { ...(target.mappings || {}) }, reactionMappings: { ...(target.reactions || {}) }, codexMappings: { ...(codexTarget.mappings || {}) }, recipeMappings, reactionRecipeMappings, codexRecipeMappings: { ...(codexTarget.recipeMappings || {}) }, recipes, clawdBehavior: normalizeBehavior(options.behavior), sleepMode: CLAWD_PROFILE.sleepModes.includes(options.sleepMode) ? options.sleepMode : CLAWD_PROFILE.sleepModes[0], clawdRenderPreset: validPreset(CLAWD_PROFILE, target.renderPreset || options.renderPreset), codexRenderPreset: validPreset(CODEX_PROFILE, codexTarget.renderPreset || codexTarget.options?.renderPreset), outputPrefix: typeof options.outputPrefix === "string" && options.outputPrefix.trim() ? options.outputPrefix : "live2pet", selectedMotionId: selected && MotionMapping.motion(state, selected) ? selected : state.selectedMotionId, projectSourceFingerprint: action.project.source?.fingerprint || null, projectRecipeIds: recipes.map(recipe => recipe.id), sourceReview, projectDirty: Boolean(action.dirty), lastChange: `Opened ${action.project.name}` };
         }
         if (action.type === "SELECT_MOTION") return { ...state, selectedMotionId: action.id, lastChange: `Playing ${action.id}` };
         if (action.type === "SELECT_EXPRESSION") return { ...state, selectedExpressionId: action.id, lastChange: action.id === null ? "Expression reset" : `Previewing Expression ${action.id}` };
@@ -1560,8 +1503,12 @@
         }
         if (action.type === "SET_ROAM_FLIP") return { ...state, clawdBehavior: { ...state.clawdBehavior, roamFlipAssets: action.value === true }, projectDirty: true, lastChange: `roamFlipAssets → ${action.value === true}` };
         if (action.type === "MAP_CODEX") return { ...state, codexMappings: { ...state.codexMappings, [action.key]: action.value }, codexRecipeMappings: { ...state.codexRecipeMappings, [action.key]: action.value?.startsWith("motion:") ? state.codexRecipeMappings[action.key] || "" : "" }, projectDirty: true, lastChange: `Codex ${action.key} → ${action.value || "Unmapped"}` };
-        if (action.type === "SET_SLEEP") return { ...state, sleepMode: action.value, projectDirty: true, lastChange: `sleepSequence.mode → ${action.value}` };
-        if (action.type === "SET_RENDER_PRESET") return { ...state, [`${action.target}RenderPreset`]: action.value, projectDirty: true, lastChange: `${action.target} Render Preset → ${action.value}` };
+        if (action.type === "SET_SLEEP" && CLAWD_PROFILE.sleepModes.includes(action.value)) return { ...state, sleepMode: action.value, projectDirty: true, lastChange: `sleepSequence.mode → ${action.value}` };
+        if (action.type === "SET_RENDER_PRESET") {
+          const profile = action.target === "clawd" ? CLAWD_PROFILE : CODEX_PROFILE;
+          if (!Object.hasOwn(profile.renderPresets, action.value)) return state;
+          return { ...state, [`${action.target}RenderPreset`]: action.value, projectDirty: true, lastChange: `${action.target} Render Preset → ${action.value}` };
+        }
         if (action.type === "SET_PREFIX") return { ...state, outputPrefix: action.value, projectDirty: true, lastChange: `Output prefix → ${action.value}` };
         if (action.type === "CLEAR") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, recipeMappings: {}, reactionRecipeMappings: {}, codexRecipeMappings: {}, recipes: [], projectRecipeIds: [], clawdBehavior: emptyBehavior(), projectDirty: true, lastChange: "Mappings cleared" };
         if (action.type === "ACK_SOURCE_REVIEW") {
@@ -1575,9 +1522,9 @@
       function motion(state, id) { return state.motions.find(item => item.id === id) || null; }
       function validate(state) {
         const out = [];
-        for (const id of ["idle","thinking","working"]) if (!state.mappings[id]?.startsWith("motion:")) out.push({ level: "error", text: `${id} must select a real Live2D Motion.` });
+        for (const id of CLAWD_PROFILE.states.requiredDirect) if (!state.mappings[id]?.startsWith("motion:")) out.push({ level: "error", text: `${id} must select a real Live2D Motion.` });
         if (!state.mappings.sleeping) out.push({ level: "error", text: "sleeping must select a Motion or fallbackTo." });
-        if (state.sleepMode === "full") for (const id of ["yawning","dozing","collapsing","waking"]) if (!state.mappings[id]?.startsWith("motion:")) out.push({ level: "error", text: `full mode requires a real Motion for ${id}.` });
+        if (state.sleepMode === "full") for (const id of CLAWD_PROFILE.states.fullSleep) if (!state.mappings[id]?.startsWith("motion:")) out.push({ level: "error", text: `full mode requires a real Motion for ${id}.` });
         for (const [id, value] of Object.entries(state.mappings)) {
           if (!value?.startsWith("fallback:")) continue;
           if (!fallbackAllowed.has(id)) out.push({ level: "error", text: `${id} does not allow fallbackTo.` });
@@ -1610,12 +1557,11 @@
     const RUNTIME_DB_VERSION = 1;
     const RUNTIME_STORE_NAME = "runtimes";
     const RUNTIME_PERSIST_MAX_BYTES = 16 * 1024 * 1024;
+    const DESKTOP_RUNTIME_ORIGIN = "live2pet-runtime://library";
     let legacyAdapterLoaded = false;
     let modernAdapterLoaded = false;
     let activeLive2dAdapter = null;
     const live2dAdapterNamespaces = new Map();
-    let mapperSession = null;
-    let sessionProject = null;
     let sourcePreviewPlaying = false;
     let sourcePreviewLoop = true;
     let sourcePreviewSpeed = 1;
@@ -1627,10 +1573,6 @@
     let buildCacheStatus = null;
     let buildCacheBusy = false;
     let buildCacheFeedback = null;
-    let skillStatus = null;
-    let skillBusy = false;
-    let skillStatusText = "";
-    let skillStatusLevel = "";
     const PROJECT_DRAFT_STORAGE_KEY = "live2pet-mapper-project-draft-v1";
     const PROJECT_DRAFT_MAX_BYTES = 1024 * 1024;
     const PROJECT_HISTORY_LIMIT = 100;
@@ -1705,14 +1647,6 @@
         clawdArtifact = null;
       }
       state = MotionMapping.reducer(state, action);
-      if (action.type === "LOAD_MODEL" && sessionProject) {
-        if (state.inspection?.source?.fingerprint === sessionProject.source?.fingerprint) {
-          state = MotionMapping.reducer(state, { type: "LOAD_PROJECT", project: sessionProject });
-          setProjectStatus(I18n.t("project.session.loaded", { name: sessionProject.name }), "good");
-        } else {
-          setProjectStatus(I18n.t("project.session.waiting"));
-        }
-      }
       if (action.type === "LOAD_MODEL" || action.type === "INSPECTION_ERROR" || action.type === "LOAD_PROJECT") resetProjectHistory();
       else if (PROJECT_EDIT_ACTIONS.has(action.type)) recordProjectEdit(previous);
       render();
@@ -1781,9 +1715,9 @@
       const target = project.targets?.clawd;
       if (!target || typeof target !== "object") throw projectError("INVALID_PROJECT_TARGET", "The project does not contain a Clawd Target Profile.");
       const codexTarget = project.targets?.["codex-pet"];
-      for (const [label, targetValue] of [["Clawd", target], ["Codex", project.targets?.["codex-pet"]]]) {
+      for (const [label, targetValue, profile] of [["Clawd", target, CLAWD_PROFILE], ["Codex", project.targets?.["codex-pet"], CODEX_PROFILE]]) {
         const preset = targetValue?.renderPreset || targetValue?.options?.renderPreset;
-        if (preset != null && !["compact", "balanced", "high"].includes(String(preset).toLowerCase())) throw projectError("INVALID_RENDER_PRESET", `${label} Render Preset must be compact, balanced, or high.`);
+        if (preset != null && !Object.hasOwn(profile.renderPresets, String(preset).toLowerCase())) throw projectError("INVALID_RENDER_PRESET", `${label} Render Preset is not supported by the Target Profile.`);
       }
       if (project.recipes != null && !Array.isArray(project.recipes)) throw projectError("INVALID_PROJECT_RECIPES", "Project recipes must be an array.");
       for (const [label, mappings] of [["mappings", target.mappings], ["reactions", target.reactions]]) {
@@ -1887,11 +1821,6 @@
       $("projectStatus").className = `project-status${level ? ` ${level}` : ""}`;
       $("projectStatus").textContent = message;
     }
-    function setSessionStatus(message, level = "") {
-      const status = $("sessionStatus");
-      status.className = `session-status${level ? ` ${level}` : ""}`;
-      status.textContent = message;
-    }
     function renderProjectHistory() {
       const undo = $("undoProject");
       const redo = $("redoProject");
@@ -1902,62 +1831,6 @@
       undo.title = I18n.t("project.undo.title");
       redo.title = I18n.t("project.redo.title");
       status.textContent = I18n.t("project.history.status", { undo: projectHistory.past.length, redo: projectHistory.future.length });
-    }
-    function sessionBootstrap() {
-      const marker = "#live2pet=";
-      if (!location.hash.startsWith(marker)) return null;
-      const payload = location.hash.slice(marker.length);
-      const separator = payload.lastIndexOf(".");
-      if (separator < 1 || separator === payload.length - 1) throw projectError("SESSION_BOOTSTRAP_INVALID", "The Mapper Session launch fragment is invalid.");
-      const origin = decodeURIComponent(payload.slice(0, separator));
-      const code = payload.slice(separator + 1);
-      if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin) || !/^[A-Za-z0-9_-]{24,}$/.test(code)) throw projectError("SESSION_BOOTSTRAP_INVALID", "The Mapper Session launch fragment is invalid.");
-      history.replaceState(null, document.title, `${location.pathname}${location.search}`);
-      return { origin, code };
-    }
-    async function mapperSessionRequest(pathname, options = {}) {
-      if (!mapperSession) throw projectError("SESSION_NOT_CONNECTED", "The Mapper Session is not connected.");
-      const response = await fetch(`${mapperSession.origin}${pathname}`, {
-        ...options,
-        headers: { Authorization: `Bearer ${mapperSession.token}`, ...(options.body ? { "Content-Type": "application/json" } : {}), ...(options.headers || {}) },
-      });
-      let body = null;
-      try { body = await response.json(); } catch { throw projectError("SESSION_RESPONSE_INVALID", "The Mapper Session returned invalid JSON."); }
-      if (!response.ok || body?.ok === false) throw projectError(body?.error?.code || "SESSION_REQUEST_REJECTED", body?.error?.message || "The Mapper Session request was rejected.");
-      return body;
-    }
-    async function connectMapperSession() {
-      let launch;
-      try { launch = sessionBootstrap(); } catch (error) { setSessionStatus(`${error.code || "SESSION_BOOTSTRAP_INVALID"}: ${error.message}`, "bad"); return; }
-      if (!launch) return;
-      setSessionStatus("Connecting to the protected Mapper Session…");
-      try {
-        const response = await fetch(`${launch.origin}/bootstrap`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: launch.code }) });
-        const body = await response.json();
-        if (!response.ok || body?.ok !== true || typeof body.token !== "string") throw projectError(body?.error?.code || "SESSION_BOOTSTRAP_FAILED", body?.error?.message || "The Mapper Session bootstrap was rejected.");
-        mapperSession = { origin: launch.origin, token: body.token, sessionId: null };
-        const metadata = await mapperSessionRequest("/session");
-        mapperSession.sessionId = metadata.sessionId;
-        sessionProject = (await mapperSessionRequest("/project")).project;
-        setSessionStatus(I18n.t("project.session.connected", { id: metadata.sessionId.slice(0, 8) }), "good");
-        if (state.inspection?.source?.fingerprint === sessionProject.source?.fingerprint) {
-          dispatch({ type: "LOAD_PROJECT", project: sessionProject });
-          setProjectStatus(I18n.t("project.session.loaded", { name: sessionProject.name }), "good");
-        } else {
-          setProjectStatus(I18n.t("project.session.ready", { name: sessionProject.name }));
-        }
-      } catch (error) {
-        mapperSession = null;
-        sessionProject = null;
-        setSessionStatus(`${error.code || "SESSION_CONNECT_FAILED"}: ${error.message}`, "bad");
-      }
-    }
-    async function persistMapperSessionProject(project) {
-      if (!mapperSession) return false;
-      await mapperSessionRequest("/project", { method: "PUT", body: JSON.stringify(project) });
-      sessionProject = project;
-      setSessionStatus(I18n.t("project.session.saved", { id: mapperSession.sessionId.slice(0, 8) }), "good");
-      return true;
     }
     function normalizedInspectionError(error) {
       return { code: error?.code || "INSPECTION_FAILED", message: error?.message || String(error) };
@@ -2056,113 +1929,6 @@
       }
     }
 
-    function desktopSkillApi() {
-      return window.live2pet && typeof window.live2pet.getSkillStatus === "function" && typeof window.live2pet.installSkill === "function" ? window.live2pet : null;
-    }
-
-    function setSkillStatus(message, level = "") {
-      skillStatusText = message;
-      skillStatusLevel = level;
-      const status = $("skillStatus");
-      if (!status) return;
-      status.className = `skill-status${level ? ` ${level}` : ""}`;
-      status.textContent = message;
-    }
-
-    function skillDerivedStatus() {
-      if (!skillStatus?.source?.available || !skillStatus?.source?.valid) return { message: I18n.t("skill.status.unavailable"), level: "bad" };
-      if (skillStatus.upToDate && skillStatus.installed?.exists && skillStatus.installed?.valid) return { message: I18n.t("skill.status.ready", { files: skillStatus.installed.fileCount }), level: "good" };
-      if (skillStatus.installed?.exists && !skillStatus.installed?.valid) return { message: I18n.t("skill.status.invalid"), level: "bad" };
-      if (skillStatus.installed?.exists) return { message: I18n.t("skill.status.update"), level: "" };
-      return { message: I18n.t("skill.status.missing"), level: "" };
-    }
-
-    function renderSkillStatus() {
-      const api = desktopSkillApi();
-      const refresh = $("refreshSkillStatus");
-      const install = $("installSkill");
-      const status = $("skillStatus");
-      if (!refresh || !install || !status) return;
-      const hasValidSource = Boolean(skillStatus?.source?.available && skillStatus?.source?.valid);
-      const needsInstall = Boolean(hasValidSource && (!skillStatus?.upToDate || !skillStatus?.installed?.valid));
-      refresh.disabled = skillBusy || !api;
-      install.disabled = skillBusy || !api || !needsInstall;
-      install.textContent = skillStatus?.installed?.exists ? I18n.t("skill.update") : I18n.t("skill.install");
-      let display = { message: I18n.t("skill.status.browserOnly"), level: "" };
-      if (api && skillBusy) display = { message: skillStatusText || I18n.t("skill.status.checking"), level: skillStatusLevel || "busy" };
-      else if (api && skillStatusText) display = { message: skillStatusText, level: skillStatusLevel };
-      else if (api && skillStatus) display = skillDerivedStatus();
-      status.className = `skill-status${display.level ? ` ${display.level}` : ""}`;
-      status.textContent = display.message;
-    }
-
-    async function refreshSkillStatus() {
-      const api = desktopSkillApi();
-      if (!api) {
-        skillStatus = null;
-        skillBusy = false;
-        skillStatusText = "";
-        skillStatusLevel = "";
-        renderSkillStatus();
-        return null;
-      }
-      skillBusy = true;
-      skillStatusText = I18n.t("skill.status.checking");
-      skillStatusLevel = "busy";
-      renderSkillStatus();
-      try {
-        const response = await api.getSkillStatus();
-        if (!response || response.ok !== true || !response.result) throw projectError(response?.error?.code || "APP_SKILL_STATUS_FAILED", response?.error?.message || "The Desktop App did not return skill status.");
-        skillStatus = response.result;
-        skillStatusText = "";
-        skillStatusLevel = "";
-        return skillStatus;
-      } catch (error) {
-        skillStatus = null;
-        skillStatusText = I18n.t("skill.status.failed", { message: error.message });
-        skillStatusLevel = "bad";
-        return null;
-      } finally {
-        skillBusy = false;
-        renderSkillStatus();
-      }
-    }
-
-    async function installSkillFromApp() {
-      const api = desktopSkillApi();
-      if (!api) {
-        setSkillStatus(I18n.t("skill.status.unavailable"), "bad");
-        renderSkillStatus();
-        return;
-      }
-      if (!skillStatus) await refreshSkillStatus();
-      const hasValidSource = Boolean(skillStatus?.source?.available && skillStatus?.source?.valid);
-      if (!hasValidSource) return;
-      const overwrite = Boolean(skillStatus.installed?.exists);
-      const confirmation = window.confirm(I18n.t(overwrite ? "skill.confirm.update" : "skill.confirm.install"));
-      if (!confirmation) return;
-      skillBusy = true;
-      skillStatusText = I18n.t("skill.status.installing");
-      skillStatusLevel = "busy";
-      renderSkillStatus();
-      try {
-        const response = await api.installSkill({ confirmInstall: true, overwrite });
-        if (!response || response.ok !== true || !response.result) throw projectError(response?.error?.code || "APP_SKILL_INSTALL_FAILED", response?.error?.message || "The Desktop App rejected the skill installation.");
-        try {
-          const statusResponse = await api.getSkillStatus();
-          if (statusResponse?.ok === true && statusResponse.result) skillStatus = statusResponse.result;
-        } catch {}
-        skillStatusText = I18n.t(overwrite ? "skill.status.updated" : "skill.status.installed");
-        skillStatusLevel = "good";
-      } catch (error) {
-        skillStatusText = I18n.t("skill.status.installFailed", { message: error.message });
-        skillStatusLevel = "bad";
-      } finally {
-        skillBusy = false;
-        renderSkillStatus();
-      }
-    }
-
     function localFilePath(file) {
       const value = file?.path;
       if (typeof value === "string" && /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value)) return value;
@@ -2200,6 +1966,9 @@
           };
           return rank(left) - rank(right) || String(left.name).localeCompare(String(right.name));
         });
+      if (desktopRuntimeApi()) {
+        return candidates.find(file => /(?:live2dcubismcore|live2d)(?:\.min)?\.m?js$/i.test(String(file?.name || ""))) || null;
+      }
       for (const file of candidates) {
         try {
           detectRuntimeKind(await file.text());
@@ -2312,7 +2081,7 @@
       const previous = runtimeScripts.get(kind);
       if (previous) {
         previous.element.remove();
-        URL.revokeObjectURL(previous.url);
+        if (previous.revoke) URL.revokeObjectURL(previous.url);
       }
       const url = URL.createObjectURL(new Blob([source], { type: "application/javascript" }));
       const element = document.createElement("script");
@@ -2323,7 +2092,7 @@
         element.onerror = () => reject(projectError("RUNTIME_LOAD_FAILED", `The selected ${kind} runtime could not be executed.`));
         document.head.appendChild(element);
       });
-      runtimeScripts.set(kind, { element, url, name });
+      runtimeScripts.set(kind, { element, url, name, revoke: true });
       const available = kind === "legacy" ? Boolean(window.Live2D) : Boolean(window.Live2DCubismCore);
       if (!available) throw projectError("UNKNOWN_RUNTIME", `The selected file does not expose a usable ${kind === "legacy" ? "Cubism 2" : "modern Cubism"} runtime.`);
       await ensureLive2dAdapter(kind === "legacy" ? "legacy" : "modern");
@@ -2347,19 +2116,25 @@
 
     async function loadLocalRuntime(file, { directory = false } = {}) {
       if (!file) return;
-      const source = await file.text();
-      const kind = detectRuntimeKind(source);
       const api = desktopRuntimeApi();
       const inputPath = directory ? (localDirectoryPath(file) || localFilePath(file)) : localFilePath(file);
-      let appSaved = false;
-      if (api && inputPath) {
+      if (api) {
+        if (!inputPath) throw projectError("RUNTIME_PATH_UNAVAILABLE", "The Desktop App could not resolve the selected local runtime path.");
         const response = await api.configureRuntime({ inputPath });
         if (!response || response.ok !== true || !response.result) {
           throw projectError(response?.error?.code || "RUNTIME_SETTINGS_FAILED", response?.error?.message || "The Desktop App could not save the selected runtime setting.");
         }
-        appSaved = true;
+        await loadDesktopRuntimeLibrary(response.result, { restored: false });
+        if (activeSourceFiles && state.inspection) {
+          const kind = Number(state.model?.cubism) === 2 ? "legacy" : "modern";
+          setRuntimeStatus(I18n.t("runtime.refreshing", { runtime: I18n.t(`runtime.name.${kind}`) }), "good");
+          await loadFolder(activeSourceFiles, activeSourceOptions || {});
+        }
+        return;
       }
-      await loadRuntimeSource(source, file.name, kind, { appSaved });
+      const source = await file.text();
+      const kind = detectRuntimeKind(source);
+      await loadRuntimeSource(source, file.name, kind);
     }
 
     async function restorePersistedRuntimes() {
@@ -2376,23 +2151,80 @@
       }
     }
 
-    async function showDesktopRuntimeLibraryStatus() {
+    function runtimeKindFromDescriptor(runtime) {
+      if (runtime?.runtimeKind === "legacy-cubism2") return "legacy";
+      if (runtime?.runtimeKind === "modern-cubism-core") return "modern";
+      return null;
+    }
+
+    async function loadDesktopRuntime(kind, name, { fingerprint = null, restored = true } = {}) {
+      if (!desktopRuntimeApi()) return false;
+      const previous = runtimeScripts.get(kind);
+      if (previous) {
+        previous.element.remove();
+        if (previous.revoke) URL.revokeObjectURL(previous.url);
+      }
+      const url = `${DESKTOP_RUNTIME_ORIGIN}/${kind}`;
+      const element = document.createElement("script");
+      element.async = false;
+      element.src = url;
+      await new Promise((resolve, reject) => {
+        element.onload = resolve;
+        element.onerror = () => reject(projectError("RUNTIME_LOAD_FAILED", `The App-managed ${kind} runtime could not be loaded.`));
+        document.head.appendChild(element);
+      });
+      const available = kind === "legacy" ? Boolean(window.Live2D) : Boolean(window.Live2DCubismCore);
+      if (!available) {
+        element.remove();
+        throw projectError("UNKNOWN_RUNTIME", `The App-managed ${kind} runtime did not expose its expected API.`);
+      }
+      runtimeScripts.set(kind, { element, url, name, fingerprint, revoke: false });
+      await ensureLive2dAdapter(kind);
+      const runtimeLabel = I18n.t(`runtime.name.${kind}`);
+      setRuntimeStatus(I18n.t(restored ? "runtime.restored" : "runtime.saved", { runtime: runtimeLabel, name }), "good");
+      return true;
+    }
+
+    async function loadDesktopRuntimeLibrary(settings = null, { restored = true } = {}) {
       const api = desktopRuntimeApi();
-      if (!api || typeof api.getRuntimeSettings !== "function") return;
-      try {
+      if (!api || typeof api.getRuntimeSettings !== "function") return [];
+      if (!settings) {
         const response = await api.getRuntimeSettings();
-        const runtimes = response?.ok === true && response.result && Array.isArray(response.result.runtimes)
-          ? response.result.runtimes.filter(runtime => runtime.available !== false)
-          : [];
-        if (!runtimes.length) return;
-        const labels = runtimes.map(runtime => I18n.t(`runtime.name.${runtime.runtimeKind === "legacy-cubism2" ? "legacy" : "modern"}`));
+        if (!response || response.ok !== true || !response.result) throw projectError(response?.error?.code || "RUNTIME_SETTINGS_FAILED", response?.error?.message || "The Desktop App could not read its runtime library.");
+        settings = response.result;
+      }
+      const runtimes = Array.isArray(settings?.runtimes) ? settings.runtimes.filter(runtime => runtime.available !== false) : [];
+      for (const runtime of runtimes) {
+        const kind = runtimeKindFromDescriptor(runtime);
+        if (!kind) continue;
+        if (runtimeScripts.get(kind)?.fingerprint === runtime.fingerprint) continue;
+        await loadDesktopRuntime(kind, runtime.runtimeName || `${kind}.js`, { fingerprint: runtime.fingerprint || null, restored });
+      }
+      if (runtimes.length) {
+        const labels = runtimes.map(runtime => I18n.t(`runtime.name.${runtimeKindFromDescriptor(runtime) || "modern"}`));
         setRuntimeStatus(I18n.t("runtime.libraryReady", { runtimes: labels.join(" · ") }), "good");
-      } catch {}
+      }
+      return runtimes;
+    }
+
+    async function ensureDesktopRuntimeForGeneration(cubism) {
+      if (!desktopRuntimeApi()) return;
+      const kind = Number(cubism) === 2 ? "legacy" : "modern";
+      const exposed = kind === "legacy" ? Boolean(window.Live2D) : Boolean(window.Live2DCubismCore);
+      if (exposed && runtimeScripts.has(kind)) return;
+      const runtimes = await loadDesktopRuntimeLibrary();
+      if (!runtimes.some(runtime => runtimeKindFromDescriptor(runtime) === kind)) {
+        throw projectError("RUNTIME_UNAVAILABLE", `No App-managed ${kind === "legacy" ? "Cubism 2" : "modern Cubism"} runtime is configured.`);
+      }
     }
 
     async function initializeRuntimes() {
+      if (desktopRuntimeApi()) {
+        try { await loadDesktopRuntimeLibrary(); }
+        catch (error) { setRuntimeStatus(`${error.code || "RUNTIME_RESTORE_FAILED"}: ${error.message}`, "bad"); }
+        return;
+      }
       await restorePersistedRuntimes();
-      await showDesktopRuntimeLibraryStatus();
     }
 
     // Cubism 2 and Cubism 4 adapters expose the same PIXI.live2d namespace.
@@ -2671,7 +2503,7 @@
     }
 
     function clawdRequiredSlots() {
-      return ["idle", "thinking", "working", "sleeping", ...(state.sleepMode === "full" ? ["yawning", "dozing", "collapsing", "waking"] : [])];
+      return [...CLAWD_PROFILE.states.requiredDirect, "sleeping", ...(state.sleepMode === "full" ? CLAWD_PROFILE.states.fullSleep : [])];
     }
 
     function clawdValidation() {
@@ -2810,7 +2642,6 @@
       renderProjectWorkflow(); renderProjectHistory(); renderInspection(); renderMetrics(); renderMotions(); renderExpressions(); renderPreviewPlayback(); renderMappings();
       renderBuildProgress("codex"); renderBuildProgress("clawd");
       renderBuildCacheStatus();
-      renderSkillStatus();
       $("sleepMode").value = state.sleepMode;
       $("clawdRenderPreset").value = state.clawdRenderPreset;
       $("codexRenderPreset").value = state.codexRenderPreset;
@@ -3228,6 +3059,7 @@
         try {
           // Let pixi-live2d-display's FileLoader preserve relative paths for
           // both directory uploads and reconstructed PCK entries.
+          await ensureDesktopRuntimeForGeneration(cubism);
           if (cubism === 2 && !window.Live2D) throw browserInspectionError("RUNTIME_UNAVAILABLE", "Inspection is complete, but Cubism 2 preview needs a local live2d.min.js. Use Choose Cubism 2 runtime above.");
           if (cubism !== 2 && !window.Live2DCubismCore) throw browserInspectionError("RUNTIME_UNAVAILABLE", "Inspection is complete, but modern preview needs a local Cubism Core JavaScript file.");
           await ensureLive2dAdapter(cubism === 2 ? "legacy" : "modern");
@@ -3399,7 +3231,7 @@
       dispatch({type:"SELECT_EXPRESSION",id:null});
     }
 
-    const CODEX_ATLAS = { width: 1536, height: 1872, columns: 8, rows: 9, cellWidth: 192, cellHeight: 208 };
+    const CODEX_ATLAS = CODEX_PROFILE.atlas;
     const CODEX_PACKAGE_VERSION = "1.0.0";
     const CLAWD_PACKAGE_VERSION = "1.0.0";
     let codexBuildBusy = false;
@@ -4790,7 +4622,7 @@
         setBuildProgressStage("codex", "preview", "started");
         setBuildProgressStage("codex", "preview", "completed");
         setBuildProgressStage("codex", "package", "started");
-        const manifest = { schemaVersion: 1, target: "codex-pet", contractVersion: 1, version: CODEX_PACKAGE_VERSION, packageFiles: ["pet.json", "spritesheet.webp"], renderPreset, atlas: { ...CODEX_ATLAS }, mappings: { ...state.codexMappings }, rows: manifestRows, assets: { spritesheet: { path: "spritesheet.webp", format: "webp", width: CODEX_ATLAS.width, height: CODEX_ATLAS.height, frameCount: 1 } } };
+        const manifest = { schemaVersion: 1, target: CODEX_PROFILE.id, contractVersion: CODEX_PROFILE.contractVersion, version: CODEX_PACKAGE_VERSION, packageFiles: [...CODEX_PROFILE.package.files], renderPreset, atlas: { ...CODEX_ATLAS }, mappings: { ...state.codexMappings }, rows: manifestRows, assets: { spritesheet: { path: "spritesheet.webp", format: "webp", width: CODEX_ATLAS.width, height: CODEX_ATLAS.height, frameCount: 1 } } };
         setBuildStatus(I18n.t("build.status.zip"), "busy");
         if (typeof zipApi.configure === "function") zipApi.configure({ useWebWorkers: false });
         const writer = new zipApi.ZipWriter(new zipApi.BlobWriter("application/zip"));
@@ -4847,10 +4679,6 @@
         clearProjectDraft();
         dispatch({ type: "MARK_PROJECT_SAVED" });
         setProjectStatus(I18n.t("project.saved", { filename }), "good");
-        if (mapperSession) {
-          try { await persistMapperSessionProject(project); }
-          catch (error) { setSessionStatus(`${error.code || "SESSION_SAVE_FAILED"}: ${error.message}`, "bad"); }
-        }
       } catch (error) {
         setProjectStatus(`${error.code || "PROJECT_SAVE_FAILED"}: ${error.message}`, "bad");
       }
@@ -4929,9 +4757,12 @@
         if (api && typeof api.clearRuntimeSettings === "function") {
           const response = await api.clearRuntimeSettings();
           if (!response || response.ok !== true) throw projectError(response?.error?.code || "RUNTIME_SETTINGS_CLEAR_FAILED", response?.error?.message || "The Desktop App could not clear the saved runtime setting.");
+          setRuntimeStatus(I18n.t("runtime.cleared"), "good");
+          render();
+          return;
         }
         const cleared = await clearPersistedRuntimes();
-        setRuntimeStatus(I18n.t(cleared || api ? "runtime.cleared" : "runtime.storageUnavailable"), cleared || api ? "good" : "");
+        setRuntimeStatus(I18n.t(cleared ? "runtime.cleared" : "runtime.storageUnavailable"), cleared ? "good" : "");
         render();
       } catch (error) {
         setRuntimeStatus(`${error.code || "RUNTIME_STORAGE_CLEAR_FAILED"}: ${error.message}`, "bad");
@@ -4939,8 +4770,6 @@
     });
     $("refreshBuildCache").addEventListener("click", () => { void refreshBuildCacheStatus(); });
     $("clearBuildCache").addEventListener("click", () => { void clearLocalBuildCache(); });
-    $("refreshSkillStatus").addEventListener("click", () => { void refreshSkillStatus(); });
-    $("installSkill").addEventListener("click", () => { void installSkillFromApp(); });
     $("openProject").addEventListener("click",()=>$("projectInput").click());
     $("recoverProject").addEventListener("click", recoverProjectDraft);
     $("projectInput").addEventListener("change",async e=>{
@@ -5048,9 +4877,7 @@
     render();
     if (recoveredDraft) setProjectStatus(I18n.t("project.recovery.available", { time: projectDraftTime(recoveredDraft.savedAt) }));
     void refreshBuildCacheStatus();
-    void refreshSkillStatus();
     void initializeRuntimes();
-    void connectMapperSession();
   </script>
 </body>
 </html>

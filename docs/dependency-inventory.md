@@ -12,9 +12,9 @@ the corresponding notices when a release dependency changes.
 | `@electron/packager` | 20.3.0 | Current-machine local unsigned `.app` assembly | Build-time only; excluded from the packaged App |
 | `sharp` | 0.34.5 | Transparent WebP encoding and image composition | Package Build; uses platform-specific optional `@img/*` libvips packages |
 | `@zip.js/zip.js` | 2.7.57 | ZIP reading, validation, export, and installation | CLI, Package Build, and staged Mapper bundle |
-| `pixi.js` | 6.5.10 | Temporary browser Live2D bridge and preview host | Staged Mapper browser asset; MIT notice required |
+| `pixi.js` | 6.5.10 | Browser Live2D preview and capture | Staged Mapper browser asset; MIT notice required |
 | `@pixi/unsafe-eval` | 6.5.10 | Pixi compatibility uploader required by the preview bridge | Staged Mapper browser asset; MIT notice required |
-| `pixi-live2d-display` | 0.4.0 | Cubism 2/modern compatibility adapter during the renderer transition | Staged Mapper browser asset; MIT notice required |
+| `pixi-live2d-display` | 0.4.0 | V1 Cubism 2/modern compatibility adapters | Staged Mapper browser asset; MIT notice required |
 
 The shared packages otherwise use Node.js built-ins and local package links.
 The legacy `packages/live2d-exporter/export.cjs` script may use a locally
@@ -28,13 +28,6 @@ not dependencies of this repository. Users select copies they are separately
 licensed to run. Live2Pet validates and stores them in private local App or
 browser-profile storage; it never commits, stages, packages, or publishes
 those files.
-
-The official Cubism Web Framework is also user-provided. The renderer package
-defines an opt-in bridge contract, but does not vendor Framework source,
-prebuilt bundles, Core bytes, or a wrapper implementation. A host may serve a
-separately built and licensed bridge bundle through the loopback renderer asset
-server; it is never copied into the repository, staged Mapper bundle, cache
-artifact, generated theme, or release archive.
 
 Models, textures, Motion/Expression files, PCK/LPK archives, rendered frames,
 and generated character packages follow the same user-provided boundary.

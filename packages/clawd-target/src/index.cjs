@@ -1,12 +1,13 @@
-const CONTRACT_VERSION = 1;
-const CLAWD_PACKAGE_LIMIT = 83_886_080;
+const PROFILE = require('./profile.js');
+const CONTRACT_VERSION = PROFILE.contractVersion;
+const CLAWD_PACKAGE_LIMIT = PROFILE.package.maxBytes;
 const GUIDE_URL = 'https://github.com/rullerzhou-afk/clawd-on-desk/blob/main/docs/guides/guide-theme-creation.md';
-const CORE_STATES = ['idle', 'thinking', 'working', 'sleeping'];
-const FULL_SLEEP_STATES = ['yawning', 'dozing', 'collapsing', 'waking'];
-const OPTIONAL_STATES = ['error', 'attention', 'notification', 'sweeping', 'carrying', 'juggling', 'roam'];
-const REACTIONS = ['drag', 'clickLeft', 'clickRight', 'annoyed', 'double'];
-const ALL_STATES = [...CORE_STATES, ...OPTIONAL_STATES, ...FULL_SLEEP_STATES];
-const FALLBACK_ALLOWED = new Set(['sleeping', 'error', 'attention', 'notification', 'sweeping', 'carrying', 'roam']);
+const CORE_STATES = PROFILE.states.core;
+const FULL_SLEEP_STATES = PROFILE.states.fullSleep;
+const OPTIONAL_STATES = PROFILE.states.optional;
+const REACTIONS = PROFILE.reactions;
+const ALL_STATES = PROFILE.states.all;
+const FALLBACK_ALLOWED = new Set(PROFILE.states.fallbackAllowed);
 const MAPPING_PATTERN = /^(motion|fallback):[^\s:][^\s]{0,255}$/;
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const SAFE_THEME_ID_PATTERN = /^[a-z0-9._-]{1,96}$/;
@@ -82,8 +83,8 @@ function validateClawdMapping(input = {}) {
   const sleepMode = input.sleepMode || input.sleepSequence?.mode || 'direct';
   const errors = [];
   const warnings = [];
-  if (!['direct', 'full'].includes(sleepMode)) errors.push({ code: 'INVALID_SLEEP_MODE', message: 'sleepSequence.mode must be direct or full.' });
-  for (const slot of ['idle', 'thinking', 'working']) if (mappingKind(mapping[slot]) !== 'motion') errors.push({ code: 'REQUIRED_STATE_UNMAPPED', slot, message: `${slot} must map to a real Motion.` });
+  if (!PROFILE.sleepModes.includes(sleepMode)) errors.push({ code: 'INVALID_SLEEP_MODE', message: 'sleepSequence.mode must be direct or full.' });
+  for (const slot of PROFILE.states.requiredDirect) if (mappingKind(mapping[slot]) !== 'motion') errors.push({ code: 'REQUIRED_STATE_UNMAPPED', slot, message: `${slot} must map to a real Motion.` });
   if (!mappingKind(mapping.sleeping)) errors.push({ code: 'REQUIRED_STATE_UNMAPPED', slot: 'sleeping', message: 'sleeping must map to a Motion or fallbackTo.' });
   if (sleepMode === 'full') for (const slot of FULL_SLEEP_STATES) if (mappingKind(mapping[slot]) !== 'motion') errors.push({ code: 'FULL_SLEEP_STATE_UNMAPPED', slot, message: `full sleep requires a real Motion for ${slot}.` });
   for (const [slot, value] of Object.entries(reactions)) if (value && mappingKind(value) !== 'motion') errors.push({ code: 'REACTION_FALLBACK_NOT_ALLOWED', slot, message: `${slot} reactions must map directly to a Motion.` });
@@ -313,7 +314,7 @@ function validateClawdThemePackage(input = {}) {
       errors.push({ code: 'MINI_MODE_UNSUPPORTED', field: 'miniMode', message: 'Clawd WebP output must mark miniMode.supported as false.' });
     }
     sleepMode = manifest.sleepSequence && manifest.sleepSequence.mode ? manifest.sleepSequence.mode : 'direct';
-    if (!['direct', 'full'].includes(sleepMode)) errors.push({ code: 'INVALID_SLEEP_MODE', message: 'sleepSequence.mode must be direct or full.' });
+    if (!PROFILE.sleepModes.includes(sleepMode)) errors.push({ code: 'INVALID_SLEEP_MODE', message: 'sleepSequence.mode must be direct or full.' });
 
     if (!isRecord(manifest.states)) {
       errors.push({ code: 'INVALID_CLAWD_THEME_MANIFEST', field: 'states', message: 'theme.json states must be an object.' });
@@ -361,7 +362,7 @@ function validateClawdThemePackage(input = {}) {
     }
   }
 
-  for (const slot of ['idle', 'thinking', 'working']) if (stateKinds[slot] !== 'assets') errors.push({ code: 'REQUIRED_STATE_UNMAPPED', slot, message: `${slot} must bind to one or more WebP assets.` });
+  for (const slot of PROFILE.states.requiredDirect) if (stateKinds[slot] !== 'assets') errors.push({ code: 'REQUIRED_STATE_UNMAPPED', slot, message: `${slot} must bind to one or more WebP assets.` });
   if (stateKinds.sleeping !== 'assets' && stateKinds.sleeping !== 'fallback') errors.push({ code: 'REQUIRED_STATE_UNMAPPED', slot: 'sleeping', message: 'sleeping must bind to one or more WebP assets or fallbackTo.' });
   if (sleepMode === 'full') for (const slot of FULL_SLEEP_STATES) if (stateKinds[slot] !== 'assets') errors.push({ code: 'FULL_SLEEP_STATE_UNMAPPED', slot, message: `full sleep requires one or more WebP assets for ${slot}.` });
   validateThemeFallbacks(normalizedStates, stateKinds, errors);
@@ -423,6 +424,7 @@ module.exports = {
   FULL_SLEEP_STATES,
   GUIDE_URL,
   OPTIONAL_STATES,
+  PROFILE,
   REACTIONS,
   assertValidClawdMapping,
   assertValidClawdThemePackage,

@@ -11,7 +11,6 @@ const {
   RendererContractError,
   LegacyPixiLive2dAdapter,
   PixiLive2dAdapter,
-  OfficialCubismWebFrameworkAdapter,
   createPixiLive2dAdapter,
   createRendererAdapter,
   SyntheticRenderer,
@@ -83,44 +82,6 @@ class FakePixiPage {
     if (fn.name === 'pageBounds') return { motionId: args[0], samples: 1, x: 0.1, y: 0.05, width: 0.8, height: 0.9, normalized: true };
     if (fn.name === 'pageCapture') return { width: args[2], height: args[3], motionId: args[0], time: args[1], rgba: new Array(args[2] * args[3] * 4).fill(255) };
     return { loaded: false };
-  }
-}
-
-class FakeOfficialPage {
-  constructor() {
-    this.calls = [];
-    this.state = {
-      contractVersion: 1,
-      loaded: true,
-      motionId: 'Base:idle',
-      expressionId: null,
-      time: 0,
-      playing: false,
-      loop: true,
-      speed: 1,
-    };
-  }
-
-  async evaluate(fn, ...args) {
-    this.calls.push({ name: fn.name, args });
-    if (fn.name === 'pageOfficialLoad') return { state: { ...this.state }, width: 512, height: 512 };
-    if (fn.name === 'pageOfficialUnload') return { loaded: false };
-    if (fn.name !== 'pageOfficialInvoke') return undefined;
-    const [method, methodArgs] = args;
-    if (method === 'playMotion') this.state = { ...this.state, motionId: methodArgs[0], time: methodArgs[1].start, playing: true, loop: methodArgs[1].loop, speed: methodArgs[1].speed };
-    if (method === 'pause') this.state = { ...this.state, playing: false };
-    if (method === 'resume' || method === 'restart') this.state = { ...this.state, playing: true, time: method === 'restart' ? 0 : this.state.time };
-    if (method === 'setLoop') this.state = { ...this.state, loop: methodArgs[0] };
-    if (method === 'setSpeed') this.state = { ...this.state, speed: methodArgs[0] };
-    if (method === 'setExpression') this.state = { ...this.state, expressionId: methodArgs[0] };
-    if (method === 'step') this.state = { ...this.state, time: methodArgs[0], playing: true };
-    if (method === 'getState') return { ...this.state };
-    if (method === 'getBounds') return { motionId: methodArgs[0].motionId, samples: 1, x: 0.1, y: 0.05, width: 0.8, height: 0.9, normalized: true };
-    if (method === 'captureRgba') {
-      const capture = methodArgs[0];
-      return { width: capture.width, height: capture.height, motionId: capture.motionId, time: capture.time, rgba: new Array(capture.width * capture.height * 4).fill(255) };
-    }
-    return { ...this.state };
   }
 }
 
@@ -274,26 +235,6 @@ test('Pixi Live2D adapter bridges the shared contract without bundling a runtime
   assert.ok(page.calls.some((call) => call.name === 'pageCapture'));
 });
 
-test('official Cubism Web Framework adapter keeps the browser bridge replaceable and explicit', async () => {
-  const page = new FakeOfficialPage();
-  const renderer = new OfficialCubismWebFrameworkAdapter({ page, width: 320, height: 240, frameworkGlobal: 'Live2Pet.bridge' });
-  const loaded = await renderer.load(pixiSource());
-  assert.deepEqual(loaded, { contractVersion: 1, motionCount: 2, expressionCount: 1 });
-  await renderer.playMotion('Base:wave', { loop: false, speed: 2, start: 0.25 });
-  await renderer.setExpression('smile');
-  assert.deepEqual(page.calls.find((call) => call.name === 'pageOfficialInvoke' && call.args[0] === 'setExpression').args, ['setExpression', ['smile']]);
-  const capture = await renderer.captureRgba({ width: 8, height: 4, motionId: 'Base:wave', time: 0.5 });
-  assert.ok(capture.rgba instanceof Uint8Array);
-  assert.equal(capture.rgba.length, 8 * 4 * 4);
-  assert.equal((await renderer.getBounds({ motionId: 'Base:wave' })).normalized, true);
-  await renderer.pause();
-  assert.equal(renderer.getState().playing, false);
-  await renderer.unload();
-  assert.equal(renderer.getState().loaded, false);
-  assert.ok(page.calls.some((call) => call.name === 'pageOfficialLoad'));
-  assert.ok(page.calls.some((call) => call.name === 'pageOfficialUnload'));
-});
-
 test('Cubism 2 adapter keeps the legacy boundary explicit and preserves expression indexes', async () => {
   const page = new FakePixiPage();
   const renderer = new LegacyPixiLive2dAdapter({ page });
@@ -326,14 +267,15 @@ test('adapter selection follows the inspected Cubism generation', () => {
   assert.ok(legacy instanceof LegacyPixiLive2dAdapter);
   assert.ok(modern instanceof PixiLive2dAdapter);
   assert.equal(selectRendererAdapter(4).kind, 'modern-cubism');
-  assert.equal(selectRendererAdapter(4, { modern: 'official' }).kind, 'modern-cubism-official');
-  assert.equal(selectRendererAdapter(4, { modern: 'official' }).Adapter, OfficialCubismWebFrameworkAdapter);
-  assert.equal(selectRendererAdapter(2, { modern: 'official' }).kind, 'legacy-cubism2');
+  assert.equal(selectRendererAdapter(4).Adapter, PixiLive2dAdapter);
+  assert.equal(selectRendererAdapter(2).kind, 'legacy-cubism2');
+  assert.equal(selectRendererAdapter(2).Adapter, LegacyPixiLive2dAdapter);
+  assert.equal(selectRendererAdapter(5).kind, 'modern-cubism');
   assert.throws(
-    () => selectRendererAdapter(4, { modern: 'unknown' }),
-    (error) => error instanceof RendererContractError && error.code === 'UNSUPPORTED_RENDERER_ADAPTER',
+    () => selectRendererAdapter(6),
+    (error) => error instanceof RendererContractError && error.code === 'UNSUPPORTED_CUBISM_VERSION',
   );
-  assert.ok(createRendererAdapter({ cubismVersion: 4, modern: 'official', page: new FakeOfficialPage() }) instanceof OfficialCubismWebFrameworkAdapter);
+  assert.ok(createRendererAdapter({ cubismVersion: 4, page: new FakePixiPage() }) instanceof PixiLive2dAdapter);
 });
 
 test('renderer host helpers enforce sandbox defaults, CSP, and a narrow IPC surface', async () => {
@@ -381,15 +323,13 @@ test('renderer asset server exposes only the selected source root and runtime fi
   fs.writeFileSync(path.join(root, 'motions', 'idle.motion3.json'), '{}');
   const runtimePath = path.join(outside, 'live2dcubismcore.min.js');
   fs.writeFileSync(runtimePath, 'runtime');
-  const frameworkPath = path.join(outside, 'live2pet-framework-bridge.js');
-  fs.writeFileSync(frameworkPath, 'framework');
   assert.equal(safeRelativePath(root, 'motions/idle.motion3.json'), path.join(root, 'motions', 'idle.motion3.json'));
   assert.equal(safeRelativePath(root, '../escape.txt'), null);
   await assert.rejects(
     () => createRendererAssetServer({ sourceRoot: root, runtimePath, host: '0.0.0.0' }),
     (error) => error instanceof RendererContractError && error.code === 'NON_LOOPBACK_BINDING',
   );
-  const server = await createRendererAssetServer({ sourceRoot: root, runtimePath, frameworkPath });
+  const server = await createRendererAssetServer({ sourceRoot: root, runtimePath });
   try {
     const model = await fetch(`${server.modelUrl('model3.json')}`);
     assert.equal(model.status, 200);
@@ -397,15 +337,10 @@ test('renderer asset server exposes only the selected source root and runtime fi
     const runtime = await fetch(server.runtimeUrl);
     assert.equal(runtime.status, 200);
     assert.equal(await runtime.text(), 'runtime');
-    const framework = await fetch(server.frameworkUrl);
-    assert.equal(framework.status, 200);
-    assert.equal(await framework.text(), 'framework');
     const traversal = await fetch(`${server.baseUrl}/model/${encodeURIComponent('../outside.txt')}`);
     assert.equal(traversal.status, 404);
     const arbitrary = await fetch(`${server.baseUrl}/runtime/${encodeURIComponent('other.js')}`);
     assert.equal(arbitrary.status, 404);
-    const arbitraryFramework = await fetch(`${server.baseUrl}/framework/${encodeURIComponent('other.js')}`);
-    assert.equal(arbitraryFramework.status, 404);
     const health = await fetch(`${server.baseUrl}/health`);
     assert.deepEqual(await health.json(), { ok: true, protocolVersion: 1 });
   } finally {

@@ -6,7 +6,9 @@ const {
   selectCodexFrameSets,
   validateCodexPetPackage,
 } = require('@live2pet/codex-target');
+const CODEX_PROFILE = require('@live2pet/codex-target/profile');
 const { createClawdTarget, validateClawdThemePackage } = require('@live2pet/clawd-target');
+const CLAWD_PROFILE = require('@live2pet/clawd-target/profile');
 const { assertProjectBuildable, validateProject } = require('@live2pet/project');
 const { sampleMotionCandidates } = require('@live2pet/renderer');
 const { CacheError, CacheStore, DEFAULT_CACHE_LIMIT, createCacheKey } = require('./cache.cjs');
@@ -38,24 +40,14 @@ const MAX_RGBA_CHUNK_BYTES = 64 * 1024 * 1024;
 const MAX_STACKED_RGBA_BYTES = 1024 * 1024 * 1024;
 const RGBA_FRAME_COMPRESSION = 'deflate';
 const RGBA_STACK_COMPRESSION = 'deflate-stack-v1';
-const PACKAGE_FILES = Object.freeze(['pet.json', 'spritesheet.webp']);
-const CLAWD_PACKAGE_LIMIT = 83_886_080;
+const PACKAGE_FILES = CODEX_PROFILE.package.files;
+const CLAWD_PACKAGE_LIMIT = CLAWD_PROFILE.package.maxBytes;
 const DEFAULT_CLAWD_ENCODING_CONCURRENCY = 2;
 const MAX_CLAWD_ENCODING_CONCURRENCY = 8;
 const BUILD_REPORT_SCHEMA_VERSION = 1;
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
-const TARGET_RENDER_PRESETS = Object.freeze({
-  clawd: Object.freeze({
-    compact: Object.freeze({ width: 512, height: 512, fps: 18, quality: 76, alphaQuality: 100 }),
-    balanced: Object.freeze({ width: 768, height: 768, fps: 24, quality: 82, alphaQuality: 100 }),
-    high: Object.freeze({ width: 1024, height: 1024, fps: 30, quality: 88, alphaQuality: 100 }),
-  }),
-  'codex-pet': Object.freeze({
-    compact: Object.freeze({ width: 192, height: 208, samplesPerSecond: 32 }),
-    balanced: Object.freeze({ width: 192, height: 208, samplesPerSecond: 64 }),
-    high: Object.freeze({ width: 192, height: 208, samplesPerSecond: 96 }),
-  }),
-});
+const TARGET_PROFILES = Object.freeze({ clawd: CLAWD_PROFILE, 'codex-pet': CODEX_PROFILE });
+const TARGET_RENDER_PRESETS = Object.freeze(Object.fromEntries(Object.entries(TARGET_PROFILES).map(([id, profile]) => [id, profile.renderPresets])));
 
 class PackageBuildError extends Error {
   constructor(code, message, details = {}) {
@@ -67,10 +59,11 @@ class PackageBuildError extends Error {
 }
 
 function resolveTargetRenderPreset(target, render = {}) {
+  const profile = TARGET_PROFILES[target];
   const presetName = typeof render.preset === 'string' && render.preset.trim()
     ? render.preset.trim().toLowerCase()
-    : 'balanced';
-  const preset = TARGET_RENDER_PRESETS[target] && TARGET_RENDER_PRESETS[target][presetName];
+    : (profile ? profile.defaultRenderPreset : 'balanced');
+  const preset = profile && profile.renderPresets[presetName];
   if (!preset) fail('INVALID_RENDER_PRESET', `Unknown ${target || 'target'} Render Preset: ${presetName}.`, { target, preset: presetName, available: Object.keys(TARGET_RENDER_PRESETS[target] || {}) });
   return { name: presetName, settings: { ...preset } };
 }
@@ -1138,6 +1131,7 @@ module.exports = {
   STAGES,
   TargetPreviewError,
   TARGET_RENDER_PRESETS,
+  TARGET_PROFILES,
   buildClawdTheme,
   buildCodexPet,
   buildProjectTargets,

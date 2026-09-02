@@ -1,7 +1,6 @@
 const crypto = require('node:crypto');
 const path = require('node:path');
 
-const { MapperSessionError, startMapperSessionHost } = require('@live2pet/mapper-session');
 const { installPackage } = require('@live2pet/installation');
 
 const APP_IPC_PROTOCOL_VERSION = 1;
@@ -11,19 +10,6 @@ const APP_BUILD_ARTIFACT_CHUNK_BYTES = 1024 * 1024;
 const APP_INSTALL_LOCATION_LIMIT = 8;
 const APP_SOURCE_INSPECTION_PROGRESS_STAGE = 'inspect';
 const APP_RUNTIME_PROGRESS_STAGE = 'runtime';
-const APP_SKILL_PROGRESS_STAGE = 'skill';
-const RENDERER_PREVIEW_COMMANDS = Object.freeze([
-  'playMotion',
-  'pause',
-  'resume',
-  'restart',
-  'setLoop',
-  'setSpeed',
-  'setExpression',
-  'step',
-  'getState',
-  'getBounds',
-]);
 const BUILD_PROGRESS_FIELDS = Object.freeze([
   'target',
   'stage',
@@ -68,27 +54,15 @@ const APP_IPC_METHODS = Object.freeze([
   'getRuntimeSettings',
   'configureRuntime',
   'clearRuntimeSettings',
-  'getSkillStatus',
-  'installSkill',
   'getCaptureCacheStatus',
   'putCaptureCache',
   'getBuildCacheStatus',
   'clearBuildCache',
-  'startMapperSession',
-  'getMapperProject',
-  'updateMapperProject',
   'buildProject',
   'cancelBuild',
   'getBuildArtifact',
   'chooseInstallRoot',
   'installArtifact',
-  'closeMapperSession',
-  'startRendererPreview',
-  'loadRendererSource',
-  'rendererCommand',
-  'getRendererPreviewStatus',
-  'restartRendererPreview',
-  'closeRendererPreview',
 ]);
 
 class AppHostError extends Error {
@@ -218,16 +192,6 @@ function normalizeRuntimeRequest(value) {
   return { inputPath: value.inputPath.trim() };
 }
 
-function normalizeSkillInstallRequest(value) {
-  if (!isRecord(value)) fail('INVALID_SKILL_INSTALL_REQUEST', 'App skill installation input must be an object.');
-  const allowed = new Set(['confirmInstall', 'overwrite']);
-  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
-  if (unknown.length) fail('INVALID_SKILL_INSTALL_REQUEST', `App skill installation contains unsupported fields: ${unknown.join(', ')}.`);
-  if (value.confirmInstall !== true) fail('INSTALL_AUTHORIZATION_REQUIRED', 'Installing the Live2Pet skill requires explicit confirmation.');
-  if (value.overwrite !== undefined && typeof value.overwrite !== 'boolean') fail('INVALID_SKILL_INSTALL_REQUEST', 'Skill overwrite must be a boolean when provided.');
-  return { confirmInstall: true, overwrite: value.overwrite === true };
-}
-
 function normalizeCaptureCacheRecipe(value, index) {
   if (!isRecord(value)) fail('INVALID_CAPTURE_CACHE_REQUEST', `Capture cache recipe ${index} must be an object.`);
   const allowed = new Set(['motionId', 'expressionId', 'duration', 'width', 'height', 'frameCount', 'fps']);
@@ -353,185 +317,6 @@ function summarizeBuildCacheClear(result) {
   };
 }
 
-function normalizeRendererSessionId(value, label = 'sessionId') {
-  if (typeof value !== 'string' || !value.trim() || value.length > 128 || !/^[A-Za-z0-9_-]{8,128}$/.test(value.trim())) {
-    fail('INVALID_RENDERER_PREVIEW_REQUEST', `${label} must be an opaque renderer preview session id.`);
-  }
-  return value.trim();
-}
-
-function normalizeRendererModelConfig(value) {
-  if (typeof value !== 'string' || !value.trim() || value.length > 2048 || value.includes('\0')) {
-    fail('INVALID_RENDERER_SOURCE_REQUEST', 'Renderer modelConfig must be a non-empty relative path.');
-  }
-  const replaced = value.trim().replaceAll('\\', '/');
-  if (replaced.startsWith('/') || /^[A-Za-z]:\//.test(replaced)) fail('INVALID_RENDERER_SOURCE_REQUEST', 'Renderer modelConfig must remain inside the selected Source Package.');
-  const normalized = path.posix.normalize(replaced);
-  if (!normalized || normalized === '.' || normalized === '..' || normalized.startsWith('../')) fail('INVALID_RENDERER_SOURCE_REQUEST', 'Renderer modelConfig must remain inside the selected Source Package.');
-  return normalized;
-}
-
-function normalizeRendererPreviewStartRequest(value) {
-  if (!isRecord(value)) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer preview start input must be an object.');
-  const allowed = new Set(['sourceRoot', 'cubismVersion', 'width', 'height', 'show', 'modernAdapter', 'frameworkPath', 'frameworkGlobal']);
-  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
-  if (unknown.length) fail('INVALID_RENDERER_PREVIEW_REQUEST', `Renderer preview start input contains unsupported fields: ${unknown.join(', ')}.`);
-  if (typeof value.sourceRoot !== 'string' || !value.sourceRoot.trim() || value.sourceRoot.length > 4096 || value.sourceRoot.includes('\0') || !/^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value.sourceRoot.trim())) {
-    fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer preview sourceRoot must be an absolute local directory path.');
-  }
-  const cubismVersion = Number(value.cubismVersion);
-  if (![2, 3, 4, 5].includes(cubismVersion)) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer preview cubismVersion must be 2, 3, 4, or 5.');
-  const modernAdapter = value.modernAdapter === undefined ? 'pixi' : value.modernAdapter;
-  if (typeof modernAdapter !== 'string' || !['pixi', 'official'].includes(modernAdapter.trim().toLowerCase())) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer preview modernAdapter must be pixi or official.');
-  const normalizedAdapter = modernAdapter.trim().toLowerCase();
-  if (cubismVersion === 2 && normalizedAdapter !== 'pixi') fail('INVALID_RENDERER_PREVIEW_REQUEST', 'The official renderer adapter supports only Cubism 3, 4, or 5.');
-  let frameworkPath;
-  if (value.frameworkPath !== undefined) {
-    if (typeof value.frameworkPath !== 'string' || !value.frameworkPath.trim() || value.frameworkPath.length > 4096 || value.frameworkPath.includes('\0') || !/^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value.frameworkPath.trim())) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer frameworkPath must be an absolute local file path.');
-    frameworkPath = value.frameworkPath.trim();
-  }
-  if (normalizedAdapter === 'official' && !frameworkPath) fail('OFFICIAL_FRAMEWORK_REQUIRED', 'The official renderer requires a user-provided Framework bridge bundle.');
-  let frameworkGlobal;
-  if (value.frameworkGlobal !== undefined) {
-    if (typeof value.frameworkGlobal !== 'string' || !/^(?:[A-Za-z_$][\w$]*)(?:\.(?:[A-Za-z_$][\w$]*))*$/.test(value.frameworkGlobal.trim())) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer frameworkGlobal must be a dot-separated JavaScript global name.');
-    frameworkGlobal = value.frameworkGlobal.trim();
-  }
-  const width = value.width === undefined ? 512 : Number(value.width);
-  const height = value.height === undefined ? 512 : Number(value.height);
-  if (!Number.isInteger(width) || width < 128 || width > 2048 || !Number.isInteger(height) || height < 128 || height > 2048) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer preview dimensions must be integers between 128 and 2048.');
-  if (value.show !== undefined && typeof value.show !== 'boolean') fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer preview show must be boolean.');
-  return {
-    sourceRoot: value.sourceRoot.trim(),
-    cubismVersion,
-    width,
-    height,
-    show: value.show === undefined ? true : value.show,
-    ...(normalizedAdapter === 'pixi' ? {} : { modernAdapter: normalizedAdapter }),
-    ...(frameworkPath ? { frameworkPath } : {}),
-    ...(frameworkGlobal ? { frameworkGlobal } : {}),
-  };
-}
-
-function normalizeRendererMotion(value, index) {
-  if (!isRecord(value)) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Motion ${index} must be an object.`);
-  const allowed = new Set(['id', 'name', 'group', 'index', 'duration']);
-  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
-  if (unknown.length) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Motion ${index} contains unsupported fields: ${unknown.join(', ')}.`);
-  if (typeof value.id !== 'string' || !value.id.trim() || value.id.length > 256) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Motion ${index} id is invalid.`);
-  if (typeof value.group !== 'string' || value.group.length > 256) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Motion ${index} group is invalid.`);
-  const motionIndex = Number(value.index);
-  if (!Number.isInteger(motionIndex) || motionIndex < 0 || motionIndex > 100000) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Motion ${index} index is invalid.`);
-  const duration = value.duration == null ? null : Number(value.duration);
-  if (duration !== null && (!Number.isFinite(duration) || duration < 0 || duration > 3600)) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Motion ${index} duration is invalid.`);
-  return {
-    id: value.id.trim(),
-    name: value.name === undefined ? value.id.trim() : (typeof value.name === 'string' && value.name.length <= 256 ? value.name : fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Motion ${index} name is invalid.`)),
-    group: value.group,
-    index: motionIndex,
-    duration,
-  };
-}
-
-function normalizeRendererExpression(value, index) {
-  if (!isRecord(value)) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Expression ${index} must be an object.`);
-  const allowed = new Set(['id', 'name', 'runtimeId']);
-  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
-  if (unknown.length) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Expression ${index} contains unsupported fields: ${unknown.join(', ')}.`);
-  if (typeof value.id !== 'string' || !value.id.trim() || value.id.length > 256) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Expression ${index} id is invalid.`);
-  const name = value.name === undefined ? value.id.trim() : value.name;
-  if (typeof name !== 'string' || name.length > 256) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Expression ${index} name is invalid.`);
-  const runtimeId = value.runtimeId;
-  if (runtimeId !== undefined && !((typeof runtimeId === 'string' && runtimeId.length <= 256) || (Number.isInteger(runtimeId) && runtimeId >= 0 && runtimeId <= 100000))) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer Expression ${index} runtimeId is invalid.`);
-  return { id: value.id.trim(), name, ...(runtimeId === undefined ? {} : { runtimeId }) };
-}
-
-function normalizeRendererLoadRequest(value) {
-  if (!isRecord(value)) fail('INVALID_RENDERER_SOURCE_REQUEST', 'Renderer source input must be an object.');
-  const allowed = new Set(['sessionId', 'modelConfig', 'cubismVersion', 'motions', 'expressions']);
-  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
-  if (unknown.length) fail('INVALID_RENDERER_SOURCE_REQUEST', `Renderer source input contains unsupported fields: ${unknown.join(', ')}.`);
-  const sessionId = normalizeRendererSessionId(value.sessionId);
-  const cubismVersion = Number(value.cubismVersion);
-  if (![2, 3, 4, 5].includes(cubismVersion)) fail('INVALID_RENDERER_SOURCE_REQUEST', 'Renderer source cubismVersion must be 2, 3, 4, or 5.');
-  if (!Array.isArray(value.motions) || value.motions.length > 2048) fail('INVALID_RENDERER_SOURCE_REQUEST', 'Renderer source motions must be an array with at most 2048 entries.');
-  if (value.expressions !== undefined && (!Array.isArray(value.expressions) || value.expressions.length > 512)) fail('INVALID_RENDERER_SOURCE_REQUEST', 'Renderer source expressions must be an array with at most 512 entries.');
-  return {
-    sessionId,
-    source: {
-      modelConfig: normalizeRendererModelConfig(value.modelConfig),
-      cubismVersion,
-      motions: value.motions.map(normalizeRendererMotion),
-      expressions: (value.expressions || []).map(normalizeRendererExpression),
-    },
-  };
-}
-
-function normalizeRendererCommandArgument(value, depth = 0) {
-  if (value === null || typeof value === 'boolean') return value;
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) fail('INVALID_RENDERER_COMMAND', 'Renderer command arguments must contain finite numbers.');
-    return value;
-  }
-  if (typeof value === 'string') {
-    if (value.length > 1024) fail('INVALID_RENDERER_COMMAND', 'Renderer command string arguments are too long.');
-    if (/^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value)) fail('INVALID_RENDERER_COMMAND', 'Renderer command arguments cannot contain absolute paths.');
-    return value;
-  }
-  if (Buffer.isBuffer(value) || value instanceof ArrayBuffer || ArrayBuffer.isView(value)) fail('INVALID_RENDERER_COMMAND', 'Renderer command arguments cannot contain binary data.');
-  if (depth >= 3) fail('INVALID_RENDERER_COMMAND', 'Renderer command arguments are nested too deeply.');
-  if (Array.isArray(value)) {
-    if (value.length > 16) fail('INVALID_RENDERER_COMMAND', 'Renderer command arrays are too large.');
-    return value.map((item) => normalizeRendererCommandArgument(item, depth + 1));
-  }
-  if (!isRecord(value)) fail('INVALID_RENDERER_COMMAND', 'Renderer command arguments contain an unsupported value.');
-  const keys = Object.keys(value);
-  if (keys.length > 16) fail('INVALID_RENDERER_COMMAND', 'Renderer command objects are too large.');
-  return Object.fromEntries(keys.map((key) => {
-    if (!key || key.length > 64 || key.includes('\0')) fail('INVALID_RENDERER_COMMAND', 'Renderer command object keys are invalid.');
-    return [key, normalizeRendererCommandArgument(value[key], depth + 1)];
-  }));
-}
-
-function normalizeRendererCommandRequest(value) {
-  if (!isRecord(value)) fail('INVALID_RENDERER_COMMAND', 'Renderer command input must be an object.');
-  const allowed = new Set(['sessionId', 'method', 'args']);
-  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
-  if (unknown.length) fail('INVALID_RENDERER_COMMAND', `Renderer command input contains unsupported fields: ${unknown.join(', ')}.`);
-  const sessionId = normalizeRendererSessionId(value.sessionId);
-  if (typeof value.method !== 'string' || !RENDERER_PREVIEW_COMMANDS.includes(value.method)) fail('INVALID_RENDERER_COMMAND', `Renderer command is not allowed: ${String(value.method)}.`);
-  const args = value.args == null ? [] : value.args;
-  if (!Array.isArray(args) || args.length > 4) fail('INVALID_RENDERER_COMMAND', 'Renderer command args must be an array with at most four items.');
-  return { sessionId, method: value.method, args: args.map((item) => normalizeRendererCommandArgument(item)) };
-}
-
-function normalizeRendererSessionRequest(value, { optional = false } = {}) {
-  if (value === undefined && optional) return {};
-  if (!isRecord(value)) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'Renderer preview session input must be an object.');
-  const unknown = Object.keys(value).filter((key) => key !== 'sessionId');
-  if (unknown.length) fail('INVALID_RENDERER_PREVIEW_REQUEST', `Renderer preview session input contains unsupported fields: ${unknown.join(', ')}.`);
-  if (value.sessionId === undefined && optional) return {};
-  return { sessionId: normalizeRendererSessionId(value.sessionId) };
-}
-
-function sanitizeRendererPreviewValue(value, depth = 0) {
-  if (Buffer.isBuffer(value) || value instanceof ArrayBuffer || ArrayBuffer.isView(value)) fail('INVALID_RENDERER_PREVIEW_RESULT', 'Renderer preview results cannot contain binary data.');
-  if (typeof value === 'string') return /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value) ? '<redacted-path>' : value.slice(0, 4096);
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value === 'boolean' || value === null) return value;
-  if (value === undefined) return null;
-  if (depth > 8) fail('INVALID_RENDERER_PREVIEW_RESULT', 'Renderer preview results are nested too deeply.');
-  if (Array.isArray(value)) {
-    if (value.length > 2048) fail('INVALID_RENDERER_PREVIEW_RESULT', 'Renderer preview results contain too many entries.');
-    return value.map((item) => sanitizeRendererPreviewValue(item, depth + 1));
-  }
-  if (!isRecord(value)) fail('INVALID_RENDERER_PREVIEW_RESULT', 'Renderer preview results contain an unsupported value.');
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizeRendererPreviewValue(item, depth + 1)]));
-}
-
-function summarizeRendererPreviewResult(result) {
-  return sanitizeRendererPreviewValue(result);
-}
-
 function summarizeRuntimeSettings(result) {
   const sanitized = sanitizeInspectionValue(result);
   if (!isRecord(sanitized) || sanitized.schemaVersion !== 2 || typeof sanitized.configured !== 'boolean' || sanitized.restartRequired !== false || !Array.isArray(sanitized.runtimes) || sanitized.runtimes.length > 2) fail('INVALID_RUNTIME_RESULT', 'App runtime settings did not return the supported runtime library contract.');
@@ -557,58 +342,6 @@ function summarizeRuntimeSettings(result) {
     restartRequired: false,
     runtimes,
   };
-}
-
-function summarizeSkillPart(value, kind) {
-  if (!isRecord(value)) fail('INVALID_SKILL_RESULT', `App skill ${kind} status is invalid.`);
-  const exists = kind === 'installed' ? value.exists : value.available;
-  const files = value.files === undefined && kind === 'source' && exists === false ? [] : value.files;
-  const byteLength = value.byteLength === undefined && kind === 'source' && exists === false ? 0 : value.byteLength;
-  const sha256 = value.sha256 === undefined && kind === 'source' && exists === false ? null : value.sha256;
-  if (typeof exists !== 'boolean' || typeof value.valid !== 'boolean' || !Array.isArray(files) || files.length > 128 || !Number.isSafeInteger(byteLength) || byteLength < 0) {
-    fail('INVALID_SKILL_RESULT', `App skill ${kind} status is incomplete.`);
-  }
-  if (sha256 !== null && (typeof sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(sha256))) fail('INVALID_SKILL_RESULT', `App skill ${kind} digest is invalid.`);
-  const summary = {
-    ...(kind === 'installed' ? { exists } : { available: exists }),
-    valid: value.valid,
-    fileCount: files.length,
-    byteLength,
-    sha256: sha256 === null ? null : sha256.toLowerCase(),
-  };
-  if (value.error && isRecord(value.error) && typeof value.error.code === 'string') {
-    summary.error = { code: value.error.code.slice(0, 96), message: String(value.error.message || 'Skill status is unavailable.').replace(/(?:[A-Za-z]:[\\/]|\/(?:Users|home|private|tmp)\/)[^\s'"`]+/g, '<redacted-path>').slice(0, 512) };
-  }
-  return summary;
-}
-
-function summarizeSkillStatus(result) {
-  if (!isRecord(result) || result.skillId !== 'live2pet' || typeof result.upToDate !== 'boolean') fail('INVALID_SKILL_RESULT', 'App skill status did not return the supported Live2Pet contract.');
-  return {
-    schemaVersion: 1,
-    skillId: 'live2pet',
-    upToDate: result.upToDate,
-    source: summarizeSkillPart(result.source, 'source'),
-    installed: summarizeSkillPart(result.installed, 'installed'),
-  };
-}
-
-function summarizeSkillInstall(result) {
-  if (!isRecord(result) || result.skillId !== 'live2pet' || !Array.isArray(result.files) || result.files.length > 128 || !Number.isSafeInteger(result.byteLength) || result.byteLength < 0 || typeof result.sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(result.sha256) || typeof result.upgraded !== 'boolean') fail('INVALID_SKILL_RESULT', 'App skill installation did not return the supported result contract.');
-  return { schemaVersion: 1, skillId: 'live2pet', fileCount: result.files.length, byteLength: result.byteLength, sha256: result.sha256.toLowerCase(), upgraded: result.upgraded };
-}
-
-function summarizeSkillProgress(events) {
-  if (!Array.isArray(events) || events.length > 32) fail('INVALID_SKILL_RESULT', 'App skill progress is invalid.');
-  return events.map((event, index) => {
-    if (!isRecord(event) || typeof event.stage !== 'string' || typeof event.status !== 'string' || event.stage.length > 64 || event.status.length > 64) fail('INVALID_SKILL_RESULT', `App skill progress event ${index} is invalid.`);
-    return {
-      stage: event.stage.slice(0, 64),
-      status: event.status.slice(0, 64),
-      ...(typeof event.files === 'number' && Number.isSafeInteger(event.files) && event.files >= 0 && event.files <= 128 ? { files: event.files } : {}),
-      ...(typeof event.upgraded === 'boolean' ? { upgraded: event.upgraded } : {}),
-    };
-  });
 }
 
 function normalizeInstallRequest(value) {
@@ -728,42 +461,28 @@ function typedError(error) {
   };
 }
 
-function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, sourceInspectionService = null, runtimeSettingsService = null, skillService = null, captureCacheService = null, rendererPreviewService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
-  if (typeof mapperHostFactory !== 'function') fail('INVALID_APP_ROUTER', 'mapperHostFactory must be a function.');
+function createAppIpcRouter({ sourceInspectionService = null, runtimeSettingsService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
   if (sourceInspectionService !== null && typeof sourceInspectionService !== 'function') fail('INVALID_APP_ROUTER', 'sourceInspectionService must be a function when provided.');
   if (runtimeSettingsService !== null && (!isRecord(runtimeSettingsService) || typeof runtimeSettingsService.get !== 'function' || typeof runtimeSettingsService.configure !== 'function' || typeof runtimeSettingsService.clear !== 'function')) fail('INVALID_APP_ROUTER', 'runtimeSettingsService must expose get, configure, and clear functions when provided.');
-  if (skillService !== null && (!isRecord(skillService) || typeof skillService.get !== 'function' || typeof skillService.install !== 'function')) fail('INVALID_APP_ROUTER', 'skillService must expose get and install functions when provided.');
   if (captureCacheService !== null && (!isRecord(captureCacheService) || typeof captureCacheService.status !== 'function')) fail('INVALID_APP_ROUTER', 'captureCacheService must expose a status function when provided.');
-  if (rendererPreviewService !== null && (!isRecord(rendererPreviewService) || typeof rendererPreviewService.start !== 'function' || typeof rendererPreviewService.loadSource !== 'function' || typeof rendererPreviewService.command !== 'function' || typeof rendererPreviewService.status !== 'function' || typeof rendererPreviewService.restart !== 'function' || typeof rendererPreviewService.close !== 'function')) fail('INVALID_APP_ROUTER', 'rendererPreviewService must expose start, loadSource, command, status, restart, and close functions when provided.');
   if (buildProjectService !== null && typeof buildProjectService !== 'function') fail('INVALID_APP_ROUTER', 'buildProjectService must be a function when provided.');
   if (installPackageService !== null && typeof installPackageService !== 'function') fail('INVALID_APP_ROUTER', 'installPackageService must be a function when provided.');
   if (installRootPickerService !== null && typeof installRootPickerService !== 'function') fail('INVALID_APP_ROUTER', 'installRootPickerService must be a function when provided.');
   if (onBuildProgress !== null && typeof onBuildProgress !== 'function') fail('INVALID_APP_ROUTER', 'onBuildProgress must be a function when provided.');
   if (typeof appVersion !== 'string' || !appVersion.trim()) fail('INVALID_APP_ROUTER', 'appVersion must be a non-empty string.');
-  let activeHost = null;
-  let activeClient = null;
   let buildArtifacts = new Map();
   let activeBuilds = new Map();
   let installLocations = new Map();
 
-  const closeActive = async () => {
+  const close = async () => {
     for (const { controller } of activeBuilds.values()) controller.abort();
     activeBuilds = new Map();
-    if (!activeHost) {
-      buildArtifacts = new Map();
-      installLocations = new Map();
-      return { closed: false };
-    }
-    const host = activeHost;
-    activeHost = null;
-    activeClient = null;
     buildArtifacts = new Map();
     installLocations = new Map();
-    await host.close();
-    return { closed: true, sessionId: host.sessionId };
+    return { closed: true };
   };
 
-  return async (request) => {
+  const route = async (request) => {
     try {
       const normalized = normalizeRequest(request);
       if (normalized.method === 'getVersion') return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: { appVersion, protocolVersion: APP_IPC_PROTOCOL_VERSION, methods: [...APP_IPC_METHODS] } };
@@ -793,18 +512,6 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, source
         if (!runtimeSettingsService) fail('APP_RUNTIME_UNAVAILABLE', 'The App runtime settings service is not configured.');
         return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRuntimeSettings(await runtimeSettingsService.clear()) };
       }
-      if (normalized.method === 'getSkillStatus') {
-        if (!skillService) fail('APP_SKILL_UNAVAILABLE', 'The App skill service is not configured.');
-        if (normalized.args.length) fail('INVALID_SKILL_REQUEST', 'getSkillStatus does not accept arguments.');
-        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeSkillStatus(await skillService.get()) };
-      }
-      if (normalized.method === 'installSkill') {
-        if (!skillService) fail('APP_SKILL_UNAVAILABLE', 'The App skill service is not configured.');
-        const input = normalizeSkillInstallRequest(normalized.args[0]);
-        const progress = [];
-        const installed = await skillService.install({ ...input, onProgress: (event) => progress.push(event) });
-        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, progress: [...summarizeSkillProgress(progress), { stage: APP_SKILL_PROGRESS_STAGE, status: 'completed' }], result: summarizeSkillInstall(installed) };
-      }
       if (normalized.method === 'getCaptureCacheStatus') {
         if (!captureCacheService) fail('APP_CAPTURE_CACHE_UNAVAILABLE', 'The App capture cache service is not configured.');
         const input = normalizeCaptureCacheStatusRequest(normalized.args[0]);
@@ -824,56 +531,6 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, source
         if (!captureCacheService || typeof captureCacheService.clearAll !== 'function') fail('APP_BUILD_CACHE_UNAVAILABLE', 'The App build cache service is not configured.');
         normalizeBuildCacheClearRequest(normalized.args[0]);
         return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeBuildCacheClear(await captureCacheService.clearAll()) };
-      }
-      if (normalized.method === 'startRendererPreview') {
-        if (!rendererPreviewService) fail('APP_RENDERER_PREVIEW_UNAVAILABLE', 'The App isolated renderer preview service is not configured.');
-        const input = normalizeRendererPreviewStartRequest(normalized.args[0]);
-        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRendererPreviewResult(await rendererPreviewService.start(input)) };
-      }
-      if (normalized.method === 'loadRendererSource') {
-        if (!rendererPreviewService) fail('APP_RENDERER_PREVIEW_UNAVAILABLE', 'The App isolated renderer preview service is not configured.');
-        const input = normalizeRendererLoadRequest(normalized.args[0]);
-        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRendererPreviewResult(await rendererPreviewService.loadSource(input)) };
-      }
-      if (normalized.method === 'rendererCommand') {
-        if (!rendererPreviewService) fail('APP_RENDERER_PREVIEW_UNAVAILABLE', 'The App isolated renderer preview service is not configured.');
-        const input = normalizeRendererCommandRequest(normalized.args[0]);
-        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRendererPreviewResult(await rendererPreviewService.command(input)) };
-      }
-      if (normalized.method === 'getRendererPreviewStatus') {
-        if (!rendererPreviewService) fail('APP_RENDERER_PREVIEW_UNAVAILABLE', 'The App isolated renderer preview service is not configured.');
-        if (normalized.args.length) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'getRendererPreviewStatus does not accept arguments.');
-        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRendererPreviewResult(await rendererPreviewService.status()) };
-      }
-      if (normalized.method === 'restartRendererPreview') {
-        if (!rendererPreviewService) fail('APP_RENDERER_PREVIEW_UNAVAILABLE', 'The App isolated renderer preview service is not configured.');
-        const input = normalizeRendererSessionRequest(normalized.args[0]);
-        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRendererPreviewResult(await rendererPreviewService.restart(input)) };
-      }
-      if (normalized.method === 'closeRendererPreview') {
-        if (!rendererPreviewService) fail('APP_RENDERER_PREVIEW_UNAVAILABLE', 'The App isolated renderer preview service is not configured.');
-        if (normalized.args.length > 1) fail('INVALID_RENDERER_PREVIEW_REQUEST', 'closeRendererPreview accepts at most one session object.');
-        const input = normalizeRendererSessionRequest(normalized.args[0], { optional: true });
-        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRendererPreviewResult(await rendererPreviewService.close(input)) };
-      }
-      if (normalized.method === 'startMapperSession') {
-        if (activeHost) fail('MAPPER_SESSION_ACTIVE', 'A Mapper Session is already active. Close it before starting another session.');
-        const [options = {}] = normalized.args;
-        if (!options || typeof options !== 'object' || Array.isArray(options)) fail('INVALID_MAPPER_SESSION_OPTIONS', 'Mapper Session options must be an object.');
-        const host = await mapperHostFactory(options);
-        if (!host || typeof host.getLaunchDescriptor !== 'function' || typeof host.getClient !== 'function' || typeof host.close !== 'function') fail('INVALID_MAPPER_HOST', 'Mapper host must expose a launch descriptor, client, and close method.');
-        activeHost = host;
-        activeClient = host.getClient();
-        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: host.getLaunchDescriptor() };
-      }
-      if (normalized.method === 'getMapperProject') {
-        if (!activeClient) fail('MAPPER_SESSION_REQUIRED', 'Start a Mapper Session before reading its project.');
-        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: await activeClient.getProject() };
-      }
-      if (normalized.method === 'updateMapperProject') {
-        if (!activeClient) fail('MAPPER_SESSION_REQUIRED', 'Start a Mapper Session before updating its project.');
-        const [project] = normalized.args;
-        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: await activeClient.updateProject(project) };
       }
       if (normalized.method === 'buildProject') {
         if (!buildProjectService) fail('APP_BUILD_UNAVAILABLE', 'The App Package Build service is not configured.');
@@ -983,12 +640,13 @@ function createAppIpcRouter({ mapperHostFactory = startMapperSessionHost, source
         });
         return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, progress, result: summarizeInstall(installed, { customRoot: Boolean(location) }) };
       }
-      if (normalized.method === 'closeMapperSession') return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: await closeActive() };
       fail('UNKNOWN_APP_METHOD', `App method is not allowed: ${normalized.method}.`);
     } catch (error) {
       return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: false, error: typedError(error) };
     }
   };
+  route.close = close;
+  return route;
 }
 
 function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePath = null } = {}) {
@@ -1025,28 +683,16 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
     getRuntimeSettings: () => invoke('getRuntimeSettings'),
     configureRuntime: (input) => invoke('configureRuntime', input),
     clearRuntimeSettings: () => invoke('clearRuntimeSettings'),
-    getSkillStatus: () => invoke('getSkillStatus'),
-    installSkill: (input) => invoke('installSkill', input),
     getCaptureCacheStatus: (input) => invoke('getCaptureCacheStatus', input),
     getBuildCacheStatus: () => invoke('getBuildCacheStatus'),
     clearBuildCache: (input) => invoke('clearBuildCache', input),
     getFilePath: resolveFilePath,
-    startRendererPreview: (input) => invoke('startRendererPreview', input),
-    loadRendererSource: (input) => invoke('loadRendererSource', input),
-    rendererCommand: (input) => invoke('rendererCommand', input),
-    getRendererPreviewStatus: () => invoke('getRendererPreviewStatus'),
-    restartRendererPreview: (sessionId) => invoke('restartRendererPreview', { sessionId }),
-    closeRendererPreview: (sessionId) => invoke('closeRendererPreview', sessionId === undefined ? undefined : { sessionId }),
-    startMapperSession: (options) => invoke('startMapperSession', options),
-    getMapperProject: () => invoke('getMapperProject'),
-    updateMapperProject: (project) => invoke('updateMapperProject', project),
     buildProject: (input) => invoke('buildProject', input),
     cancelBuild: (buildId) => invoke('cancelBuild', { buildId }),
     onBuildProgress,
     getBuildArtifact: (artifactId, offset = 0) => invoke('getBuildArtifact', { artifactId, offset }),
     chooseInstallRoot: (target) => invoke('chooseInstallRoot', { target }),
     installArtifact: (request) => invoke('installArtifact', request),
-    closeMapperSession: () => invoke('closeMapperSession'),
   });
 }
 
@@ -1076,26 +722,19 @@ module.exports = {
   APP_BUILD_PROGRESS_CHANNEL,
   APP_SOURCE_INSPECTION_PROGRESS_STAGE,
   APP_RUNTIME_PROGRESS_STAGE,
-  APP_SKILL_PROGRESS_STAGE,
   APP_IPC_CHANNEL,
   APP_IPC_METHODS,
   APP_IPC_PROTOCOL_VERSION,
   AppHostError,
-  MapperSessionError,
   createAppIpcRouter,
   createAppPreloadApi,
   createAppWindowOptions,
   normalizeRequest,
   normalizeInspectRequest,
   normalizeRuntimeRequest,
-  normalizeSkillInstallRequest,
   normalizeBuildCacheClearRequest,
   normalizeCaptureCacheStatusRequest,
   normalizeCaptureCacheWriteRequest,
-  normalizeRendererPreviewStartRequest,
-  normalizeRendererLoadRequest,
-  normalizeRendererCommandRequest,
-  normalizeRendererSessionRequest,
   normalizeBuildRequest,
   normalizeCancelBuildRequest,
   normalizeInstallRequest,
@@ -1108,13 +747,8 @@ module.exports = {
   collectBuildArtifacts,
   summarizeSourceInspection,
   summarizeRuntimeSettings,
-  summarizeSkillStatus,
-  summarizeSkillInstall,
-  summarizeSkillProgress,
   summarizeCaptureCacheStatus,
   summarizeCaptureCacheWrite,
   summarizeBuildCacheStatus,
   summarizeBuildCacheClear,
-  summarizeRendererPreviewResult,
-  RENDERER_PREVIEW_COMMANDS,
 };

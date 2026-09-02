@@ -1,19 +1,10 @@
-const CONTRACT_VERSION = 1;
+const PROFILE = require('./profile.js');
+const CONTRACT_VERSION = PROFILE.contractVersion;
 const { selectMotionFrames } = require('@live2pet/frame-selection');
-const PACKAGE_FILES = ['pet.json', 'spritesheet.webp'];
-const ATLAS = Object.freeze({ width: 1536, height: 1872, columns: 8, rows: 9, cellWidth: 192, cellHeight: 208 });
-const ROWS = Object.freeze([
-  { id: 'idle', frames: 6 },
-  { id: 'running-right', frames: 8 },
-  { id: 'running-left', frames: 8 },
-  { id: 'waving', frames: 4 },
-  { id: 'jumping', frames: 5 },
-  { id: 'failed', frames: 8 },
-  { id: 'waiting', frames: 6 },
-  { id: 'running', frames: 6 },
-  { id: 'review', frames: 6 },
-]);
-const ROW_IDS = ROWS.map((row) => row.id);
+const PACKAGE_FILES = PROFILE.package.files;
+const ATLAS = PROFILE.atlas;
+const ROWS = PROFILE.rows;
+const ROW_IDS = PROFILE.rowIds;
 const MAPPING_PATTERN = /^motion:[^\s:][^\s]{0,255}$/;
 const SAFE_PET_ID = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,95})$/;
 
@@ -358,6 +349,7 @@ module.exports = {
   CONTRACT_VERSION,
   CodexValidationError,
   PACKAGE_FILES,
+  PROFILE,
   ROWS,
   ROW_IDS,
   assertValidCodexPetPackage,

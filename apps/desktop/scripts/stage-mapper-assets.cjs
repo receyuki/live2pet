@@ -14,8 +14,12 @@ const SUPPORT_FILES = Object.freeze([
     target: 'clawd-capture-plan.js',
   },
   {
-    source: path.resolve(__dirname, '../renderer/index.html'),
-    target: 'renderer.html',
+    source: path.resolve(__dirname, '../../../packages/clawd-target/src/profile.js'),
+    target: 'target-profiles/clawd.js',
+  },
+  {
+    source: path.resolve(__dirname, '../../../packages/codex-target/src/profile.js'),
+    target: 'target-profiles/codex-pet.js',
   },
 ]);
 
@@ -63,6 +67,8 @@ const ASSETS = Object.freeze([
 ]);
 
 const REPLACEMENTS = Object.freeze([
+  ['../../packages/clawd-target/src/profile.js', 'target-profiles/clawd.js'],
+  ['../../packages/codex-target/src/profile.js', 'target-profiles/codex-pet.js'],
   ['../../packages/live2d-exporter/node_modules/pixi.js/dist/browser/pixi.min.js', 'vendor/pixi.min.js'],
   ['../../packages/live2d-exporter/node_modules/@pixi/unsafe-eval/dist/browser/unsafe-eval.min.js', 'vendor/unsafe-eval.min.js'],
   ['../../packages/live2d-exporter/node_modules/pixi-live2d-display/dist/cubism4.min.js', 'vendor/cubism4.min.js'],
@@ -91,16 +97,6 @@ function sha256(filePath) {
 function copyFile(source, destination) {
   fs.mkdirSync(path.dirname(destination), { recursive: true });
   fs.copyFileSync(source, destination);
-}
-
-function writeSupportFile(source, destination, target) {
-  fs.mkdirSync(path.dirname(destination), { recursive: true });
-  if (target === 'renderer.html') {
-    const html = fs.readFileSync(source, 'utf8').replaceAll('../mapper-dist/vendor', './vendor');
-    fs.writeFileSync(destination, html, 'utf8');
-    return;
-  }
-  copyFile(source, destination);
 }
 
 function stageMapperAssets(output = DEFAULT_OUTPUT) {
@@ -132,7 +128,7 @@ function stageMapperAssets(output = DEFAULT_OUTPUT) {
       fail('Cubism Core must remain user-provided and cannot be staged.');
     }
     fs.writeFileSync(path.join(staging, 'index.html'), mapperHtml, 'utf8');
-    for (const file of SUPPORT_FILES) writeSupportFile(file.source, path.join(staging, file.target), file.target);
+    for (const file of SUPPORT_FILES) copyFile(file.source, path.join(staging, file.target));
 
     const manifest = {
       schemaVersion: 1,

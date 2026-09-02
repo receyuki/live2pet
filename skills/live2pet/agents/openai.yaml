@@ -1,4 +1,0 @@
-interface:
-  display_name: "Live2Pet"
-  short_description: "Build Live2Pet packages through the installed local CLI"
-  default_prompt: "Use Live2Pet to inspect, map, validate, build, export, or explicitly install a user-provided Live2D pet package."

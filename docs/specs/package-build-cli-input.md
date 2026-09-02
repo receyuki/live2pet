@@ -1,6 +1,6 @@
 # Package Build CLI input
 
-The `live2pet package-build` operation is the headless bridge used by the CLI and future Codex skill. It consumes a transient JSON build spec and calls the shared `buildProjectTargets` service. The spec is not a replacement for a `.live2pet` Project and should not be committed with source assets.
+The `live2pet package-build` operation is the CLI's headless build entrypoint. It consumes a transient JSON build spec and calls the shared `buildProjectTargets` service. The spec is not a replacement for a `.live2pet` Project and should not be committed with source assets.
 
 ## Shape
 

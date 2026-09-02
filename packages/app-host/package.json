@@ -8,7 +8,6 @@
     "test": "node --test test/*.test.cjs"
   },
   "dependencies": {
-    "@live2pet/installation": "workspace:*",
-    "@live2pet/mapper-session": "workspace:*"
+    "@live2pet/installation": "workspace:*"
   }
 }

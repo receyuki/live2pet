@@ -16,21 +16,12 @@ importers:
       '@live2pet/installation':
         specifier: workspace:*
         version: link:../../packages/installation
-      '@live2pet/mapper-session':
-        specifier: workspace:*
-        version: link:../../packages/mapper-session
       '@live2pet/package-build':
         specifier: workspace:*
         version: link:../../packages/package-build
-      '@live2pet/renderer':
-        specifier: workspace:*
-        version: link:../../packages/renderer
       '@live2pet/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
-      '@live2pet/skill-manager':
-        specifier: workspace:*
-        version: link:../../packages/skill-manager
       '@live2pet/source-inspector':
         specifier: workspace:*
         version: link:../../packages/source-inspector
@@ -47,9 +38,6 @@ importers:
       '@live2pet/installation':
         specifier: workspace:*
         version: link:../installation
-      '@live2pet/mapper-session':
-        specifier: workspace:*
-        version: link:../mapper-session
 
   packages/clawd-target: {}
 
@@ -91,12 +79,6 @@ importers:
         specifier: 6.5.10
         version: 6.5.10
 
-  packages/mapper-session:
-    dependencies:
-      '@live2pet/project':
-        specifier: workspace:*
-        version: link:../project
-
   packages/package-build:
     dependencies:
       '@live2pet/clawd-target':
@@ -123,10 +105,6 @@ importers:
   packages/renderer: {}
 
   packages/runtime: {}
-
-  packages/skill-client: {}
-
-  packages/skill-manager: {}
 
   packages/source-inspector: {}
 

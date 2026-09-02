@@ -4,9 +4,9 @@ Status: Rescoped on 2026-09-01 — single visible preview surface
 
 ## Product outcome
 
-V1 is successful when one macOS user can take a permitted local Live2D model from import to a validated Clawd theme ZIP or Codex custom-pet ZIP without rebuilding Live2Pet, manually running conversion commands, or repeatedly selecting the same renderer runtime.
+V1 is successful when one macOS user can take a permitted local Live2D model from import to a validated Clawd theme ZIP or Codex custom-pet ZIP, then explicitly install the generated package into its target host, without rebuilding Live2Pet, manually running conversion commands, or repeatedly selecting the same renderer runtime.
 
-The Desktop App is the V1 product. Existing CLI, installation, Mapper Session, Codex skill, and official Cubism Web Framework seams may remain in the repository, but they are not release gates for this milestone.
+The Desktop App is the V1 product. The repository keeps the shared build/install CLI for automation, but does not ship a Codex skill, Mapper Session, separate preview product surface, or official Cubism Web Framework adapter.
 
 The center column of the Mapper is the only user-visible Source Package preview. Process isolation may remain behind that surface for crash recovery or Package Build capture, but V1 does not expose or require a separate preview window.
 
@@ -20,6 +20,7 @@ The center column of the Mapper is the only user-visible Source Package preview.
 6. Review missing mappings and choose a fixed Render Preset.
 7. Build while observing progress and, when needed, cancel safely.
 8. Preview generated target assets, review validation results, and download a portable ZIP.
+9. Explicitly choose Install to place the validated generated package into the selected Clawd or Codex host.
 
 ## V1 scope
 
@@ -44,14 +45,14 @@ The center column of the Mapper is the only user-visible Source Package preview.
 
 - Modern Cubism preview uses the existing Pixi renderer adapter with a user-provided official Cubism Core.
 - Legacy Cubism 2 preview uses its legacy Pixi adapter with a user-provided compatible `live2d.min.js`.
-- The App copies an explicitly selected runtime into App-managed local storage, validates it, records its detected compatibility, and automatically reuses it for matching models on later launches.
+- In Desktop mode, App-managed local storage is the sole runtime source of truth. The App copies an explicitly selected runtime there, validates it, records its detected compatibility, and automatically reuses it for matching models on later launches; the Mapper does not persist a second runtime copy.
 - A user can replace or clear a saved runtime. Runtime changes do not require rebuilding Live2Pet.
 - The App chooses modern or legacy rendering from inspected model generation; it must not ask the user to make that technical choice for every model.
 - The center column is the only visible source preview and supports Motion play, pause, restart, loop, speed control, and optional Expression apply/clear.
 - Preview fits the full animated model bounds instead of silently cropping it.
 - A separate preview window, renderer selector, and duplicate playback controls are excluded from the V1 user workflow.
 - Renderer failure must leave the project and Mapper usable and produce a recoverable error; process isolation is an internal implementation choice.
-- The official Cubism Web Framework bridge remains experimental and is not selectable or required in V1.
+- The official Cubism Web Framework bridge is not part of the product or V1 implementation.
 - No Cubism Core, legacy runtime, model, texture, or copyrighted example is bundled in source or release artifacts.
 
 ### Project and mapper
@@ -94,22 +95,23 @@ The center column of the Mapper is the only user-visible Source Package preview.
 - Safe independent encoding and target assembly work may run in parallel. Live2D capture remains bounded by renderer stability rather than an arbitrary worker count.
 - Build reports contain versions, timings, cache hits, warnings, validation results, and artifact sizes while redacting absolute source paths and secrets.
 - Artifact names include a safe package id, target id, and version and do not overwrite existing output by default.
-- A successful build exposes generated preview and explicit ZIP download in the App.
-- Installation into Clawd or Codex is optional existing functionality, not a V1 acceptance requirement. Build and download never install implicitly.
+- A successful, validated build exposes generated preview, explicit ZIP download, and a separate explicit Install action in the App.
+- The Install action places the generated package into the selected Clawd or Codex host and reports a clear success or actionable failure state.
+- Build and download never install or overwrite a target-host package implicitly.
 
 ## V1 acceptance scenarios
 
 ### Modern model path
 
-On a clean macOS user profile, select a permitted standard Cubism 3+ model and official Core once. Restart the App, reopen the model without selecting Core again, preview at least one Motion and Expression in the center column, map it, build one target, preview generated output, validate it, and download the ZIP.
+On a clean macOS user profile, select a permitted standard Cubism 3+ model and official Core once. Restart the App, reopen the model without selecting Core again, preview at least one Motion and Expression in the center column, map it, build one target, preview generated output, validate it, download the ZIP, and explicitly install it into the selected target host.
 
 ### Legacy PCK path
 
-On the same App, select the locally owned tested Destiny Child PCK and a compatible Cubism 2 runtime once. Reopen it without selecting the runtime again, preview a Motion in the same center column, map it, and complete at least one target build and ZIP download.
+On the same App, select the locally owned tested Destiny Child PCK and a compatible Cubism 2 runtime once. Reopen it without selecting the runtime again, preview a Motion in the same center column, map it, and complete at least one target build, ZIP download, and explicit target-host installation.
 
 ### Both-target project path
 
-Save one `.live2pet` project with separate Clawd and Codex mappings. Reopen it, build both targets, confirm progress reaches a terminal state, confirm generated previews work, and validate both ZIPs. Import each ZIP into its pinned target host.
+Save one `.live2pet` project with separate Clawd and Codex mappings. Reopen it, build both targets, confirm progress reaches a terminal state, confirm generated previews work, and validate both ZIPs. Use the separate Install action for each generated package and confirm that each loads in its pinned target host; confirm that building or downloading alone does not install either package.
 
 ### Failure and privacy path
 
@@ -121,16 +123,15 @@ Verify that incompatible runtime, unsupported PCK, missing resource, cancelled b
 - Optional local integration tests use user-provided runtimes and locally owned models.
 - Shared renderer contract tests cover playback, bounds, deterministic stepping, RGBA capture, unload, and failure isolation.
 - Target validators use minimal synthetic valid and invalid packages.
-- A final manual macOS acceptance run uses the real Desktop App and installed Clawd/Codex hosts.
+- A final manual macOS acceptance run uses the real Desktop App to explicitly install generated packages into installed Clawd/Codex hosts.
 - Documentation-only changes run source-release scanning and link/path checks; implementation changes also run unit tests and type checking.
 
-## Explicitly deferred until after V1
+## Explicitly outside the product plan
 
 - Official Cubism Web Framework as the production renderer.
 - A separate user-visible preview window, renderer chooser, or duplicated preview lifecycle controls.
-- Codex skill installation, CLI automation as a product surface, and browser Mapper Session.
+- Codex skill installation and browser Mapper Session. The ordinary CLI remains a shared build/install interface, not a second product workflow.
 - Windows x64 qualification and platform installers.
-- Automatic target-host installation as part of the happy path.
 - Public signed/notarized binaries, automatic updates, and unresolved binary-distribution licensing work.
 - A multi-gigabyte configurable cache; V1 keeps the implemented bounded cache and clear controls.
 - Advanced Clawd behavior as mandatory acceptance: full sleep choreography, reactions, tiers, idle pools, roam, and other host-specific polish.

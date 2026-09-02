@@ -69,16 +69,14 @@ function jsonResponse(response, value, status = 200) {
   response.end(body);
 }
 
-function createRendererAssetServer({ sourceRoot, runtimePath, frameworkPath = null, host = LOOPBACK_HOST, port = 0 } = {}) {
+function createRendererAssetServer({ sourceRoot, runtimePath, host = LOOPBACK_HOST, port = 0 } = {}) {
   if (host !== LOOPBACK_HOST) return Promise.reject(new RendererContractError('NON_LOOPBACK_BINDING', 'Renderer Asset Server can bind only to 127.0.0.1.'));
   if (!Number.isInteger(port) || port < 0 || port > 65535) return Promise.reject(new RendererContractError('INVALID_ASSET_SERVER_PORT', 'Renderer Asset Server port must be an integer between 0 and 65535.'));
   let root;
   let runtime;
-  let framework = null;
   try {
     root = existingDirectory(sourceRoot, 'sourceRoot');
     runtime = existingFile(runtimePath, 'runtimePath');
-    if (frameworkPath !== null && frameworkPath !== undefined) framework = existingFile(frameworkPath, 'frameworkPath');
   } catch (error) {
     return Promise.reject(error);
   }
@@ -105,8 +103,6 @@ function createRendererAssetServer({ sourceRoot, runtimePath, frameworkPath = nu
         file = realFile;
       } else if (requestUrl.pathname === `/runtime/${encodeURIComponent(path.basename(runtime))}`) {
         file = runtime;
-      } else if (framework && requestUrl.pathname === `/framework/${encodeURIComponent(path.basename(framework))}`) {
-        file = framework;
       } else {
         response.writeHead(404);
         response.end();
@@ -141,7 +137,6 @@ function createRendererAssetServer({ sourceRoot, runtimePath, frameworkPath = nu
         baseUrl,
         modelUrl: (modelConfig) => `${baseUrl}/model/${encodeRelativeUrl(modelConfig)}`,
         runtimeUrl: `${baseUrl}/runtime/${encodeURIComponent(path.basename(runtime))}`,
-        ...(framework ? { frameworkUrl: `${baseUrl}/framework/${encodeURIComponent(path.basename(framework))}` } : {}),
         close: () => new Promise((closeResolve) => server.close(() => closeResolve())),
       });
     });

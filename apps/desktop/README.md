@@ -2,16 +2,16 @@
 
 This Electron shell is the first desktop host for the shared mapper. It loads the local mapper page with a sandboxed, context-isolated window and exposes only the typed `window.live2pet` API from `@live2pet/app-host`.
 
-The main process owns the Mapper Session host and resolves either the repository
-Mapper during development or the staged Mapper bundle from `process.resourcesPath`
-in a packaged build. It also injects the shared Package Build service into the
+The main process resolves either the repository Mapper during development or
+the staged Mapper bundle from `process.resourcesPath` in a packaged build. It
+also injects the shared Package Build service into the
 typed `buildProject` IPC method; that response is a binary-free summary with
 short-lived artifact handles, and `getBuildArtifact` retrieves each result in
 validated chunks of at most 1 MiB. The Mapper reports this transfer separately
 from the completed package build, then opens the ZIP through a Blob reader and
 extracts only the currently previewed Clawd WebP. Building does not implicitly
-install anything. Renderer requests cannot choose arbitrary mapper files,
-invoke shell commands, or access the bearer token. Forge makers/signing are not
+install anything. Renderer requests cannot choose arbitrary mapper files or
+invoke shell commands. Forge makers/signing are not
 configured until the macOS source-release gates pass. `forge.config.cjs` records
 the future packager resource path, but the Forge CLI is not a workspace
 dependency because a local unsigned App needs only the smaller
@@ -31,56 +31,24 @@ entrypoint, detects the runtime family, and copies it into a private library
 under the App user-data directory. Modern and legacy entries coexist, and the
 renderer selects one from the inspected Cubism generation. A valid legacy
 path-based setting is migrated into this library automatically. The renderer
-receives metadata, never runtime bytes or a path. The current Mapper also
-keeps its bounded browser-profile copy so a selected runtime can refresh the
-in-page preview; neither copy is part of a project, cache artifact, package,
-source checkout, or release.
-
-The Desktop App also exposes the repository's text-only Codex skill bundle
-through `getSkillStatus` and `installSkill`. The Mapper shows whether the
-bundled `live2pet` skill is available, missing, invalid, or out of date. An
-installation or upgrade requires a separate user confirmation and is committed
-atomically by the main process into the user's Codex skills directory. The
-renderer receives only the skill id, digest, file count, and status; it never
-receives the destination path or skill contents. Development builds read from
-`skills/live2pet`; packaged builds stage the same source at the private
-`live2pet-skill` resource path. User-provided skill edits are not overwritten
-unless the user explicitly confirms an upgrade.
-
-The desktop shell also includes a renderer-realm host that can isolate Live2D
-execution from the Mapper. It creates a transparent BrowserWindow with Node integration off,
-context isolation, sandboxing, strict CSP, and a loopback-only asset server for
-the selected Source Package plus runtime file. Adapter selection follows the
-inspected Cubism generation (legacy Cubism 2 versus modern Cubism 3–5). If the
-model, runtime, page bootstrap, or renderer process fails, the host unloads the
-adapter and destroys that window; the main Mapper window remains available and
-an explicit restart creates a fresh realm. Its `loadSource()` helper accepts the
-inspection manifest's relative `modelConfig`, resolves it through the same
-loopback server, and rejects a mismatched Cubism generation before touching the
-renderer. This realm is an internal capture, recovery, and diagnostic seam; it
-is not a second V1 preview product.
+receives metadata, never runtime bytes or a path. In the Desktop App, this
+private library is the sole persistent runtime source. Browser-only use may
+keep a bounded browser-profile copy for preview; neither store is part of a
+project, cache artifact, package, source checkout, or release.
 
 Electron 44 no longer guarantees the legacy `File.path` property in a sandboxed
 renderer. The App preload therefore exposes only the typed `webUtils.getPathForFile`
 result needed to resolve explicitly selected local Source Package directories;
-browser-only Mapper sessions keep the helper unavailable.
-
-The existing narrow App IPC renderer session remains covered for internal use,
-but its separate-window controls are outside the personal-use V1 workflow and
-have been removed from the normal Mapper UI. Both standard directories and
-reconstructed PCK inputs use the center-column source preview. The
-saved runtime is resolved in the main process, and neither runtime bytes nor
-absolute paths cross the App boundary. Pixi is the personal-use V1 modern renderer. An advanced
-host integration can opt into the experimental official Web Framework bridge by passing
-`modernAdapter: 'official'` and a user-provided `frameworkPath`; the bundle is
-served only through the same loopback asset server and must expose the
-documented `createRenderer` bridge global. The official Framework and Cubism
-Core are still user-provided and are never staged by `prepare:mapper`.
+browser-only use keeps the helper unavailable. Both standard directories and
+reconstructed PCK inputs use the center-column source preview. The saved
+runtime is resolved by the App, and neither runtime bytes nor absolute paths
+cross the typed IPC boundary. V1 uses the Pixi Cubism 2 and modern adapters;
+there is no separate preview window or official Framework bridge.
 
 The shared Mapper exposes both Codex Pet and Clawd Theme build actions. Clawd
 captures mapped Motion frames in the renderer and sends them through the same
 typed `buildProject` service; the returned ZIP is available only through an
-explicit `getBuildArtifact` download. Browser-only Mapper sessions keep the
+explicit `getBuildArtifact` download. Browser-only Mapper use keeps the
 Clawd build action disabled because they do not provide the trusted App encoder.
 The UI starts in English and includes a persisted English/Chinese (`zh-CN`)
 locale switch; locale text does not alter project, IPC, or package schemas.
@@ -92,7 +60,7 @@ an explicit confirmation step. The install control offers cancel, upgrade, and
 side-by-side conflict policies and uses the platform adapter's default target
 root by default. The Desktop App can also open a native folder picker; the
 renderer receives only a short-lived opaque location id while the selected path
-stays in the main process. Browser-only sessions continue to use download/export
+stays in the main process. Browser-only use continues to use download/export
 instead of installation.
 
 Build progress is streamed over a versioned, path-redacted IPC event channel and
