@@ -32,7 +32,7 @@ const ENCODED_CACHE_ENCODER_VERSION = SHARP_ENCODER_VERSION;
 const APP_BUNDLE_SMOKE_ARGUMENT = '--live2pet-smoke-test';
 const UI_PREVIEW_ARGUMENT = '--live2pet-ui-preview';
 const APP_NAME = 'Live2Pet';
-const APP_ICON_PATH = path.resolve(__dirname, 'assets', 'icon.icns');
+const APP_DEV_ICON_PATH = path.resolve(__dirname, 'assets', 'icon.png');
 let mainWindow = null;
 let route = null;
 let sourceCache = null;
@@ -199,7 +199,7 @@ async function createMainWindow() {
 }
 
 app.whenReady().then(async () => {
-  if (!app.isPackaged && process.platform === 'darwin' && app.dock) app.dock.setIcon(APP_ICON_PATH);
+  if (!app.isPackaged && process.platform === 'darwin' && app.dock) app.dock.setIcon(APP_DEV_ICON_PATH);
   const defaultSession = require('electron').session.defaultSession;
   defaultSession.protocol.handle(RUNTIME_PROTOCOL_SCHEME, createRuntimeProtocolHandler({
     getRuntimeForGeneration: (cubismVersion) => loadRuntimeForGeneration(runtimeSettingsPath(), cubismVersion),

@@ -72,7 +72,8 @@ test('desktop package keeps Electron and future Forge settings explicit', () => 
   assert.match(forge, /executableName:\s*'Live2Pet'/);
   assert.match(forge, /icon:\s*path\.resolve\(__dirname, 'assets', 'icon\.icns'\)/);
   assert.match(main, /app\.setName\(APP_NAME\)/);
-  assert.match(main, /app\.dock\.setIcon\(APP_ICON_PATH\)/);
+  assert.match(main, /APP_DEV_ICON_PATH = path\.resolve\(__dirname, 'assets', 'icon\.png'\)/);
+  assert.match(main, /app\.dock\.setIcon\(APP_DEV_ICON_PATH\)/);
   assert.match(forge, /extraResource:\s*\[path\.resolve\(__dirname, 'mapper-dist'\)\]/);
   assert.doesNotMatch(forge, /live2pet-skill|renderer\.html/);
   assert.equal(manifest.scripts['prepare:mapper'], 'node scripts/stage-mapper-assets.cjs');

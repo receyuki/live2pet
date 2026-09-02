@@ -13,7 +13,6 @@ node_modules/
 /apps/desktop/renderer-dist/
 /apps/desktop/assets/icon-concept-*.png
 /apps/desktop/assets/icon-source.png
-/apps/desktop/assets/icon.png
 
 # User-provided and derived character examples stay local for copyright safety.
 /examples/
