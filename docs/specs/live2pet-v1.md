@@ -1,10 +1,10 @@
 # Live2Pet Personal-Use V1 Specification
 
-Status: Rescoped on 2026-09-01 — single visible preview surface
+Status: Rescoped on 2026-09-02 — project-oriented desktop App shell
 
 ## Product outcome
 
-V1 is successful when one macOS user can take a permitted local Live2D model from import to a validated Clawd theme ZIP or Codex custom-pet ZIP, then explicitly install the generated package into its target host, without rebuilding Live2Pet, manually running conversion commands, or repeatedly selecting the same renderer runtime.
+V1 is successful when one macOS user can complete first-run setup once, take a permitted local Live2D model from import to a validated Clawd theme ZIP or Codex custom-pet ZIP, then explicitly install the generated package into its target host, without rebuilding Live2Pet, manually running conversion commands, or repeatedly selecting the same renderer runtime.
 
 The Desktop App is the V1 product. The repository keeps the shared build/install CLI for automation, but does not ship a Codex skill, Mapper Session, separate preview product surface, or official Cubism Web Framework adapter.
 
@@ -12,15 +12,16 @@ The center column of the Mapper is the only user-visible Source Package preview.
 
 ## Primary workflow
 
-1. Open the macOS Desktop App.
-2. Select a standard Cubism model directory or a supported Destiny Child PCK.
-3. Let Live2Pet identify the Cubism generation and use a previously saved compatible runtime; select a runtime only when none is available.
-4. Browse Motions and Expressions, play them in the center-column preview, and create a Motion-plus-optional-Expression Animation Recipe.
-5. Assign the currently selected recipe to Clawd or Codex slots in the separate target mapping.
-6. Review missing mappings and choose a fixed Render Preset.
-7. Build while observing progress and, when needed, cancel safely.
-8. Preview generated target assets, review validation results, and download a portable ZIP.
-9. Explicitly choose Install to place the validated generated package into the selected Clawd or Codex host.
+1. Open the macOS Desktop App and complete or skip the first-run Setup Assistant.
+2. From Welcome, open a `.live2pet` project or select a standard Cubism model directory or supported Destiny Child PCK.
+3. Let Live2Pet identify the Cubism generation and use a compatible runtime from App Settings; configure a missing runtime once through the matching Settings entry.
+4. Review normalized model and resource results in Source.
+5. In Map, browse Motions and Expressions, play them in the center-column preview, and create a Motion-plus-optional-Expression Animation Recipe.
+6. Assign the currently selected recipe to Clawd or Codex slots in the separate target mapping.
+7. In Build, review missing mappings and choose a fixed Render Preset.
+8. Build while observing progress and, when needed, cancel safely.
+9. Preview generated target assets, review validation results, and download a portable ZIP.
+10. Explicitly choose Install or Build & Install to place the validated generated package into the configured Clawd or Codex host.
 
 ## V1 scope
 
@@ -31,6 +32,19 @@ The center column of the Mapper is the only user-visible Source Package preview.
 - The App must run without system FFmpeg, ImageMagick, libwebp commands, a system ZIP tool, or Homebrew-installed codecs.
 - English and Simplified Chinese UI are both required.
 - Public signed/notarized installers, automatic updates, and public binary distribution are separate release work.
+
+### Desktop application shell and settings
+
+- The packaged Desktop App, not the browser-loadable Mapper document, is the V1 product surface.
+- A skippable first-run Setup Assistant explains local runtime requirements, detects already saved runtimes, and reuses the same runtime controls as Settings.
+- Welcome provides recent projects, Open Project, and Import Source Package without showing project-only controls before a project exists.
+- One project window provides Source, Map, and Build destinations through a compact application toolbar and preserves project state when switching between them.
+- Source owns inspection and resource compatibility, Map owns source playback and semantic Assignment, and Build owns readiness, progress, generated preview, download, and installation.
+- Settings owns General, Runtimes, Targets & Installation, and Storage. App-global controls do not appear as bars inside a project destination.
+- The App provides standard application menus and keyboard shortcuts for Open, Save, Undo, Redo, Settings, and Build.
+- The window uses system typography, semantic light/dark tokens, desktop control density, clear focus, and restrained motion. Website hero copy, marketing footers, and dashboard card grids are not part of the App shell.
+- Unavailable actions state the missing requirement and recovery action rather than appearing as unexplained disabled controls.
+- Long builds remain observable and cancellable without freezing project navigation; one terminal success, failure, or cancelled state replaces indefinite busy copy.
 
 ### Source Packages
 
@@ -46,7 +60,8 @@ The center column of the Mapper is the only user-visible Source Package preview.
 - Modern Cubism preview uses the existing Pixi renderer adapter with a user-provided official Cubism Core.
 - Legacy Cubism 2 preview uses its legacy Pixi adapter with a user-provided compatible `live2d.min.js`.
 - In Desktop mode, App-managed local storage is the sole runtime source of truth. The App copies an explicitly selected runtime there, validates it, records its detected compatibility, and automatically reuses it for matching models on later launches; the Mapper does not persist a second runtime copy.
-- A user can replace or clear a saved runtime. Runtime changes do not require rebuilding Live2Pet.
+- A user can add, verify, replace, or clear each saved runtime from Settings. Runtime changes do not require rebuilding Live2Pet.
+- First-run setup may be deferred. Source inspection remains available without a runtime, while preview and build show a direct link to the required runtime Settings entry.
 - The App chooses modern or legacy rendering from inspected model generation; it must not ask the user to make that technical choice for every model.
 - The center column is the only visible source preview and supports Motion play, pause, restart, loop, speed control, and optional Expression apply/clear.
 - Preview fits the full animated model bounds instead of silently cropping it.
@@ -57,7 +72,8 @@ The center column of the Mapper is the only user-visible Source Package preview.
 
 ### Project and mapper
 
-- The primary UI remains a three-column workflow: Motion/Expression library, live preview, and target mapping.
+- The Map destination remains a three-column workflow: Motion/Expression library, live preview, and target mapping.
+- Source inspection and Package Build are separate destinations in the same project window rather than sections above or below the mapping workspace.
 - Selecting a Motion on the left defines the current recipe; assigning on the right uses that selected recipe rather than a second Motion dropdown.
 - Clawd and Codex mappings are separate.
 - Required slots and blocking validation update immediately.
@@ -65,6 +81,7 @@ The center column of the Mapper is the only user-visible Source Package preview.
 - A versioned `.live2pet` project stores references, recipes, target mappings, metadata, and Render Presets without embedding model or runtime bytes.
 - Saving, reopening, autosave recovery, source relinking, and changed-source review preserve work safely.
 - The mapping and build workflow is keyboard operable; drag and drop is optional.
+- App Settings, window state, recent projects, runtime descriptors, installation destinations, and cache status are not stored in `.live2pet` project documents.
 
 ### Clawd Target Profile
 
@@ -95,7 +112,7 @@ The center column of the Mapper is the only user-visible Source Package preview.
 - Safe independent encoding and target assembly work may run in parallel. Live2D capture remains bounded by renderer stability rather than an arbitrary worker count.
 - Build reports contain versions, timings, cache hits, warnings, validation results, and artifact sizes while redacting absolute source paths and secrets.
 - Artifact names include a safe package id, target id, and version and do not overwrite existing output by default.
-- A successful, validated build exposes generated preview, explicit ZIP download, and a separate explicit Install action in the App.
+- A successful, validated build exposes generated preview, explicit ZIP download, and a separate explicit Install action in the App. An explicit Build & Install command may combine the two user-requested operations.
 - The Install action places the generated package into the selected Clawd or Codex host and reports a clear success or actionable failure state.
 - Build and download never install or overwrite a target-host package implicitly.
 
@@ -103,7 +120,7 @@ The center column of the Mapper is the only user-visible Source Package preview.
 
 ### Modern model path
 
-On a clean macOS user profile, select a permitted standard Cubism 3+ model and official Core once. Restart the App, reopen the model without selecting Core again, preview at least one Motion and Expression in the center column, map it, build one target, preview generated output, validate it, download the ZIP, and explicitly install it into the selected target host.
+On a clean macOS user profile, complete the Setup Assistant with a permitted official Core, import a permitted standard Cubism 3+ model from Welcome, and confirm Source, Map, and Build preserve one project. Restart the App, reopen the model without selecting Core again, preview at least one Motion and Expression in the center column, map it, build one target, preview generated output, validate it, download the ZIP, and explicitly install it into the selected target host.
 
 ### Legacy PCK path
 
@@ -115,7 +132,7 @@ Save one `.live2pet` project with separate Clawd and Codex mappings. Reopen it, 
 
 ### Failure and privacy path
 
-Verify that incompatible runtime, unsupported PCK, missing resource, cancelled build, oversized Clawd ZIP, and renderer crash all produce actionable errors without losing the saved project. Scan output packages, reports, and tracked files for runtimes, model assets, tokens, secrets, and unrelated absolute paths.
+Verify that deferred setup, incompatible runtime, unsupported PCK, missing resource, cancelled build, oversized Clawd ZIP, and renderer crash all produce actionable recovery without losing the saved project. Confirm that configuring a missing runtime through Settings returns to the project and does not require another source import. Scan output packages, reports, and tracked files for runtimes, model assets, tokens, secrets, and unrelated absolute paths.
 
 ## Verification strategy
 
@@ -134,6 +151,7 @@ Verify that incompatible runtime, unsupported PCK, missing resource, cancelled b
 - Windows x64 qualification and platform installers.
 - Public signed/notarized binaries, automatic updates, and unresolved binary-distribution licensing work.
 - A multi-gigabyte configurable cache; V1 keeps the implemented bounded cache and clear controls.
+- Multi-window project editing, detachable panels, docking, accounts, dashboards, or a plugin marketplace.
 - Advanced Clawd behavior as mandatory acceptance: full sleep choreography, reactions, tiers, idle pools, roam, and other host-specific polish.
 - Cloud storage, accounts, telemetry, collaboration, remote rendering, and automatic semantic mapping.
 - Decryption or reverse engineering of unknown PCK, LPK, ViewerEX, or other proprietary containers.
@@ -150,6 +168,7 @@ Verify that incompatible runtime, unsupported PCK, missing resource, cancelled b
 
 - Implementation order: `docs/plans/live2pet-v1-implementation-plan.md`
 - Renderer decision: `docs/adr/0011-use-pixi-for-the-personal-use-v1-renderer.md`
+- Desktop App shell decision: `docs/adr/0012-use-a-project-oriented-desktop-app-shell.md`
 - Codex Pet workflow: <https://github.com/openai/skills/tree/main/skills/.curated/hatch-pet>
 - Clawd theme guide: <https://github.com/rullerzhou-afk/clawd-on-desk/blob/main/docs/guides/guide-theme-creation.md>
 - Cubism Core: <https://docs.live2d.com/en/cubism-sdk-manual/cubism-core/>
