@@ -21,6 +21,8 @@
     "@heroui/react": "^3.2.4",
     "@heroui/styles": "^3.2.4",
     "@live2pet/app-host": "workspace:*",
+    "@live2pet/clawd-target": "workspace:*",
+    "@live2pet/codex-target": "workspace:*",
     "@live2pet/installation": "workspace:*",
     "@live2pet/package-build": "workspace:*",
     "@live2pet/project": "workspace:*",

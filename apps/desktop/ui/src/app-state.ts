@@ -1,3 +1,6 @@
+import { assignSelectedRecipe, clearAssignment } from "./project-mapping";
+import type { MappingDestination } from "./target-profiles";
+
 export type Destination =
   | "setup"
   | "welcome"
@@ -52,6 +55,8 @@ export type AppAction =
   | { type: "SELECT_SETTINGS_SECTION"; section: SettingsSection }
   | { type: "SELECT_MOTION"; motionId: string | null }
   | { type: "SELECT_EXPRESSION"; expressionId: string | null }
+  | { type: "ASSIGN_SELECTED_RECIPE"; destination: MappingDestination }
+  | { type: "CLEAR_ASSIGNMENT"; destination: MappingDestination }
   | { type: "PROJECT_SAVED"; document: import('./app-host').Live2PetProject; documentId: string; fileName: string }
   | { type: "OPEN_SETUP" }
   | { type: "COMPLETE_SETUP" }
@@ -132,6 +137,21 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return state.project
         ? { ...state, project: { ...state.project, selectedExpressionId: action.expressionId } }
         : state;
+
+    case "ASSIGN_SELECTED_RECIPE": {
+      if (!state.project?.document || !state.project.selectedMotionId) return state;
+      const document = assignSelectedRecipe(state.project.document, action.destination, {
+        motionId: state.project.selectedMotionId,
+        expressionId: state.project.selectedExpressionId,
+      });
+      return document === state.project.document ? state : { ...state, project: { ...state.project, document, dirty: true } };
+    }
+
+    case "CLEAR_ASSIGNMENT": {
+      if (!state.project?.document) return state;
+      const document = clearAssignment(state.project.document, action.destination);
+      return document === state.project.document ? state : { ...state, project: { ...state.project, document, dirty: true } };
+    }
 
     case "PROJECT_SAVED":
       return state.project

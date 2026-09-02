@@ -1,5 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { appReducer, initialAppState } from "./app-state";
+import type { Live2PetProject } from "./app-host";
+
+function projectDocument(): Live2PetProject {
+  return {
+    schemaVersion: 1,
+    projectId: "one",
+    appVersion: "0.1.0",
+    name: "One",
+    source: { kind: "standard-directory", name: "one", fingerprint: "abc" },
+    recipes: [],
+    targets: {
+      clawd: { profile: "clawd", mappings: {}, reactions: {}, recipeMappings: {}, options: {} },
+      "codex-pet": { profile: "codex-pet", mappings: {}, reactions: {}, recipeMappings: {}, options: {} },
+    },
+  };
+}
 
 describe("initialAppState", () => {
   it("opens Setup once and Welcome for a returning profile", () => {
@@ -67,5 +83,32 @@ describe("appReducer", () => {
 
     state = appReducer(state, { type: "COMPLETE_SETUP" });
     expect(state).toMatchObject({ destination: "map", setupReturnDestination: null, project: { id: "one" } });
+  });
+
+  it("keeps selection ephemeral and writes assignments only into the project document", () => {
+    let state = initialAppState({ setupCompleted: true });
+    state = appReducer(state, { type: "OPEN_PROJECT", project: { id: "one", name: "One", document: projectDocument() } });
+    state = appReducer(state, { type: "SELECT_MOTION", motionId: "Idle" });
+    state = appReducer(state, { type: "SELECT_EXPRESSION", expressionId: "smile" });
+    expect(state.project?.dirty).toBe(false);
+    expect(state.project?.document?.recipes).toEqual([]);
+
+    state = appReducer(state, { type: "ASSIGN_SELECTED_RECIPE", destination: { target: "clawd", category: "states", slot: "idle" } });
+    expect(state.project?.dirty).toBe(true);
+    expect(state.project?.document?.recipes).toHaveLength(1);
+    expect(state.project?.document?.targets.clawd.mappings.idle).toBe("motion:Idle");
+    expect(state.project).not.toHaveProperty("mappings");
+  });
+
+  it("clears assignments in the document, prunes recipes, and marks dirty", () => {
+    let state = initialAppState({ setupCompleted: true });
+    state = appReducer(state, { type: "OPEN_PROJECT", project: { id: "one", name: "One", document: projectDocument(), selectedMotionId: "Idle" } });
+    state = appReducer(state, { type: "ASSIGN_SELECTED_RECIPE", destination: { target: "codex-pet", category: "rows", slot: "idle" } });
+    state = appReducer(state, { type: "PROJECT_SAVED", document: state.project!.document!, documentId: "document_123", fileName: "one.live2pet" });
+    expect(state.project?.dirty).toBe(false);
+    state = appReducer(state, { type: "CLEAR_ASSIGNMENT", destination: { target: "codex-pet", category: "rows", slot: "idle" } });
+    expect(state.project?.dirty).toBe(true);
+    expect(state.project?.document?.recipes).toEqual([]);
+    expect(state.project?.document?.targets["codex-pet"].mappings).toEqual({});
   });
 });

@@ -90,3 +90,78 @@
   color: var(--danger, #b91c1c);
   font-size: 0.875rem;
 }
+
+.assignment-panel {
+  overflow: hidden;
+}
+
+.target-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 12px 12px 0;
+}
+
+.target-switch button {
+  width: 100%;
+}
+
+.mapping-preview-note {
+  margin: 0 12px 12px;
+  padding: 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.mapping-assignment-list {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.mapping-group {
+  display: grid;
+  gap: 4px;
+}
+
+.mapping-group h3 {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 10px 6px 6px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.mapping-row {
+  align-items: flex-start;
+  padding-block: 8px;
+}
+
+.mapping-row .grow-copy strong {
+  text-transform: none;
+}
+
+.mapping-row .grow-copy small {
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.mapping-row-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.mapping-row-actions button {
+  min-width: 0;
+  padding-inline: 7px;
+  font-size: 10px;
+}

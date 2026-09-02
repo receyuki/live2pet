@@ -19,6 +19,12 @@ importers:
       '@live2pet/app-host':
         specifier: workspace:*
         version: link:../../packages/app-host
+      '@live2pet/clawd-target':
+        specifier: workspace:*
+        version: link:../../packages/clawd-target
+      '@live2pet/codex-target':
+        specifier: workspace:*
+        version: link:../../packages/codex-target
       '@live2pet/installation':
         specifier: workspace:*
         version: link:../../packages/installation

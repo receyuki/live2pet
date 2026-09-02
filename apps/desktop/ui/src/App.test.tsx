@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from './App';
+import type { Live2PetProject } from './app-host';
+import { CLAWD_PROFILE, CODEX_PROFILE } from './target-profiles';
 
 const emptyRuntimes = { schemaVersion: 2 as const, configured: false, restartRequired: false, runtimes: [] };
 
@@ -18,7 +20,7 @@ const savedProject = {
   },
 };
 
-function installDesktopApi({ runtimes = emptyRuntimes, preview = false, recentProjects = [], openCancelled = false, saveCancelled = false }: { runtimes?: typeof emptyRuntimes | { schemaVersion: 2; configured: boolean; restartRequired: false; runtimes: Array<{ runtimeName: string; runtimeKind: 'legacy-cubism2'; cubismGenerations: number[]; fingerprint: string; available: boolean }> }; preview?: boolean; recentProjects?: Array<{ documentId: string; name: string; fileName: string; available: boolean }>; openCancelled?: boolean; saveCancelled?: boolean } = {}) {
+function installDesktopApi({ runtimes = emptyRuntimes, preview = false, recentProjects = [], openCancelled = false, saveCancelled = false, openedProject = savedProject }: { runtimes?: typeof emptyRuntimes | { schemaVersion: 2; configured: boolean; restartRequired: false; runtimes: Array<{ runtimeName: string; runtimeKind: 'legacy-cubism2'; cubismGenerations: number[]; fingerprint: string; available: boolean }> }; preview?: boolean; recentProjects?: Array<{ documentId: string; name: string; fileName: string; available: boolean }>; openCancelled?: boolean; saveCancelled?: boolean; openedProject?: Live2PetProject } = {}) {
   const inspectSource = vi.fn(async () => ({
     protocolVersion: 1 as const,
     ok: true,
@@ -34,8 +36,8 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, recentPr
   }));
   const configureRuntime = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: runtimes }));
   const openPreview = vi.fn(async (input: { projectId: string; sourceFingerprint: string; bounds: { x: number; y: number; width: number; height: number } }) => ({ protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, state: 'ready' as const, projectId: input.projectId, sourceFingerprint: input.sourceFingerprint, visible: true, bounds: input.bounds, playback: { motionId: null, expressionId: null, playing: false, loop: true, speed: 1 } } }));
-  const openProject = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: openCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-document', fileName: 'saved.live2pet', project: savedProject, recentProjects } }));
-  const saveProject = vi.fn(async (input: { project: typeof savedProject }) => ({ protocolVersion: 1 as const, ok: true, result: saveCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-saved-document', fileName: `${input.project.name}.live2pet`, project: input.project, recentProjects } }));
+  const openProject = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: openCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-document', fileName: 'saved.live2pet', project: openedProject, recentProjects } }));
+  const saveProject = vi.fn(async (input: { project: Live2PetProject }) => ({ protocolVersion: 1 as const, ok: true, result: saveCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-saved-document', fileName: `${input.project.name}.live2pet`, project: input.project, recentProjects } }));
   let appCommandListener: ((command: 'open' | 'save' | 'settings' | 'build' | 'setup') => void) | undefined;
   Object.defineProperty(window, 'live2pet', {
     configurable: true,
@@ -106,6 +108,93 @@ describe('Live2Pet desktop shell', () => {
     expect(saveProject.mock.calls[0][0]).toMatchObject({ project: { schemaVersion: 1, projectId: 'vicious-khepri', source: { path: '/Users/test/Vicious Khepri.pck' }, recipes: [] } });
     expect(await screen.findByText('Saved')).toBeVisible();
     expect(screen.getByText('Vicious Khepri.live2pet')).toBeVisible();
+  });
+
+  it('renders every shared target slot without creating automatic mappings', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const { saveProject } = installDesktopApi();
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+
+    await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
+
+    expect(screen.getAllByRole('button', { name: /^Use selected ·/ })).toHaveLength(CLAWD_PROFILE.states.all.length + CLAWD_PROFILE.reactions.length);
+    expect(screen.getAllByText('No behavior linked yet')).toHaveLength(CLAWD_PROFILE.states.all.length + CLAWD_PROFILE.reactions.length);
+    await user.click(screen.getByRole('button', { name: 'Codex Pet' }));
+    expect(screen.getAllByRole('button', { name: /^Use selected ·/ })).toHaveLength(CODEX_PROFILE.rows.length);
+
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
+    await vi.waitFor(() => expect(saveProject).toHaveBeenCalledOnce());
+    expect(saveProject.mock.calls[0][0].project).toMatchObject({
+      recipes: [],
+      targets: { clawd: { mappings: {}, reactions: {} }, 'codex-pet': { mappings: {}, reactions: {} } },
+    });
+  });
+
+  it('assigns only the selected target and can clear the assignment', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+
+    await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
+    await user.click(screen.getByRole('button', { name: 'Smile' }));
+    await user.click(screen.getByRole('button', { name: 'Use selected · Idle' }));
+    const assignedIdleRow = screen.getByRole('button', { name: 'Use selected · Idle' }).closest('.mapping-row');
+    expect(within(assignedIdleRow as HTMLElement).getByText('Breathing · Smile')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Codex Pet' }));
+    const codexIdleRow = screen.getByRole('button', { name: 'Use selected · Idle' }).closest('.mapping-row');
+    expect(within(codexIdleRow as HTMLElement).getByText('No behavior linked yet')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Clawd' }));
+    await user.click(screen.getByRole('button', { name: 'Clear · Idle' }));
+    const clawdIdleRow = screen.getByRole('button', { name: 'Use selected · Idle' }).closest('.mapping-row');
+    expect(within(clawdIdleRow as HTMLElement).getByText('No behavior linked yet')).toBeVisible();
+  });
+
+  it('persists the explicit Motion and Expression recipe in the save payload', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const { saveProject } = installDesktopApi();
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+
+    await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
+    await user.click(screen.getByRole('button', { name: 'Smile' }));
+    await user.click(screen.getByRole('button', { name: 'Use selected · Idle' }));
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
+
+    await vi.waitFor(() => expect(saveProject).toHaveBeenCalledOnce());
+    const project = saveProject.mock.calls[0][0].project;
+    expect(project.targets.clawd.mappings.idle).toBe('motion:idle:0');
+    expect(project.targets['codex-pet'].mappings).toEqual({});
+    expect(project.recipes).toEqual([expect.objectContaining({ motionId: 'idle:0', expressionId: '0' })]);
+    expect(project.targets.clawd.recipeMappings?.idle).toBe(project.recipes[0].id);
+  });
+
+  it('shows stored recipes and fallbacks when opening an existing mapped project', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const openedProject: Live2PetProject = {
+      ...savedProject,
+      recipes: [{ id: 'breathing-smile', motionId: 'idle:0', expressionId: '0' }],
+      targets: {
+        clawd: { profile: 'clawd', mappings: { idle: 'motion:idle:0', sleeping: 'fallback:idle' }, reactions: {}, recipeMappings: { idle: 'breathing-smile' }, options: {} },
+        'codex-pet': { profile: 'codex-pet', mappings: { idle: 'motion:idle:0' }, reactions: {}, recipeMappings: { idle: 'breathing-smile' }, options: {} },
+      },
+    };
+    const recent = [{ documentId: 'opaque-document', name: 'Saved Project', fileName: 'saved.live2pet', available: true }];
+    installDesktopApi({ recentProjects: recent, openedProject });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: /Saved Project/ }));
+    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
+    expect(screen.getByText('Breathing · Smile')).toBeVisible();
+    expect(screen.getByText('Fallback · Idle')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Codex Pet' }));
+    expect(screen.getByText('Breathing · Smile')).toBeVisible();
   });
 
   it('opens a recent project by opaque id and re-inspects its referenced source', async () => {
@@ -300,6 +389,8 @@ describe('Live2Pet desktop shell', () => {
     expect(screen.getByRole('heading', { name: 'Motion & Expression' })).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Live2D Preview' })).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Assignment' })).toBeVisible();
+    expect(screen.getByText(/design preview is read-only/i)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Use selected · Idle' })).toBeDisabled();
 
     await user.click(screen.getByRole('button', { name: /Touch Head/ }));
     expect(screen.getAllByText('Touch Head').length).toBeGreaterThan(1);

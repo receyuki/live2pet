@@ -71,10 +71,19 @@ import {
 import { Locale, MessageKey, translate } from "./i18n";
 import { projectIdFromSourceName, sourcePathFromSelection } from "./source-selection";
 import { hasDraggedFiles } from "./file-drop";
+import { CLAWD_PROFILE, CODEX_PROFILE, MappingDestination } from "./target-profiles";
 
 const SETUP_KEY = "live2pet.desktop.setup-completed";
 const LOCALE_KEY = "live2pet.desktop.locale";
 const APPEARANCE_KEY = "live2pet.desktop.appearance";
+
+const SLOT_MESSAGE_KEYS: Partial<Record<string, MessageKey>> = {
+  idle: "assignmentIdle",
+  thinking: "assignmentThinking",
+  working: "assignmentWorking",
+  attention: "assignmentAttention",
+  error: "assignmentError",
+};
 
 const motions = [
   { id: "main-1", nameKey: "motionMainOne", seconds: "4.2", tint: "" },
@@ -90,13 +99,20 @@ const expressions = [
   { id: "serious", nameKey: "expressionSerious" },
 ] as const;
 
-const assignments = [
-  ["assignmentIdle", "dot-0"],
-  ["assignmentThinking", "dot-1"],
-  ["assignmentWorking", "dot-2"],
-  ["assignmentAttention", "dot-3"],
-  ["assignmentError", "dot-4"],
-] as const;
+type MappingTargetId = "clawd" | "codex-pet";
+type MappingChannel = "mappings" | "reactions";
+
+function mappingDestination(target: MappingTargetId, channel: MappingChannel, slot: string): MappingDestination {
+  if (target === "codex-pet") return { target, category: "rows", slot };
+  return { target, category: channel === "reactions" ? "reactions" : "states", slot };
+}
+
+function slotLabel(slot: string): string {
+  return slot
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[-_]+/g, " ")
+    .replace(/^./, (value) => value.toUpperCase());
+}
 
 function storedLocale(): Locale {
   return localStorage.getItem(LOCALE_KEY) === "zh-CN" ? "zh-CN" : "en";
@@ -383,11 +399,12 @@ function PanelHeading({ icon, title, body }: { icon: ReactNode; title: string; b
   return <header className="panel-heading"><span className="square-icon">{icon}</span><div><h2>{title}</h2><p>{body}</p></div></header>;
 }
 
-function MapView({ locale, projectId, inspection, runtimeReady, selectedMotionId, selectedExpressionId, onConfigureRuntime, onSelectMotion, onSelectExpression }: { locale: Locale; projectId: string; inspection?: SourceInspection; runtimeReady: boolean; selectedMotionId: string | null; selectedExpressionId: string | null; onConfigureRuntime: () => void; onSelectMotion: (id: string) => void; onSelectExpression: (id: string | null) => void }) {
+function MapView({ locale, projectId, projectDocument, inspection, runtimeReady, selectedMotionId, selectedExpressionId, onConfigureRuntime, onSelectMotion, onSelectExpression, onAssign, onClear }: { locale: Locale; projectId: string; projectDocument: Live2PetProject | null; inspection?: SourceInspection; runtimeReady: boolean; selectedMotionId: string | null; selectedExpressionId: string | null; onConfigureRuntime: () => void; onSelectMotion: (id: string) => void; onSelectExpression: (id: string | null) => void; onAssign: (destination: MappingDestination) => void; onClear: (destination: MappingDestination) => void }) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   const previewSurface = useRef<HTMLDivElement>(null);
   const [previewStatus, setPreviewStatus] = useState<PreviewStatus | null>(null);
   const [previewRetry, setPreviewRetry] = useState(0);
+  const [mappingTarget, setMappingTarget] = useState<MappingTargetId>("clawd");
   const displayedMotions = inspection?.motions.length
     ? inspection.motions.map((motion) => ({ id: motion.id, name: motion.name, seconds: motion.duration?.toFixed(1) ?? "—", tint: "" }))
     : motions.map((motion) => ({ ...motion, name: t(motion.nameKey) }));
@@ -398,6 +415,34 @@ function MapView({ locale, projectId, inspection, runtimeReady, selectedMotionId
   const selectedExpression = displayedExpressions.find((expression) => expression.id === selectedExpressionId);
   const selectedName = selected?.name ?? "—";
   const nativePreview = Boolean(inspection && runtimeReady && hasPreviewApi());
+  const canEditMappings = Boolean(projectDocument && inspection);
+  const canAssign = canEditMappings && Boolean(selectedMotionId);
+  const targetDocument = projectDocument?.targets[mappingTarget];
+  const mappingSlotLabel = (slot: string) => SLOT_MESSAGE_KEYS[slot] ? t(SLOT_MESSAGE_KEYS[slot]!) : slotLabel(slot);
+
+  function assignmentLabel(slot: string, channel: MappingChannel): string {
+    const value = targetDocument?.[channel]?.[slot] ?? "";
+    if (!value) return t("assignmentEmpty");
+    if (value.startsWith("fallback:")) return t("assignmentFallback", { value: mappingSlotLabel(value.slice(9)) });
+    if (!value.startsWith("motion:")) return value;
+    const motionId = value.slice(7);
+    const motion = displayedMotions.find((candidate) => candidate.id === motionId);
+    const recipeId = targetDocument?.recipeMappings?.[slot];
+    const recipe = projectDocument?.recipes.find((candidate) => candidate.id === recipeId);
+    const expression = recipe?.expressionId
+      ? displayedExpressions.find((candidate) => candidate.id === recipe.expressionId)
+      : null;
+    return `${motion?.name ?? motionId} · ${expression?.name ?? t("baseExpression")}`;
+  }
+
+  const mappingGroups: Array<{ id: string; title: string; channel: MappingChannel; slots: readonly string[] }> = mappingTarget === "clawd"
+    ? [
+        { id: "core", title: t("clawdCoreStates"), channel: "mappings", slots: CLAWD_PROFILE.states.core },
+        { id: "optional", title: t("clawdOptionalStates"), channel: "mappings", slots: CLAWD_PROFILE.states.optional },
+        { id: "full-sleep", title: t("clawdFullSleepStates"), channel: "mappings", slots: CLAWD_PROFILE.states.fullSleep },
+        { id: "reactions", title: t("clawdReactions"), channel: "reactions", slots: CLAWD_PROFILE.reactions },
+      ]
+    : [{ id: "rows", title: t("codexRows"), channel: "mappings", slots: CODEX_PROFILE.rows.map((row) => row.id) }];
 
   useEffect(() => {
     if (!nativePreview || !inspection) return;
@@ -476,9 +521,31 @@ function MapView({ locale, projectId, inspection, runtimeReady, selectedMotionId
       </section>
       <section className="workspace-panel assignment-panel">
         <PanelHeading icon={<WandSparkles size={16} />} title={t("assignment")} body={t("assignmentHint")} />
-        <div className="selected-card"><span className="motion-icon"><Play size={15} /></span><span className="grow-copy"><small>{t("selected")}</small><strong>{selectedName}</strong></span></div>
-        <div className="assignment-list">{assignments.map(([key, tint], index) => <div className="assignment-row" key={key}><i className={`behavior-dot ${tint}`} /><span className="grow-copy"><strong>{t(key)}</strong><small>{index < 2 ? selectedName : t("assignmentEmpty")}</small></span></div>)}</div>
-        <Button className="assign-button" variant="primary" isDisabled>{t("assign")}</Button>
+        <ButtonGroup className="target-switch" aria-label={t("mappingTarget")}>
+          <Button size="sm" variant={mappingTarget === "clawd" ? "primary" : "secondary"} onPress={() => setMappingTarget("clawd")}>Clawd</Button>
+          <Button size="sm" variant={mappingTarget === "codex-pet" ? "primary" : "secondary"} onPress={() => setMappingTarget("codex-pet")}>Codex Pet</Button>
+        </ButtonGroup>
+        <div className="selected-card"><span className="motion-icon"><Play size={15} /></span><span className="grow-copy"><small>{t("selectedMotionExpression")}</small><strong>{selectedName}</strong><small>{selectedExpression?.name ?? t("baseExpression")}</small></span></div>
+        {!canEditMappings && <p className="mapping-preview-note" role="status">{t("mappingPreviewOnly")}</p>}
+        <div className="assignment-list mapping-assignment-list">
+          {mappingGroups.map((group) => (
+            <section className="mapping-group" key={group.id} aria-labelledby={`mapping-group-${group.id}`}>
+              <h3 id={`mapping-group-${group.id}`}>{group.title}</h3>
+              {group.slots.map((slot) => {
+                const value = targetDocument?.[group.channel]?.[slot] ?? "";
+                return (
+                  <div className="assignment-row mapping-row" key={`${group.channel}:${slot}`}>
+                    <span className="grow-copy"><strong>{mappingSlotLabel(slot)}</strong><small>{assignmentLabel(slot, group.channel)}</small></span>
+                    <span className="mapping-row-actions">
+                      <Button size="sm" variant="secondary" aria-label={`${t("useSelected")} · ${mappingSlotLabel(slot)}`} isDisabled={!canAssign} onPress={() => onAssign(mappingDestination(mappingTarget, group.channel, slot))}>{t("useSelected")}</Button>
+                      <Button size="sm" variant="ghost" aria-label={`${t("clearAssignment")} · ${mappingSlotLabel(slot)}`} isDisabled={!canEditMappings || !value} onPress={() => onClear(mappingDestination(mappingTarget, group.channel, slot))}>{t("clearAssignment")}</Button>
+                    </span>
+                  </div>
+                );
+              })}
+            </section>
+          ))}
+        </div>
       </section>
     </main>
   );
@@ -693,7 +760,7 @@ export function App() {
         {actionFeedback && <div className="action-feedback" role="alert">{actionFeedback}</div>}
         {state.destination === "welcome" && <WelcomeView locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onOpenPreview={openPreview} />}
         {state.destination === "source" && <SourceView locale={locale} inspection={state.project?.inspection} inspectionRequired={Boolean(state.project?.document)} runtimeReady={runtimeReady} onConfigureRuntime={openRuntimeSettings} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
-        {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={openRuntimeSettings} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} />}
+        {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={openRuntimeSettings} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => dispatch({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => dispatch({ type: "CLEAR_ASSIGNMENT", destination })} />}
         {state.destination === "build" && <BuildView locale={locale} />}
       </div>
       <footer className="status-bar"><span><i className="status-dot" />{!hasDesktopApi() ? t("notConnected") : state.project?.dirty ? t("unsaved") : state.project?.documentId ? t("saved") : t("noSavedProject")}</span><span>{state.project?.fileName ?? `Live2Pet ${appVersion}`}</span></footer>
