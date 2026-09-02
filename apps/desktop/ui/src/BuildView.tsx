@@ -5,6 +5,7 @@ import type { BuildArtifact, BuildTarget, InstallRootResult, Live2PetProject, Re
 import { chooseInstallRoot, hasBuildApi, installArtifact } from "./app-host";
 import { downloadBuildArtifact } from "./build-artifact";
 import type { BuildState } from "./build-state";
+import { GeneratedPreview } from "./generated-preview";
 import { Locale, MessageKey, translate } from "./i18n";
 import { CLAWD_PROFILE, CODEX_PROFILE } from "./target-profiles";
 
@@ -107,6 +108,7 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
                   {current.status === "building" ? <Button variant="secondary" onPress={() => onCancel(target)} isDisabled={!current.buildId}><Square size={14} />{t("cancelBuild")}</Button> : <Button variant="primary" onPress={() => onBuild(target)} isDisabled={!hostReady || !readiness.ready}><PackageCheck size={16} />{t("buildPackage")}</Button>}
                 </div>
                 {artifact && <div className="artifact-panel"><div><CircleCheck size={17} /><span><strong>{artifact.filename}</strong><small>{t("artifactSize", { value: Math.ceil(artifact.byteLength / 1024) })}</small></span></div><div className="artifact-actions"><Button size="sm" variant="secondary" aria-label={`${t("download")} ${title}`} onPress={() => void download(artifact)}><Download size={14} />{t("download")}</Button><Button size="sm" variant="secondary" aria-label={`${t("chooseFolder")} ${title}`} onPress={() => void chooseFolder(target)}><FolderOpen size={14} />{t("chooseFolder")}</Button><Button size="sm" variant="primary" aria-label={`${t("install")} ${title}`} onPress={() => void install(target, artifact)}>{t("install")}</Button></div></div>}
+                {artifact && <GeneratedPreview artifact={artifact} locale={locale} />}
                 {current.summary && <div className="validation-summary">{current.summary.preview?.ready ? <CircleCheck size={15} /> : <XCircle size={15} />}<span>{t("previewSummary", { value: current.summary.preview?.ready ? t("ready") : t("unavailable") })} · {t("validationSummary", { value: current.summary.validation?.ok ? t("passed") : t("failed") })}</span></div>}
                 {feedback[target] && <p className="build-feedback">{feedback[target]}</p>}
               </Card.Content>

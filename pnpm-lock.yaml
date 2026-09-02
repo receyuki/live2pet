@@ -40,6 +40,9 @@ importers:
       '@live2pet/source-inspector':
         specifier: workspace:*
         version: link:../../packages/source-inspector
+      '@zip.js/zip.js':
+        specifier: 2.7.57
+        version: 2.7.57
       lucide-react:
         specifier: ^1.38.0
         version: 1.38.0(react@19.2.8)

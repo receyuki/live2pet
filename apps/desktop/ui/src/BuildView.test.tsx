@@ -9,6 +9,7 @@ import type { Live2PetProject, SourceInspection } from "./app-host";
 
 vi.mock("./app-host", async (importOriginal) => ({ ...(await importOriginal<typeof import("./app-host")>()), hasBuildApi: () => true, chooseInstallRoot: vi.fn(), installArtifact: vi.fn() }));
 vi.mock("./build-artifact", () => ({ downloadBuildArtifact: vi.fn() }));
+vi.mock("./generated-preview", () => ({ GeneratedPreview: () => <div>generated preview</div> }));
 
 const inspection = { schemaVersion: 1, source: { kind: "pck", name: "Pet", fingerprint: "fixture", modelConfig: "model.json" }, model: { cubism: 2, configFile: "model.json", modelFile: "model.moc", textures: [] }, motions: [], expressions: [], resources: [], warnings: [] } satisfies SourceInspection;
 const project = {

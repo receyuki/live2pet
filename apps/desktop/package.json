@@ -28,6 +28,7 @@
     "@live2pet/project": "workspace:*",
     "@live2pet/runtime": "workspace:*",
     "@live2pet/source-inspector": "workspace:*",
+    "@zip.js/zip.js": "2.7.57",
     "lucide-react": "^1.38.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
