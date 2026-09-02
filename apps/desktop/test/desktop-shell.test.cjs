@@ -42,7 +42,7 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(preload, /const APP_IPC_PROTOCOL_VERSION = 1;/);
   assert.match(preload, /const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';/);
   assert.match(preload, /const APP_COMMAND_CHANNEL = 'live2pet:command';/);
-  assert.match(preload, /new Set\(\['open', 'save', 'settings', 'build', 'setup'\]\)/);
+  assert.match(preload, /new Set\(\['open', 'save', 'settings', 'build', 'setup', 'undo', 'redo'\]\)/);
   assert.match(preload, /webUtils\.getPathForFile/);
   assert.match(preload, /getFilePath,/);
   for (const method of ['getVersion', 'inspectSource', 'getRuntimeSettings', 'configureRuntime', 'clearRuntimeSettings', 'buildProject', 'cancelBuild', 'getBuildArtifact', 'chooseInstallRoot', 'installArtifact', 'getCaptureCacheStatus', 'putCaptureCache', 'getBuildCacheStatus', 'clearBuildCache']) {
@@ -56,6 +56,9 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(main, /sendAppCommand\('settings'\)/);
   assert.match(main, /sendAppCommand\('build'\)/);
   assert.match(main, /sendAppCommand\('setup'\)/);
+  assert.match(main, /accelerator: 'CommandOrControl\+Z'/);
+  assert.match(main, /sendAppCommand\('undo'\)/);
+  assert.match(main, /sendAppCommand\('redo'\)/);
   assert.match(main, /loadWindowBounds\(windowStatePath\(\), screen\.getAllDisplays\(\)/);
   assert.match(main, /mainWindow\.on\('resize', windowStateWriter\.schedule\)/);
   assert.doesNotMatch(preload, /MapperSession|RendererPreview|getSkillStatus|installSkill|rendererCommand/);
@@ -224,6 +227,9 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
 test('shared Mapper exposes project recovery, source review, and build-gate seams', () => {
   const mapper = fs.readFileSync(path.resolve(root, '../mapper/index.html'), 'utf8');
   assert.match(mapper, /function buildProjectDocument\(\)/);
+  assert.match(mapper, /onAppCommand\?\.\(command =>/);
+  assert.match(mapper, /command === "undo"/);
+  assert.match(mapper, /command === "redo"/);
   assert.match(mapper, /function parseProjectDocument\(textValue\)/);
   assert.match(mapper, /autosave/i, 'Mapper should expose an autosave or recovery entrypoint.');
   assert.match(mapper, /relink/i, 'Mapper should expose a source relink entrypoint.');

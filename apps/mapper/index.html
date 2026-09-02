@@ -4863,6 +4863,10 @@
     new ResizeObserver(()=>{if(app){app.resize();fitModel();}}).observe($("stage"));
     I18n.apply();
     subscribeBuildProgress();
+    window.live2pet?.onAppCommand?.(command => {
+      if (command === "undo") undoProjectEdit();
+      else if (command === "redo") redoProjectEdit();
+    });
     const recoveredDraft = restoreProjectDraft();
     setProjectStatus(I18n.t("project.status.empty"));
     setBuildStatus(I18n.t("build.codex.status.empty"));

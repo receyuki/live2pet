@@ -38,7 +38,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, buildHos
   const openPreview = vi.fn(async (input: { projectId: string; sourceFingerprint: string; bounds: { x: number; y: number; width: number; height: number } }) => ({ protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, state: 'ready' as const, projectId: input.projectId, sourceFingerprint: input.sourceFingerprint, visible: true, bounds: input.bounds, playback: { motionId: null, expressionId: null, playing: false, loop: true, speed: 1 } } }));
   const openProject = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: openCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-document', fileName: 'saved.live2pet', project: openedProject, recentProjects } }));
   const saveProject = vi.fn(async (input: { project: Live2PetProject }) => ({ protocolVersion: 1 as const, ok: true, result: saveCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-saved-document', fileName: `${input.project.name}.live2pet`, project: input.project, recentProjects } }));
-  let appCommandListener: ((command: 'open' | 'save' | 'settings' | 'build' | 'setup') => void) | undefined;
+  let appCommandListener: ((command: 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => void) | undefined;
   let buildProgressListener: ((event: { protocolVersion: 1; buildId: string; sequence: number; target: 'clawd'; stage: string; status: string; fraction: number }) => void) | undefined;
   const buildProject = vi.fn(async () => {
     buildProgressListener?.({ protocolVersion: 1, buildId: 'build_12345678', sequence: 1, target: 'clawd', stage: 'package', status: 'completed', fraction: 1 });
@@ -78,7 +78,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, buildHos
       } : {}),
     },
   });
-  return { configureRuntime, inspectSource, openPreview, openProject, saveProject, buildProject, emitAppCommand: (command: 'open' | 'save' | 'settings' | 'build' | 'setup') => appCommandListener?.(command) };
+  return { configureRuntime, inspectSource, openPreview, openProject, saveProject, buildProject, emitAppCommand: (command: 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => appCommandListener?.(command) };
 }
 
 function setSystemDarkMode(matches: boolean) {
@@ -165,6 +165,47 @@ describe('Live2Pet desktop shell', () => {
     await user.click(screen.getByRole('button', { name: 'Clear · Idle' }));
     const clawdIdleRow = screen.getByRole('button', { name: 'Use selected · Idle' }).closest('.mapping-row');
     expect(within(clawdIdleRow as HTMLElement).getByText('No behavior linked yet')).toBeVisible();
+  });
+
+  it('routes Desktop undo and redo to project mappings while preserving focused text editing', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const api = installDesktopApi();
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+
+    await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
+    await user.click(screen.getByRole('button', { name: 'Use selected · Idle' }));
+    const idleRow = () => screen.getByRole('button', { name: 'Use selected · Idle' }).closest('.mapping-row') as HTMLElement;
+    expect(within(idleRow()).getByText(/^Breathing/)).toBeVisible();
+
+    api.emitAppCommand('undo');
+    await vi.waitFor(() => expect(within(idleRow()).getByText('No behavior linked yet')).toBeVisible());
+    api.emitAppCommand('redo');
+    await vi.waitFor(() => expect(within(idleRow()).getByText(/^Breathing/)).toBeVisible());
+
+    const input = document.createElement('input');
+    document.body.append(input);
+    input.focus();
+    api.emitAppCommand('undo');
+    expect(within(idleRow()).getByText(/^Breathing/)).toBeVisible();
+    input.remove();
+  });
+
+  it('uses project history shortcuts only as a browser fallback and ignores editable targets', () => {
+    Object.defineProperty(window, 'live2pet', { configurable: true, value: undefined });
+    render(<App />);
+
+    const projectUndo = new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true });
+    window.dispatchEvent(projectUndo);
+    expect(projectUndo.defaultPrevented).toBe(true);
+
+    const input = document.createElement('input');
+    document.body.append(input);
+    const textUndo = new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true });
+    input.dispatchEvent(textUndo);
+    expect(textUndo.defaultPrevented).toBe(false);
+    input.remove();
   });
 
   it('persists the explicit Motion and Expression recipe in the save payload', async () => {

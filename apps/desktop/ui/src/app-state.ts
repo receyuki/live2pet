@@ -30,6 +30,12 @@ export interface ProjectSession {
   selectedExpressionId: string | null;
 }
 
+export interface ProjectDocumentHistory {
+  past: import('./app-host').Live2PetProject[];
+  future: import('./app-host').Live2PetProject[];
+  saved: import('./app-host').Live2PetProject | null;
+}
+
 type ReturnDestination = "welcome" | ProjectDestination;
 type SetupReturnDestination = Exclude<Destination, "setup">;
 
@@ -41,6 +47,7 @@ export interface AppState {
   settingsReturnDestination: ReturnDestination | null;
   setupReturnDestination: SetupReturnDestination | null;
   setupCompleted: boolean;
+  projectHistory: ProjectDocumentHistory;
 }
 
 export type AppAction =
@@ -58,6 +65,8 @@ export type AppAction =
   | { type: "ASSIGN_SELECTED_RECIPE"; destination: MappingDestination }
   | { type: "CLEAR_ASSIGNMENT"; destination: MappingDestination }
   | { type: "SET_RENDER_PRESET"; target: "clawd" | "codex-pet"; preset: "compact" | "balanced" | "high" }
+  | { type: "UNDO_PROJECT_EDIT" }
+  | { type: "REDO_PROJECT_EDIT" }
   | { type: "PROJECT_SAVED"; document: import('./app-host').Live2PetProject; documentId: string; fileName: string }
   | { type: "OPEN_SETUP" }
   | { type: "COMPLETE_SETUP" }
@@ -73,6 +82,36 @@ export function initialAppState({ setupCompleted = false }: { setupCompleted?: b
     settingsReturnDestination: null,
     setupReturnDestination: null,
     setupCompleted,
+    projectHistory: { past: [], future: [], saved: null },
+  };
+}
+
+const HISTORY_LIMIT = 100;
+
+function sameDocument(
+  left: import('./app-host').Live2PetProject | null,
+  right: import('./app-host').Live2PetProject | null,
+): boolean {
+  return left === right || (left !== null && right !== null && JSON.stringify(left) === JSON.stringify(right));
+}
+
+function dirtyFromBaseline(
+  document: import('./app-host').Live2PetProject,
+  saved: import('./app-host').Live2PetProject | null,
+): boolean {
+  return saved === null || !sameDocument(document, saved);
+}
+
+function applyDocumentEdit(state: AppState, document: import('./app-host').Live2PetProject): AppState {
+  if (!state.project?.document || document === state.project.document) return state;
+  return {
+    ...state,
+    project: { ...state.project, document, dirty: dirtyFromBaseline(document, state.projectHistory.saved) },
+    projectHistory: {
+      past: [...state.projectHistory.past, state.project.document].slice(-HISTORY_LIMIT),
+      future: [],
+      saved: state.projectHistory.saved,
+    },
   };
 }
 
@@ -95,10 +134,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         },
         settingsReturnDestination: null,
         setupReturnDestination: null,
+        projectHistory: {
+          past: [],
+          future: [],
+          saved: action.project.dirty || !action.project.document ? null : action.project.document,
+        },
       };
 
     case "CLOSE_PROJECT":
-      return { ...state, destination: "welcome", project: null, settingsReturnDestination: null };
+      return { ...state, destination: "welcome", project: null, settingsReturnDestination: null, projectHistory: { past: [], future: [], saved: null } };
 
     case "NAVIGATE":
       if (!state.project || state.destination === "setup") return state;
@@ -145,20 +189,48 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         motionId: state.project.selectedMotionId,
         expressionId: state.project.selectedExpressionId,
       });
-      return document === state.project.document ? state : { ...state, project: { ...state.project, document, dirty: true } };
+      return applyDocumentEdit(state, document);
     }
 
     case "CLEAR_ASSIGNMENT": {
       if (!state.project?.document) return state;
       const document = clearAssignment(state.project.document, action.destination);
-      return document === state.project.document ? state : { ...state, project: { ...state.project, document, dirty: true } };
+      return applyDocumentEdit(state, document);
     }
 
     case "SET_RENDER_PRESET": {
       if (!state.project?.document || state.project.document.targets[action.target].renderPreset === action.preset) return state;
       const target = { ...state.project.document.targets[action.target], renderPreset: action.preset };
       const document = { ...state.project.document, targets: { ...state.project.document.targets, [action.target]: target } };
-      return { ...state, project: { ...state.project, document, dirty: true } };
+      return applyDocumentEdit(state, document);
+    }
+
+    case "UNDO_PROJECT_EDIT": {
+      if (!state.project?.document || state.projectHistory.past.length === 0) return state;
+      const document = state.projectHistory.past[state.projectHistory.past.length - 1];
+      return {
+        ...state,
+        project: { ...state.project, document, dirty: dirtyFromBaseline(document, state.projectHistory.saved) },
+        projectHistory: {
+          past: state.projectHistory.past.slice(0, -1),
+          future: [state.project.document, ...state.projectHistory.future].slice(0, HISTORY_LIMIT),
+          saved: state.projectHistory.saved,
+        },
+      };
+    }
+
+    case "REDO_PROJECT_EDIT": {
+      if (!state.project?.document || state.projectHistory.future.length === 0) return state;
+      const [document, ...future] = state.projectHistory.future;
+      return {
+        ...state,
+        project: { ...state.project, document, dirty: dirtyFromBaseline(document, state.projectHistory.saved) },
+        projectHistory: {
+          past: [...state.projectHistory.past, state.project.document].slice(-HISTORY_LIMIT),
+          future,
+          saved: state.projectHistory.saved,
+        },
+      };
     }
 
     case "PROJECT_SAVED":
@@ -174,6 +246,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
               fileName: action.fileName,
               dirty: false,
             },
+            projectHistory: { ...state.projectHistory, saved: action.document },
           }
         : state;
 

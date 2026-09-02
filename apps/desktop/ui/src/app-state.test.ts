@@ -121,4 +121,59 @@ describe("appReducer", () => {
     expect(changed.project?.dirty).toBe(true);
     expect(appReducer(changed, { type: "SET_RENDER_PRESET", target: "clawd", preset: "high" })).toBe(changed);
   });
+
+  it("undoes and redoes document edits without recording ephemeral selections or no-ops", () => {
+    let state = appReducer(initialAppState({ setupCompleted: true }), {
+      type: "OPEN_PROJECT",
+      project: { id: "one", name: "One", document: projectDocument() },
+    });
+    state = appReducer(state, { type: "SELECT_MOTION", motionId: "Idle" });
+    expect(state.projectHistory.past).toHaveLength(0);
+
+    state = appReducer(state, { type: "ASSIGN_SELECTED_RECIPE", destination: { target: "clawd", category: "states", slot: "idle" } });
+    expect(state.projectHistory.past).toHaveLength(1);
+    const assigned = state.project?.document;
+    expect(appReducer(state, { type: "ASSIGN_SELECTED_RECIPE", destination: { target: "clawd", category: "states", slot: "idle" } })).toBe(state);
+
+    state = appReducer(state, { type: "UNDO_PROJECT_EDIT" });
+    expect(state.project?.document?.targets.clawd.mappings).toEqual({});
+    expect(state.project?.dirty).toBe(false);
+    expect(state.projectHistory.future).toHaveLength(1);
+
+    state = appReducer(state, { type: "REDO_PROJECT_EDIT" });
+    expect(state.project?.document).toBe(assigned);
+    expect(state.project?.dirty).toBe(true);
+  });
+
+  it("preserves history across save and computes dirty state against the saved document", () => {
+    let state = appReducer(initialAppState({ setupCompleted: true }), {
+      type: "OPEN_PROJECT",
+      project: { id: "one", name: "One", document: projectDocument(), selectedMotionId: "Idle" },
+    });
+    state = appReducer(state, { type: "ASSIGN_SELECTED_RECIPE", destination: { target: "codex-pet", category: "rows", slot: "idle" } });
+    state = appReducer(state, { type: "PROJECT_SAVED", document: state.project!.document!, documentId: "document_123", fileName: "one.live2pet" });
+    expect(state.projectHistory.past).toHaveLength(1);
+    expect(state.project?.dirty).toBe(false);
+
+    state = appReducer(state, { type: "UNDO_PROJECT_EDIT" });
+    expect(state.project?.dirty).toBe(true);
+    state = appReducer(state, { type: "REDO_PROJECT_EDIT" });
+    expect(state.project?.dirty).toBe(false);
+  });
+
+  it("resets history at project boundaries and caps undo snapshots at 100", () => {
+    let state = appReducer(initialAppState({ setupCompleted: true }), {
+      type: "OPEN_PROJECT",
+      project: { id: "one", name: "One", document: projectDocument() },
+    });
+    for (let index = 0; index < 110; index += 1) {
+      state = appReducer(state, { type: "SET_RENDER_PRESET", target: "clawd", preset: index % 2 ? "compact" : "high" });
+    }
+    expect(state.projectHistory.past).toHaveLength(100);
+
+    state = appReducer(state, { type: "OPEN_PROJECT", project: { id: "two", name: "Two", document: { ...projectDocument(), projectId: "two" } } });
+    expect(state.projectHistory).toMatchObject({ past: [], future: [] });
+    state = appReducer(state, { type: "CLOSE_PROJECT" });
+    expect(state.projectHistory).toEqual({ past: [], future: [], saved: null });
+  });
 });

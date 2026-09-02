@@ -128,6 +128,17 @@ function storedAppearance(): AppSettings["appearance"] {
   return value === "light" || value === "dark" ? value : "system";
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return Boolean(target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]'));
+}
+
+function preserveTextEditingHistory(command: "undo" | "redo"): boolean {
+  if (!isEditableTarget(document.activeElement)) return false;
+  if (typeof document.execCommand === "function") document.execCommand(command);
+  return true;
+}
+
 function BrandMark({ large = false }: { large?: boolean }) {
   return (
     <span className={`brand-mark${large ? " brand-mark-large" : ""}`} aria-hidden="true">
@@ -162,7 +173,6 @@ function RuntimePanel({ locale, compact = false, onSettingsChange }: { locale: L
   useEffect(() => {
     void getRuntimeSettings().then(setSettings).catch((cause: Error) => setError(cause.message));
   }, []);
-
   async function saveRuntime(file: File | undefined) {
     if (!file) return;
     setBusy(true);
@@ -619,6 +629,20 @@ export function App() {
       window.removeEventListener("drop", preventFileNavigation);
     };
   }, []);
+  useEffect(() => {
+    if (hasDesktopApi()) return;
+    const handleProjectHistoryShortcut = (event: KeyboardEvent) => {
+      if (isEditableTarget(event.target) || event.altKey) return;
+      const modifier = event.metaKey || event.ctrlKey;
+      const undo = modifier && event.key.toLowerCase() === "z" && !event.shiftKey;
+      const redo = modifier && ((event.key.toLowerCase() === "z" && event.shiftKey) || event.key.toLowerCase() === "y");
+      if (!undo && !redo) return;
+      event.preventDefault();
+      dispatch({ type: undo ? "UNDO_PROJECT_EDIT" : "REDO_PROJECT_EDIT" });
+    };
+    window.addEventListener("keydown", handleProjectHistoryShortcut);
+    return () => window.removeEventListener("keydown", handleProjectHistoryShortcut);
+  }, []);
 
   function completeSetup() { localStorage.setItem(SETUP_KEY, "true"); dispatch({ type: "COMPLETE_SETUP" }); }
   function openPreview() { dispatch({ type: "OPEN_PROJECT", project: { id: "design-preview", name: t("project"), selectedMotionId: motions[0].id } }); }
@@ -769,6 +793,8 @@ export function App() {
     else if (command === "build") {
       if (state.project?.document) dispatch({ type: "NAVIGATE", destination: "build" });
       else setActionFeedback(t("buildRequiresProject"));
+    } else if (command === "undo" || command === "redo") {
+      if (!preserveTextEditingHistory(command)) dispatch({ type: command === "undo" ? "UNDO_PROJECT_EDIT" : "REDO_PROJECT_EDIT" });
     }
   }), [state, locale]);
 

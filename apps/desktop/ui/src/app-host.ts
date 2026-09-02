@@ -73,7 +73,7 @@ export type RecentProject = { documentId: string; name: string; fileName: string
 export type ProjectFileResult =
   | { cancelled: true; recentProjects: RecentProject[] }
   | { cancelled: false; documentId: string; fileName: string; project: Live2PetProject; recentProjects: RecentProject[] };
-export type AppCommand = 'open' | 'save' | 'settings' | 'build' | 'setup';
+export type AppCommand = 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo';
 export type BuildTarget = 'clawd' | 'codex-pet';
 export type RenderPreset = 'compact' | 'balanced' | 'high';
 

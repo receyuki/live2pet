@@ -240,7 +240,18 @@ function installApplicationMenu() {
         ...(process.platform === 'darwin' ? [] : [{ type: 'separator' }, { role: 'quit' }]),
       ],
     },
-    { role: 'editMenu', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
+    {
+      label: 'Edit',
+      submenu: [
+        { label: 'Undo', accelerator: 'CommandOrControl+Z', click: () => sendAppCommand('undo') },
+        { label: 'Redo', accelerator: process.platform === 'darwin' ? 'CommandOrControl+Shift+Z' : 'CommandOrControl+Y', click: () => sendAppCommand('redo') },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
     { label: 'Build', submenu: [{ label: 'Build', click: () => sendAppCommand('build') }] },
     { label: 'Help', role: 'help', submenu: [{ label: 'Setup Assistant', click: () => sendAppCommand('setup') }] },
   ];
