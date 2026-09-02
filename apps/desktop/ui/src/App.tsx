@@ -14,7 +14,6 @@ import {
   Download,
   FolderOpen,
   Gauge,
-  Globe2,
   HardDrive,
   Languages,
   Moon,
@@ -31,7 +30,7 @@ import {
   WandSparkles,
   X,
 } from "lucide-react";
-import { ChangeEvent, ReactNode, useEffect, useReducer, useState } from "react";
+import { ChangeEvent, ReactNode, useEffect, useReducer, useRef, useState } from "react";
 import {
   clearCache,
   clearRuntimeSettings,
@@ -55,14 +54,26 @@ const LOCALE_KEY = "live2pet.desktop.locale";
 const APPEARANCE_KEY = "live2pet.desktop.appearance";
 
 const motions = [
-  { id: "main-1", name: "Main 1", detail: "Motion · 4.2s", tint: "" },
-  { id: "main-2", name: "Main 2", detail: "Motion · 3.6s", tint: "tint-blue" },
-  { id: "touch-head", name: "Touch Head", detail: "Motion · 2.1s", tint: "tint-rose" },
-  { id: "attention", name: "Attention", detail: "Motion · 1.8s", tint: "tint-amber" },
-  { id: "error", name: "Error", detail: "Motion · 2.4s", tint: "tint-cyan" },
+  { id: "main-1", nameKey: "motionMainOne", seconds: "4.2", tint: "" },
+  { id: "main-2", nameKey: "motionMainTwo", seconds: "3.6", tint: "tint-blue" },
+  { id: "touch-head", nameKey: "motionTouchHead", seconds: "2.1", tint: "tint-rose" },
+  { id: "attention", nameKey: "motionAttention", seconds: "1.8", tint: "tint-amber" },
+  { id: "error", nameKey: "motionError", seconds: "2.4", tint: "tint-cyan" },
 ] as const;
 
-const assignments = ["idle", "thinking", "working", "attention", "error"];
+const expressions = [
+  { id: "default", nameKey: "expressionDefault" },
+  { id: "smile", nameKey: "expressionSmile" },
+  { id: "serious", nameKey: "expressionSerious" },
+] as const;
+
+const assignments = [
+  ["assignmentIdle", "dot-0"],
+  ["assignmentThinking", "dot-1"],
+  ["assignmentWorking", "dot-2"],
+  ["assignmentAttention", "dot-3"],
+  ["assignmentError", "dot-4"],
+] as const;
 
 function storedLocale(): Locale {
   return localStorage.getItem(LOCALE_KEY) === "zh-CN" ? "zh-CN" : "en";
@@ -99,6 +110,7 @@ function RuntimePanel({ locale, compact = false }: { locale: Locale; compact?: b
   const [settings, setSettings] = useState<RuntimeSettings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void getRuntimeSettings().then(setSettings).catch((cause: Error) => setError(cause.message));
@@ -120,6 +132,7 @@ function RuntimePanel({ locale, compact = false }: { locale: Locale; compact?: b
   }
 
   async function removeRuntimes() {
+    if (!window.confirm(t("confirmRemoveRuntimes"))) return;
     setBusy(true);
     setError("");
     try {
@@ -141,12 +154,10 @@ function RuntimePanel({ locale, compact = false }: { locale: Locale; compact?: b
             <h2>{compact ? t("runtimeTitle") : t("setupRuntime")}</h2>
             <p>{t("runtimeBody")}</p>
           </div>
-          <label className="upload-control">
-            <input className="visually-hidden" type="file" onChange={addRuntime} disabled={busy} />
-            <span aria-disabled={busy}>
-              <Plus size={15} />{runtimes.length ? t("replaceRuntime") : t("addRuntime")}
-            </span>
-          </label>
+          <input ref={fileInput} className="visually-hidden" type="file" tabIndex={-1} onChange={addRuntime} disabled={busy} />
+          <Button variant="secondary" size="sm" onPress={() => fileInput.current?.click()} isDisabled={busy}>
+            <Plus size={15} />{runtimes.length ? t("replaceRuntime") : t("addRuntime")}
+          </Button>
         </div>
         {busy && <ProgressBar aria-label={t("loading")} isIndeterminate className="mt-4" />}
         <div className="runtime-list">
@@ -175,7 +186,7 @@ function RuntimePanel({ locale, compact = false }: { locale: Locale; compact?: b
 }
 
 function SetupView({ locale, onComplete }: { locale: Locale; onComplete: () => void }) {
-  const t = (key: MessageKey) => translate(locale, key);
+  const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   return (
     <main className="setup-view">
       <section className="setup-art" aria-hidden="true">
@@ -208,8 +219,8 @@ function WelcomeView({ locale, onOpenProject }: { locale: Locale; onOpenProject:
           <h1>{t("welcomeTitle")}</h1>
           <p>{t("welcomeBody")}</p>
           <div className="welcome-actions">
-            <Button variant="primary" size="lg"><Upload size={18} />{t("importSource")}</Button>
-            <Button variant="secondary" size="lg"><FolderOpen size={18} />{t("openProject")}</Button>
+            <Button variant="primary" size="lg" isDisabled><Upload size={18} />{t("importSource")}</Button>
+            <Button variant="secondary" size="lg" isDisabled><FolderOpen size={18} />{t("openProject")}</Button>
           </div>
           <Button className="button--ghost" variant="ghost" onPress={onOpenProject}>{t("sampleProject")}<ChevronRight size={15} /></Button>
         </div>
@@ -234,7 +245,7 @@ function SourceView({ locale, onMap }: { locale: Locale; onMap: () => void }) {
       <PageHeading eyebrow={t("source")} title={t("sourceTitle")} body={t("sourceBody")} />
       <div className="source-grid">
         <Card className="surface-card"><Card.Content><div className="model-placeholder"><BrandMark large /></div><div className="ready-box"><CircleCheck size={20} /><span><strong>{t("sourceReady")}</strong><small>Cubism 4 · 5 motions · 3 expressions</small></span></div><Button variant="primary" onPress={onMap}>{t("map")}<ChevronRight size={16} /></Button></Card.Content></Card>
-        <Card className="surface-card source-facts"><Card.Content>{[["Model", "model3.json"], ["Textures", "4"], ["Motions", "5"], ["Expressions", "3"]].map(([label, value]) => <div className="fact" key={label}><span>{label}</span><strong>{value}</strong></div>)}</Card.Content></Card>
+        <Card className="surface-card source-facts"><Card.Content>{[["sourceModel", "model3.json"], ["sourceTextures", "4"], ["sourceMotions", "5"], ["sourceExpressions", "3"]].map(([key, value]) => <div className="fact" key={key}><span>{t(key as MessageKey)}</span><strong>{value}</strong></div>)}</Card.Content></Card>
       </div>
     </main>
   );
@@ -244,32 +255,38 @@ function PanelHeading({ icon, title, body }: { icon: ReactNode; title: string; b
   return <header className="panel-heading"><span className="square-icon">{icon}</span><div><h2>{title}</h2><p>{body}</p></div></header>;
 }
 
-function MapView({ locale, selectedMotionId, onSelect }: { locale: Locale; selectedMotionId: string | null; onSelect: (id: string) => void }) {
-  const t = (key: MessageKey) => translate(locale, key);
+function MapView({ locale, selectedMotionId, selectedExpressionId, onSelectMotion, onSelectExpression }: { locale: Locale; selectedMotionId: string | null; selectedExpressionId: string | null; onSelectMotion: (id: string) => void; onSelectExpression: (id: string) => void }) {
+  const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   const selected = motions.find((motion) => motion.id === selectedMotionId) ?? motions[0];
+  const selectedExpression = expressions.find((expression) => expression.id === selectedExpressionId) ?? expressions[0];
+  const selectedName = t(selected.nameKey);
   return (
     <main className="map-workspace">
       <section className="workspace-panel">
         <PanelHeading icon={<SlidersHorizontal size={16} />} title={t("motions")} body={t("motionsHint")} />
-        <label className="search-field"><Search size={14} /><input aria-label="Search motions" placeholder="Search" /></label>
+        <label className="search-field"><Search size={14} /><input aria-label={t("searchMotions")} placeholder={t("search")} /></label>
         <div className="motion-list">
           {motions.map((motion) => (
-            <Button key={motion.id} variant={motion.id === selected.id ? "secondary" : "ghost"} className={`motion-item ${motion.tint}`} onPress={() => onSelect(motion.id)}>
-              <span className="motion-icon"><Play size={15} /></span><span className="grow-copy"><strong>{motion.name}</strong><small>{motion.detail}</small></span>{motion.id === selected.id && <small>{t("selected")}</small>}
+            <Button key={motion.id} variant={motion.id === selected.id ? "secondary" : "ghost"} className={`motion-item ${motion.tint}`} onPress={() => onSelectMotion(motion.id)}>
+              <span className="motion-icon"><Play size={15} /></span><span className="grow-copy"><strong>{t(motion.nameKey)}</strong><small>{t("motionDuration", { value: motion.seconds })}</small></span>{motion.id === selected.id && <small>{t("selected")}</small>}
             </Button>
           ))}
+          <p className="library-subheading">{t("expressions")}</p>
+          <div className="expression-grid">
+            {expressions.map((expression) => <Button key={expression.id} size="sm" variant={expression.id === selectedExpression.id ? "secondary" : "ghost"} onPress={() => onSelectExpression(expression.id)}>{t(expression.nameKey)}</Button>)}
+          </div>
         </div>
       </section>
       <section className="workspace-panel">
         <PanelHeading icon={<Sparkles size={16} />} title={t("preview")} body={t("previewHint")} />
-        <div className="preview-stage"><i className="stage-grid" /><i className="stage-glow" /><Chip className="stage-chip" variant="soft">{selected.name}</Chip><div className="character"><BrandMark large /><i /></div></div>
-        <div className="playback"><Button isIconOnly aria-label={t("play")} variant="primary" size="sm"><Play size={15} /></Button><span className="timeline"><i /></span><small>00:01 / 00:04</small></div>
+        <div className="preview-stage"><i className="stage-grid" /><i className="stage-glow" /><Chip className="stage-chip" variant="soft">{selectedName} · {t(selectedExpression.nameKey)}</Chip><div className="character"><BrandMark large /><i /></div></div>
+        <div className="playback"><Button isIconOnly aria-label={t("play")} variant="primary" size="sm" isDisabled><Play size={15} /></Button><span className="timeline"><i /></span><small>00:01 / 00:04</small></div>
       </section>
       <section className="workspace-panel assignment-panel">
         <PanelHeading icon={<WandSparkles size={16} />} title={t("assignment")} body={t("assignmentHint")} />
-        <div className="selected-card"><span className="motion-icon"><Play size={15} /></span><span className="grow-copy"><small>{t("selected")}</small><strong>{selected.name}</strong></span></div>
-        <div className="assignment-list">{assignments.map((item, index) => <div className="assignment-row" key={item}><i className={`behavior-dot dot-${index}`} /><span className="grow-copy"><strong>{item}</strong><small>{index < 2 ? selected.name : t("assignmentEmpty")}</small></span></div>)}</div>
-        <Button className="assign-button" variant="primary">{t("assign")}</Button>
+        <div className="selected-card"><span className="motion-icon"><Play size={15} /></span><span className="grow-copy"><small>{t("selected")}</small><strong>{selectedName}</strong></span></div>
+        <div className="assignment-list">{assignments.map(([key, tint], index) => <div className="assignment-row" key={key}><i className={`behavior-dot ${tint}`} /><span className="grow-copy"><strong>{t(key)}</strong><small>{index < 2 ? selectedName : t("assignmentEmpty")}</small></span></div>)}</div>
+        <Button className="assign-button" variant="primary" isDisabled>{t("assign")}</Button>
       </section>
     </main>
   );
@@ -277,7 +294,7 @@ function MapView({ locale, selectedMotionId, onSelect }: { locale: Locale; selec
 
 function BuildView({ locale }: { locale: Locale }) {
   const t = (key: MessageKey) => translate(locale, key);
-  return <main className="page"><PageHeading eyebrow={t("build")} title={t("buildTitle")} body={t("buildBody")} /><div className="build-grid">{["Clawd", "hatch-pet"].map((target) => <Card className="surface-card build-card" key={target}><Card.Content><div className="build-top"><span className="large-icon"><PackageCheck size={20} /></span><Chip color="success" variant="soft">{t("ready")}</Chip></div><h2>{target}</h2><p>{t("buildSummaryBody")}</p><Button variant="primary"><Download size={16} />{t("buildTheme")}</Button></Card.Content></Card>)}</div></main>;
+  return <main className="page"><PageHeading eyebrow={t("build")} title={t("buildTitle")} body={t("buildBody")} /><div className="build-grid">{["Clawd Theme Package", "Codex Pet Package"].map((target) => <Card className="surface-card build-card" key={target}><Card.Content><div className="build-top"><span className="large-icon"><PackageCheck size={20} /></span><Chip variant="soft">{t("designPreview")}</Chip></div><h2>{target}</h2><p>{t("buildSummaryBody")}</p><Button variant="primary" isDisabled><Download size={16} />{t("buildPackage")}</Button></Card.Content></Card>)}</div></main>;
 }
 
 function SettingsView({ locale, section, appearance, onSection, onLocale, onAppearance, onClose }: { locale: Locale; section: SettingsSection; appearance: AppSettings["appearance"]; onSection: (section: SettingsSection) => void; onLocale: (locale: Locale) => void; onAppearance: (appearance: AppSettings["appearance"]) => void; onClose: () => void }) {
@@ -285,7 +302,7 @@ function SettingsView({ locale, section, appearance, onSection, onLocale, onAppe
   const [cache, setCache] = useState({ byteLength: 0, entryCount: 0, maxBytes: 0 });
   const nav: Array<[SettingsSection, MessageKey, ReactNode]> = [["general", "general", <SlidersHorizontal size={16} />], ["runtimes", "runtimes", <Gauge size={16} />], ["targets", "targets", <PackageCheck size={16} />], ["storage", "storage", <Database size={16} />]];
   useEffect(() => { if (section === "storage") void getCacheStatus().then(setCache); }, [section]);
-  async function clearBuildCache() { await clearCache(); setCache(await getCacheStatus()); }
+  async function clearBuildCache() { if (!window.confirm(t("confirmClearCache"))) return; await clearCache(); setCache(await getCacheStatus()); }
   return (
     <main className="settings-view">
       <aside className="settings-sidebar">
@@ -314,7 +331,14 @@ export function App() {
   const t = (key: MessageKey) => translate(locale, key);
 
   useEffect(() => { document.documentElement.lang = locale; localStorage.setItem(LOCALE_KEY, locale); }, [locale]);
-  useEffect(() => { document.documentElement.dataset.theme = appearance; localStorage.setItem(APPEARANCE_KEY, appearance); }, [appearance]);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const applyAppearance = () => { document.documentElement.dataset.theme = appearance === "system" ? (media.matches ? "dark" : "light") : appearance; };
+    applyAppearance();
+    media.addEventListener("change", applyAppearance);
+    localStorage.setItem(APPEARANCE_KEY, appearance);
+    return () => media.removeEventListener("change", applyAppearance);
+  }, [appearance]);
   useEffect(() => { void getAppVersion().then(setAppVersion).catch(() => undefined); }, []);
 
   function completeSetup() { localStorage.setItem(SETUP_KEY, "true"); dispatch({ type: "COMPLETE_SETUP" }); }
@@ -334,7 +358,7 @@ export function App() {
       <div className="app-content">
         {state.destination === "welcome" && <WelcomeView locale={locale} onOpenProject={openPreview} />}
         {state.destination === "source" && <SourceView locale={locale} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
-        {state.destination === "map" && <MapView locale={locale} selectedMotionId={state.project?.selectedMotionId ?? null} onSelect={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} />}
+        {state.destination === "map" && <MapView locale={locale} selectedMotionId={state.project?.selectedMotionId ?? null} selectedExpressionId={state.project?.selectedExpressionId ?? null} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} />}
         {state.destination === "build" && <BuildView locale={locale} />}
       </div>
       <footer className="status-bar"><span><i className="status-dot" />{hasDesktopApi() ? t("saved") : t("notConnected")}</span><span>Live2Pet {appVersion}</span></footer>

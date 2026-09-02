@@ -9,7 +9,7 @@ function installDesktopApi() {
   Object.defineProperty(window, 'live2pet', {
     configurable: true,
     value: {
-      getVersion: vi.fn(),
+      getVersion: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { appVersion: '0.1.0', protocolVersion: 1, methods: [] } })),
       getRuntimeSettings: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: emptyRuntimes })),
       configureRuntime: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: emptyRuntimes })),
       clearRuntimeSettings: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: emptyRuntimes })),
@@ -20,9 +20,26 @@ function installDesktopApi() {
   });
 }
 
+function setSystemDarkMode(matches: boolean) {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    value: vi.fn((query: string) => ({
+      matches,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(() => false),
+    })),
+  });
+}
+
 beforeEach(() => {
   localStorage.clear();
   localStorage.setItem('live2pet.desktop.locale', 'en');
+  setSystemDarkMode(false);
   installDesktopApi();
 });
 
@@ -39,6 +56,14 @@ describe('Live2Pet desktop shell', () => {
 
     expect(screen.getByRole('heading', { name: 'Turn Live2D motions into desktop pets.' })).toBeVisible();
     expect(localStorage.getItem('live2pet.desktop.setup-completed')).toBe('true');
+  });
+
+  it('keeps runtime upload keyboard reachable through a visible HeroUI button', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Add runtime' })).toHaveFocus();
   });
 
   it('preserves the selected motion after visiting full-page Settings', async () => {
@@ -77,5 +102,30 @@ describe('Live2Pet desktop shell', () => {
 
     expect(screen.getByRole('heading', { name: '设置' })).toBeVisible();
     expect(document.documentElement.lang).toBe('zh-CN');
+  });
+
+  it('resolves System appearance from the OS and allows an explicit override', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    setSystemDarkMode(true);
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('button', { name: 'Light' }));
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
+
+  it('localizes synthetic motions, expressions, and assignments', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    localStorage.setItem('live2pet.desktop.locale', 'zh-CN');
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole('button', { name: '打开设计预览' }));
+    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: '映射' }));
+    expect(screen.getByRole('button', { name: /触摸头部/ })).toBeVisible();
+    expect(screen.getByRole('button', { name: '微笑' })).toBeVisible();
+    expect(screen.getByText('思考中')).toBeVisible();
   });
 });
