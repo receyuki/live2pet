@@ -61,13 +61,18 @@ test('desktop removes deferred Skill, Mapper Session, and separate-preview entry
 test('desktop package keeps Electron and future Forge settings explicit', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const forge = fs.readFileSync(path.join(root, 'forge.config.cjs'), 'utf8');
+  const main = fs.readFileSync(path.join(root, 'main.cjs'), 'utf8');
   assert.equal(manifest.devDependencies.electron, '44.0.0');
+  assert.equal(manifest.productName, 'Live2Pet');
   assert.equal(manifest.devDependencies['@electron/packager'], '20.3.0');
   assert.equal(manifest.scripts.start, 'electron .');
   assert.equal(manifest.scripts['package:mac'], 'node scripts/stage-mapper-assets.cjs && node scripts/package-macos.cjs');
   assert.equal(manifest.scripts['smoke:mac'], 'node scripts/smoke-packaged-app.cjs');
   assert.match(forge, /asar:\s*\{\s*unpack:\s*'\*\*\/node_modules\/\{sharp,@img\}\/\*\*\/\*'\s*\}/);
-  assert.match(forge, /executableName:\s*'live2pet'/);
+  assert.match(forge, /executableName:\s*'Live2Pet'/);
+  assert.match(forge, /icon:\s*path\.resolve\(__dirname, 'assets', 'icon\.icns'\)/);
+  assert.match(main, /app\.setName\(APP_NAME\)/);
+  assert.match(main, /app\.dock\.setIcon\(APP_ICON_PATH\)/);
   assert.match(forge, /extraResource:\s*\[path\.resolve\(__dirname, 'mapper-dist'\)\]/);
   assert.doesNotMatch(forge, /live2pet-skill|renderer\.html/);
   assert.equal(manifest.scripts['prepare:mapper'], 'node scripts/stage-mapper-assets.cjs');

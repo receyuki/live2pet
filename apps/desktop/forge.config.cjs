@@ -4,7 +4,8 @@ module.exports = {
   packagerConfig: {
     asar: { unpack: '**/node_modules/{sharp,@img}/**/*' },
     name: 'Live2Pet',
-    executableName: 'live2pet',
+    executableName: 'Live2Pet',
+    icon: path.resolve(__dirname, 'assets', 'icon.icns'),
     extraResource: [path.resolve(__dirname, 'mapper-dist')],
   },
   makers: [],

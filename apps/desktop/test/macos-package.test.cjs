@@ -1,10 +1,12 @@
 const assert = require('node:assert/strict');
+const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
 const {
+  APP_ICON_PATH,
   FORBIDDEN_BUNDLE_ENTRY,
   createPackagerOptions,
   currentMacArch,
@@ -18,11 +20,45 @@ test('macOS package options remain local, unsigned, current-architecture, and Sh
   assert.equal(options.platform, 'darwin');
   assert.equal(options.arch, 'x64');
   assert.equal(options.electronVersion, '44.0.0');
+  assert.equal(options.icon, APP_ICON_PATH);
+  assert.equal(options.executableName, 'Live2Pet');
+  assert.equal(fs.existsSync(APP_ICON_PATH), true);
+  assert.equal(path.extname(APP_ICON_PATH), '.icns');
   assert.equal(options.asar.unpack, '**/node_modules/{sharp,@img}/**/*');
   assert.equal(options.prune, false);
   assert.equal(options.overwrite, true);
   assert.equal(options.osxSign, undefined);
   assert.deepEqual(options.extraResource, ['/tmp/mapper-dist']);
+});
+
+test('macOS App icon contains Asset Catalog representations', () => {
+  const icon = fs.readFileSync(APP_ICON_PATH);
+  assert.equal(icon.subarray(0, 4).toString('ascii'), 'icns');
+  assert.equal(icon.readUInt32BE(4), icon.length);
+  const chunkTypes = new Set();
+  for (let offset = 8; offset + 8 <= icon.length;) {
+    const chunkSize = icon.readUInt32BE(offset + 4);
+    assert.ok(chunkSize >= 8);
+    chunkTypes.add(icon.subarray(offset, offset + 4).toString('ascii'));
+    offset += chunkSize;
+  }
+  for (const type of ['ic04', 'ic07', 'ic11', 'ic13']) {
+    assert.equal(chunkTypes.has(type), true, `missing ${type} icon representation`);
+  }
+});
+
+test('macOS ImageIO can decode the packaged App icon', { skip: process.platform !== 'darwin' }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-icon-test-'));
+  const preview = path.join(root, 'preview.png');
+  try {
+    execFileSync('/usr/bin/sips', ['-s', 'format', 'png', APP_ICON_PATH, '--out', preview], { stdio: 'pipe' });
+    const png = fs.readFileSync(preview);
+    assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    const metadata = execFileSync('/usr/bin/sips', ['-g', 'hasAlpha', preview], { encoding: 'utf8' });
+    assert.match(metadata, /hasAlpha:\s+yes/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('macOS package command rejects unsupported hosts and requires a pnpm invocation', () => {

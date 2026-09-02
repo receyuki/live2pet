@@ -31,6 +31,8 @@ const ENCODED_CACHE_TARGET_VERSION = '1';
 const ENCODED_CACHE_ENCODER_VERSION = SHARP_ENCODER_VERSION;
 const APP_BUNDLE_SMOKE_ARGUMENT = '--live2pet-smoke-test';
 const UI_PREVIEW_ARGUMENT = '--live2pet-ui-preview';
+const APP_NAME = 'Live2Pet';
+const APP_ICON_PATH = path.resolve(__dirname, 'assets', 'icon.icns');
 let mainWindow = null;
 let route = null;
 let sourceCache = null;
@@ -43,6 +45,8 @@ protocol.registerSchemesAsPrivileged([{
   scheme: RUNTIME_PROTOCOL_SCHEME,
   privileges: { standard: true, secure: true },
 }]);
+
+app.setName(APP_NAME);
 
 function mapperPath() {
   return app.isPackaged ? PACKAGED_MAPPER_PATH : DEVELOPMENT_MAPPER_PATH;
@@ -195,6 +199,7 @@ async function createMainWindow() {
 }
 
 app.whenReady().then(async () => {
+  if (!app.isPackaged && process.platform === 'darwin' && app.dock) app.dock.setIcon(APP_ICON_PATH);
   const defaultSession = require('electron').session.defaultSession;
   defaultSession.protocol.handle(RUNTIME_PROTOCOL_SCHEME, createRuntimeProtocolHandler({
     getRuntimeForGeneration: (cubismVersion) => loadRuntimeForGeneration(runtimeSettingsPath(), cubismVersion),

@@ -16,6 +16,7 @@ const forbiddenDirectory = /(?:^|\/)(?:examples?|archive|artifacts?)(?:\/|$)/i;
 const forbiddenExtension = /\.(?:pck|lpk|moc|moc3|dat|webp|zip)$/i;
 const forbiddenRuntime = /(?:^|\/)(?:live2dcubismcore|minified-live2d(?:core)?|live2d\.min)\.(?:js|wasm)$/i;
 const maximumTextBytes = 2 * 1024 * 1024;
+const allowedBinaryReleaseFiles = new Set(['apps/desktop/assets/icon.icns']);
 
 function trackedFiles() {
   const output = execFileSync('git', ['ls-files', '-c', '-o', '--exclude-standard', '-z'], { cwd: repositoryRoot });
@@ -40,6 +41,7 @@ function run() {
   for (const required of requiredFiles) if (!files.includes(required)) errors.push({ code: 'REQUIRED_RELEASE_FILE_MISSING', file: required });
   for (const relative of files) {
     const normalized = relative.split(path.sep).join('/');
+    const allowedBinary = allowedBinaryReleaseFiles.has(normalized);
     if (forbiddenDirectory.test(normalized)) errors.push({ code: 'COPYRIGHT_ASSET_PATH', file: normalized });
     if (forbiddenExtension.test(normalized)) errors.push({ code: 'DERIVED_ASSET_PATH', file: normalized });
     if (forbiddenRuntime.test(normalized)) errors.push({ code: 'RUNTIME_PATH', file: normalized });
@@ -53,10 +55,10 @@ function run() {
       errors.push({ code: 'RELEASE_ENTRY_NOT_FILE', file: normalized });
       continue;
     }
-    if (stat.size > maximumTextBytes) errors.push({ code: 'RELEASE_FILE_TOO_LARGE', file: normalized, byteLength: stat.size, maximumTextBytes });
+    if (!allowedBinary && stat.size > maximumTextBytes) errors.push({ code: 'RELEASE_FILE_TOO_LARGE', file: normalized, byteLength: stat.size, maximumTextBytes });
     try {
       const bytes = fs.readFileSync(absolute);
-      if (hasBinaryPrefix(bytes)) errors.push({ code: 'BINARY_RELEASE_ENTRY', file: normalized });
+      if (!allowedBinary && hasBinaryPrefix(bytes)) errors.push({ code: 'BINARY_RELEASE_ENTRY', file: normalized });
     } catch (error) {
       errors.push({ code: 'RELEASE_FILE_UNREADABLE', file: normalized, message: String(error.message || error) });
     }
