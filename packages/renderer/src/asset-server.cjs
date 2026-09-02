@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const http = require('node:http');
 const path = require('node:path');
 const { URL } = require('node:url');
@@ -7,6 +8,7 @@ const { RendererContractError } = require('./errors.cjs');
 
 const LOOPBACK_HOST = '127.0.0.1';
 const MIME_TYPES = Object.freeze({
+  '.html': 'text/html; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.moc': 'application/octet-stream',
@@ -102,12 +104,30 @@ function jsonResponse(response, value, status = 200) {
   response.end(body);
 }
 
-function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, host = LOOPBACK_HOST, port = 0 } = {}) {
+function previewDocument(runtimeName) {
+  const runtimeUrl = `./runtime/${encodeURIComponent(runtimeName)}`;
+  return Buffer.from(`<!doctype html>
+<html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:"><style>html,body{width:100%;height:100%;margin:0;overflow:hidden;background:transparent}canvas{width:100%;height:100%;display:block}</style></head><body><canvas id="live2pet-stage"></canvas><script src="./vendor/pixi.js"></script><script src="./vendor/unsafe-eval.js"></script><script src="${runtimeUrl}"></script><script src="./vendor/live2d-adapter.js"></script></body></html>`, 'utf8');
+}
+
+function normalizePreviewAssets(previewAssets) {
+  if (previewAssets == null) return null;
+  if (!previewAssets || typeof previewAssets !== 'object' || Array.isArray(previewAssets)) fail('INVALID_ASSET_SERVER', 'previewAssets must be an object.');
+  return Object.freeze({
+    pixi: existingFile(previewAssets.pixi, 'previewAssets.pixi'),
+    unsafeEval: existingFile(previewAssets.unsafeEval, 'previewAssets.unsafeEval'),
+    live2dAdapter: existingFile(previewAssets.live2dAdapter, 'previewAssets.live2dAdapter'),
+  });
+}
+
+function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, previewAssets, host = LOOPBACK_HOST, port = 0 } = {}) {
   if (host !== LOOPBACK_HOST) return Promise.reject(new RendererContractError('NON_LOOPBACK_BINDING', 'Renderer Asset Server can bind only to 127.0.0.1.'));
   if (!Number.isInteger(port) || port < 0 || port > 65535) return Promise.reject(new RendererContractError('INVALID_ASSET_SERVER_PORT', 'Renderer Asset Server port must be an integer between 0 and 65535.'));
   let root;
   let buffers;
   let runtime;
+  let preview;
+  const sessionToken = crypto.randomBytes(24).toString('hex');
   try {
     const hasSourceRoot = sourceRoot !== undefined && sourceRoot !== null;
     const hasSourceBuffers = sourceBuffers !== undefined && sourceBuffers !== null;
@@ -115,6 +135,7 @@ function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, hos
     root = hasSourceRoot ? existingDirectory(sourceRoot, 'sourceRoot') : null;
     buffers = hasSourceBuffers ? normalizeSourceBuffers(sourceBuffers) : null;
     runtime = existingFile(runtimePath, 'runtimePath');
+    preview = normalizePreviewAssets(previewAssets);
   } catch (error) {
     return Promise.reject(error);
   }
@@ -126,15 +147,23 @@ function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, hos
     }
     try {
       const requestUrl = new URL(request.url || '/', `http://${LOOPBACK_HOST}`);
-      if (requestUrl.pathname === '/health') {
+      const address = server.address();
+      if (!address || request.headers.host !== `${host}:${address.port}`) { response.writeHead(421); response.end(); return; }
+      const prefix = `/${sessionToken}`;
+      if (requestUrl.pathname !== prefix && !requestUrl.pathname.startsWith(`${prefix}/`)) { response.writeHead(404); response.end(); return; }
+      const routePath = requestUrl.pathname.slice(prefix.length) || '/';
+      if (routePath === '/health') {
         jsonResponse(response, { ok: true, protocolVersion: 1 });
         return;
       }
       let file = null;
       let buffer = null;
       let modelPath = null;
-      if (requestUrl.pathname.startsWith('/model/')) {
-        const relativePath = decodeURIComponent(requestUrl.pathname.slice('/model/'.length));
+      if (routePath === '/preview' && preview) {
+        buffer = previewDocument(path.basename(runtime));
+        modelPath = 'preview.html';
+      } else if (routePath.startsWith('/model/')) {
+        const relativePath = decodeURIComponent(routePath.slice('/model/'.length));
         if (buffers) {
           modelPath = safeBufferPath(relativePath);
           buffer = modelPath ? buffers.get(modelPath) : null;
@@ -149,8 +178,14 @@ function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, hos
           file = realFile;
           modelPath = relativePath;
         }
-      } else if (requestUrl.pathname === `/runtime/${encodeURIComponent(path.basename(runtime))}`) {
+      } else if (routePath === `/runtime/${encodeURIComponent(path.basename(runtime))}`) {
         file = runtime;
+      } else if (preview && routePath === '/vendor/pixi.js') {
+        file = preview.pixi;
+      } else if (preview && routePath === '/vendor/unsafe-eval.js') {
+        file = preview.unsafeEval;
+      } else if (preview && routePath === '/vendor/live2d-adapter.js') {
+        file = preview.live2dAdapter;
       } else {
         response.writeHead(404);
         response.end();
@@ -178,12 +213,14 @@ function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, hos
     server.listen(port, host, () => {
       server.removeListener('error', onError);
       const address = server.address();
-      const baseUrl = `http://${host}:${address.port}`;
+      const originUrl = `http://${host}:${address.port}`;
+      const baseUrl = `${originUrl}/${sessionToken}`;
       resolve({
         protocolVersion: 1,
         host,
         port: address.port,
         baseUrl,
+        previewUrl: preview ? `${baseUrl}/preview` : null,
         modelUrl: (modelConfig) => `${baseUrl}/model/${encodeRelativeUrl(modelConfig)}`,
         runtimeUrl: `${baseUrl}/runtime/${encodeURIComponent(path.basename(runtime))}`,
         close: () => new Promise((closeResolve) => server.close(() => closeResolve())),
@@ -198,6 +235,8 @@ module.exports = {
   createRendererAssetServer,
   encodeRelativeUrl,
   normalizeSourceBuffers,
+  normalizePreviewAssets,
+  previewDocument,
   safeRelativePath,
   safeBufferPath,
 };

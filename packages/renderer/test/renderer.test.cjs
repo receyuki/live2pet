@@ -31,6 +31,7 @@ const {
   pageLoad,
   pagePause,
   pagePlayMotion,
+  pageResize,
   pageResume,
   pageStep,
   pageUnload,
@@ -322,6 +323,8 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     assert.equal(ticker.started, false);
     pageResume();
     assert.equal(ticker.started, true);
+
+    assert.deepEqual(pageResize(10, 6), { width: 10, height: 6 });
 
     const stepped = pageStep(0.25);
     assert.equal(stepped.time, 0.532);

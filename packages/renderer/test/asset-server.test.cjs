@@ -90,3 +90,32 @@ test('renderer asset server accepts a plain object of ArrayBuffer resources', as
     await server.close();
   }
 });
+
+test('renderer asset server hosts an optional same-origin preview document in dependency order', async () => {
+  const runtimePath = runtimeFixture();
+  const directory = path.dirname(runtimePath);
+  const previewAssets = {
+    pixi: path.join(directory, 'pixi.js'),
+    unsafeEval: path.join(directory, 'unsafe-eval.js'),
+    live2dAdapter: path.join(directory, 'live2d-adapter.js'),
+  };
+  for (const [name, filePath] of Object.entries(previewAssets)) fs.writeFileSync(filePath, `window.${name}=true;`);
+  const server = await createRendererAssetServer({
+    sourceBuffers: new Map([['model.json', Buffer.from('{}')]]),
+    runtimePath,
+    previewAssets,
+  });
+  try {
+    const response = await fetch(server.previewUrl);
+    const html = await response.text();
+    assert.equal(response.headers.get('content-type'), 'text/html; charset=utf-8');
+    assert.ok(html.indexOf('/vendor/pixi.js') < html.indexOf('/vendor/unsafe-eval.js'));
+    assert.ok(html.indexOf('/vendor/unsafe-eval.js') < html.indexOf('/runtime/'));
+    assert.ok(html.indexOf('/runtime/') < html.indexOf('/vendor/live2d-adapter.js'));
+    assert.equal(await (await fetch(`${server.baseUrl}/vendor/pixi.js`)).text(), 'window.pixi=true;');
+    assert.equal((await fetch(`${server.baseUrl}/vendor/not-allowed.js`)).status, 404);
+    assert.equal((await fetch(new URL('/health', server.baseUrl))).status, 404);
+  } finally {
+    await server.close();
+  }
+});

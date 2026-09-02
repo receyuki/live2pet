@@ -209,6 +209,7 @@ function pageLoad(source, options) {
       model,
       source,
       state,
+      options,
       realtime,
       advance,
       tickerUpdate,
@@ -237,6 +238,15 @@ function pageUnload() {
     if (runtime && typeof runtime.dispose === 'function') await runtime.dispose();
     return { loaded: false };
   })();
+}
+
+function pageResize(width, height) {
+  const runtime = window.__live2petPixiLive2D;
+  if (!runtime) throw new Error('Renderer is not loaded.');
+  runtime.app.renderer.resize(width, height);
+  runtime.fit();
+  runtime.render();
+  return { width: runtime.app.renderer.width, height: runtime.app.renderer.height };
 }
 
 function pagePlayMotion(motionId, loop, speed, start, priority) {
@@ -484,6 +494,16 @@ class PixiLive2dAdapter {
     return this.state.expressionId;
   }
 
+  async resize(width, height) {
+    this.requireLoaded();
+    const targetWidth = positiveInteger(width, 'Renderer width');
+    const targetHeight = positiveInteger(height, 'Renderer height');
+    const result = await this.evaluate(pageResize, targetWidth, targetHeight);
+    this.options.width = targetWidth;
+    this.options.height = targetHeight;
+    return result;
+  }
+
   async step(deltaSeconds) {
     const delta = finiteNumber(deltaSeconds, 'Step duration', { min: 0, max: 3600 });
     this.requireLoaded();
@@ -561,6 +581,7 @@ module.exports = {
   pagePause,
   pagePlayMotion,
   pageRestart,
+  pageResize,
   pageResume,
   pageSetExpression,
   pageSetPlayback,
