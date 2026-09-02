@@ -206,6 +206,8 @@ test('shared Mapper uses the App build seam when available and keeps browser fal
   assert.match(mapper, /\.mapping-panel \{ display: flex; flex-direction: column; max-height: min\(820px, calc\(100dvh - 190px\)\); \}/);
   assert.match(mapper, /\.mapping-scroll \{ min-height: 0; overflow-y: auto; overflow-x: hidden;/);
   assert.match(mapper, /\.motion-list, \.expression-list \{ display: grid; grid-template-columns: 1fr;/);
+  assert.doesNotMatch(mapper, /id="scenarioTabs"|id="startScenario"|START_SCENARIO|SCENARIO_STEP/);
+  assert.doesNotMatch(mapper, /id="jsonOutput"|id="copyJson"|id="downloadJson"|live2pet-motion-map\.json/);
 });
 
 test('shared Mapper exposes project recovery, source review, and build-gate seams', () => {

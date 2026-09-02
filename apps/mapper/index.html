@@ -196,12 +196,6 @@
     .codex-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
     .codex-row strong.unmapped { color: var(--muted); font-weight: 500; }
     .codex-row button { min-height: 34px; padding: 5px 8px; font-size: 11px; }
-    .walkthrough { margin-top: 18px; }
-    .tabs, .steps { display: flex; flex-wrap: wrap; gap: 7px; }
-    .scenario { margin-top: 12px; display: grid; gap: 10px; }
-    .step.done { color: var(--good); border-color: #3e735f; }
-    .output { margin-top: 18px; }
-    .output-actions { display: flex; gap: 8px; }
     .build-panel { margin-top: 18px; }
     .build-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .build-actions .build-cancel { border-color: #a55a64; color: #ffd2d8; background: transparent; }
@@ -487,20 +481,6 @@
       </section>
     </div>
 
-    <section class="panel walkthrough">
-      <div class="panel-head"><div><h2 data-i18n="walkthrough.heading">Guided mapping</h2><p class="muted" data-i18n="walkthrough.description">Start with an empty mapping and confirm each relationship after preview.</p></div></div>
-      <div id="scenarioTabs" class="tabs"></div>
-      <div id="scenario" class="scenario"></div>
-    </section>
-
-    <section class="panel output">
-      <div class="panel-head">
-        <div><h2 data-i18n="output.heading">Mapping manifest</h2><p class="muted" data-i18n="output.description">The mapping manifest will drive later Package Builds.</p></div>
-        <div class="output-actions"><button id="copyJson" data-i18n="output.copy">Copy JSON</button><button id="downloadJson" class="primary" data-i18n="output.download">Download motion-map.json</button></div>
-      </div>
-      <pre id="jsonOutput"></pre>
-    </section>
-
     <section class="panel build-panel" aria-labelledby="buildHeading">
       <div class="panel-head">
         <div><div class="eyebrow" data-i18n="build.codex.eyebrow">Codex Pet Package</div><h2 id="buildHeading" data-i18n="build.codex.heading">Build a local ZIP</h2><p class="muted" data-i18n="build.codex.description">Captures the selected Codex mappings into a transparent 1536 × 1872 atlas, then creates <code>pet.json</code> and <code>spritesheet.webp</code>. This prototype validates the atlas and package shape; host-compatibility validation remains a later gate.</p></div>
@@ -766,12 +746,6 @@
           "codex.preset.compact": "compact · 32 samples/s",
           "codex.preset.balanced": "balanced · 64 samples/s",
           "codex.preset.high": "high · 96 samples/s",
-          "walkthrough.heading": "Guided mapping",
-          "walkthrough.description": "Start with an empty mapping and confirm each relationship after preview.",
-          "output.heading": "Mapping manifest",
-          "output.description": "The mapping manifest will drive later Package Builds.",
-          "output.copy": "Copy JSON",
-          "output.download": "Download motion-map.json",
           "build.codex.eyebrow": "Codex Pet Package",
           "build.codex.heading": "Build a local ZIP",
           "build.codex.description": "Captures the selected Codex mappings into a transparent 1536 × 1872 atlas, then creates pet.json and spritesheet.webp. This prototype validates the atlas and package shape; host-compatibility validation remains a later gate.",
@@ -962,25 +936,6 @@
           "inspection.label.fingerprint": "Fingerprint",
           "inspection.label.modelBinary": "Model binary",
           "inspection.notDeclared": "Not declared",
-          "scenario.core": "Core states",
-          "scenario.completion": "Completion & alerts",
-          "scenario.sleep": "Full sleep",
-          "scenario.core.description": "Preview and assign idle, thinking, and working, then give sleeping a direct fallback.",
-          "scenario.completion.description": "Preview candidates, then assign attention for task completion and notification for permissions or reminders.",
-          "scenario.sleep.description": "Switch to full mode and assign all four sleep sequence slots.",
-          "scenario.start": "Start with an empty mapping",
-          "scenario.step": "{number}. {label}",
-          "scenario.step.core.idle": "Current Motion → idle",
-          "scenario.step.core.thinking": "Current Motion → thinking",
-          "scenario.step.core.working": "Current Motion → working",
-          "scenario.step.core.sleeping": "sleeping fallback → idle",
-          "scenario.step.completion.attention": "Current Motion → attention",
-          "scenario.step.completion.notification": "Current Motion → notification",
-          "scenario.step.sleep.mode": "Switch to full",
-          "scenario.step.sleep.yawning": "Current Motion → yawning",
-          "scenario.step.sleep.dozing": "Current Motion → dozing",
-          "scenario.step.sleep.collapsing": "Current Motion → collapsing",
-          "scenario.step.sleep.waking": "Current Motion → waking",
           "source.stage.empty": "Choose a Source Package to begin.",
           "source.stage.inspecting": "Inspecting {name}…",
           "source.stage.inspectionFailed": "Inspection failed: {message}",
@@ -1183,12 +1138,6 @@
           "codex.preset.compact": "紧凑 · 32 samples/s",
           "codex.preset.balanced": "均衡 · 64 samples/s",
           "codex.preset.high": "高质量 · 96 samples/s",
-          "walkthrough.heading": "引导式映射",
-          "walkthrough.description": "从空映射开始，在预览后确认每一条关联。",
-          "output.heading": "映射清单",
-          "output.description": "映射清单将驱动后续的资源包构建。",
-          "output.copy": "复制 JSON",
-          "output.download": "下载 motion-map.json",
           "build.codex.eyebrow": "Codex Pet 资源包",
           "build.codex.heading": "构建本地 ZIP",
           "build.codex.description": "将选中的 Codex 映射捕获为透明 1536 × 1872 图集，然后创建 pet.json 和 spritesheet.webp。当前原型会校验图集与资源包结构；宿主兼容性校验仍是后续门槛。",
@@ -1379,25 +1328,6 @@
           "inspection.label.fingerprint": "指纹",
           "inspection.label.modelBinary": "模型二进制",
           "inspection.notDeclared": "未声明",
-          "scenario.core": "核心状态",
-          "scenario.completion": "完成与提醒",
-          "scenario.sleep": "完整睡眠",
-          "scenario.core.description": "预览并分配 idle、thinking、working，然后为 sleeping 设置直接回退。",
-          "scenario.completion.description": "预览候选动作，为任务完成分配 attention，为权限或提醒分配 notification。",
-          "scenario.sleep.description": "切换到完整模式并分配四个睡眠序列槽位。",
-          "scenario.start": "从空映射开始",
-          "scenario.step": "{number}. {label}",
-          "scenario.step.core.idle": "当前动作 → idle",
-          "scenario.step.core.thinking": "当前动作 → thinking",
-          "scenario.step.core.working": "当前动作 → working",
-          "scenario.step.core.sleeping": "sleeping 回退 → idle",
-          "scenario.step.completion.attention": "当前动作 → attention",
-          "scenario.step.completion.notification": "当前动作 → notification",
-          "scenario.step.sleep.mode": "切换到完整模式",
-          "scenario.step.sleep.yawning": "当前动作 → yawning",
-          "scenario.step.sleep.dozing": "当前动作 → dozing",
-          "scenario.step.sleep.collapsing": "当前动作 → collapsing",
-          "scenario.step.sleep.waking": "当前动作 → waking",
           "source.stage.empty": "选择资源包开始。",
           "source.stage.inspecting": "正在检查 {name}…",
           "source.stage.inspectionFailed": "资源检查失败：{message}",
@@ -1556,7 +1486,7 @@
       }
 
       function initial() {
-        return { model: null, motions: [], expressions: [], inspection: null, inspectionError: null, selectedMotionId: null, selectedExpressionId: null, mappings: {}, reactionMappings: {}, codexMappings: {}, recipeMappings: {}, reactionRecipeMappings: {}, codexRecipeMappings: {}, recipes: [], clawdBehavior: emptyBehavior(), sleepMode: "direct", clawdRenderPreset: "balanced", codexRenderPreset: "balanced", outputPrefix: "live2pet", projectName: "Untitled Live2Pet Project", projectSourceFingerprint: null, projectRecipeIds: [], sourceReview: null, projectDirty: false, lastChange: "Waiting for a Source Package", scenario: null, scenarioStep: 0 };
+        return { model: null, motions: [], expressions: [], inspection: null, inspectionError: null, selectedMotionId: null, selectedExpressionId: null, mappings: {}, reactionMappings: {}, codexMappings: {}, recipeMappings: {}, reactionRecipeMappings: {}, codexRecipeMappings: {}, recipes: [], clawdBehavior: emptyBehavior(), sleepMode: "direct", clawdRenderPreset: "balanced", codexRenderPreset: "balanced", outputPrefix: "live2pet", projectName: "Untitled Live2Pet Project", projectSourceFingerprint: null, projectRecipeIds: [], sourceReview: null, projectDirty: false, lastChange: "Waiting for a Source Package" };
       }
       function reducer(state, action) {
         if (action.type === "LOAD_MODEL") {
@@ -1634,17 +1564,12 @@
         if (action.type === "SET_RENDER_PRESET") return { ...state, [`${action.target}RenderPreset`]: action.value, projectDirty: true, lastChange: `${action.target} Render Preset → ${action.value}` };
         if (action.type === "SET_PREFIX") return { ...state, outputPrefix: action.value, projectDirty: true, lastChange: `Output prefix → ${action.value}` };
         if (action.type === "CLEAR") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, recipeMappings: {}, reactionRecipeMappings: {}, codexRecipeMappings: {}, recipes: [], projectRecipeIds: [], clawdBehavior: emptyBehavior(), projectDirty: true, lastChange: "Mappings cleared" };
-        if (action.type === "START_SCENARIO") return { ...state, mappings: {}, reactionMappings: {}, codexMappings: {}, recipeMappings: {}, reactionRecipeMappings: {}, codexRecipeMappings: {}, recipes: [], projectRecipeIds: [], clawdBehavior: emptyBehavior(), sleepMode: "direct", scenario: action.id, scenarioStep: 0, projectDirty: true, lastChange: `Started scenario ${action.id}` };
         if (action.type === "ACK_SOURCE_REVIEW") {
           const fingerprint = state.inspection?.source?.fingerprint || null;
           if (!fingerprint) return state;
           return { ...state, projectSourceFingerprint: fingerprint, sourceReview: { required: false, reason: "source-fingerprint-changed", reviewedFingerprint: fingerprint, affectedRecipeIds: [...(state.sourceReview?.affectedRecipeIds || state.projectRecipeIds)] }, projectDirty: true, lastChange: "Source review acknowledged" };
         }
         if (action.type === "MARK_PROJECT_SAVED") return { ...state, projectDirty: false };
-        if (action.type === "SCENARIO_STEP") {
-          const next = reducer(state, action.inner);
-          return { ...next, scenario: state.scenario, scenarioStep: state.scenarioStep + 1 };
-        }
         return state;
       }
       function motion(state, id) { return state.motions.find(item => item.id === id) || null; }
@@ -1669,43 +1594,7 @@
         if (!out.length) out.push({ level: "ok", text: "Core mapping is valid and ready to save." });
         return out;
       }
-      function output(state) {
-        const item = value => {
-          if (!value) return null;
-          if (value.startsWith("fallback:")) return { fallbackTo: value.slice(9) };
-          const found = motion(state, value.slice(7));
-          return found ? { motion: found.sourceFile, group: found.group, index: found.index, duration: found.duration, output: `${state.outputPrefix}-${found.targetKey || "motion"}.webp` } : null;
-        };
-        const states = {};
-        for (const def of allStates) {
-          const mapped = item(state.mappings[def.id]);
-          if (mapped) {
-            if (mapped.motion) mapped.output = `${state.outputPrefix}-${def.id}.webp`;
-            states[def.id] = mapped;
-          }
-        }
-        const reactionOut = {};
-        for (const def of reactions) {
-          const mapped = item(state.reactionMappings[def.id]);
-          if (mapped) {
-            if (mapped.motion) mapped.output = `${state.outputPrefix}-reaction-${def.id}.webp`;
-            reactionOut[def.id] = mapped;
-          }
-        }
-        return {
-          schemaVersion: 1,
-          _comment: "Live2D motion selection for a Clawd theme; generated by a local prototype",
-          guide: "https://github.com/rullerzhou-afk/clawd-on-desk/blob/main/docs/guides/guide-theme-creation.md",
-          model: state.model ? { file: state.model.file, name: state.model.name, cubism: state.model.cubism, source: state.model.source } : null,
-          render: { preset: state.clawdRenderPreset, width: state.clawdRenderPreset === "compact" ? 512 : state.clawdRenderPreset === "high" ? 1024 : 768, height: state.clawdRenderPreset === "compact" ? 512 : state.clawdRenderPreset === "high" ? 1024 : 768, fps: state.clawdRenderPreset === "compact" ? 18 : state.clawdRenderPreset === "high" ? 30 : 24, quality: state.clawdRenderPreset === "compact" ? 76 : state.clawdRenderPreset === "high" ? 88 : 82, format: "animated-webp" },
-          sleepSequence: { mode: state.sleepMode },
-          states,
-          reactions: reactionOut,
-          behavior: normalizeBehavior(state.clawdBehavior),
-          recipes: normalizeRecipes(state.recipes)
-        };
-      }
-      return { groups, reactions, codexRows, allStates, behaviorFields, emptyBehavior, normalizeBehavior, normalizeRecipes, initial, reducer, motion, validate, output };
+      return { groups, reactions, codexRows, allStates, behaviorFields, emptyBehavior, normalizeBehavior, normalizeRecipes, initial, reducer, motion, validate };
     })();
 
     let state = MotionMapping.initial();
@@ -1745,8 +1634,8 @@
     const PROJECT_DRAFT_STORAGE_KEY = "live2pet-mapper-project-draft-v1";
     const PROJECT_DRAFT_MAX_BYTES = 1024 * 1024;
     const PROJECT_HISTORY_LIMIT = 100;
-    const PROJECT_HISTORY_FIELDS = ["mappings", "reactionMappings", "codexMappings", "recipeMappings", "reactionRecipeMappings", "codexRecipeMappings", "recipes", "clawdBehavior", "sleepMode", "clawdRenderPreset", "codexRenderPreset", "outputPrefix", "projectSourceFingerprint", "projectRecipeIds", "sourceReview", "projectDirty", "scenario", "scenarioStep"];
-    const PROJECT_EDIT_ACTIONS = new Set(["MAP", "MAP_REACTION", "ASSIGN_SELECTED_RECIPE", "ADD_BEHAVIOR_MOTION", "REMOVE_BEHAVIOR_ENTRY", "SET_BEHAVIOR_TIER", "SET_ROAM_FLIP", "MAP_CODEX", "SET_SLEEP", "SET_RENDER_PRESET", "SET_PREFIX", "CLEAR", "START_SCENARIO", "ACK_SOURCE_REVIEW", "SCENARIO_STEP"]);
+    const PROJECT_HISTORY_FIELDS = ["mappings", "reactionMappings", "codexMappings", "recipeMappings", "reactionRecipeMappings", "codexRecipeMappings", "recipes", "clawdBehavior", "sleepMode", "clawdRenderPreset", "codexRenderPreset", "outputPrefix", "projectSourceFingerprint", "projectRecipeIds", "sourceReview", "projectDirty"];
+    const PROJECT_EDIT_ACTIONS = new Set(["MAP", "MAP_REACTION", "ASSIGN_SELECTED_RECIPE", "ADD_BEHAVIOR_MOTION", "REMOVE_BEHAVIOR_ENTRY", "SET_BEHAVIOR_TIER", "SET_ROAM_FLIP", "MAP_CODEX", "SET_SLEEP", "SET_RENDER_PRESET", "SET_PREFIX", "CLEAR", "ACK_SOURCE_REVIEW"]);
     let pendingProjectDraft = null;
     let projectDraftTimer = null;
     let projectHistory = { past: [], future: [] };
@@ -2917,33 +2806,8 @@
       tick();
     }
 
-    const scenarios = [
-      { id:"core", label:"Core states", description:"Preview and assign idle, thinking, and working, then give sleeping a direct fallback.", steps:[
-        ["Current Motion → idle",{type:"MAP_CURRENT",key:"idle"},"scenario.step.core.idle"], ["Current Motion → thinking",{type:"MAP_CURRENT",key:"thinking"},"scenario.step.core.thinking"], ["Current Motion → working",{type:"MAP_CURRENT",key:"working"},"scenario.step.core.working"], ["sleeping fallback → idle",{type:"MAP",key:"sleeping",value:"fallback:idle"},"scenario.step.core.sleeping"]
-      ]},
-      { id:"completion", label:"Completion & alerts", description:"Preview candidates, then assign attention for task completion and notification for permissions or reminders.", steps:[
-        ["Current Motion → attention",{type:"MAP_CURRENT",key:"attention"},"scenario.step.completion.attention"], ["Current Motion → notification",{type:"MAP_CURRENT",key:"notification"},"scenario.step.completion.notification"]
-      ]},
-      { id:"sleep", label:"Full sleep", description:"Switch to full mode and assign all four sleep sequence slots.", steps:[
-        ["Switch to full",{type:"SET_SLEEP",value:"full"},"scenario.step.sleep.mode"], ["Current Motion → yawning",{type:"MAP_CURRENT",key:"yawning"},"scenario.step.sleep.yawning"], ["Current Motion → dozing",{type:"MAP_CURRENT",key:"dozing"},"scenario.step.sleep.dozing"], ["Current Motion → collapsing",{type:"MAP_CURRENT",key:"collapsing"},"scenario.step.sleep.collapsing"], ["Current Motion → waking",{type:"MAP_CURRENT",key:"waking"},"scenario.step.sleep.waking"]
-      ]}
-    ];
-
-    function resolveScenarioAction(action) {
-      if (action.type !== "MAP_CURRENT") return action;
-      return { type:"ASSIGN_SELECTED_RECIPE", target:"clawd", key:action.key };
-    }
-    function renderScenario() {
-      $("scenarioTabs").innerHTML = scenarios.map(s => `<button class="${state.scenario === s.id ? "active" : ""}" data-scenario="${s.id}">${escapeHtml(I18n.t(`scenario.${s.id}`))}</button>`).join("");
-      document.querySelectorAll("[data-scenario]").forEach(b=>b.addEventListener("click",()=>dispatch({type:"START_SCENARIO",id:b.dataset.scenario})));
-      const scenario = scenarios.find(s=>s.id===state.scenario) || scenarios[0];
-      $("scenario").innerHTML = `<p>${escapeHtml(I18n.t(`scenario.${scenario.id}.description`))}</p><div><button id="startScenario" class="primary">${escapeHtml(I18n.t("scenario.start"))}</button></div><div class="steps">${scenario.steps.map(([label,,key],i)=>`<button class="step ${state.scenario===scenario.id && i<state.scenarioStep ? "done" : ""}" data-step="${i}">${escapeHtml(I18n.t("scenario.step", { number: i + 1, label: I18n.t(key) || label }))}</button>`).join("")}</div>`;
-      $("startScenario").addEventListener("click",()=>dispatch({type:"START_SCENARIO",id:scenario.id}));
-      document.querySelectorAll("[data-step]").forEach(b=>b.addEventListener("click",()=>{const action=resolveScenarioAction(scenario.steps[Number(b.dataset.step)][1]);dispatch({type:"SCENARIO_STEP",inner:action});}));
-    }
-
     function render() {
-      renderProjectWorkflow(); renderProjectHistory(); renderInspection(); renderMetrics(); renderMotions(); renderExpressions(); renderPreviewPlayback(); renderMappings(); renderScenario();
+      renderProjectWorkflow(); renderProjectHistory(); renderInspection(); renderMetrics(); renderMotions(); renderExpressions(); renderPreviewPlayback(); renderMappings();
       renderBuildProgress("codex"); renderBuildProgress("clawd");
       renderBuildCacheStatus();
       renderSkillStatus();
@@ -2955,7 +2819,6 @@
       const projectValidation = MotionMapping.validate(state).map(x => ({ level: x.level, text: x.text }));
       recipeExpressionByMotion("clawd").errors.forEach(text => projectValidation.push({ level: "error", text }));
       $("validation").innerHTML = projectValidation.map(x=>`<div class="${x.level}">${escapeHtml(x.text)}</div>`).join("");
-      $("jsonOutput").textContent = JSON.stringify(MotionMapping.output(state),null,2);
       const readiness = codexBuildReadiness();
       $("buildCodex").disabled = codexBuildBusy || !readiness.ready;
       $("buildCodex").textContent = codexBuildBusy ? I18n.t("build.codex.building") : I18n.t("build.codex.build");
@@ -3534,11 +3397,6 @@
       const manager = liveModel?.internalModel?.motionManager?.expressionManager;
       if (manager) manager.resetExpression();
       dispatch({type:"SELECT_EXPRESSION",id:null});
-    }
-
-    function downloadJson() {
-      const url=URL.createObjectURL(new Blob([JSON.stringify(MotionMapping.output(state),null,2)],{type:"application/json"}));
-      const a=document.createElement("a");a.href=url;a.download="live2pet-motion-map.json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
     }
 
     const CODEX_ATLAS = { width: 1536, height: 1872, columns: 8, rows: 9, cellWidth: 192, cellHeight: 208 };
@@ -5112,7 +4970,6 @@
     $("clawdRenderPreset").addEventListener("change",e=>dispatch({type:"SET_RENDER_PRESET",target:"clawd",value:e.target.value}));
     $("codexRenderPreset").addEventListener("change",e=>dispatch({type:"SET_RENDER_PRESET",target:"codex",value:e.target.value}));
     $("outputPrefix").addEventListener("change",e=>dispatch({type:"SET_PREFIX",value:e.target.value.trim()||"live2pet"}));
-    $("downloadJson").addEventListener("click",downloadJson);
     $("buildCodex").addEventListener("click", async () => { try { await buildCodexPackage(); } catch (error) { setBuildStatus(`${error.code || "BUILD_FAILED"}: ${error.message}`, "bad"); } });
     $("cancelCodexBuild").addEventListener("click", () => { void requestBuildCancellation("codex"); });
     $("downloadCodex").addEventListener("click",downloadCodexPackage);
@@ -5151,7 +5008,6 @@
     $("clawdPreviewStop").addEventListener("click", () => stopClawdBehaviorPreview());
     $("languageSelect").addEventListener("change", event => I18n.setLocale(event.target.value));
     window.addEventListener("live2pet:locale-changed", () => render());
-    $("copyJson").addEventListener("click",async()=>{const text=JSON.stringify(MotionMapping.output(state),null,2);try{await navigator.clipboard.writeText(text)}catch{const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();document.execCommand("copy");t.remove();}});
     function isProjectTextEditingTarget(target) {
       const element = typeof Element !== "undefined" && target instanceof Element ? target : null;
       if (!element) return false;
