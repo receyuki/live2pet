@@ -111,7 +111,7 @@ function PageHeading({ eyebrow, title, body }: { eyebrow: string; title: string;
   );
 }
 
-function RuntimePanel({ locale, compact = false }: { locale: Locale; compact?: boolean }) {
+function RuntimePanel({ locale, compact = false, onSettingsChange }: { locale: Locale; compact?: boolean; onSettingsChange?: (settings: RuntimeSettings) => void }) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   const [settings, setSettings] = useState<RuntimeSettings | null>(null);
   const [busy, setBusy] = useState(false);
@@ -130,7 +130,9 @@ function RuntimePanel({ locale, compact = false }: { locale: Locale; compact?: b
     setBusy(true);
     setError("");
     try {
-      setSettings(await configureRuntime(file));
+      const next = await configureRuntime(file);
+      setSettings(next);
+      onSettingsChange?.(next);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t("error"));
     } finally {
@@ -152,7 +154,9 @@ function RuntimePanel({ locale, compact = false }: { locale: Locale; compact?: b
     setBusy(true);
     setError("");
     try {
-      setSettings(await configureRuntimePath(inputPath));
+      const next = await configureRuntimePath(inputPath);
+      setSettings(next);
+      onSettingsChange?.(next);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t("error"));
     } finally {
@@ -174,7 +178,9 @@ function RuntimePanel({ locale, compact = false }: { locale: Locale; compact?: b
     setBusy(true);
     setError("");
     try {
-      setSettings(await clearRuntimeSettings());
+      const next = await clearRuntimeSettings();
+      setSettings(next);
+      onSettingsChange?.(next);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t("error"));
     } finally {
@@ -236,7 +242,7 @@ function RuntimePanel({ locale, compact = false }: { locale: Locale; compact?: b
   );
 }
 
-function SetupView({ locale, onComplete }: { locale: Locale; onComplete: () => void }) {
+function SetupView({ locale, onComplete, onRuntimeSettingsChange }: { locale: Locale; onComplete: () => void; onRuntimeSettingsChange: (settings: RuntimeSettings) => void }) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   return (
     <main className="setup-view">
@@ -250,7 +256,7 @@ function SetupView({ locale, onComplete }: { locale: Locale; onComplete: () => v
         <p className="eyebrow"><Sparkles size={13} />{t("setupEyebrow")}</p>
         <h1>{t("setupTitle")}</h1>
         <p className="lead">{t("setupBody")}</p>
-        <RuntimePanel locale={locale} />
+        <RuntimePanel locale={locale} onSettingsChange={onRuntimeSettingsChange} />
         <div className="setup-actions">
           <Button variant="ghost" onPress={onComplete}>{t("setupSkip")}</Button>
           <Button variant="primary" onPress={onComplete}>{t("setupContinue")}<ChevronRight size={16} /></Button>
@@ -320,7 +326,7 @@ function WelcomeView({ locale, busy, error, onImport, onOpenProject }: { locale:
   );
 }
 
-function SourceView({ locale, inspection, onMap }: { locale: Locale; inspection?: SourceInspection; onMap: () => void }) {
+function SourceView({ locale, inspection, runtimeReady, onConfigureRuntime, onMap }: { locale: Locale; inspection?: SourceInspection; runtimeReady: boolean; onConfigureRuntime: () => void; onMap: () => void }) {
   const t = (key: MessageKey) => translate(locale, key);
   const facts = inspection
     ? [["sourceModel", inspection.model.modelFile ?? "—"], ["sourceTextures", String(inspection.model.textures.length)], ["sourceMotions", String(inspection.motions.length)], ["sourceExpressions", String(inspection.expressions.length)]]
@@ -332,7 +338,7 @@ function SourceView({ locale, inspection, onMap }: { locale: Locale; inspection?
     <main className="page">
       <PageHeading eyebrow={t("source")} title={t("sourceTitle")} body={t("sourceBody")} />
       <div className="source-grid">
-        <Card className="surface-card"><Card.Content><div className="model-placeholder"><BrandMark large /></div><div className="ready-box"><CircleCheck size={20} /><span><strong>{t("sourceReady")}</strong><small>{summary}</small></span></div><Button variant="primary" onPress={onMap}>{t("map")}<ChevronRight size={16} /></Button></Card.Content></Card>
+        <Card className="surface-card"><Card.Content><div className="model-placeholder"><BrandMark large /></div><div className="ready-box"><CircleCheck size={20} /><span><strong>{t("sourceReady")}</strong><small>{summary}</small></span></div>{!runtimeReady && <div className="runtime-required"><Gauge size={18} /><span><strong>{t("runtimeRequired")}</strong><small>{t("runtimeRequiredBody")}</small></span><Button size="sm" variant="secondary" onPress={onConfigureRuntime}>{t("configureRuntime")}</Button></div>}<Button variant="primary" onPress={onMap}>{t("map")}<ChevronRight size={16} /></Button></Card.Content></Card>
         <Card className="surface-card source-facts"><Card.Content>{facts.map(([key, value]) => <div className="fact" key={key}><span>{t(key as MessageKey)}</span><strong title={value}>{value}</strong></div>)}</Card.Content></Card>
       </div>
     </main>
@@ -343,7 +349,7 @@ function PanelHeading({ icon, title, body }: { icon: ReactNode; title: string; b
   return <header className="panel-heading"><span className="square-icon">{icon}</span><div><h2>{title}</h2><p>{body}</p></div></header>;
 }
 
-function MapView({ locale, inspection, selectedMotionId, selectedExpressionId, onSelectMotion, onSelectExpression }: { locale: Locale; inspection?: SourceInspection; selectedMotionId: string | null; selectedExpressionId: string | null; onSelectMotion: (id: string) => void; onSelectExpression: (id: string) => void }) {
+function MapView({ locale, inspection, runtimeReady, selectedMotionId, selectedExpressionId, onConfigureRuntime, onSelectMotion, onSelectExpression }: { locale: Locale; inspection?: SourceInspection; runtimeReady: boolean; selectedMotionId: string | null; selectedExpressionId: string | null; onConfigureRuntime: () => void; onSelectMotion: (id: string) => void; onSelectExpression: (id: string | null) => void }) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   const displayedMotions = inspection?.motions.length
     ? inspection.motions.map((motion) => ({ id: motion.id, name: motion.name, seconds: motion.duration?.toFixed(1) ?? "—", tint: "" }))
@@ -352,7 +358,7 @@ function MapView({ locale, inspection, selectedMotionId, selectedExpressionId, o
     ? inspection.expressions.map((expression) => ({ id: expression.id, name: expression.name }))
     : expressions.map((expression) => ({ ...expression, name: t(expression.nameKey) }));
   const selected = displayedMotions.find((motion) => motion.id === selectedMotionId) ?? displayedMotions[0];
-  const selectedExpression = displayedExpressions.find((expression) => expression.id === selectedExpressionId) ?? displayedExpressions[0];
+  const selectedExpression = displayedExpressions.find((expression) => expression.id === selectedExpressionId);
   const selectedName = selected?.name ?? "—";
   return (
     <main className="map-workspace">
@@ -367,13 +373,14 @@ function MapView({ locale, inspection, selectedMotionId, selectedExpressionId, o
           ))}
           <p className="library-subheading">{t("expressions")}</p>
           <div className="expression-grid">
+            <Button size="sm" variant={selectedExpressionId === null ? "secondary" : "ghost"} onPress={() => onSelectExpression(null)}>{t("baseExpression")}</Button>
             {displayedExpressions.map((expression) => <Button key={expression.id} size="sm" variant={expression.id === selectedExpression?.id ? "secondary" : "ghost"} onPress={() => onSelectExpression(expression.id)}>{expression.name}</Button>)}
           </div>
         </div>
       </section>
       <section className="workspace-panel">
         <PanelHeading icon={<Sparkles size={16} />} title={t("preview")} body={t("previewHint")} />
-        <div className="preview-stage"><i className="stage-grid" /><i className="stage-glow" /><Chip className="stage-chip" variant="soft">{selectedName} · {selectedExpression?.name ?? "—"}</Chip><div className="character"><BrandMark large /><i /></div></div>
+        <div className="preview-stage"><i className="stage-grid" /><i className="stage-glow" /><Chip className="stage-chip" variant="soft">{selectedName} · {selectedExpression?.name ?? t("baseExpression")}</Chip>{runtimeReady ? <div className="character"><BrandMark large /><i /></div> : <div className="preview-runtime-required"><Gauge size={28} /><strong>{t("runtimeRequired")}</strong><p>{t("runtimeRequiredBody")}</p><Button size="sm" variant="primary" onPress={onConfigureRuntime}>{t("configureRuntime")}</Button></div>}</div>
         <div className="playback"><Button isIconOnly aria-label={t("play")} variant="primary" size="sm" isDisabled><Play size={15} /></Button><span className="timeline"><i /></span><small>00:01 / 00:04</small></div>
       </section>
       <section className="workspace-panel assignment-panel">
@@ -391,7 +398,7 @@ function BuildView({ locale }: { locale: Locale }) {
   return <main className="page"><PageHeading eyebrow={t("build")} title={t("buildTitle")} body={t("buildBody")} /><div className="build-grid">{(["clawdPackage", "codexPackage"] as const).map((target) => <Card className="surface-card build-card" key={target}><Card.Content><div className="build-top"><span className="large-icon"><PackageCheck size={20} /></span><Chip variant="soft">{t("designPreview")}</Chip></div><h2>{t(target)}</h2><p>{t("buildSummaryBody")}</p><Button variant="primary" isDisabled><Download size={16} />{t("buildPackage")}</Button></Card.Content></Card>)}</div></main>;
 }
 
-function SettingsView({ locale, section, appearance, onSection, onLocale, onAppearance, onClose }: { locale: Locale; section: SettingsSection; appearance: AppSettings["appearance"]; onSection: (section: SettingsSection) => void; onLocale: (locale: Locale) => void; onAppearance: (appearance: AppSettings["appearance"]) => void; onClose: () => void }) {
+function SettingsView({ locale, section, appearance, onSection, onLocale, onAppearance, onRuntimeSettingsChange, onClose }: { locale: Locale; section: SettingsSection; appearance: AppSettings["appearance"]; onSection: (section: SettingsSection) => void; onLocale: (locale: Locale) => void; onAppearance: (appearance: AppSettings["appearance"]) => void; onRuntimeSettingsChange: (settings: RuntimeSettings) => void; onClose: () => void }) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   const [cache, setCache] = useState({ byteLength: 0, entryCount: 0, maxBytes: 0 });
   const nav: Array<[SettingsSection, MessageKey, ReactNode]> = [["general", "general", <SlidersHorizontal size={16} />], ["runtimes", "runtimes", <Gauge size={16} />], ["targets", "targets", <PackageCheck size={16} />], ["storage", "storage", <Database size={16} />]];
@@ -406,7 +413,7 @@ function SettingsView({ locale, section, appearance, onSection, onLocale, onAppe
       </aside>
       <section className="settings-content">
         {section === "general" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("general")} body={t("settingsBody")} /><Card className="surface-card"><Card.Content><div className="setting-row"><span className="large-icon"><Languages size={19} /></span><span className="grow-copy"><strong>{t("language")}</strong></span><ButtonGroup><Button variant={locale === "en" ? "primary" : "secondary"} onPress={() => onLocale("en")}>English</Button><Button variant={locale === "zh-CN" ? "primary" : "secondary"} onPress={() => onLocale("zh-CN")}>简体中文</Button></ButtonGroup></div></Card.Content></Card><Card className="surface-card"><Card.Content><div className="setting-row"><span className="large-icon">{appearance === "dark" ? <Moon size={19} /> : <Sun size={19} />}</span><span className="grow-copy"><strong>{t("appearance")}</strong></span><ButtonGroup>{(["system", "light", "dark"] as const).map((item) => <Button key={item} variant={appearance === item ? "primary" : "secondary"} onPress={() => onAppearance(item)}>{t(item)}</Button>)}</ButtonGroup></div></Card.Content></Card></div>}
-        {section === "runtimes" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("runtimes")} body={t("runtimeBody")} /><RuntimePanel locale={locale} compact /></div>}
+        {section === "runtimes" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("runtimes")} body={t("runtimeBody")} /><RuntimePanel locale={locale} compact onSettingsChange={onRuntimeSettingsChange} /></div>}
         {section === "targets" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("targets")} body={t("targetBody")} /><Card className="surface-card"><Card.Content>{["Clawd", "hatch-pet"].map((target) => <div className="runtime-item" key={target}><span className="large-icon"><PackageCheck size={19} /></span><span className="grow-copy"><strong>{target}</strong><small>{t("askEveryTime")}</small></span><Chip variant="soft">{t("ready")}</Chip></div>)}</Card.Content></Card></div>}
         {section === "storage" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("storage")} body={t("storageBody")} /><Card className="surface-card"><Card.Content><div className="section-heading-row"><div><p className="eyebrow"><Database size={13} />{t("storageTitle")}</p><h2>{cache.entryCount ? t("cacheEntries", { count: cache.entryCount, size: `${Math.round(cache.byteLength / 1024 / 1024)} MiB` }) : t("cacheEmpty")}</h2></div><Button variant="secondary" onPress={clearBuildCache} isDisabled={!cache.entryCount}><Trash2 size={15} />{t("clearCache")}</Button></div></Card.Content></Card></div>}
       </section>
@@ -422,6 +429,7 @@ export function App() {
   const [appVersion, setAppVersion] = useState("0.1.0");
   const [importBusy, setImportBusy] = useState(false);
   const [importError, setImportError] = useState("");
+  const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings | null>(null);
   const locale = state.settings.language;
   const appearance = state.settings.appearance;
   const t = (key: MessageKey) => translate(locale, key);
@@ -436,6 +444,7 @@ export function App() {
     return () => media.removeEventListener("change", applyAppearance);
   }, [appearance]);
   useEffect(() => { void getAppVersion().then(setAppVersion).catch(() => undefined); }, []);
+  useEffect(() => { void getRuntimeSettings().then(setRuntimeSettings).catch(() => undefined); }, []);
   useEffect(() => {
     const preventFileNavigation = (event: globalThis.DragEvent) => {
       if (event.dataTransfer && hasDraggedFiles(event.dataTransfer)) event.preventDefault();
@@ -467,7 +476,7 @@ export function App() {
           sourcePath: inputPath,
           inspection,
           selectedMotionId: inspection.motions[0]?.id ?? null,
-          selectedExpressionId: inspection.expressions[0]?.id ?? null,
+          selectedExpressionId: null,
         },
       });
     } catch (cause) {
@@ -477,8 +486,12 @@ export function App() {
     }
   }
 
-  if (state.destination === "setup") return <SetupView locale={locale} onComplete={completeSetup} />;
-  if (state.destination === "settings") return <SettingsView locale={locale} section={state.settingsSection} appearance={appearance} onSection={(section) => dispatch({ type: "SELECT_SETTINGS_SECTION", section })} onLocale={(language) => dispatch({ type: "UPDATE_LANGUAGE", language })} onAppearance={(value) => dispatch({ type: "UPDATE_APPEARANCE", appearance: value })} onClose={() => dispatch({ type: "CLOSE_SETTINGS" })} />;
+  const requiredCubism = state.project?.inspection?.model.cubism;
+  const runtimeReady = !requiredCubism || Boolean(runtimeSettings?.runtimes.some((runtime) => runtime.available && runtime.cubismGenerations.includes(requiredCubism)));
+  const openRuntimeSettings = () => dispatch({ type: "OPEN_SETTINGS", section: "runtimes" });
+
+  if (state.destination === "setup") return <SetupView locale={locale} onComplete={completeSetup} onRuntimeSettingsChange={setRuntimeSettings} />;
+  if (state.destination === "settings") return <SettingsView locale={locale} section={state.settingsSection} appearance={appearance} onSection={(section) => dispatch({ type: "SELECT_SETTINGS_SECTION", section })} onLocale={(language) => dispatch({ type: "UPDATE_LANGUAGE", language })} onAppearance={(value) => dispatch({ type: "UPDATE_APPEARANCE", appearance: value })} onRuntimeSettingsChange={setRuntimeSettings} onClose={() => dispatch({ type: "CLOSE_SETTINGS" })} />;
 
   const projectOpen = state.project !== null;
   return (
@@ -486,12 +499,12 @@ export function App() {
       <header className="app-toolbar">
         <div className="toolbar-brand"><BrandMark /><strong>Live2Pet</strong>{projectOpen && <><i /><span>{state.project?.name}</span></>}</div>
         {projectOpen ? <nav aria-label="Project"><ButtonGroup>{(["source", "map", "build"] as const).map((destination) => <Button key={destination} variant={state.destination === destination ? "primary" : "ghost"} onPress={() => dispatch({ type: "NAVIGATE", destination })}>{t(destination)}</Button>)}</ButtonGroup></nav> : <span />}
-        <div className="toolbar-actions"><Chip className="chip" size="sm" variant="soft"><span className="status-dot" />{t("designPreview")}</Chip><Button isIconOnly aria-label={t("settings")} variant="ghost" onPress={() => dispatch({ type: "OPEN_SETTINGS" })}><SettingsIcon size={18} /></Button></div>
+        <div className="toolbar-actions"><Chip className="chip" size="sm" variant="soft"><span className="status-dot" />{state.project?.inspection ? t("localProject") : t("designPreview")}</Chip><Button isIconOnly aria-label={t("settings")} variant="ghost" onPress={() => dispatch({ type: "OPEN_SETTINGS" })}><SettingsIcon size={18} /></Button></div>
       </header>
       <div className="app-content">
         {state.destination === "welcome" && <WelcomeView locale={locale} busy={importBusy} error={importError} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onOpenProject={openPreview} />}
-        {state.destination === "source" && <SourceView locale={locale} inspection={state.project?.inspection} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
-        {state.destination === "map" && <MapView locale={locale} inspection={state.project?.inspection} selectedMotionId={state.project?.selectedMotionId ?? null} selectedExpressionId={state.project?.selectedExpressionId ?? null} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} />}
+        {state.destination === "source" && <SourceView locale={locale} inspection={state.project?.inspection} runtimeReady={runtimeReady} onConfigureRuntime={openRuntimeSettings} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
+        {state.destination === "map" && <MapView locale={locale} inspection={state.project?.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project?.selectedMotionId ?? null} selectedExpressionId={state.project?.selectedExpressionId ?? null} onConfigureRuntime={openRuntimeSettings} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} />}
         {state.destination === "build" && <BuildView locale={locale} />}
       </div>
       <footer className="status-bar"><span><i className="status-dot" />{hasDesktopApi() ? t("saved") : t("notConnected")}</span><span>Live2Pet {appVersion}</span></footer>

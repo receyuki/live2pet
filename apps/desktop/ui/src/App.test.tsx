@@ -77,6 +77,30 @@ describe('Live2Pet desktop shell', () => {
     expect(inspectSource).toHaveBeenCalledWith({ inputPath: '/Users/test/Vicious Khepri.pck', projectId: 'vicious-khepri' });
   });
 
+  it('routes a project with a missing runtime to Settings and preserves its Source destination', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+
+    await user.click(await screen.findByRole('button', { name: 'Configure runtime' }));
+    expect(screen.getByRole('heading', { name: 'Runtimes' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    expect(screen.getByRole('heading', { name: 'Source Package' })).toBeVisible();
+  });
+
+  it('uses the base Expression until the user explicitly selects one', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await user.click(
+      within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }),
+    );
+
+    expect(screen.getByText('Breathing · Base expression')).toBeVisible();
+  });
+
   it('imports a dropped Source Package without browser navigation', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const { inspectSource } = installDesktopApi();
