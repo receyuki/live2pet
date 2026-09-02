@@ -1,6 +1,7 @@
-export function sourcePathFromSelection(files: File[], getFilePath: (file: File) => string | null): string | null {
+export function sourcePathFromSelection(files: File[], getFilePath: (file: File) => string | null, directDrop = false): string | null {
   const first = files[0];
   if (!first) return null;
+  if (directDrop) return getFilePath(first);
   const absolutePath = getFilePath(first);
   if (!absolutePath) return null;
   if (/\.pck$/i.test(first.name)) return absolutePath;

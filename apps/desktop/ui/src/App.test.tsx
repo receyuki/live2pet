@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from './App';
 
@@ -19,20 +19,21 @@ function installDesktopApi() {
       warnings: [],
     },
   }));
+  const configureRuntime = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: emptyRuntimes }));
   Object.defineProperty(window, 'live2pet', {
     configurable: true,
     value: {
       getVersion: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { appVersion: '0.1.0', protocolVersion: 1, methods: [] } })),
       inspectSource,
       getRuntimeSettings: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: emptyRuntimes })),
-      configureRuntime: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: emptyRuntimes })),
+      configureRuntime,
       clearRuntimeSettings: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: emptyRuntimes })),
       getBuildCacheStatus: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { byteLength: 0, entryCount: 0, maxBytes: 1024 } })),
       clearBuildCache: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { removedEntries: 0, removedBytes: 0 } })),
-      getFilePath: vi.fn(() => '/Users/test/Vicious Khepri.pck'),
+      getFilePath: vi.fn((file: File) => `/Users/test/${file.name}`),
     },
   });
-  return { inspectSource };
+  return { configureRuntime, inspectSource };
 }
 
 function setSystemDarkMode(matches: boolean) {
@@ -74,6 +75,60 @@ describe('Live2Pet desktop shell', () => {
     expect(screen.getByText(/Cubism 2/)).toBeVisible();
     expect(screen.getByText('model.moc')).toBeVisible();
     expect(inspectSource).toHaveBeenCalledWith({ inputPath: '/Users/test/Vicious Khepri.pck', projectId: 'vicious-khepri' });
+  });
+
+  it('imports a dropped Source Package without browser navigation', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const { inspectSource } = installDesktopApi();
+    render(<App />);
+    const pck = new File(['fixture'], 'Vicious Khepri.pck');
+
+    fireEvent.drop(screen.getByLabelText('Import Source Package'), {
+      dataTransfer: {
+        types: ['Files'],
+        files: [pck],
+        items: [{ kind: 'file', webkitGetAsEntry: () => ({ isDirectory: false }) }],
+      },
+    });
+
+    expect(await screen.findByText(/Cubism 2/)).toBeVisible();
+    expect(inspectSource).toHaveBeenCalledOnce();
+  });
+
+  it('saves a runtime dropped on first-time setup', async () => {
+    const { configureRuntime } = installDesktopApi();
+    render(<App />);
+    const runtime = new File(['runtime'], 'live2dcubismcore.min.js');
+
+    fireEvent.drop(screen.getByLabelText('Runtime library'), {
+      dataTransfer: { types: ['Files'], files: [runtime], items: [{ kind: 'file', webkitGetAsEntry: () => ({ isDirectory: false }) }] },
+    });
+
+    expect(configureRuntime).toHaveBeenCalledWith({ inputPath: '/Users/test/live2dcubismcore.min.js' });
+  });
+
+  it('rejects multiple dropped Source Packages before inspection', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const { inspectSource } = installDesktopApi();
+    render(<App />);
+    fireEvent.drop(screen.getByLabelText('Import Source Package'), {
+      dataTransfer: {
+        types: ['Files'],
+        files: [new File(['a'], 'one.pck'), new File(['b'], 'two.pck')],
+        items: [],
+      },
+    });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Drop one file or folder at a time.');
+    expect(inspectSource).not.toHaveBeenCalled();
+  });
+
+  it('keeps runtime SDK folder selection keyboard reachable', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.tab();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Choose SDK folder' })).toHaveFocus();
   });
 
   it('shows full-page setup once and continues to Welcome', async () => {

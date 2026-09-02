@@ -30,10 +30,11 @@ import {
   WandSparkles,
   X,
 } from "lucide-react";
-import { ChangeEvent, ReactNode, useEffect, useReducer, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, ReactNode, useEffect, useReducer, useRef, useState } from "react";
 import {
   clearCache,
   clearRuntimeSettings,
+  configureRuntimePath,
   configureRuntime,
   getAppVersion,
   getCacheStatus,
@@ -52,6 +53,7 @@ import {
 } from "./app-state";
 import { Locale, MessageKey, translate } from "./i18n";
 import { projectIdFromSourceName, sourcePathFromSelection } from "./source-selection";
+import { hasDraggedFiles } from "./file-drop";
 
 const SETUP_KEY = "live2pet.desktop.setup-completed";
 const LOCALE_KEY = "live2pet.desktop.locale";
@@ -114,15 +116,16 @@ function RuntimePanel({ locale, compact = false }: { locale: Locale; compact?: b
   const [settings, setSettings] = useState<RuntimeSettings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepth = useRef(0);
   const fileInput = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void getRuntimeSettings().then(setSettings).catch((cause: Error) => setError(cause.message));
   }, []);
 
-  async function addRuntime(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
+  async function saveRuntime(file: File | undefined) {
     if (!file) return;
     setBusy(true);
     setError("");
@@ -133,6 +136,37 @@ function RuntimePanel({ locale, compact = false }: { locale: Locale; compact?: b
     } finally {
       setBusy(false);
     }
+  }
+
+  function addRuntime(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    void saveRuntime(file);
+  }
+
+  async function addRuntimeFolder(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    const inputPath = sourcePathFromSelection(files, getDesktopFilePath);
+    if (!inputPath) { setError(t("sourcePathUnavailable")); return; }
+    setBusy(true);
+    setError("");
+    try {
+      setSettings(await configureRuntimePath(inputPath));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t("error"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function dropRuntime(event: DragEvent<HTMLElement>) {
+    if (busy || !hasDraggedFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    dragDepth.current = 0;
+    setDragActive(false);
+    if (event.dataTransfer.files.length !== 1) { setError(t("dropOne")); return; }
+    void saveRuntime(event.dataTransfer.files[0]);
   }
 
   async function removeRuntimes() {
@@ -150,7 +184,14 @@ function RuntimePanel({ locale, compact = false }: { locale: Locale; compact?: b
 
   const runtimes = settings?.runtimes ?? [];
   return (
-    <Card className="surface-card">
+    <Card
+      aria-label={t("setupRuntime")}
+      className={`surface-card drop-zone${dragActive ? " drop-zone-active" : ""}`}
+      onDragEnter={(event) => { if (!busy && hasDraggedFiles(event.dataTransfer)) { event.preventDefault(); dragDepth.current += 1; setDragActive(true); } }}
+      onDragOver={(event) => { if (hasDraggedFiles(event.dataTransfer)) event.preventDefault(); }}
+      onDragLeave={() => { dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDragActive(false); }}
+      onDrop={dropRuntime}
+    >
       <Card.Content>
         <div className="section-heading-row">
           <div>
@@ -159,11 +200,17 @@ function RuntimePanel({ locale, compact = false }: { locale: Locale; compact?: b
             <p>{t("runtimeBody")}</p>
           </div>
           <input ref={fileInput} className="visually-hidden" type="file" tabIndex={-1} onChange={addRuntime} disabled={busy} />
+          <input ref={folderInput} className="visually-hidden" type="file" multiple {...{ webkitdirectory: "" }} tabIndex={-1} onChange={addRuntimeFolder} disabled={busy} />
           <Button variant="secondary" size="sm" onPress={() => fileInput.current?.click()} isDisabled={busy}>
             <Plus size={15} />{runtimes.length ? t("replaceRuntime") : t("addRuntime")}
           </Button>
+          <Button variant="secondary" size="sm" onPress={() => folderInput.current?.click()} isDisabled={busy}>
+            <FolderOpen size={15} />{t("addRuntimeFolder")}
+          </Button>
         </div>
         {busy && <ProgressBar aria-label={t("loading")} isIndeterminate className="mt-4" />}
+        <p className="drop-hint">{t("dropRuntime")}</p>
+        {dragActive && <div className="drop-overlay" aria-hidden="true"><Upload size={20} />{t("dropRuntime")}</div>}
         <div className="runtime-list">
           {runtimes.length === 0 ? (
             <div className="empty-state"><HardDrive size={17} />{t("setupEmpty")}</div>
@@ -178,7 +225,7 @@ function RuntimePanel({ locale, compact = false }: { locale: Locale; compact?: b
             </div>
           ))}
         </div>
-        {error && <p className="inline-error">{error}</p>}
+        {error && <p className="inline-error" role="alert">{error}</p>}
         {runtimes.length > 0 && (
           <Button className="danger-link" variant="ghost" size="sm" onPress={removeRuntimes} isDisabled={busy}>
             <Trash2 size={14} />{t("removeAll")}
@@ -213,8 +260,10 @@ function SetupView({ locale, onComplete }: { locale: Locale; onComplete: () => v
   );
 }
 
-function WelcomeView({ locale, busy, error, onImport, onOpenProject }: { locale: Locale; busy: boolean; error: string; onImport: (files: File[]) => void; onOpenProject: () => void }) {
+function WelcomeView({ locale, busy, error, onImport, onOpenProject }: { locale: Locale; busy: boolean; error: string; onImport: (files: File[], directDrop?: boolean) => void; onOpenProject: () => void }) {
   const t = (key: MessageKey) => translate(locale, key);
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepth = useRef(0);
   const folderInput = useRef<HTMLInputElement>(null);
   const pckInput = useRef<HTMLInputElement>(null);
   function selected(event: ChangeEvent<HTMLInputElement>) {
@@ -222,9 +271,25 @@ function WelcomeView({ locale, busy, error, onImport, onOpenProject }: { locale:
     event.target.value = "";
     if (files.length) onImport(files);
   }
+  function dropSource(event: DragEvent<HTMLElement>) {
+    if (busy || !hasDraggedFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    dragDepth.current = 0;
+    setDragActive(false);
+    const files = Array.from(event.dataTransfer.files);
+    if (files.length) onImport(files, true);
+  }
   return (
     <main className="welcome-view">
-      <section className="welcome-hero">
+      <section
+        aria-label={t("importSource")}
+        className={`welcome-hero drop-zone${dragActive ? " drop-zone-active" : ""}`}
+        onDragEnter={(event) => { if (!busy && hasDraggedFiles(event.dataTransfer)) { event.preventDefault(); dragDepth.current += 1; setDragActive(true); } }}
+        onDragOver={(event) => { if (hasDraggedFiles(event.dataTransfer)) event.preventDefault(); }}
+        onDragLeave={() => { dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDragActive(false); }}
+        onDrop={dropSource}
+      >
+        {dragActive && <div className="drop-overlay" aria-hidden="true"><Upload size={22} />{t("dropSource")}</div>}
         <div className="welcome-copy">
           <p className="eyebrow"><Sparkles size={13} />{t("welcomeEyebrow")}</p>
           <h1>{t("welcomeTitle")}</h1>
@@ -371,14 +436,26 @@ export function App() {
     return () => media.removeEventListener("change", applyAppearance);
   }, [appearance]);
   useEffect(() => { void getAppVersion().then(setAppVersion).catch(() => undefined); }, []);
+  useEffect(() => {
+    const preventFileNavigation = (event: globalThis.DragEvent) => {
+      if (event.dataTransfer && hasDraggedFiles(event.dataTransfer)) event.preventDefault();
+    };
+    window.addEventListener("dragover", preventFileNavigation);
+    window.addEventListener("drop", preventFileNavigation);
+    return () => {
+      window.removeEventListener("dragover", preventFileNavigation);
+      window.removeEventListener("drop", preventFileNavigation);
+    };
+  }, []);
 
   function completeSetup() { localStorage.setItem(SETUP_KEY, "true"); dispatch({ type: "COMPLETE_SETUP" }); }
   function openPreview() { dispatch({ type: "OPEN_PROJECT", project: { id: "design-preview", name: t("project"), selectedMotionId: motions[0].id } }); }
-  async function importSourceFiles(files: File[]) {
+  async function importSourceFiles(files: File[], directDrop = false) {
     setImportBusy(true);
     setImportError("");
     try {
-      const inputPath = sourcePathFromSelection(files, getDesktopFilePath);
+      if (directDrop && files.length !== 1) throw new Error(t("dropOne"));
+      const inputPath = sourcePathFromSelection(files, getDesktopFilePath, directDrop);
       if (!inputPath) throw new Error(t("sourcePathUnavailable"));
       const sourceName = files[0]?.webkitRelativePath?.split('/')[0] || files[0]?.name.replace(/\.pck$/i, '') || 'Live2Pet';
       const inspection = await inspectSource(inputPath, projectIdFromSourceName(sourceName));
@@ -412,7 +489,7 @@ export function App() {
         <div className="toolbar-actions"><Chip className="chip" size="sm" variant="soft"><span className="status-dot" />{t("designPreview")}</Chip><Button isIconOnly aria-label={t("settings")} variant="ghost" onPress={() => dispatch({ type: "OPEN_SETTINGS" })}><SettingsIcon size={18} /></Button></div>
       </header>
       <div className="app-content">
-        {state.destination === "welcome" && <WelcomeView locale={locale} busy={importBusy} error={importError} onImport={(files) => void importSourceFiles(files)} onOpenProject={openPreview} />}
+        {state.destination === "welcome" && <WelcomeView locale={locale} busy={importBusy} error={importError} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onOpenProject={openPreview} />}
         {state.destination === "source" && <SourceView locale={locale} inspection={state.project?.inspection} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
         {state.destination === "map" && <MapView locale={locale} inspection={state.project?.inspection} selectedMotionId={state.project?.selectedMotionId ?? null} selectedExpressionId={state.project?.selectedExpressionId ?? null} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} />}
         {state.destination === "build" && <BuildView locale={locale} />}

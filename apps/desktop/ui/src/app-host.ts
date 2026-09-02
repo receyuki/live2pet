@@ -109,6 +109,12 @@ export async function configureRuntime(file: File): Promise<RuntimeSettings> {
   return unwrap(api.configureRuntime({ inputPath }));
 }
 
+export async function configureRuntimePath(inputPath: string): Promise<RuntimeSettings> {
+  const api = desktopApi();
+  if (!api) throw new DesktopApiError('DESKTOP_REQUIRED', 'Runtime folders can only be saved from the Desktop App.');
+  return unwrap(api.configureRuntime({ inputPath }));
+}
+
 export async function clearRuntimeSettings(): Promise<RuntimeSettings> {
   const api = desktopApi();
   if (!api) return { schemaVersion: 2, configured: false, restartRequired: false, runtimes: [] };
