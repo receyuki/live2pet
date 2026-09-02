@@ -5,23 +5,44 @@
   "description": "Local-first Live2Pet desktop shell",
   "main": "main.cjs",
   "scripts": {
+    "build:renderer": "vite build --config vite.config.mts",
     "prepare:mapper": "node scripts/stage-mapper-assets.cjs",
     "benchmark:capture": "node scripts/benchmark-capture-transport.cjs",
     "package:mac": "node scripts/stage-mapper-assets.cjs && node scripts/package-macos.cjs",
+    "preview:shell": "pnpm build:renderer && electron . --live2pet-ui-preview",
     "smoke:mac": "node scripts/smoke-packaged-app.cjs",
     "start": "electron .",
-    "typecheck": "node --check main.cjs preload.cjs forge.config.cjs scripts/*.cjs"
+    "test:ui": "vitest run --config vite.config.mts",
+    "typecheck": "node --check main.cjs preload.cjs forge.config.cjs scripts/*.cjs && pnpm typecheck:ui",
+    "typecheck:ui": "tsc -p tsconfig.ui.json --noEmit"
   },
   "dependencies": {
+    "@heroui/react": "^3.2.4",
+    "@heroui/styles": "^3.2.4",
     "@live2pet/app-host": "workspace:*",
     "@live2pet/installation": "workspace:*",
     "@live2pet/package-build": "workspace:*",
     "@live2pet/runtime": "workspace:*",
-    "@live2pet/source-inspector": "workspace:*"
+    "@live2pet/source-inspector": "workspace:*",
+    "lucide-react": "^1.38.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@electron/packager": "20.3.0",
-    "electron": "44.0.0"
+    "@tailwindcss/vite": "^4.3.3",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.6",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "44.0.0",
+    "jsdom": "^30.0.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   },
   "config": {
     "forge": "forge.config.cjs"

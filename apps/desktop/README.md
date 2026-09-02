@@ -90,6 +90,23 @@ From the repository root, install workspace dependencies and run:
 pnpm --filter @live2pet/desktop start
 ```
 
+## Preview the new desktop UI
+
+The HeroUI renderer is being introduced alongside the current Mapper so the
+working build flow remains available during the UI migration. To build and open
+the new first-run setup, project workspace, and full-page Settings experience,
+run:
+
+```text
+pnpm --filter @live2pet/desktop preview:shell
+```
+
+This preview reads and updates the same App-owned runtime library and build
+cache through the existing typed preload API. It does not bundle a model or a
+Cubism runtime, and it does not replace the default `start` entrypoint yet.
+Source import, live preview, mapping persistence, and package generation remain
+on the current Mapper until each workflow is migrated and accepted.
+
 Before a package build, stage the browser dependencies into a self-contained Mapper bundle:
 
 ```text

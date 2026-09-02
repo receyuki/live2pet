@@ -23,12 +23,14 @@ const {
 } = require('@live2pet/runtime');
 
 const DEVELOPMENT_MAPPER_PATH = path.resolve(__dirname, '../mapper/index.html');
+const DEVELOPMENT_RENDERER_PATH = path.resolve(__dirname, 'renderer-dist/index.html');
 const PACKAGED_MAPPER_PATH = path.join(process.resourcesPath, 'mapper-dist', 'index.html');
 const SOURCE_CACHE_LIMIT = 1024 * 1024 * 1024;
 const CAPTURE_CACHE_LIMIT = 1024 * 1024 * 1024;
 const ENCODED_CACHE_TARGET_VERSION = '1';
 const ENCODED_CACHE_ENCODER_VERSION = SHARP_ENCODER_VERSION;
 const APP_BUNDLE_SMOKE_ARGUMENT = '--live2pet-smoke-test';
+const UI_PREVIEW_ARGUMENT = '--live2pet-ui-preview';
 let mainWindow = null;
 let route = null;
 let sourceCache = null;
@@ -44,6 +46,11 @@ protocol.registerSchemesAsPrivileged([{
 
 function mapperPath() {
   return app.isPackaged ? PACKAGED_MAPPER_PATH : DEVELOPMENT_MAPPER_PATH;
+}
+
+function appDocumentPath() {
+  if (!app.isPackaged && process.argv.includes(UI_PREVIEW_ARGUMENT)) return DEVELOPMENT_RENDERER_PATH;
+  return mapperPath();
 }
 
 function sourceInspectionService({ inputPath, projectId } = {}) {
@@ -136,8 +143,17 @@ async function closeActiveSession() {
 
 async function createMainWindow() {
   const preload = path.join(__dirname, 'preload.cjs');
-  const documentPath = mapperPath();
-  mainWindow = new BrowserWindow(createAppWindowOptions({ preload, width: 1540, height: 960, show: false }));
+  const documentPath = appDocumentPath();
+  const windowOptions = createAppWindowOptions({ preload, width: 1540, height: 960, show: false });
+  if (documentPath === DEVELOPMENT_RENDERER_PATH) {
+    Object.assign(windowOptions, {
+      titleBarStyle: 'hiddenInset',
+      trafficLightPosition: { x: 18, y: 19 },
+      minWidth: 900,
+      minHeight: 640,
+    });
+  }
+  mainWindow = new BrowserWindow(windowOptions);
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   const mapperUrl = pathToFileURL(documentPath).href;
   mainWindow.webContents.on('will-navigate', (event, url) => {
