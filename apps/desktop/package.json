@@ -23,6 +23,7 @@
     "@live2pet/app-host": "workspace:*",
     "@live2pet/installation": "workspace:*",
     "@live2pet/package-build": "workspace:*",
+    "@live2pet/project": "workspace:*",
     "@live2pet/runtime": "workspace:*",
     "@live2pet/source-inspector": "workspace:*",
     "lucide-react": "^1.38.0",

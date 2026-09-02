@@ -5,6 +5,8 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 // sync with createAppPreloadApi() in packages/app-host/src/index.cjs.
 const APP_IPC_CHANNEL = 'live2pet:app';
 const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';
+const APP_COMMAND_CHANNEL = 'live2pet:command';
+const APP_COMMANDS = new Set(['open', 'save', 'settings', 'build', 'setup']);
 const PREVIEW_IPC_CHANNEL = 'live2pet:preview';
 const PREVIEW_STATUS_CHANNEL = 'live2pet:preview-status';
 const APP_IPC_PROTOCOL_VERSION = 1;
@@ -55,6 +57,19 @@ const onBuildProgress = (listener) => {
     ipcRenderer.removeListener(APP_BUILD_PROGRESS_CHANNEL, handler);
   };
 };
+const onAppCommand = (listener) => {
+  if (typeof listener !== 'function') throw new TypeError('onAppCommand requires a function listener.');
+  const handler = (_event, command) => {
+    if (APP_COMMANDS.has(command)) listener(command);
+  };
+  ipcRenderer.on(APP_COMMAND_CHANNEL, handler);
+  let active = true;
+  return () => {
+    if (!active) return;
+    active = false;
+    ipcRenderer.removeListener(APP_COMMAND_CHANNEL, handler);
+  };
+};
 const getFilePath = (file) => {
   if (!webUtils || typeof webUtils.getPathForFile !== 'function') return null;
   try {
@@ -81,6 +96,10 @@ const onPreviewStatus = (listener) => {
 
 contextBridge.exposeInMainWorld('live2pet', Object.freeze({
   getVersion: () => invoke('getVersion'),
+  getRecentProjects: () => invoke('getRecentProjects'),
+  openProject: (input = {}) => invoke('openProject', input),
+  saveProject: (input) => invoke('saveProject', input),
+  onAppCommand,
   inspectSource: (input) => invoke('inspectSource', input),
   getRuntimeSettings: () => invoke('getRuntimeSettings'),
   configureRuntime: (input) => invoke('configureRuntime', input),

@@ -25,6 +25,9 @@ importers:
       '@live2pet/package-build':
         specifier: workspace:*
         version: link:../../packages/package-build
+      '@live2pet/project':
+        specifier: workspace:*
+        version: link:../../packages/project
       '@live2pet/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime

@@ -17,6 +17,10 @@ export interface AppSettings {
 export interface ProjectSession {
   id: string;
   name: string;
+  document: import('./app-host').Live2PetProject | null;
+  documentId?: string;
+  fileName?: string;
+  dirty: boolean;
   sourcePath?: string;
   inspection?: import('./app-host').SourceInspection;
   selectedMotionId: string | null;
@@ -24,6 +28,7 @@ export interface ProjectSession {
 }
 
 type ReturnDestination = "welcome" | ProjectDestination;
+type SetupReturnDestination = Exclude<Destination, "setup">;
 
 export interface AppState {
   destination: Destination;
@@ -31,6 +36,7 @@ export interface AppState {
   settings: AppSettings;
   settingsSection: SettingsSection;
   settingsReturnDestination: ReturnDestination | null;
+  setupReturnDestination: SetupReturnDestination | null;
   setupCompleted: boolean;
 }
 
@@ -46,6 +52,8 @@ export type AppAction =
   | { type: "SELECT_SETTINGS_SECTION"; section: SettingsSection }
   | { type: "SELECT_MOTION"; motionId: string | null }
   | { type: "SELECT_EXPRESSION"; expressionId: string | null }
+  | { type: "PROJECT_SAVED"; document: import('./app-host').Live2PetProject; documentId: string; fileName: string }
+  | { type: "OPEN_SETUP" }
   | { type: "COMPLETE_SETUP" }
   | { type: "UPDATE_LANGUAGE"; language: AppSettings["language"] }
   | { type: "UPDATE_APPEARANCE"; appearance: AppSettings["appearance"] };
@@ -57,6 +65,7 @@ export function initialAppState({ setupCompleted = false }: { setupCompleted?: b
     settings: { language: "en", appearance: "system" },
     settingsSection: "general",
     settingsReturnDestination: null,
+    setupReturnDestination: null,
     setupCompleted,
   };
 }
@@ -73,10 +82,13 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         destination: "source",
         project: {
           ...action.project,
+          document: action.project.document ?? null,
+          dirty: action.project.dirty ?? false,
           selectedMotionId: action.project.selectedMotionId ?? null,
           selectedExpressionId: action.project.selectedExpressionId ?? null,
         },
         settingsReturnDestination: null,
+        setupReturnDestination: null,
       };
 
     case "CLOSE_PROJECT":
@@ -121,9 +133,36 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ? { ...state, project: { ...state.project, selectedExpressionId: action.expressionId } }
         : state;
 
+    case "PROJECT_SAVED":
+      return state.project
+        ? {
+            ...state,
+            project: {
+              ...state.project,
+              id: action.document.projectId,
+              name: action.document.name,
+              document: action.document,
+              documentId: action.documentId,
+              fileName: action.fileName,
+              dirty: false,
+            },
+          }
+        : state;
+
+    case "OPEN_SETUP":
+      if (state.destination === "setup") return state;
+      return { ...state, destination: "setup", setupReturnDestination: state.destination };
+
     case "COMPLETE_SETUP":
       return state.destination === "setup"
-        ? { ...state, destination: "welcome", setupCompleted: true }
+        ? {
+            ...state,
+            destination: state.setupReturnDestination === "settings"
+              ? "settings"
+              : safeDestination(state.setupReturnDestination ?? "welcome", state.project),
+            setupCompleted: true,
+            setupReturnDestination: null,
+          }
         : state;
 
     case "UPDATE_LANGUAGE":

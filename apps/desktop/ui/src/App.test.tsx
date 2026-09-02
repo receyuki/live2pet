@@ -5,7 +5,20 @@ import { App } from './App';
 
 const emptyRuntimes = { schemaVersion: 2 as const, configured: false, restartRequired: false, runtimes: [] };
 
-function installDesktopApi({ runtimes = emptyRuntimes, preview = false }: { runtimes?: typeof emptyRuntimes | { schemaVersion: 2; configured: boolean; restartRequired: false; runtimes: Array<{ runtimeName: string; runtimeKind: 'legacy-cubism2'; cubismGenerations: number[]; fingerprint: string; available: boolean }> }; preview?: boolean } = {}) {
+const savedProject = {
+  schemaVersion: 1 as const,
+  projectId: 'saved-project',
+  appVersion: '0.1.0',
+  name: 'Saved Project',
+  source: { kind: 'pck' as const, name: 'Saved Source', fingerprint: 'saved-fingerprint', path: '/Users/test/Saved Source.pck', modelConfig: 'model.json' },
+  recipes: [],
+  targets: {
+    clawd: { profile: 'clawd', mappings: {}, reactions: {}, options: {} },
+    'codex-pet': { profile: 'codex-pet', mappings: {}, reactions: {}, options: {} },
+  },
+};
+
+function installDesktopApi({ runtimes = emptyRuntimes, preview = false, recentProjects = [], openCancelled = false, saveCancelled = false }: { runtimes?: typeof emptyRuntimes | { schemaVersion: 2; configured: boolean; restartRequired: false; runtimes: Array<{ runtimeName: string; runtimeKind: 'legacy-cubism2'; cubismGenerations: number[]; fingerprint: string; available: boolean }> }; preview?: boolean; recentProjects?: Array<{ documentId: string; name: string; fileName: string; available: boolean }>; openCancelled?: boolean; saveCancelled?: boolean } = {}) {
   const inspectSource = vi.fn(async () => ({
     protocolVersion: 1 as const,
     ok: true,
@@ -21,11 +34,18 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false }: { runt
   }));
   const configureRuntime = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: runtimes }));
   const openPreview = vi.fn(async (input: { projectId: string; sourceFingerprint: string; bounds: { x: number; y: number; width: number; height: number } }) => ({ protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, state: 'ready' as const, projectId: input.projectId, sourceFingerprint: input.sourceFingerprint, visible: true, bounds: input.bounds, playback: { motionId: null, expressionId: null, playing: false, loop: true, speed: 1 } } }));
+  const openProject = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: openCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-document', fileName: 'saved.live2pet', project: savedProject, recentProjects } }));
+  const saveProject = vi.fn(async (input: { project: typeof savedProject }) => ({ protocolVersion: 1 as const, ok: true, result: saveCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-saved-document', fileName: `${input.project.name}.live2pet`, project: input.project, recentProjects } }));
+  let appCommandListener: ((command: 'open' | 'save' | 'settings' | 'build' | 'setup') => void) | undefined;
   Object.defineProperty(window, 'live2pet', {
     configurable: true,
     value: {
       getVersion: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { appVersion: '0.1.0', protocolVersion: 1, methods: [] } })),
       inspectSource,
+      getRecentProjects: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { recentProjects } })),
+      openProject,
+      saveProject,
+      onAppCommand: vi.fn((listener) => { appCommandListener = listener; return () => { appCommandListener = undefined; }; }),
       getRuntimeSettings: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: runtimes })),
       configureRuntime,
       clearRuntimeSettings: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: emptyRuntimes })),
@@ -43,7 +63,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false }: { runt
       } : {}),
     },
   });
-  return { configureRuntime, inspectSource, openPreview };
+  return { configureRuntime, inspectSource, openPreview, openProject, saveProject, emitAppCommand: (command: 'open' | 'save' | 'settings' | 'build' | 'setup') => appCommandListener?.(command) };
 }
 
 function setSystemDarkMode(matches: boolean) {
@@ -72,6 +92,76 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('Live2Pet desktop shell', () => {
+  it('creates an unsaved schema-1 project on import and saves it through the opaque document API', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const { saveProject } = installDesktopApi();
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+
+    await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    expect(await screen.findByText('Unsaved changes')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
+
+    await vi.waitFor(() => expect(saveProject).toHaveBeenCalledOnce());
+    expect(saveProject.mock.calls[0][0]).toMatchObject({ project: { schemaVersion: 1, projectId: 'vicious-khepri', source: { path: '/Users/test/Vicious Khepri.pck' }, recipes: [] } });
+    expect(await screen.findByText('Saved')).toBeVisible();
+    expect(screen.getByText('Vicious Khepri.live2pet')).toBeVisible();
+  });
+
+  it('opens a recent project by opaque id and re-inspects its referenced source', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const recent = [{ documentId: 'opaque-document', name: 'Saved Project', fileName: 'saved.live2pet', available: true }];
+    const { openProject, inspectSource } = installDesktopApi({ recentProjects: recent });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: /Saved Project/ }));
+    expect(openProject).toHaveBeenCalledWith({ documentId: 'opaque-document' });
+    await vi.waitFor(() => expect(inspectSource).toHaveBeenCalledWith({ inputPath: '/Users/test/Saved Source.pck', projectId: 'saved-project' }));
+    expect(await screen.findByRole('heading', { name: 'Source Package' })).toBeVisible();
+  });
+
+  it('routes native menu commands and returns from reopened Setup to the project', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const api = installDesktopApi();
+    const user = userEvent.setup();
+    render(<App />);
+
+    api.emitAppCommand('open');
+    expect(await screen.findByRole('heading', { name: 'Source Package' })).toBeVisible();
+    api.emitAppCommand('build');
+    expect(await screen.findByRole('heading', { name: 'Package Build' })).toBeVisible();
+    api.emitAppCommand('setup');
+    expect(await screen.findByRole('heading', { name: 'Bring your models to life.' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Return to workspace' }));
+    expect(await screen.findByRole('heading', { name: 'Package Build' })).toBeVisible();
+    api.emitAppCommand('settings');
+    expect(await screen.findByRole('heading', { name: 'Settings' })).toBeVisible();
+  });
+
+  it('keeps Welcome unchanged when the project picker is cancelled', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    installDesktopApi({ openCancelled: true });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole('button', { name: 'Open project' }));
+    expect(await screen.findByRole('heading', { name: 'Turn Live2D motions into desktop pets.' })).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('explains how to recover an unavailable recent project without calling open', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const recent = [{ documentId: 'missing-document', name: 'Missing Project', fileName: 'missing.live2pet', available: false }];
+    const { openProject } = installDesktopApi({ recentProjects: recent });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: /Missing Project/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Restore or move the .live2pet file back');
+    expect(openProject).not.toHaveBeenCalled();
+  });
+
   it('imports a PCK through the Desktop inspection service and shows its real inventory', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const { inspectSource } = installDesktopApi();

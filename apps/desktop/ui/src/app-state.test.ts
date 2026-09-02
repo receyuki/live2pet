@@ -57,4 +57,15 @@ describe("appReducer", () => {
     expect(state.destination).toBe("settings");
     expect(state.settings).toEqual({ language: "zh-CN", appearance: "dark" });
   });
+
+  it("reopens Setup and returns to the active project without losing it", () => {
+    let state = initialAppState({ setupCompleted: true });
+    state = appReducer(state, { type: "OPEN_PROJECT", project: { id: "one", name: "One" } });
+    state = appReducer(state, { type: "NAVIGATE", destination: "map" });
+    state = appReducer(state, { type: "OPEN_SETUP" });
+    expect(state).toMatchObject({ destination: "setup", setupReturnDestination: "map", project: { id: "one" } });
+
+    state = appReducer(state, { type: "COMPLETE_SETUP" });
+    expect(state).toMatchObject({ destination: "map", setupReturnDestination: null, project: { id: "one" } });
+  });
 });

@@ -13,6 +13,7 @@ const { inspectSourcePackage } = require('../../source-inspector/src/index.cjs')
 const {
   APP_BUILD_ARTIFACT_CHUNK_BYTES,
   APP_BUILD_PROGRESS_CHANNEL,
+  APP_COMMAND_CHANNEL,
   APP_IPC_CHANNEL,
   APP_IPC_METHODS,
   AppHostError,
@@ -28,6 +29,9 @@ const {
   normalizeBuildProgressEvent,
   normalizeCancelBuildRequest,
   normalizeRequest,
+  normalizeOpenProjectRequest,
+  normalizeSaveProjectRequest,
+  normalizeRecentProjects,
 } = require('../src/index.cjs');
 
 test('normalizes only versioned, allowlisted App IPC requests', () => {
@@ -43,6 +47,9 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.equal(APP_IPC_METHODS.includes('installArtifact'), true);
   assert.equal(APP_IPC_METHODS.includes('chooseInstallRoot'), true);
   assert.equal(APP_IPC_METHODS.includes('inspectSource'), true);
+  assert.equal(APP_IPC_METHODS.includes('getRecentProjects'), true);
+  assert.equal(APP_IPC_METHODS.includes('openProject'), true);
+  assert.equal(APP_IPC_METHODS.includes('saveProject'), true);
   assert.equal(APP_IPC_METHODS.includes('getSkillStatus'), false);
   assert.equal(APP_IPC_METHODS.includes('installSkill'), false);
   assert.equal(APP_IPC_METHODS.includes('getBuildCacheStatus'), true);
@@ -67,6 +74,32 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.deepEqual(normalizeCancelBuildRequest({ buildId: 'build_1234' }), { buildId: 'build_1234' });
   assert.throws(() => normalizeCancelBuildRequest({ buildId: 'short' }), (error) => error instanceof AppHostError && error.code === 'INVALID_BUILD_CANCEL_REQUEST');
   assert.throws(() => normalizeCancelBuildRequest({ buildId: 'build_1234', extra: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_BUILD_CANCEL_REQUEST');
+});
+
+test('normalizes project requests and strips private paths from recent results', () => {
+  assert.deepEqual(normalizeOpenProjectRequest(undefined), {});
+  assert.deepEqual(normalizeOpenProjectRequest({ documentId: 'document_123' }), { documentId: 'document_123' });
+  assert.deepEqual(normalizeSaveProjectRequest({ documentId: 'document_123', project: { schemaVersion: 1 }, saveAs: true }), { documentId: 'document_123', project: { schemaVersion: 1 }, saveAs: true });
+  assert.throws(() => normalizeOpenProjectRequest({ path: '/private/project.live2pet' }), (error) => error instanceof AppHostError && error.code === 'INVALID_PROJECT_REQUEST');
+  assert.throws(() => normalizeSaveProjectRequest({ project: {}, path: '/private/project.live2pet' }), (error) => error instanceof AppHostError && error.code === 'INVALID_PROJECT_REQUEST');
+  assert.deepEqual(normalizeRecentProjects([{ documentId: 'document_123', name: 'Cat', fileName: 'cat.live2pet', available: true, path: '/private/project.live2pet' }]), [{ documentId: 'document_123', name: 'Cat', fileName: 'cat.live2pet', available: true }]);
+});
+
+test('routes project workspace operations without exposing project file paths', async () => {
+  const recent = [{ documentId: 'document_123', name: 'Cat', fileName: 'cat.live2pet', available: true, path: '/private/cat.live2pet' }];
+  const project = { schemaVersion: 1, name: 'Cat' };
+  const router = createAppIpcRouter({
+    projectWorkspaceService: {
+      getRecentProjects: async () => recent,
+      openProject: async () => ({ cancelled: false, documentId: 'document_123', fileName: 'cat.live2pet', project, recentProjects: recent, path: '/private/cat.live2pet' }),
+      saveProject: async () => ({ cancelled: true, recentProjects: recent, path: '/private/cat.live2pet' }),
+    },
+  });
+  assert.deepEqual((await router({ protocolVersion: 1, method: 'getRecentProjects', args: [] })).result, { recentProjects: [{ documentId: 'document_123', name: 'Cat', fileName: 'cat.live2pet', available: true }] });
+  const opened = await router({ protocolVersion: 1, method: 'openProject', args: [{}] });
+  assert.equal(opened.ok, true);
+  assert.equal(Object.hasOwn(opened.result, 'path'), false);
+  assert.deepEqual((await router({ protocolVersion: 1, method: 'saveProject', args: [{ project }] })).result, { cancelled: true, recentProjects: [{ documentId: 'document_123', name: 'Cat', fileName: 'cat.live2pet', available: true }] });
 });
 
 test('routes a multi-runtime library without exposing App storage paths', async () => {
@@ -647,6 +680,9 @@ test('preload exposes only typed methods and the window options keep Electron sa
   });
   assert.equal(api.getFilePath({ name: 'model3.json' }), '/tmp/source/model3.json');
   await api.getVersion();
+  await api.getRecentProjects();
+  await api.openProject({ documentId: 'document_123' });
+  await api.saveProject({ documentId: 'document_123', project: { schemaVersion: 1 } });
   await api.buildProject({ project: { projectId: 'app-fixture' } });
   await api.getBuildArtifact('fixture-artifact');
   await api.getBuildArtifact('fixture-artifact', 1024);
@@ -659,16 +695,19 @@ test('preload exposes only typed methods and the window options keep Electron sa
   await api.cancelBuild('build_1234');
   assert.equal(calls[0][0], APP_IPC_CHANNEL);
   assert.deepEqual(calls[0][1], { protocolVersion: 1, method: 'getVersion', args: [] });
-  assert.deepEqual(calls[1][1], { protocolVersion: 1, method: 'buildProject', args: [{ project: { projectId: 'app-fixture' } }] });
-  assert.deepEqual(calls[2][1], { protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'fixture-artifact', offset: 0 }] });
-  assert.deepEqual(calls[3][1], { protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'fixture-artifact', offset: 1024 }] });
-  assert.deepEqual(calls[4][1], { protocolVersion: 1, method: 'installArtifact', args: [{ artifactId: 'fixture-artifact', target: 'codex-pet', confirmInstall: true }] });
-  assert.deepEqual(calls[5][1], { protocolVersion: 1, method: 'inspectSource', args: [{ inputPath: '/tmp/source' }] });
-  assert.deepEqual(calls[6][1], { protocolVersion: 1, method: 'getRuntimeSettings', args: [] });
-  assert.deepEqual(calls[7][1], { protocolVersion: 1, method: 'configureRuntime', args: [{ inputPath: '/tmp/live2d.min.js' }] });
-  assert.deepEqual(calls[8][1], { protocolVersion: 1, method: 'clearRuntimeSettings', args: [] });
-  assert.deepEqual(calls[9][1], { protocolVersion: 1, method: 'chooseInstallRoot', args: [{ target: 'clawd' }] });
-  assert.deepEqual(calls[10][1], { protocolVersion: 1, method: 'cancelBuild', args: [{ buildId: 'build_1234' }] });
+  assert.deepEqual(calls[1][1], { protocolVersion: 1, method: 'getRecentProjects', args: [] });
+  assert.deepEqual(calls[2][1], { protocolVersion: 1, method: 'openProject', args: [{ documentId: 'document_123' }] });
+  assert.deepEqual(calls[3][1], { protocolVersion: 1, method: 'saveProject', args: [{ documentId: 'document_123', project: { schemaVersion: 1 } }] });
+  assert.deepEqual(calls[4][1], { protocolVersion: 1, method: 'buildProject', args: [{ project: { projectId: 'app-fixture' } }] });
+  assert.deepEqual(calls[5][1], { protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'fixture-artifact', offset: 0 }] });
+  assert.deepEqual(calls[6][1], { protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'fixture-artifact', offset: 1024 }] });
+  assert.deepEqual(calls[7][1], { protocolVersion: 1, method: 'installArtifact', args: [{ artifactId: 'fixture-artifact', target: 'codex-pet', confirmInstall: true }] });
+  assert.deepEqual(calls[8][1], { protocolVersion: 1, method: 'inspectSource', args: [{ inputPath: '/tmp/source' }] });
+  assert.deepEqual(calls[9][1], { protocolVersion: 1, method: 'getRuntimeSettings', args: [] });
+  assert.deepEqual(calls[10][1], { protocolVersion: 1, method: 'configureRuntime', args: [{ inputPath: '/tmp/live2d.min.js' }] });
+  assert.deepEqual(calls[11][1], { protocolVersion: 1, method: 'clearRuntimeSettings', args: [] });
+  assert.deepEqual(calls[12][1], { protocolVersion: 1, method: 'chooseInstallRoot', args: [{ target: 'clawd' }] });
+  assert.deepEqual(calls[13][1], { protocolVersion: 1, method: 'cancelBuild', args: [{ buildId: 'build_1234' }] });
   for (const method of ['getSkillStatus', 'installSkill', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'closeMapperSession', 'startRendererPreview', 'loadRendererSource', 'rendererCommand', 'getRendererPreviewStatus', 'restartRendererPreview', 'closeRendererPreview']) {
     assert.equal(Object.hasOwn(api, method), false);
   }
@@ -702,6 +741,27 @@ test('preload onBuildProgress subscribes with a safe payload and supports idempo
   unsubscribe();
   assert.equal(removed.length, 1);
   assert.equal(removed[0][0], APP_BUILD_PROGRESS_CHANNEL);
+});
+
+test('preload onAppCommand forwards only allowlisted menu commands', () => {
+  const listeners = new Map();
+  const removed = [];
+  const api = createAppPreloadApi({
+    ipcRenderer: {
+      invoke: async () => ({ ok: true }),
+      on: (channel, listener) => listeners.set(channel, listener),
+      removeListener: (channel, listener) => removed.push([channel, listener]),
+    },
+  });
+  const commands = [];
+  const unsubscribe = api.onAppCommand((command) => commands.push(command));
+  const handler = listeners.get(APP_COMMAND_CHANNEL);
+  for (const command of ['open', 'save', 'settings', 'build', 'setup', 'shell', '/private/project']) handler({}, command);
+  assert.deepEqual(commands, ['open', 'save', 'settings', 'build', 'setup']);
+  unsubscribe();
+  unsubscribe();
+  assert.equal(removed.length, 1);
+  assert.equal(removed[0][0], APP_COMMAND_CHANNEL);
 });
 
 test('requires safe App window dimensions and a preload path', () => {

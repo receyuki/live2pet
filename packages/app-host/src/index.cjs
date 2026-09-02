@@ -6,6 +6,8 @@ const { installPackage } = require('@live2pet/installation');
 const APP_IPC_PROTOCOL_VERSION = 1;
 const APP_IPC_CHANNEL = 'live2pet:app';
 const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';
+const APP_COMMAND_CHANNEL = 'live2pet:command';
+const APP_COMMANDS = Object.freeze(['open', 'save', 'settings', 'build', 'setup']);
 const APP_BUILD_ARTIFACT_CHUNK_BYTES = 1024 * 1024;
 const APP_INSTALL_LOCATION_LIMIT = 8;
 const APP_SOURCE_INSPECTION_PROGRESS_STAGE = 'inspect';
@@ -50,6 +52,9 @@ const BUILD_PROGRESS_FIELDS = Object.freeze([
 ]);
 const APP_IPC_METHODS = Object.freeze([
   'getVersion',
+  'getRecentProjects',
+  'openProject',
+  'saveProject',
   'inspectSource',
   'getRuntimeSettings',
   'configureRuntime',
@@ -448,6 +453,49 @@ function normalizeRequest(request) {
   return { protocolVersion: APP_IPC_PROTOCOL_VERSION, method: request.method, args };
 }
 
+function normalizeDocumentId(value) {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(value.trim())) fail('INVALID_PROJECT_REQUEST', 'documentId must be an opaque document identifier.');
+  return value.trim();
+}
+
+function normalizeOpenProjectRequest(value) {
+  if (value === undefined) return {};
+  if (!isRecord(value)) fail('INVALID_PROJECT_REQUEST', 'openProject input must be an object.');
+  const unknown = Object.keys(value).filter((key) => key !== 'documentId');
+  if (unknown.length) fail('INVALID_PROJECT_REQUEST', `openProject input contains unsupported fields: ${unknown.join(', ')}.`);
+  return value.documentId === undefined ? {} : { documentId: normalizeDocumentId(value.documentId) };
+}
+
+function normalizeSaveProjectRequest(value) {
+  if (!isRecord(value)) fail('INVALID_PROJECT_REQUEST', 'saveProject input must be an object.');
+  const allowed = new Set(['documentId', 'project', 'saveAs']);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) fail('INVALID_PROJECT_REQUEST', `saveProject input contains unsupported fields: ${unknown.join(', ')}.`);
+  if (!isRecord(value.project)) fail('INVALID_PROJECT_REQUEST', 'saveProject requires a project object.');
+  if (value.saveAs !== undefined && typeof value.saveAs !== 'boolean') fail('INVALID_PROJECT_REQUEST', 'saveAs must be boolean when provided.');
+  return {
+    ...(value.documentId === undefined ? {} : { documentId: normalizeDocumentId(value.documentId) }),
+    project: value.project,
+    saveAs: value.saveAs === true,
+  };
+}
+
+function normalizeRecentProjects(value) {
+  if (!Array.isArray(value) || value.length > 10) fail('INVALID_PROJECT_RESULT', 'Recent projects must be an array with at most ten entries.');
+  return value.map((entry, index) => {
+    if (!isRecord(entry) || typeof entry.documentId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(entry.documentId) || typeof entry.name !== 'string' || !entry.name.trim() || entry.name.length > 256 || typeof entry.fileName !== 'string' || !entry.fileName.trim() || entry.fileName.length > 512 || /[\\/]/.test(entry.fileName) || typeof entry.available !== 'boolean') fail('INVALID_PROJECT_RESULT', `Recent project ${index} is invalid.`);
+    return { documentId: entry.documentId, name: entry.name, fileName: entry.fileName, available: entry.available };
+  });
+}
+
+function summarizeProjectOperation(result) {
+  if (!isRecord(result) || typeof result.cancelled !== 'boolean') fail('INVALID_PROJECT_RESULT', 'Project operation did not return the supported result contract.');
+  const recentProjects = normalizeRecentProjects(result.recentProjects);
+  if (result.cancelled) return { cancelled: true, recentProjects };
+  if (typeof result.documentId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(result.documentId) || typeof result.fileName !== 'string' || !result.fileName.trim() || /[\\/]/.test(result.fileName) || !isRecord(result.project)) fail('INVALID_PROJECT_RESULT', 'Project operation metadata is invalid.');
+  return { cancelled: false, documentId: result.documentId, fileName: result.fileName, project: result.project, recentProjects };
+}
+
 function typedError(error) {
   const redactedKeys = new Set(['path', 'targetRoot', 'destination']);
   const details = error && error.details && typeof error.details === 'object'
@@ -461,7 +509,8 @@ function typedError(error) {
   };
 }
 
-function createAppIpcRouter({ sourceInspectionService = null, runtimeSettingsService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
+function createAppIpcRouter({ projectWorkspaceService = null, sourceInspectionService = null, runtimeSettingsService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
+  if (projectWorkspaceService !== null && (!isRecord(projectWorkspaceService) || typeof projectWorkspaceService.getRecentProjects !== 'function' || typeof projectWorkspaceService.openProject !== 'function' || typeof projectWorkspaceService.saveProject !== 'function')) fail('INVALID_APP_ROUTER', 'projectWorkspaceService must expose getRecentProjects, openProject, and saveProject functions when provided.');
   if (sourceInspectionService !== null && typeof sourceInspectionService !== 'function') fail('INVALID_APP_ROUTER', 'sourceInspectionService must be a function when provided.');
   if (runtimeSettingsService !== null && (!isRecord(runtimeSettingsService) || typeof runtimeSettingsService.get !== 'function' || typeof runtimeSettingsService.configure !== 'function' || typeof runtimeSettingsService.clear !== 'function')) fail('INVALID_APP_ROUTER', 'runtimeSettingsService must expose get, configure, and clear functions when provided.');
   if (captureCacheService !== null && (!isRecord(captureCacheService) || typeof captureCacheService.status !== 'function')) fail('INVALID_APP_ROUTER', 'captureCacheService must expose a status function when provided.');
@@ -486,6 +535,19 @@ function createAppIpcRouter({ sourceInspectionService = null, runtimeSettingsSer
     try {
       const normalized = normalizeRequest(request);
       if (normalized.method === 'getVersion') return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: { appVersion, protocolVersion: APP_IPC_PROTOCOL_VERSION, methods: [...APP_IPC_METHODS] } };
+      if (normalized.method === 'getRecentProjects') {
+        if (!projectWorkspaceService) fail('APP_PROJECT_WORKSPACE_UNAVAILABLE', 'The project workspace service is not configured.');
+        if (normalized.args.length) fail('INVALID_PROJECT_REQUEST', 'getRecentProjects does not accept arguments.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: { recentProjects: normalizeRecentProjects(await projectWorkspaceService.getRecentProjects()) } };
+      }
+      if (normalized.method === 'openProject') {
+        if (!projectWorkspaceService) fail('APP_PROJECT_WORKSPACE_UNAVAILABLE', 'The project workspace service is not configured.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeProjectOperation(await projectWorkspaceService.openProject(normalizeOpenProjectRequest(normalized.args[0]))) };
+      }
+      if (normalized.method === 'saveProject') {
+        if (!projectWorkspaceService) fail('APP_PROJECT_WORKSPACE_UNAVAILABLE', 'The project workspace service is not configured.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeProjectOperation(await projectWorkspaceService.saveProject(normalizeSaveProjectRequest(normalized.args[0]))) };
+      }
       if (normalized.method === 'inspectSource') {
         if (!sourceInspectionService) fail('APP_INSPECTION_UNAVAILABLE', 'The App Source Package inspection service is not configured.');
         const input = normalizeInspectRequest(normalized.args[0]);
@@ -653,6 +715,18 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
   if (!ipcRenderer || typeof ipcRenderer.invoke !== 'function') fail('INVALID_APP_PRELOAD', 'App preload API requires ipcRenderer.invoke.');
   if (typeof channel !== 'string' || !channel.trim()) fail('INVALID_APP_PRELOAD', 'App IPC channel must be a non-empty string.');
   const invoke = (method, ...args) => ipcRenderer.invoke(channel, { protocolVersion: APP_IPC_PROTOCOL_VERSION, method, args });
+  const onAppCommand = (listener) => {
+    if (typeof listener !== 'function') throw new TypeError('onAppCommand requires a function listener.');
+    if (typeof ipcRenderer.on !== 'function' || typeof ipcRenderer.removeListener !== 'function') throw new TypeError('onAppCommand requires Electron event listener support.');
+    const handler = (_event, command) => { if (APP_COMMANDS.includes(command)) listener(command); };
+    ipcRenderer.on(APP_COMMAND_CHANNEL, handler);
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      ipcRenderer.removeListener(APP_COMMAND_CHANNEL, handler);
+    };
+  };
   const onBuildProgress = (listener) => {
     if (typeof listener !== 'function') throw new TypeError('onBuildProgress requires a function listener.');
     if (typeof ipcRenderer.on !== 'function' || typeof ipcRenderer.removeListener !== 'function') throw new TypeError('onBuildProgress requires Electron event listener support.');
@@ -679,6 +753,10 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
   };
   return Object.freeze({
     getVersion: () => invoke('getVersion'),
+    getRecentProjects: () => invoke('getRecentProjects'),
+    openProject: (input = {}) => invoke('openProject', input),
+    saveProject: (input) => invoke('saveProject', input),
+    onAppCommand,
     inspectSource: (input) => invoke('inspectSource', input),
     getRuntimeSettings: () => invoke('getRuntimeSettings'),
     configureRuntime: (input) => invoke('configureRuntime', input),
@@ -718,6 +796,8 @@ function createAppWindowOptions({ preload, width = 1280, height = 860, show = fa
 }
 
 module.exports = {
+  APP_COMMAND_CHANNEL,
+  APP_COMMANDS,
   APP_BUILD_ARTIFACT_CHUNK_BYTES,
   APP_BUILD_PROGRESS_CHANNEL,
   APP_SOURCE_INSPECTION_PROGRESS_STAGE,
@@ -730,6 +810,10 @@ module.exports = {
   createAppPreloadApi,
   createAppWindowOptions,
   normalizeRequest,
+  normalizeOpenProjectRequest,
+  normalizeSaveProjectRequest,
+  normalizeRecentProjects,
+  summarizeProjectOperation,
   normalizeInspectRequest,
   normalizeRuntimeRequest,
   normalizeBuildCacheClearRequest,

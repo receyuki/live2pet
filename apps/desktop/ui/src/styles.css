@@ -55,3 +55,38 @@
 @media(max-width:1120px){.app-toolbar{grid-template-columns:minmax(180px,1fr) auto minmax(170px,1fr)}.toolbar-actions>.chip{display:none}.map-workspace{grid-template-columns:230px minmax(360px,1fr) 260px}.welcome-hero{grid-template-columns:1fr 440px;padding-inline:50px}.fake-front{width:400px}}
 @media(max-width:900px){.setup-view{grid-template-columns:1fr;overflow-y:auto}.setup-art{min-height:280px;border-right:0;border-bottom:1px solid var(--border)}.setup-content{padding:42px}.welcome-hero{grid-template-columns:1fr}.welcome-visual{display:none}.map-workspace{grid-template-columns:220px minmax(340px,1fr);overflow-x:auto}.assignment-panel{min-width:270px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
+.recent-list {
+  display: grid;
+  gap: 8px;
+}
+
+.recent-project {
+  width: 100%;
+  justify-content: flex-start;
+  min-height: 58px;
+}
+
+.recent-project .grow-copy {
+  min-width: 0;
+  text-align: left;
+}
+
+.recent-project .grow-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-project-unavailable {
+  opacity: 0.72;
+}
+
+.action-feedback {
+  margin: 12px 20px 0;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--danger, #dc2626) 30%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--danger, #dc2626) 8%, transparent);
+  color: var(--danger, #b91c1c);
+  font-size: 0.875rem;
+}

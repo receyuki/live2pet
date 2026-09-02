@@ -1,13 +1,19 @@
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { app, BrowserWindow, dialog, ipcMain, protocol, WebContentsView } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, screen, WebContentsView } = require('electron');
 
 const {
+  APP_COMMAND_CHANNEL,
   APP_BUILD_PROGRESS_CHANNEL,
   APP_IPC_CHANNEL,
   createAppIpcRouter,
   createAppWindowOptions,
 } = require('@live2pet/app-host');
+const {
+  createProjectWorkspaceService,
+  createWindowStateWriter,
+  loadWindowBounds,
+} = require('./project-workspace-service.cjs');
 const { CacheStore, SHARP_ENCODER_VERSION, buildProjectTargets } = require('@live2pet/package-build');
 const { installPackage } = require('@live2pet/installation');
 const { inspectSourcePackage } = require('@live2pet/source-inspector');
@@ -45,6 +51,7 @@ let captureCacheStore = null;
 let captureCacheService = null;
 let previewSession = null;
 let mainRendererRecoveryInProgress = false;
+let projectWorkspaceService = null;
 const sourceRegistry = new Map();
 
 protocol.registerSchemesAsPrivileged([{
@@ -185,8 +192,53 @@ async function chooseInstallRoot({ target } = {}) {
   return { path: result.filePaths[0] };
 }
 
+function projectWorkspaceStatePath() {
+  return path.join(app.getPath('userData'), 'workspace', 'recent-projects.json');
+}
+
+function windowStatePath() {
+  return path.join(app.getPath('userData'), 'window', 'main-window.json');
+}
+
+function getProjectWorkspaceService() {
+  if (!projectWorkspaceService) {
+    projectWorkspaceService = createProjectWorkspaceService({
+      stateFile: projectWorkspaceStatePath(),
+      showOpenDialog: (options) => dialog.showOpenDialog(mainWindow, options),
+      showSaveDialog: (options) => dialog.showSaveDialog(mainWindow, options),
+    });
+  }
+  return projectWorkspaceService;
+}
+
+function sendAppCommand(command) {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+  mainWindow.webContents.send(APP_COMMAND_CHANNEL, command);
+}
+
+function installApplicationMenu() {
+  const template = [
+    ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
+    {
+      label: 'File',
+      submenu: [
+        { label: 'Open', accelerator: 'CommandOrControl+O', click: () => sendAppCommand('open') },
+        { label: 'Save', accelerator: 'CommandOrControl+S', click: () => sendAppCommand('save') },
+        { type: 'separator' },
+        { label: 'Settings', accelerator: 'CommandOrControl+,', click: () => sendAppCommand('settings') },
+        ...(process.platform === 'darwin' ? [] : [{ type: 'separator' }, { role: 'quit' }]),
+      ],
+    },
+    { role: 'editMenu', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
+    { label: 'Build', submenu: [{ label: 'Build', click: () => sendAppCommand('build') }] },
+    { label: 'Help', role: 'help', submenu: [{ label: 'Setup Assistant', click: () => sendAppCommand('setup') }] },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 function registerIpc() {
   route = createAppIpcRouter({
+    projectWorkspaceService: getProjectWorkspaceService(),
     sourceInspectionService,
     runtimeSettingsService,
     captureCacheService: getCaptureCacheService(),
@@ -217,16 +269,32 @@ async function closeActiveSession() {
 async function createMainWindow() {
   const preload = path.join(__dirname, 'preload.cjs');
   const documentPath = appDocumentPath();
-  const windowOptions = createAppWindowOptions({ preload, width: 1540, height: 960, show: false });
+  const restoredBounds = loadWindowBounds(windowStatePath(), screen.getAllDisplays(), { minWidth: 900, minHeight: 640 });
+  const windowOptions = createAppWindowOptions({
+    preload,
+    width: restoredBounds?.width || 1540,
+    height: restoredBounds?.height || 960,
+    show: false,
+  });
+  Object.assign(windowOptions, {
+    minWidth: 900,
+    minHeight: 640,
+    ...(restoredBounds ? { x: restoredBounds.x, y: restoredBounds.y } : {}),
+  });
   if (documentPath === DEVELOPMENT_RENDERER_PATH) {
     Object.assign(windowOptions, {
       titleBarStyle: 'hiddenInset',
       trafficLightPosition: { x: 18, y: 19 },
-      minWidth: 900,
-      minHeight: 640,
     });
   }
   mainWindow = new BrowserWindow(windowOptions);
+  const windowStateWriter = createWindowStateWriter({
+    stateFile: windowStatePath(),
+    getBounds: () => mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMaximized() && !mainWindow.isFullScreen() ? mainWindow.getBounds() : null,
+  });
+  mainWindow.on('resize', windowStateWriter.schedule);
+  mainWindow.on('move', windowStateWriter.schedule);
+  mainWindow.on('close', windowStateWriter.flush);
   previewSession = createPreviewSessionService({
     ownerWindow: mainWindow,
     createView: createPreviewView,
@@ -295,6 +363,7 @@ app.whenReady().then(async () => {
   defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   defaultSession.setPermissionCheckHandler(() => false);
   registerIpc();
+  installApplicationMenu();
   await createMainWindow();
   app.on('activate', async () => { if (!mainWindow) await createMainWindow(); });
 });

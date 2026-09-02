@@ -39,6 +39,42 @@ export type SourceInspection = {
   warnings: Array<{ code: string; resource?: string; kind?: string }>;
 };
 
+export type Live2PetProject = {
+  schemaVersion: 1;
+  projectId: string;
+  appVersion: string;
+  name: string;
+  source: {
+    kind: SourceInspection['source']['kind'];
+    name: string;
+    fingerprint: string;
+    path?: string;
+    modelConfig?: string;
+  };
+  recipes: Array<{ id: string; motionId: string; expressionId: string | null; label?: string }>;
+  targets: {
+    clawd: ProjectTarget;
+    'codex-pet': ProjectTarget;
+  };
+  rightsNote?: string;
+  sourceReview?: { required: boolean; reason?: string; reviewedFingerprint?: string; affectedRecipeIds: string[] };
+};
+
+export type ProjectTarget = {
+  profile: string;
+  mappings: Record<string, string>;
+  reactions: Record<string, string>;
+  recipeMappings?: Record<string, string>;
+  renderPreset?: 'compact' | 'balanced' | 'high';
+  options: Record<string, unknown>;
+};
+
+export type RecentProject = { documentId: string; name: string; fileName: string; available: boolean };
+export type ProjectFileResult =
+  | { cancelled: true; recentProjects: RecentProject[] }
+  | { cancelled: false; documentId: string; fileName: string; project: Live2PetProject; recentProjects: RecentProject[] };
+export type AppCommand = 'open' | 'save' | 'settings' | 'build' | 'setup';
+
 export type PreviewBounds = { x: number; y: number; width: number; height: number };
 export type PreviewStatus = {
   schemaVersion: 1;
@@ -67,6 +103,10 @@ type Live2PetApi = {
     }>
   >;
   inspectSource(input: { inputPath: string; projectId: string }): Promise<AppResponse<SourceInspection>>;
+  getRecentProjects(): Promise<AppResponse<{ recentProjects: RecentProject[] }>>;
+  openProject(input?: { documentId?: string }): Promise<AppResponse<ProjectFileResult>>;
+  saveProject(input: { documentId?: string; project: Live2PetProject; saveAs?: boolean }): Promise<AppResponse<ProjectFileResult>>;
+  onAppCommand?(listener: (command: AppCommand) => void): () => void;
   getRuntimeSettings(): Promise<AppResponse<RuntimeSettings>>;
   configureRuntime(input: { inputPath: string }): Promise<AppResponse<RuntimeSettings>>;
   clearRuntimeSettings(): Promise<AppResponse<RuntimeSettings>>;
@@ -163,6 +203,28 @@ export async function inspectSource(inputPath: string, projectId: string): Promi
   const api = desktopApi();
   if (!api) throw new DesktopApiError('DESKTOP_REQUIRED', 'Source Packages can only be inspected from the Desktop App.');
   return unwrap(api.inspectSource({ inputPath, projectId }));
+}
+
+export async function getRecentProjects(): Promise<RecentProject[]> {
+  const api = desktopApi();
+  if (!api) return [];
+  return (await unwrap(api.getRecentProjects())).recentProjects;
+}
+
+export async function openProject(documentId?: string): Promise<ProjectFileResult> {
+  const api = desktopApi();
+  if (!api) throw new DesktopApiError('DESKTOP_REQUIRED', 'Projects can only be opened from the Desktop App.');
+  return unwrap(api.openProject(documentId ? { documentId } : {}));
+}
+
+export async function saveProject(input: { documentId?: string; project: Live2PetProject; saveAs?: boolean }): Promise<ProjectFileResult> {
+  const api = desktopApi();
+  if (!api) throw new DesktopApiError('DESKTOP_REQUIRED', 'Projects can only be saved from the Desktop App.');
+  return unwrap(api.saveProject(input));
+}
+
+export function onAppCommand(listener: (command: AppCommand) => void): () => void {
+  return desktopApi()?.onAppCommand?.(listener) ?? (() => undefined);
 }
 
 export function getDesktopFilePath(file: File): string | null {

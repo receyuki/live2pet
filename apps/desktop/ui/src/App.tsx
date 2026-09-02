@@ -22,6 +22,7 @@ import {
   Play,
   Plus,
   RotateCcw,
+  Save,
   Search,
   Settings as SettingsIcon,
   SlidersHorizontal,
@@ -40,19 +41,25 @@ import {
   configureRuntime,
   getAppVersion,
   getCacheStatus,
+  getRecentProjects,
   getRuntimeSettings,
   getDesktopFilePath,
   hasDesktopApi,
   hasPreviewApi,
   inspectSource,
+  Live2PetProject,
   layoutLive2DPreview,
   onLive2DPreviewStatus,
+  onAppCommand,
+  openProject,
   openLive2DPreview,
   playLive2DPreview,
   controlLive2DPreview,
   setLive2DPreviewExpression,
   PreviewStatus,
   RuntimeSettings,
+  RecentProject,
+  saveProject,
   SourceInspection,
 } from "./app-host";
 import {
@@ -252,7 +259,7 @@ function RuntimePanel({ locale, compact = false, onSettingsChange }: { locale: L
   );
 }
 
-function SetupView({ locale, onComplete, onRuntimeSettingsChange }: { locale: Locale; onComplete: () => void; onRuntimeSettingsChange: (settings: RuntimeSettings) => void }) {
+function SetupView({ locale, returning, onComplete, onRuntimeSettingsChange }: { locale: Locale; returning: boolean; onComplete: () => void; onRuntimeSettingsChange: (settings: RuntimeSettings) => void }) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   return (
     <main className="setup-view">
@@ -269,14 +276,14 @@ function SetupView({ locale, onComplete, onRuntimeSettingsChange }: { locale: Lo
         <RuntimePanel locale={locale} onSettingsChange={onRuntimeSettingsChange} />
         <div className="setup-actions">
           <Button variant="ghost" onPress={onComplete}>{t("setupSkip")}</Button>
-          <Button variant="primary" onPress={onComplete}>{t("setupContinue")}<ChevronRight size={16} /></Button>
+          <Button variant="primary" onPress={onComplete}>{returning ? t("setupDone") : t("setupContinue")}<ChevronRight size={16} /></Button>
         </div>
       </section>
     </main>
   );
 }
 
-function WelcomeView({ locale, busy, error, onImport, onOpenProject }: { locale: Locale; busy: boolean; error: string; onImport: (files: File[], directDrop?: boolean) => void; onOpenProject: () => void }) {
+function WelcomeView({ locale, busy, error, recentProjects, onImport, onOpenProject, onOpenRecent, onOpenPreview }: { locale: Locale; busy: boolean; error: string; recentProjects: RecentProject[]; onImport: (files: File[], directDrop?: boolean) => void; onOpenProject: () => void; onOpenRecent: (project: RecentProject) => void; onOpenPreview: () => void }) {
   const t = (key: MessageKey) => translate(locale, key);
   const [dragActive, setDragActive] = useState(false);
   const dragDepth = useRef(0);
@@ -315,12 +322,12 @@ function WelcomeView({ locale, busy, error, onImport, onOpenProject }: { locale:
             <input ref={pckInput} className="visually-hidden" type="file" accept=".pck" onChange={selected} />
             <Button variant="primary" size="lg" isDisabled={busy || !hasDesktopApi()} onPress={() => folderInput.current?.click()}><Upload size={18} />{t("importFolder")}</Button>
             <Button variant="secondary" size="lg" isDisabled={busy || !hasDesktopApi()} onPress={() => pckInput.current?.click()}><Box size={18} />{t("importPck")}</Button>
-            <Button variant="secondary" size="lg" isDisabled><FolderOpen size={18} />{t("openProject")}</Button>
+            <Button variant="secondary" size="lg" isDisabled={busy || !hasDesktopApi()} onPress={onOpenProject}><FolderOpen size={18} />{t("openProject")}</Button>
           </div>
           <p className="import-hint">{busy ? t("loading") : t("importHint")}</p>
           {busy && <ProgressBar aria-label={t("loading")} isIndeterminate className="mt-4" />}
           {error && <p className="inline-error" role="alert">{error}</p>}
-          <Button className="button--ghost" variant="ghost" onPress={onOpenProject}>{t("sampleProject")}<ChevronRight size={15} /></Button>
+          <Button className="button--ghost" variant="ghost" onPress={onOpenPreview}>{t("sampleProject")}<ChevronRight size={15} /></Button>
         </div>
         <div className="welcome-visual" aria-hidden="true">
           <i className="visual-glow" /><i className="fake-window fake-back" />
@@ -330,25 +337,42 @@ function WelcomeView({ locale, busy, error, onImport, onOpenProject }: { locale:
       <section className="recent-section">
         <p className="eyebrow">{t("recent")}</p>
         <h2>{t("recent")}</h2>
-        <div className="empty-state"><Archive size={18} />{t("noRecent")}</div>
+        {recentProjects.length === 0 ? <div className="empty-state"><Archive size={18} />{t("noRecent")}</div> : (
+          <div className="recent-list">
+            {recentProjects.map((project) => (
+              <Button
+                key={project.documentId}
+                className={`recent-project${project.available ? "" : " recent-project-unavailable"}`}
+                variant="ghost"
+                onPress={() => onOpenRecent(project)}
+              >
+                <span className="large-icon"><FolderOpen size={18} /></span>
+                <span className="grow-copy"><strong>{project.name}</strong><small>{project.fileName}</small></span>
+                <Chip color={project.available ? "success" : "default"} size="sm" variant="soft">{t(project.available ? "available" : "unavailable")}</Chip>
+              </Button>
+            ))}
+          </div>
+        )}
       </section>
     </main>
   );
 }
 
-function SourceView({ locale, inspection, runtimeReady, onConfigureRuntime, onMap }: { locale: Locale; inspection?: SourceInspection; runtimeReady: boolean; onConfigureRuntime: () => void; onMap: () => void }) {
+function SourceView({ locale, inspection, inspectionRequired, runtimeReady, onConfigureRuntime, onMap }: { locale: Locale; inspection?: SourceInspection; inspectionRequired: boolean; runtimeReady: boolean; onConfigureRuntime: () => void; onMap: () => void }) {
   const t = (key: MessageKey) => translate(locale, key);
   const facts = inspection
     ? [["sourceModel", inspection.model.modelFile ?? "—"], ["sourceTextures", String(inspection.model.textures.length)], ["sourceMotions", String(inspection.motions.length)], ["sourceExpressions", String(inspection.expressions.length)]]
-    : [["sourceModel", "model3.json"], ["sourceTextures", "4"], ["sourceMotions", "5"], ["sourceExpressions", "3"]];
+    : inspectionRequired
+      ? [["sourceModel", "—"], ["sourceTextures", "—"], ["sourceMotions", "—"], ["sourceExpressions", "—"]]
+      : [["sourceModel", "model3.json"], ["sourceTextures", "4"], ["sourceMotions", "5"], ["sourceExpressions", "3"]];
   const summary = inspection
     ? `Cubism ${inspection.model.cubism} · ${inspection.motions.length} ${t("sourceMotions")} · ${inspection.expressions.length} ${t("sourceExpressions")}`
-    : t("sourceSummary");
+    : inspectionRequired ? t("sourceRelinkRequired") : t("sourceSummary");
   return (
     <main className="page">
       <PageHeading eyebrow={t("source")} title={t("sourceTitle")} body={t("sourceBody")} />
       <div className="source-grid">
-        <Card className="surface-card"><Card.Content><div className="model-placeholder"><BrandMark large /></div><div className="ready-box"><CircleCheck size={20} /><span><strong>{t("sourceReady")}</strong><small>{summary}</small></span></div>{!runtimeReady && <div className="runtime-required"><Gauge size={18} /><span><strong>{t("runtimeRequired")}</strong><small>{t("runtimeRequiredBody")}</small></span><Button size="sm" variant="secondary" onPress={onConfigureRuntime}>{t("configureRuntime")}</Button></div>}<Button variant="primary" onPress={onMap}>{t("map")}<ChevronRight size={16} /></Button></Card.Content></Card>
+        <Card className="surface-card"><Card.Content><div className="model-placeholder"><BrandMark large /></div><div className="ready-box"><CircleCheck size={20} /><span><strong>{inspectionRequired && !inspection ? t("sourceUnavailable") : t("sourceReady")}</strong><small>{summary}</small></span></div>{!runtimeReady && <div className="runtime-required"><Gauge size={18} /><span><strong>{t("runtimeRequired")}</strong><small>{t("runtimeRequiredBody")}</small></span><Button size="sm" variant="secondary" onPress={onConfigureRuntime}>{t("configureRuntime")}</Button></div>}<Button variant="primary" isDisabled={inspectionRequired && !inspection} onPress={onMap}>{t("map")}<ChevronRight size={16} /></Button></Card.Content></Card>
         <Card className="surface-card source-facts"><Card.Content>{facts.map(([key, value]) => <div className="fact" key={key}><span>{t(key as MessageKey)}</span><strong title={value}>{value}</strong></div>)}</Card.Content></Card>
       </div>
     </main>
@@ -497,6 +521,8 @@ export function App() {
   const [importBusy, setImportBusy] = useState(false);
   const [importError, setImportError] = useState("");
   const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings | null>(null);
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
+  const [actionFeedback, setActionFeedback] = useState("");
   const locale = state.settings.language;
   const appearance = state.settings.appearance;
   const t = (key: MessageKey) => translate(locale, key);
@@ -512,6 +538,7 @@ export function App() {
   }, [appearance]);
   useEffect(() => { void getAppVersion().then(setAppVersion).catch(() => undefined); }, []);
   useEffect(() => { void getRuntimeSettings().then(setRuntimeSettings).catch(() => undefined); }, []);
+  useEffect(() => { void getRecentProjects().then(setRecentProjects).catch(() => undefined); }, []);
   useEffect(() => {
     const preventFileNavigation = (event: globalThis.DragEvent) => {
       if (event.dataTransfer && hasDraggedFiles(event.dataTransfer)) event.preventDefault();
@@ -526,6 +553,68 @@ export function App() {
 
   function completeSetup() { localStorage.setItem(SETUP_KEY, "true"); dispatch({ type: "COMPLETE_SETUP" }); }
   function openPreview() { dispatch({ type: "OPEN_PROJECT", project: { id: "design-preview", name: t("project"), selectedMotionId: motions[0].id } }); }
+
+  async function openProjectDocument(documentId?: string) {
+    setImportBusy(true);
+    setImportError("");
+    setActionFeedback("");
+    try {
+      const result = await openProject(documentId);
+      setRecentProjects(result.recentProjects);
+      if (result.cancelled) return;
+      let inspection: SourceInspection | undefined;
+      let relinkError = "";
+      if (!result.project.source.path) {
+        relinkError = t("sourceRelinkRequired");
+      } else {
+        try {
+          inspection = await inspectSource(result.project.source.path, result.project.projectId);
+        } catch {
+          relinkError = t("sourceRelinkRequired");
+        }
+      }
+      dispatch({
+        type: "OPEN_PROJECT",
+        project: {
+          id: result.project.projectId,
+          name: result.project.name,
+          document: result.project,
+          documentId: result.documentId,
+          fileName: result.fileName,
+          dirty: false,
+          sourcePath: result.project.source.path,
+          inspection,
+          selectedMotionId: inspection?.motions[0]?.id ?? null,
+          selectedExpressionId: null,
+        },
+      });
+      if (relinkError) setActionFeedback(relinkError);
+    } catch (cause) {
+      setActionFeedback(cause instanceof Error ? cause.message : t("error"));
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  async function saveProjectDocument(saveAs = false) {
+    if (!state.project?.document) {
+      setActionFeedback(t("saveRequiresProject"));
+      return;
+    }
+    setActionFeedback("");
+    try {
+      const result = await saveProject({
+        ...(state.project.documentId ? { documentId: state.project.documentId } : {}),
+        project: state.project.document,
+        ...(saveAs ? { saveAs: true } : {}),
+      });
+      setRecentProjects(result.recentProjects);
+      if (result.cancelled) return;
+      dispatch({ type: "PROJECT_SAVED", document: result.project, documentId: result.documentId, fileName: result.fileName });
+    } catch (cause) {
+      setActionFeedback(cause instanceof Error ? cause.message : t("error"));
+    }
+  }
   async function importSourceFiles(files: File[], directDrop = false) {
     setImportBusy(true);
     setImportError("");
@@ -536,11 +625,31 @@ export function App() {
       const sourceName = files[0]?.webkitRelativePath?.split('/')[0] || files[0]?.name.replace(/\.pck$/i, '') || 'Live2Pet';
       const projectId = projectIdFromSourceName(sourceName);
       const inspection = await inspectSource(inputPath, projectId);
+      const document: Live2PetProject = {
+        schemaVersion: 1,
+        projectId,
+        appVersion,
+        name: inspection.source.name,
+        source: {
+          kind: inspection.source.kind,
+          name: inspection.source.name,
+          fingerprint: inspection.source.fingerprint,
+          path: inputPath,
+          modelConfig: inspection.source.modelConfig,
+        },
+        recipes: [],
+        targets: {
+          clawd: { profile: "clawd", mappings: {}, reactions: {}, options: {} },
+          "codex-pet": { profile: "codex-pet", mappings: {}, reactions: {}, options: {} },
+        },
+      };
       dispatch({
         type: "OPEN_PROJECT",
         project: {
           id: projectId,
           name: inspection.source.name,
+          document,
+          dirty: true,
           sourcePath: inputPath,
           inspection,
           selectedMotionId: inspection.motions[0]?.id ?? null,
@@ -554,11 +663,22 @@ export function App() {
     }
   }
 
+  useEffect(() => onAppCommand((command) => {
+    if (command === "open") void openProjectDocument();
+    else if (command === "save") void saveProjectDocument();
+    else if (command === "settings") dispatch({ type: "OPEN_SETTINGS" });
+    else if (command === "setup") dispatch({ type: "OPEN_SETUP" });
+    else if (command === "build") {
+      if (state.project?.document) dispatch({ type: "NAVIGATE", destination: "build" });
+      else setActionFeedback(t("buildRequiresProject"));
+    }
+  }), [state, locale]);
+
   const requiredCubism = state.project?.inspection?.model.cubism;
   const runtimeReady = !requiredCubism || Boolean(runtimeSettings?.runtimes.some((runtime) => runtime.available && runtime.cubismGenerations.includes(requiredCubism)));
   const openRuntimeSettings = () => dispatch({ type: "OPEN_SETTINGS", section: "runtimes" });
 
-  if (state.destination === "setup") return <SetupView locale={locale} onComplete={completeSetup} onRuntimeSettingsChange={setRuntimeSettings} />;
+  if (state.destination === "setup") return <SetupView locale={locale} returning={state.setupReturnDestination !== null} onComplete={completeSetup} onRuntimeSettingsChange={setRuntimeSettings} />;
   if (state.destination === "settings") return <SettingsView locale={locale} section={state.settingsSection} appearance={appearance} onSection={(section) => dispatch({ type: "SELECT_SETTINGS_SECTION", section })} onLocale={(language) => dispatch({ type: "UPDATE_LANGUAGE", language })} onAppearance={(value) => dispatch({ type: "UPDATE_APPEARANCE", appearance: value })} onRuntimeSettingsChange={setRuntimeSettings} onClose={() => dispatch({ type: "CLOSE_SETTINGS" })} />;
 
   const projectOpen = state.project !== null;
@@ -567,15 +687,16 @@ export function App() {
       <header className="app-toolbar">
         <div className="toolbar-brand"><BrandMark /><strong>Live2Pet</strong>{projectOpen && <><i /><span>{state.project?.name}</span></>}</div>
         {projectOpen ? <nav aria-label="Project"><ButtonGroup>{(["source", "map", "build"] as const).map((destination) => <Button key={destination} variant={state.destination === destination ? "primary" : "ghost"} onPress={() => dispatch({ type: "NAVIGATE", destination })}>{t(destination)}</Button>)}</ButtonGroup></nav> : <span />}
-        <div className="toolbar-actions"><Chip className="chip" size="sm" variant="soft"><span className="status-dot" />{state.project?.inspection ? t("localProject") : t("designPreview")}</Chip><Button isIconOnly aria-label={t("settings")} variant="ghost" onPress={() => dispatch({ type: "OPEN_SETTINGS" })}><SettingsIcon size={18} /></Button></div>
+        <div className="toolbar-actions"><Chip className="chip" size="sm" variant="soft"><span className="status-dot" />{state.project?.inspection ? t("localProject") : t("designPreview")}</Chip>{projectOpen && <Button aria-label={t("saveProject")} variant="ghost" onPress={() => void saveProjectDocument()}><Save size={17} />{t("save")}</Button>}<Button isIconOnly aria-label={t("settings")} variant="ghost" onPress={() => dispatch({ type: "OPEN_SETTINGS" })}><SettingsIcon size={18} /></Button></div>
       </header>
       <div className="app-content">
-        {state.destination === "welcome" && <WelcomeView locale={locale} busy={importBusy} error={importError} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onOpenProject={openPreview} />}
-        {state.destination === "source" && <SourceView locale={locale} inspection={state.project?.inspection} runtimeReady={runtimeReady} onConfigureRuntime={openRuntimeSettings} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
+        {actionFeedback && <div className="action-feedback" role="alert">{actionFeedback}</div>}
+        {state.destination === "welcome" && <WelcomeView locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onOpenPreview={openPreview} />}
+        {state.destination === "source" && <SourceView locale={locale} inspection={state.project?.inspection} inspectionRequired={Boolean(state.project?.document)} runtimeReady={runtimeReady} onConfigureRuntime={openRuntimeSettings} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
         {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={openRuntimeSettings} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} />}
         {state.destination === "build" && <BuildView locale={locale} />}
       </div>
-      <footer className="status-bar"><span><i className="status-dot" />{hasDesktopApi() ? t("saved") : t("notConnected")}</span><span>Live2Pet {appVersion}</span></footer>
+      <footer className="status-bar"><span><i className="status-dot" />{!hasDesktopApi() ? t("notConnected") : state.project?.dirty ? t("unsaved") : state.project?.documentId ? t("saved") : t("noSavedProject")}</span><span>{state.project?.fileName ?? `Live2Pet ${appVersion}`}</span></footer>
     </div>
   );
 }

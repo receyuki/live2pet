@@ -39,11 +39,23 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(preload, /const APP_IPC_CHANNEL = 'live2pet:app';/);
   assert.match(preload, /const APP_IPC_PROTOCOL_VERSION = 1;/);
   assert.match(preload, /const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';/);
+  assert.match(preload, /const APP_COMMAND_CHANNEL = 'live2pet:command';/);
+  assert.match(preload, /new Set\(\['open', 'save', 'settings', 'build', 'setup'\]\)/);
   assert.match(preload, /webUtils\.getPathForFile/);
   assert.match(preload, /getFilePath,/);
   for (const method of ['getVersion', 'inspectSource', 'getRuntimeSettings', 'configureRuntime', 'clearRuntimeSettings', 'buildProject', 'cancelBuild', 'getBuildArtifact', 'chooseInstallRoot', 'installArtifact', 'getCaptureCacheStatus', 'putCaptureCache', 'getBuildCacheStatus', 'clearBuildCache']) {
     assert.match(preload, new RegExp(`invoke\\('${method}'`));
   }
+  for (const method of ['getRecentProjects', 'openProject', 'saveProject']) assert.match(preload, new RegExp(`invoke\\('${method}'`));
+  assert.match(preload, /onAppCommand,/);
+  assert.match(main, /Menu\.setApplicationMenu\(Menu\.buildFromTemplate\(template\)\)/);
+  assert.match(main, /accelerator: 'CommandOrControl\+O'/);
+  assert.match(main, /accelerator: 'CommandOrControl\+S'/);
+  assert.match(main, /sendAppCommand\('settings'\)/);
+  assert.match(main, /sendAppCommand\('build'\)/);
+  assert.match(main, /sendAppCommand\('setup'\)/);
+  assert.match(main, /loadWindowBounds\(windowStatePath\(\), screen\.getAllDisplays\(\)/);
+  assert.match(main, /mainWindow\.on\('resize', windowStateWriter\.schedule\)/);
   assert.doesNotMatch(preload, /MapperSession|RendererPreview|getSkillStatus|installSkill|rendererCommand/);
   assert.match(preload, /getBuildArtifact: \(artifactId, offset = 0\) => invoke\('getBuildArtifact', \{ artifactId, offset \}\)/);
   assert.match(main, /webContents\.on\('render-process-gone'/);
