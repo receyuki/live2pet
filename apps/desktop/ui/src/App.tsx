@@ -11,7 +11,6 @@ import {
   ChevronRight,
   CircleCheck,
   Database,
-  Download,
   FolderOpen,
   Gauge,
   HardDrive,
@@ -36,6 +35,8 @@ import {
 import { ChangeEvent, DragEvent, ReactNode, useEffect, useReducer, useRef, useState } from "react";
 import {
   clearCache,
+  buildProject,
+  cancelBuild,
   clearRuntimeSettings,
   configureRuntimePath,
   configureRuntime,
@@ -50,6 +51,7 @@ import {
   Live2PetProject,
   layoutLive2DPreview,
   onLive2DPreviewStatus,
+  onBuildProgress,
   onAppCommand,
   openProject,
   openLive2DPreview,
@@ -61,6 +63,7 @@ import {
   RecentProject,
   saveProject,
   SourceInspection,
+  BuildTarget,
 } from "./app-host";
 import {
   appReducer,
@@ -72,6 +75,8 @@ import { Locale, MessageKey, translate } from "./i18n";
 import { projectIdFromSourceName, sourcePathFromSelection } from "./source-selection";
 import { hasDraggedFiles } from "./file-drop";
 import { CLAWD_PROFILE, CODEX_PROFILE, MappingDestination } from "./target-profiles";
+import { BuildView } from "./BuildView";
+import { buildReducer, initialBuildState } from "./build-state";
 
 const SETUP_KEY = "live2pet.desktop.setup-completed";
 const LOCALE_KEY = "live2pet.desktop.locale";
@@ -551,11 +556,6 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   );
 }
 
-function BuildView({ locale }: { locale: Locale }) {
-  const t = (key: MessageKey) => translate(locale, key);
-  return <main className="page"><PageHeading eyebrow={t("build")} title={t("buildTitle")} body={t("buildBody")} /><div className="build-grid">{(["clawdPackage", "codexPackage"] as const).map((target) => <Card className="surface-card build-card" key={target}><Card.Content><div className="build-top"><span className="large-icon"><PackageCheck size={20} /></span><Chip variant="soft">{t("designPreview")}</Chip></div><h2>{t(target)}</h2><p>{t("buildSummaryBody")}</p><Button variant="primary" isDisabled><Download size={16} />{t("buildPackage")}</Button></Card.Content></Card>)}</div></main>;
-}
-
 function SettingsView({ locale, section, appearance, onSection, onLocale, onAppearance, onRuntimeSettingsChange, onClose }: { locale: Locale; section: SettingsSection; appearance: AppSettings["appearance"]; onSection: (section: SettingsSection) => void; onLocale: (locale: Locale) => void; onAppearance: (appearance: AppSettings["appearance"]) => void; onRuntimeSettingsChange: (settings: RuntimeSettings) => void; onClose: () => void }) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   const [cache, setCache] = useState({ byteLength: 0, entryCount: 0, maxBytes: 0 });
@@ -584,6 +584,7 @@ export function App() {
     const initial = initialAppState({ setupCompleted: localStorage.getItem(SETUP_KEY) === "true" });
     return { ...initial, settings: { ...initial.settings, language: storedLocale(), appearance: storedAppearance() } };
   });
+  const [buildState, dispatchBuild] = useReducer(buildReducer, undefined, initialBuildState);
   const [appVersion, setAppVersion] = useState("0.1.0");
   const [importBusy, setImportBusy] = useState(false);
   const [importError, setImportError] = useState("");
@@ -606,6 +607,7 @@ export function App() {
   useEffect(() => { void getAppVersion().then(setAppVersion).catch(() => undefined); }, []);
   useEffect(() => { void getRuntimeSettings().then(setRuntimeSettings).catch(() => undefined); }, []);
   useEffect(() => { void getRecentProjects().then(setRecentProjects).catch(() => undefined); }, []);
+  useEffect(() => onBuildProgress((event) => dispatchBuild({ type: "PROGRESS", event })), []);
   useEffect(() => {
     const preventFileNavigation = (event: globalThis.DragEvent) => {
       if (event.dataTransfer && hasDraggedFiles(event.dataTransfer)) event.preventDefault();
@@ -680,6 +682,35 @@ export function App() {
       dispatch({ type: "PROJECT_SAVED", document: result.project, documentId: result.documentId, fileName: result.fileName });
     } catch (cause) {
       setActionFeedback(cause instanceof Error ? cause.message : t("error"));
+    }
+  }
+
+  async function buildProjectTarget(target: BuildTarget) {
+    const document = state.project?.document;
+    if (!document) { setActionFeedback(t("buildRequiresProject")); return; }
+    setActionFeedback("");
+    dispatchBuild({ type: "START", target });
+    try {
+      const result = await buildProject(document, target);
+      const artifact = result.artifacts.find((item) => item.target === target);
+      const summary = result.builds[target];
+      if (!artifact || !summary) throw new Error(t("artifactMissing"));
+      dispatchBuild({ type: "SUCCEED", target, artifact, summary });
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : t("buildFailed");
+      if (cause instanceof Error && "code" in cause && String(cause.code) === "BUILD_CANCELLED") dispatchBuild({ type: "CANCEL", target, message });
+      else dispatchBuild({ type: "FAIL", target, error: message });
+    }
+  }
+
+  async function cancelProjectBuild(target: BuildTarget) {
+    const buildId = buildState[target].buildId;
+    if (!buildId) return;
+    try {
+      const result = await cancelBuild(buildId);
+      if (result.cancelled) dispatchBuild({ type: "CANCEL", target, message: t("buildCancelled") });
+    } catch (cause) {
+      dispatchBuild({ type: "FAIL", target, error: cause instanceof Error ? cause.message : t("buildFailed") });
     }
   }
   async function importSourceFiles(files: File[], directDrop = false) {
@@ -761,7 +792,7 @@ export function App() {
         {state.destination === "welcome" && <WelcomeView locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onOpenPreview={openPreview} />}
         {state.destination === "source" && <SourceView locale={locale} inspection={state.project?.inspection} inspectionRequired={Boolean(state.project?.document)} runtimeReady={runtimeReady} onConfigureRuntime={openRuntimeSettings} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
         {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={openRuntimeSettings} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => dispatch({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => dispatch({ type: "CLEAR_ASSIGNMENT", destination })} />}
-        {state.destination === "build" && <BuildView locale={locale} />}
+        {state.destination === "build" && <BuildView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} runtimeReady={runtimeReady} state={buildState} onPreset={(target, preset) => dispatch({ type: "SET_RENDER_PRESET", target, preset })} onBuild={(target) => void buildProjectTarget(target)} onCancel={(target) => void cancelProjectBuild(target)} />}
       </div>
       <footer className="status-bar"><span><i className="status-dot" />{!hasDesktopApi() ? t("notConnected") : state.project?.dirty ? t("unsaved") : state.project?.documentId ? t("saved") : t("noSavedProject")}</span><span>{state.project?.fileName ?? `Live2Pet ${appVersion}`}</span></footer>
     </div>

@@ -278,13 +278,14 @@ function createPreviewSessionService({
     const requestedProjectId = normalizeProjectId(input.projectId);
     const requestedFingerprint = normalizeFingerprint(input.sourceFingerprint);
     const requestedBounds = normalizeBounds(input.bounds);
+    const requestedVisible = input.visible !== false;
     await closeNow();
     const token = ++generation;
     state = SESSION_STATES.opening;
     projectId = requestedProjectId;
     sourceFingerprint = requestedFingerprint;
     bounds = requestedBounds;
-    visible = true;
+    visible = requestedVisible;
     emitStatus();
     try {
       const record = await resolveSource({ projectId: requestedProjectId, sourceFingerprint: requestedFingerprint });
@@ -323,7 +324,7 @@ function createPreviewSessionService({
       }
       attachViewFailureListeners(view, token);
       addView(view);
-      applyLayout(view, requestedBounds, true);
+      applyLayout(view, requestedBounds, requestedVisible);
       await loadPage({ view, webContents, url: previewUrl });
       if (token !== generation) return getStatus();
       if (state === SESSION_STATES.failed) throw new PreviewSessionError(error.code, error.message);
@@ -396,6 +397,25 @@ function createPreviewSessionService({
     return enqueue(() => invokeNow(action));
   }
 
+  async function withRenderer(input = {}, operation) {
+    if (typeof operation !== 'function') fail('INVALID_PREVIEW_REQUEST', 'Renderer operation must be a function.');
+    const requestedProjectId = normalizeProjectId(input.projectId);
+    const requestedFingerprint = normalizeFingerprint(input.sourceFingerprint);
+    const requestedBounds = input.bounds === undefined
+      ? (bounds || { x: 0, y: 0, width: 768, height: 768 })
+      : normalizeBounds(input.bounds);
+    return enqueue(async () => {
+      const matches = state === SESSION_STATES.ready
+        && adapter
+        && projectId === requestedProjectId
+        && sourceFingerprint === requestedFingerprint;
+      if (!matches) await openNow({ projectId: requestedProjectId, sourceFingerprint: requestedFingerprint, bounds: requestedBounds, visible: false });
+      else if (visible) await layoutNow({ visible: false });
+      if (state !== SESSION_STATES.ready || !adapter) fail('PREVIEW_NOT_READY', 'Preview renderer is not ready for capture.');
+      return operation(adapter);
+    });
+  }
+
   return Object.freeze({
     open: (input) => enqueue(() => openNow(input)),
     layout: (input) => enqueue(() => layoutNow(input)),
@@ -404,6 +424,7 @@ function createPreviewSessionService({
     control,
     close: () => enqueue(closeNow),
     getStatus,
+    withRenderer,
   });
 }
 

@@ -111,4 +111,14 @@ describe("appReducer", () => {
     expect(state.project?.document?.recipes).toEqual([]);
     expect(state.project?.document?.targets["codex-pet"].mappings).toEqual({});
   });
+
+  it("persists target render presets and preserves identity for a no-op", () => {
+    let state = initialAppState({ setupCompleted: true });
+    state = appReducer(state, { type: "OPEN_PROJECT", project: { id: "one", name: "One", document: projectDocument() } });
+    const changed = appReducer(state, { type: "SET_RENDER_PRESET", target: "clawd", preset: "high" });
+    expect(changed.project?.document?.targets.clawd.renderPreset).toBe("high");
+    expect(changed.project?.document?.targets["codex-pet"].renderPreset).toBeUndefined();
+    expect(changed.project?.dirty).toBe(true);
+    expect(appReducer(changed, { type: "SET_RENDER_PRESET", target: "clawd", preset: "high" })).toBe(changed);
+  });
 });

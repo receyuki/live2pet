@@ -147,6 +147,24 @@ test('rejects a mismatched Source identity before opening renderer resources', a
   assert.equal(calls.some(([name]) => name === 'server'), false);
 });
 
+test('reports missing registered Source and saved runtime with failed cleanup states', async () => {
+  const missingSource = fixture({ source: {} });
+  await assert.rejects(
+    missingSource.service.withRenderer({ projectId: 'project-1', sourceFingerprint: FINGERPRINT }, async () => null),
+    (error) => error.code === 'PREVIEW_SOURCE_NOT_FOUND',
+  );
+  assert.equal(missingSource.service.getStatus().state, 'failed');
+  assert.equal(missingSource.ownerWindow.contentView.children.length, 0);
+
+  const missingRuntime = fixture({ runtime: null });
+  await assert.rejects(
+    missingRuntime.service.withRenderer({ projectId: 'project-1', sourceFingerprint: FINGERPRINT }, async () => null),
+    (error) => error.code === 'PREVIEW_RUNTIME_UNAVAILABLE',
+  );
+  assert.equal(missingRuntime.service.getStatus().state, 'failed');
+  assert.equal(missingRuntime.ownerWindow.contentView.children.length, 0);
+});
+
 test('redacts local paths from open failures and tears down partial resources', async () => {
   const { calls, service, webContents } = fixture({ loadError: new Error('Could not load /Users/RY/private/model.json') });
   await assert.rejects(
@@ -183,4 +201,32 @@ test('validates control input without destroying a ready session', async () => {
   await assert.rejects(service.control({ action: 'seek' }), (error) => error.code === 'INVALID_PREVIEW_CONTROL');
   assert.equal(service.getStatus().state, 'ready');
   await service.close();
+});
+
+test('withRenderer reuses a matching session, hides it, and serializes preview commands', async () => {
+  const { adapter, calls, service, view } = fixture();
+  await service.open({ projectId: 'project-1', sourceFingerprint: FINGERPRINT, bounds: { x: 0, y: 0, width: 512, height: 512 } });
+  let releaseCapture;
+  const capture = service.withRenderer({ projectId: 'project-1', sourceFingerprint: FINGERPRINT }, async (renderer) => {
+    assert.equal(renderer, adapter);
+    await new Promise((resolve) => { releaseCapture = resolve; });
+    calls.push(['capture.done']);
+  });
+  const play = service.play({ motionId: 'Idle:0' });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(view.visible, false);
+  assert.equal(calls.some(([name]) => name === 'play'), false);
+  releaseCapture();
+  await capture;
+  await play;
+  assert.ok(calls.findIndex(([name]) => name === 'capture.done') < calls.findIndex(([name]) => name === 'play'));
+  assert.equal(calls.filter(([name]) => name === 'createView').length, 1);
+});
+
+test('withRenderer opens a new matching session hidden and leaves it ready for reuse', async () => {
+  const { adapter, service, view } = fixture();
+  const result = await service.withRenderer({ projectId: 'project-1', sourceFingerprint: FINGERPRINT, bounds: { x: 2, y: 3, width: 600, height: 500 } }, async (renderer) => renderer === adapter);
+  assert.equal(result, true);
+  assert.equal(view.visible, false);
+  assert.deepEqual(service.getStatus(), { schemaVersion: 1, state: 'ready', projectId: 'project-1', sourceFingerprint: FINGERPRINT, visible: false, bounds: { x: 2, y: 3, width: 600, height: 500 }, playback: { loaded: true, motionId: null, expressionId: null, playing: false, loop: true, speed: 1 } });
 });

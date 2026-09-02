@@ -57,6 +57,7 @@ export type AppAction =
   | { type: "SELECT_EXPRESSION"; expressionId: string | null }
   | { type: "ASSIGN_SELECTED_RECIPE"; destination: MappingDestination }
   | { type: "CLEAR_ASSIGNMENT"; destination: MappingDestination }
+  | { type: "SET_RENDER_PRESET"; target: "clawd" | "codex-pet"; preset: "compact" | "balanced" | "high" }
   | { type: "PROJECT_SAVED"; document: import('./app-host').Live2PetProject; documentId: string; fileName: string }
   | { type: "OPEN_SETUP" }
   | { type: "COMPLETE_SETUP" }
@@ -151,6 +152,13 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       if (!state.project?.document) return state;
       const document = clearAssignment(state.project.document, action.destination);
       return document === state.project.document ? state : { ...state, project: { ...state.project, document, dirty: true } };
+    }
+
+    case "SET_RENDER_PRESET": {
+      if (!state.project?.document || state.project.document.targets[action.target].renderPreset === action.preset) return state;
+      const target = { ...state.project.document.targets[action.target], renderPreset: action.preset };
+      const document = { ...state.project.document, targets: { ...state.project.document.targets, [action.target]: target } };
+      return { ...state, project: { ...state.project, document, dirty: true } };
     }
 
     case "PROJECT_SAVED":

@@ -20,6 +20,7 @@ const { inspectSourcePackage } = require('@live2pet/source-inspector');
 const { createPreviewSessionService } = require('./preview-session-service.cjs');
 const { createCaptureCacheService } = require('./capture-cache-service.cjs');
 const { createCaptureCacheBuildService } = require('./capture-cache-build.cjs');
+const { createHostedBuildService } = require('./hosted-build-service.cjs');
 const { RUNTIME_PROTOCOL_SCHEME, createRuntimeProtocolHandler } = require('./runtime-protocol.cjs');
 const {
   clearRuntimeSettings,
@@ -184,6 +185,16 @@ const buildProjectWithCaptureCache = createCaptureCacheBuildService({
   },
 });
 
+const buildProjectWithHostedRenderer = createHostedBuildService({
+  previewSession: {
+    withRenderer: (...args) => {
+      if (!previewSession) throw Object.assign(new Error('The preview renderer session is not available.'), { code: 'PREVIEW_UNAVAILABLE' });
+      return previewSession.withRenderer(...args);
+    },
+  },
+  buildProject: buildProjectWithCaptureCache,
+});
+
 async function chooseInstallRoot({ target } = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) throw new Error('The Live2Pet window is not available for folder selection.');
   const title = target === 'clawd' ? 'Choose a Clawd themes folder' : 'Choose a Codex pets folder';
@@ -242,7 +253,7 @@ function registerIpc() {
     sourceInspectionService,
     runtimeSettingsService,
     captureCacheService: getCaptureCacheService(),
-    buildProjectService: buildProjectWithCaptureCache,
+    buildProjectService: buildProjectWithHostedRenderer,
     installPackageService: installPackage,
     installRootPickerService: chooseInstallRoot,
     onBuildProgress: (event) => {

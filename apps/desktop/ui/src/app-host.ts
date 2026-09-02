@@ -74,6 +74,39 @@ export type ProjectFileResult =
   | { cancelled: true; recentProjects: RecentProject[] }
   | { cancelled: false; documentId: string; fileName: string; project: Live2PetProject; recentProjects: RecentProject[] };
 export type AppCommand = 'open' | 'save' | 'settings' | 'build' | 'setup';
+export type BuildTarget = 'clawd' | 'codex-pet';
+export type RenderPreset = 'compact' | 'balanced' | 'high';
+
+export type BuildProgressEvent = {
+  protocolVersion: 1;
+  buildId: string;
+  sequence: number;
+  target: BuildTarget;
+  stage: string;
+  status: string;
+  fraction?: number;
+  percent?: number;
+  message?: string;
+  previewReady?: boolean;
+};
+
+export type BuildArtifact = { artifactId: string; target: BuildTarget; filename: string; byteLength: number };
+export type BuildSummary = {
+  target: BuildTarget;
+  validation?: { ok?: boolean; errors?: unknown[]; warnings?: unknown[] } | null;
+  preview?: { ready?: boolean } | null;
+  package?: { format?: string; byteLength?: number; files?: string[]; artifactName?: string } | null;
+};
+export type BuildProjectResult = {
+  projectId: string;
+  targets: BuildTarget[];
+  builds: Partial<Record<BuildTarget, BuildSummary>>;
+  warnings: unknown[];
+  artifacts: BuildArtifact[];
+};
+export type BuildArtifactChunk = BuildArtifact & { offset: number; nextOffset: number; done: boolean; bytes: Uint8Array };
+export type InstallRootResult = { target: BuildTarget; cancelled: true } | { target: BuildTarget; cancelled: false; locationId: string; label: string };
+export type InstallResult = { protocolVersion?: number; target: BuildTarget; packageId?: string; conflict?: string; files: string[]; byteLength?: number; path: '<selected-install-root>' | '<platform-default-target-root>' };
 
 export type PreviewBounds = { x: number; y: number; width: number; height: number };
 export type PreviewStatus = {
@@ -112,6 +145,12 @@ type Live2PetApi = {
   clearRuntimeSettings(): Promise<AppResponse<RuntimeSettings>>;
   getBuildCacheStatus(): Promise<AppResponse<{ schemaVersion: 1; byteLength: number; entryCount: number; maxBytes: number }>>;
   clearBuildCache(input: { confirmClear: true }): Promise<AppResponse<{ removedEntries: number; removedBytes: number; schemaVersion: 1; byteLength: number; entryCount: number; maxBytes: number }>>;
+  buildProject?(input: { project: Live2PetProject; targets: BuildTarget[] }): Promise<AppResponse<BuildProjectResult>>;
+  cancelBuild?(buildId: string): Promise<AppResponse<{ buildId: string; cancelled: boolean; active: boolean }>>;
+  onBuildProgress?(listener: (event: BuildProgressEvent) => void): () => void;
+  getBuildArtifact?(artifactId: string, offset?: number): Promise<AppResponse<BuildArtifactChunk>>;
+  chooseInstallRoot?(target: BuildTarget): Promise<AppResponse<InstallRootResult>>;
+  installArtifact?(input: { artifactId: string; target: BuildTarget; conflict?: 'cancel' | 'upgrade' | 'side-by-side'; confirmInstall: true; locationId?: string }): Promise<AppResponse<InstallResult>>;
   getFilePath(file: File): string | null;
   openPreview?(input: { projectId: string; sourceFingerprint: string; bounds: PreviewBounds }): Promise<AppResponse<PreviewStatus>>;
   layoutPreview?(input: { visible: boolean; bounds?: PreviewBounds }): Promise<AppResponse<PreviewStatus>>;
@@ -225,6 +264,43 @@ export async function saveProject(input: { documentId?: string; project: Live2Pe
 
 export function onAppCommand(listener: (command: AppCommand) => void): () => void {
   return desktopApi()?.onAppCommand?.(listener) ?? (() => undefined);
+}
+
+export function hasBuildApi(): boolean {
+  const api = desktopApi();
+  return Boolean(api?.buildProject && api.cancelBuild && api.getBuildArtifact && api.chooseInstallRoot && api.installArtifact);
+}
+
+function buildApi(): Live2PetApi {
+  const api = desktopApi();
+  if (!api?.buildProject || !api.cancelBuild || !api.getBuildArtifact || !api.chooseInstallRoot || !api.installArtifact) {
+    throw new DesktopApiError('APP_BUILD_UNAVAILABLE', 'Package Build requires the Desktop App build service.');
+  }
+  return api;
+}
+
+export function buildProject(project: Live2PetProject, target: BuildTarget): Promise<BuildProjectResult> {
+  return unwrap(buildApi().buildProject!({ project, targets: [target] }));
+}
+
+export function cancelBuild(buildId: string) {
+  return unwrap(buildApi().cancelBuild!(buildId));
+}
+
+export function onBuildProgress(listener: (event: BuildProgressEvent) => void): () => void {
+  return desktopApi()?.onBuildProgress?.(listener) ?? (() => undefined);
+}
+
+export function getBuildArtifact(artifactId: string, offset = 0): Promise<BuildArtifactChunk> {
+  return unwrap(buildApi().getBuildArtifact!(artifactId, offset));
+}
+
+export function chooseInstallRoot(target: BuildTarget): Promise<InstallRootResult> {
+  return unwrap(buildApi().chooseInstallRoot!(target));
+}
+
+export function installArtifact(input: { artifactId: string; target: BuildTarget; conflict?: 'cancel' | 'upgrade' | 'side-by-side'; confirmInstall: true; locationId?: string }): Promise<InstallResult> {
+  return unwrap(buildApi().installArtifact!(input));
 }
 
 export function getDesktopFilePath(file: File): string | null {

@@ -15,7 +15,9 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(main, /protocol\.registerSchemesAsPrivileged/);
   assert.match(main, /defaultSession\.protocol\.handle\(RUNTIME_PROTOCOL_SCHEME/);
   assert.match(main, /createRuntimeProtocolHandler/);
-  assert.match(main, /buildProjectService: buildProjectWithCaptureCache/);
+  assert.match(main, /buildProjectService: buildProjectWithHostedRenderer/);
+  assert.match(main, /createHostedBuildService/);
+  assert.match(main, /buildProject: buildProjectWithCaptureCache/);
   assert.match(main, /getCaptureCacheService/);
   assert.match(main, /getCaptureCacheStore/);
   assert.match(main, /getEncodedCache: getCaptureCacheStore/);

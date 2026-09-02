@@ -20,7 +20,7 @@ const savedProject = {
   },
 };
 
-function installDesktopApi({ runtimes = emptyRuntimes, preview = false, recentProjects = [], openCancelled = false, saveCancelled = false, openedProject = savedProject }: { runtimes?: typeof emptyRuntimes | { schemaVersion: 2; configured: boolean; restartRequired: false; runtimes: Array<{ runtimeName: string; runtimeKind: 'legacy-cubism2'; cubismGenerations: number[]; fingerprint: string; available: boolean }> }; preview?: boolean; recentProjects?: Array<{ documentId: string; name: string; fileName: string; available: boolean }>; openCancelled?: boolean; saveCancelled?: boolean; openedProject?: Live2PetProject } = {}) {
+function installDesktopApi({ runtimes = emptyRuntimes, preview = false, buildHost = false, recentProjects = [], openCancelled = false, saveCancelled = false, openedProject = savedProject }: { runtimes?: typeof emptyRuntimes | { schemaVersion: 2; configured: boolean; restartRequired: false; runtimes: Array<{ runtimeName: string; runtimeKind: 'legacy-cubism2'; cubismGenerations: number[]; fingerprint: string; available: boolean }> }; preview?: boolean; buildHost?: boolean; recentProjects?: Array<{ documentId: string; name: string; fileName: string; available: boolean }>; openCancelled?: boolean; saveCancelled?: boolean; openedProject?: Live2PetProject } = {}) {
   const inspectSource = vi.fn(async () => ({
     protocolVersion: 1 as const,
     ok: true,
@@ -39,6 +39,11 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, recentPr
   const openProject = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: openCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-document', fileName: 'saved.live2pet', project: openedProject, recentProjects } }));
   const saveProject = vi.fn(async (input: { project: Live2PetProject }) => ({ protocolVersion: 1 as const, ok: true, result: saveCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-saved-document', fileName: `${input.project.name}.live2pet`, project: input.project, recentProjects } }));
   let appCommandListener: ((command: 'open' | 'save' | 'settings' | 'build' | 'setup') => void) | undefined;
+  let buildProgressListener: ((event: { protocolVersion: 1; buildId: string; sequence: number; target: 'clawd'; stage: string; status: string; fraction: number }) => void) | undefined;
+  const buildProject = vi.fn(async () => {
+    buildProgressListener?.({ protocolVersion: 1, buildId: 'build_12345678', sequence: 1, target: 'clawd', stage: 'package', status: 'completed', fraction: 1 });
+    return { protocolVersion: 1 as const, ok: true, result: { projectId: openedProject.projectId, targets: ['clawd' as const], builds: { clawd: { target: 'clawd' as const, validation: { ok: true }, preview: { ready: true } } }, warnings: [], artifacts: [{ artifactId: 'artifact-1', target: 'clawd' as const, filename: 'saved-clawd.zip', byteLength: 3 }] } };
+  });
   Object.defineProperty(window, 'live2pet', {
     configurable: true,
     value: {
@@ -54,6 +59,14 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, recentPr
       getBuildCacheStatus: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { byteLength: 0, entryCount: 0, maxBytes: 1024 } })),
       clearBuildCache: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { removedEntries: 0, removedBytes: 0 } })),
       getFilePath: vi.fn((file: File) => `/Users/test/${file.name}`),
+      ...(buildHost ? {
+        buildProject,
+        cancelBuild: vi.fn(async (buildId: string) => ({ protocolVersion: 1, ok: true, result: { buildId, cancelled: true, active: true } })),
+        onBuildProgress: vi.fn((listener) => { buildProgressListener = listener; return () => { buildProgressListener = undefined; }; }),
+        getBuildArtifact: vi.fn(),
+        chooseInstallRoot: vi.fn(),
+        installArtifact: vi.fn(),
+      } : {}),
       ...(preview ? {
         openPreview,
         layoutPreview: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { schemaVersion: 1, state: 'ready', projectId: 'vicious-khepri', sourceFingerprint: 'fixture', visible: false, bounds: null } })),
@@ -65,7 +78,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, recentPr
       } : {}),
     },
   });
-  return { configureRuntime, inspectSource, openPreview, openProject, saveProject, emitAppCommand: (command: 'open' | 'save' | 'settings' | 'build' | 'setup') => appCommandListener?.(command) };
+  return { configureRuntime, inspectSource, openPreview, openProject, saveProject, buildProject, emitAppCommand: (command: 'open' | 'save' | 'settings' | 'build' | 'setup') => appCommandListener?.(command) };
 }
 
 function setSystemDarkMode(matches: boolean) {
@@ -195,6 +208,42 @@ describe('Live2Pet desktop shell', () => {
     expect(screen.getByText('Fallback · Idle')).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Codex Pet' }));
     expect(screen.getByText('Breathing · Smile')).toBeVisible();
+  });
+
+  it('persists render presets and keeps a completed build while navigating', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const readyProject: Live2PetProject = {
+      ...savedProject,
+      targets: {
+        clawd: { profile: 'clawd', mappings: { idle: 'motion:idle:0', thinking: 'motion:idle:0', working: 'motion:idle:0', sleeping: 'fallback:idle' }, reactions: {}, options: {} },
+        'codex-pet': { profile: 'codex-pet', mappings: Object.fromEntries(CODEX_PROFILE.rowIds.map((slot) => [slot, 'motion:idle:0'])), reactions: {}, options: {} },
+      },
+    };
+    const recent = [{ documentId: 'opaque-document', name: 'Saved Project', fileName: 'saved.live2pet', available: true }];
+    const { buildProject, saveProject } = installDesktopApi({
+      recentProjects: recent,
+      openedProject: readyProject,
+      buildHost: true,
+      runtimes: { schemaVersion: 2, configured: true, restartRequired: false, runtimes: [{ runtimeName: 'Cubism 2', runtimeKind: 'legacy-cubism2', cubismGenerations: [2], fingerprint: 'runtime-fixture', available: true }] },
+    });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: /Saved Project/ }));
+    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Build' }));
+    const clawdCard = screen.getByRole('heading', { name: 'Clawd Theme Package' }).closest('[data-slot="card"]') as HTMLElement;
+    await user.click(within(clawdCard).getByRole('button', { name: 'High' }));
+    expect(await screen.findByText('Unsaved changes')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
+    await vi.waitFor(() => expect(saveProject).toHaveBeenCalledOnce());
+    expect(saveProject.mock.calls[0][0].project.targets.clawd.renderPreset).toBe('high');
+
+    await user.click(within(clawdCard).getByRole('button', { name: 'Build Pet Package' }));
+    await vi.waitFor(() => expect(buildProject).toHaveBeenCalledWith({ project: expect.any(Object), targets: ['clawd'] }));
+    expect(await screen.findByText('saved-clawd.zip')).toBeVisible();
+    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
+    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Build' }));
+    expect(screen.getByText('saved-clawd.zip')).toBeVisible();
   });
 
   it('opens a recent project by opaque id and re-inspects its referenced source', async () => {
