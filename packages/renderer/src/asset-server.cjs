@@ -51,6 +51,39 @@ function safeRelativePath(root, relativePath) {
   return target;
 }
 
+function safeBufferPath(relativePath) {
+  if (typeof relativePath !== 'string' || !relativePath || relativePath.includes('\0')) return null;
+  const normalized = relativePath.replaceAll('\\', '/');
+  if (normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)) return null;
+  const segments = normalized.split('/');
+  if (segments.some((segment) => segment === '..')) return null;
+  const canonical = segments.filter((segment) => segment && segment !== '.').join('/');
+  return canonical || null;
+}
+
+function normalizeSourceBuffers(sourceBuffers) {
+  const entries = sourceBuffers instanceof Map
+    ? [...sourceBuffers.entries()]
+    : sourceBuffers && typeof sourceBuffers === 'object' && !Array.isArray(sourceBuffers)
+      ? Object.entries(sourceBuffers)
+      : null;
+  if (!entries) fail('INVALID_ASSET_SERVER', 'sourceBuffers must be a Map or plain object of relative paths to byte buffers.');
+  if (!entries.length) fail('INVALID_ASSET_SERVER', 'sourceBuffers must contain at least one resource.');
+  const buffers = new Map();
+  for (const [relativePath, value] of entries) {
+    const safePath = safeBufferPath(relativePath);
+    if (!safePath) fail('INVALID_ASSET_SERVER', 'sourceBuffers contains an unsafe resource path.', { path: String(relativePath) });
+    if (buffers.has(safePath)) fail('INVALID_ASSET_SERVER', 'sourceBuffers contains duplicate normalized resource paths.', { path: safePath });
+    let buffer;
+    if (Buffer.isBuffer(value)) buffer = Buffer.from(value);
+    else if (ArrayBuffer.isView(value)) buffer = Buffer.from(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+    else if (value instanceof ArrayBuffer) buffer = Buffer.from(new Uint8Array(value));
+    else fail('INVALID_ASSET_SERVER', 'sourceBuffers values must be Buffer, ArrayBuffer, or typed-array bytes.', { path: safePath });
+    buffers.set(safePath, buffer);
+  }
+  return buffers;
+}
+
 function encodeRelativeUrl(relativePath) {
   return String(relativePath).split('/').map((segment) => encodeURIComponent(segment)).join('/');
 }
@@ -69,13 +102,18 @@ function jsonResponse(response, value, status = 200) {
   response.end(body);
 }
 
-function createRendererAssetServer({ sourceRoot, runtimePath, host = LOOPBACK_HOST, port = 0 } = {}) {
+function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, host = LOOPBACK_HOST, port = 0 } = {}) {
   if (host !== LOOPBACK_HOST) return Promise.reject(new RendererContractError('NON_LOOPBACK_BINDING', 'Renderer Asset Server can bind only to 127.0.0.1.'));
   if (!Number.isInteger(port) || port < 0 || port > 65535) return Promise.reject(new RendererContractError('INVALID_ASSET_SERVER_PORT', 'Renderer Asset Server port must be an integer between 0 and 65535.'));
   let root;
+  let buffers;
   let runtime;
   try {
-    root = existingDirectory(sourceRoot, 'sourceRoot');
+    const hasSourceRoot = sourceRoot !== undefined && sourceRoot !== null;
+    const hasSourceBuffers = sourceBuffers !== undefined && sourceBuffers !== null;
+    if (hasSourceRoot === hasSourceBuffers) fail('INVALID_ASSET_SERVER', 'Provide exactly one of sourceRoot or sourceBuffers.');
+    root = hasSourceRoot ? existingDirectory(sourceRoot, 'sourceRoot') : null;
+    buffers = hasSourceBuffers ? normalizeSourceBuffers(sourceBuffers) : null;
     runtime = existingFile(runtimePath, 'runtimePath');
   } catch (error) {
     return Promise.reject(error);
@@ -93,14 +131,24 @@ function createRendererAssetServer({ sourceRoot, runtimePath, host = LOOPBACK_HO
         return;
       }
       let file = null;
+      let buffer = null;
+      let modelPath = null;
       if (requestUrl.pathname.startsWith('/model/')) {
-        file = safeRelativePath(root, decodeURIComponent(requestUrl.pathname.slice('/model/'.length)));
-        if (!file) { response.writeHead(404); response.end(); return; }
-        const realRoot = fs.realpathSync(root);
-        const realFile = fs.realpathSync(file);
-        if (realFile !== realRoot && !realFile.startsWith(`${realRoot}${path.sep}`)) { response.writeHead(404); response.end(); return; }
-        if (!fs.statSync(realFile).isFile()) { response.writeHead(404); response.end(); return; }
-        file = realFile;
+        const relativePath = decodeURIComponent(requestUrl.pathname.slice('/model/'.length));
+        if (buffers) {
+          modelPath = safeBufferPath(relativePath);
+          buffer = modelPath ? buffers.get(modelPath) : null;
+          if (!buffer) { response.writeHead(404); response.end(); return; }
+        } else {
+          file = safeRelativePath(root, relativePath);
+          if (!file) { response.writeHead(404); response.end(); return; }
+          const realRoot = fs.realpathSync(root);
+          const realFile = fs.realpathSync(file);
+          if (realFile !== realRoot && !realFile.startsWith(`${realRoot}${path.sep}`)) { response.writeHead(404); response.end(); return; }
+          if (!fs.statSync(realFile).isFile()) { response.writeHead(404); response.end(); return; }
+          file = realFile;
+          modelPath = relativePath;
+        }
       } else if (requestUrl.pathname === `/runtime/${encodeURIComponent(path.basename(runtime))}`) {
         file = runtime;
       } else {
@@ -108,15 +156,16 @@ function createRendererAssetServer({ sourceRoot, runtimePath, host = LOOPBACK_HO
         response.end();
         return;
       }
-      const stat = fs.statSync(file);
+      const size = buffer ? buffer.length : fs.statSync(file).size;
       response.writeHead(200, {
-        'Content-Type': contentType(file),
-        'Content-Length': stat.size,
+        'Content-Type': contentType(modelPath || file),
+        'Content-Length': size,
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff',
       });
       if (request.method === 'HEAD') { response.end(); return; }
-      fs.createReadStream(file).pipe(response);
+      if (buffer) response.end(buffer);
+      else fs.createReadStream(file).pipe(response);
     } catch (error) {
       if (error instanceof URIError || error.code === 'ENOENT') { response.writeHead(404); response.end(); return; }
       response.writeHead(500);
@@ -148,5 +197,7 @@ module.exports = {
   RendererContractError,
   createRendererAssetServer,
   encodeRelativeUrl,
+  normalizeSourceBuffers,
   safeRelativePath,
+  safeBufferPath,
 };

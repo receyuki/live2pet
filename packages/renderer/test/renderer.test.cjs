@@ -7,6 +7,7 @@ const test = require('node:test');
 
 const {
   CONTRACT_METHODS,
+  DEFAULT_OPTIONS,
   RENDERER_IPC_CHANNEL,
   RendererContractError,
   LegacyPixiLive2dAdapter,
@@ -26,6 +27,13 @@ const {
   createRendererAssetServer,
   safeRelativePath,
   normalizePixiSource,
+  pageCapture,
+  pageLoad,
+  pagePause,
+  pagePlayMotion,
+  pageResume,
+  pageStep,
+  pageUnload,
   pixiSourceFromManifest,
   selectPixiLive2dAdapter,
   selectRendererAdapter,
@@ -218,6 +226,10 @@ test('Pixi Live2D adapter bridges the shared contract without bundling a runtime
     () => new PixiLive2dAdapter(),
     (error) => error instanceof RendererContractError && error.code === 'INVALID_RENDERER_HOST',
   );
+  assert.throws(
+    () => new PixiLive2dAdapter({ page, playbackMode: 'automatic' }),
+    (error) => error instanceof RendererContractError && error.code === 'INVALID_RENDERER_ARGUMENT',
+  );
   const loaded = await renderer.load(pixiSource());
   assert.deepEqual(loaded, { contractVersion: 1, motionCount: 2, expressionCount: 1 });
   await renderer.playMotion('Base:wave', { loop: false, speed: 2, start: 0.25 });
@@ -233,6 +245,108 @@ test('Pixi Live2D adapter bridges the shared contract without bundling a runtime
   assert.equal(renderer.getState().loaded, false);
   assert.ok(page.calls.some((call) => call.name === 'pageLoad'));
   assert.ok(page.calls.some((call) => call.name === 'pageCapture'));
+});
+
+test('Pixi realtime playback owns the ticker while manual stepping and capture stay deterministic', async () => {
+  const previousWindow = global.window;
+  const previousDocument = global.document;
+  const updates = [];
+  let captureObservedTicker = null;
+  const ticker = {
+    callbacks: [],
+    deltaMS: 0,
+    started: false,
+    add(callback) { this.callbacks.push(callback); },
+    remove(callback) { this.callbacks = this.callbacks.filter((item) => item !== callback); },
+    tick(deltaMS) {
+      if (!this.started) return;
+      this.deltaMS = deltaMS;
+      for (const callback of this.callbacks) callback();
+    },
+  };
+  const model = {
+    scale: { set() {} },
+    x: 0,
+    y: 0,
+    getLocalBounds: () => ({ x: 0, y: 0, width: 100, height: 200 }),
+    motion: async () => undefined,
+    update: (deltaMilliseconds) => updates.push(deltaMilliseconds),
+  };
+  class Application {
+    constructor(options) {
+      this.ticker = ticker;
+      this.stage = { addChild() {} };
+      this.renderer = {
+        width: options.width,
+        height: options.height,
+        render() {},
+        resize: (width, height) => {
+          this.renderer.width = width;
+          this.renderer.height = height;
+        },
+        extract: {
+          pixels: () => {
+            captureObservedTicker = ticker.started;
+            return new Uint8Array(this.renderer.width * this.renderer.height * 4);
+          },
+        },
+      };
+    }
+    start() { this.ticker.started = true; }
+    stop() { this.ticker.started = false; }
+    destroy() { this.destroyed = true; }
+  }
+  const canvas = { style: {}, parentNode: null };
+  global.window = {
+    PIXI: {
+      Application,
+      Rectangle: class Rectangle {},
+      live2d: { Live2DModel: { from: async () => model } },
+    },
+  };
+  global.document = {
+    body: { appendChild() {} },
+    createElement: () => canvas,
+    querySelector: () => canvas,
+  };
+
+  try {
+    await pageLoad(pixiSource(), { ...DEFAULT_OPTIONS, width: 8, height: 4, playbackMode: 'realtime' });
+    assert.equal(ticker.started, false);
+    await pagePlayMotion('Base:wave', false, 2, 0, 3);
+    assert.equal(ticker.started, true);
+    ticker.tick(16);
+    assert.equal(updates.at(-1), 32);
+
+    pagePause();
+    assert.equal(ticker.started, false);
+    pageResume();
+    assert.equal(ticker.started, true);
+
+    const stepped = pageStep(0.25);
+    assert.equal(stepped.time, 0.532);
+    assert.equal(updates.at(-1), 500);
+    assert.equal(ticker.started, true);
+
+    const capture = await pageCapture('Base:wave', 0.5, 8, 4, 3);
+    assert.equal(capture.time, 0.5);
+    assert.equal(updates.at(-1), 1000);
+    assert.equal(captureObservedTicker, false);
+    assert.equal(ticker.started, true);
+
+    await pageUnload();
+    assert.equal(ticker.started, false);
+    assert.equal(ticker.callbacks.length, 0);
+
+    await pageLoad(pixiSource(), { ...DEFAULT_OPTIONS, width: 8, height: 4 });
+    await pagePlayMotion('Base:wave', true, 1, 0, 3);
+    assert.equal(ticker.started, false);
+    assert.equal(pageStep(0.25).time, 0.25);
+    await pageUnload();
+  } finally {
+    global.window = previousWindow;
+    global.document = previousDocument;
+  }
 });
 
 test('Cubism 2 adapter keeps the legacy boundary explicit and preserves expression indexes', async () => {

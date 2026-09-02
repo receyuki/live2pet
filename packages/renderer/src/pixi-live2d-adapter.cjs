@@ -6,6 +6,7 @@ const DEFAULT_OPTIONS = Object.freeze({
   height: 512,
   padding: 24,
   motionPriority: 3,
+  playbackMode: 'manual',
 });
 
 function fail(code, message, details = {}) {
@@ -166,6 +167,38 @@ function pageLoad(source, options) {
       loop: true,
       speed: 1,
     };
+    const realtime = options.playbackMode === 'realtime';
+    const advance = (deltaSeconds) => {
+      if (!state.motionId || !state.playing) return;
+      const motion = source.motions.find((item) => item.id === state.motionId);
+      const scaledDelta = deltaSeconds * state.speed;
+      const next = state.time + scaledDelta;
+      const duration = motion.duration;
+      const motionDelta = duration > 0 && !state.loop
+        ? Math.min(scaledDelta, Math.max(0, duration - state.time))
+        : scaledDelta;
+      model.update(motionDelta * 1000);
+      if (duration === 0) {
+        state.time = 0;
+        state.playing = state.loop;
+      } else if (next < duration) {
+        state.time = next;
+      } else if (state.loop) {
+        state.time = next % duration;
+      } else {
+        state.time = duration;
+        state.playing = false;
+      }
+    };
+    const tickerUpdate = () => {
+      advance(app.ticker.deltaMS / 1000);
+      if (!state.playing) app.stop();
+    };
+    const syncTicker = () => {
+      if (realtime && state.playing) app.start();
+      else app.stop();
+    };
+    if (realtime) app.ticker.add(tickerUpdate);
     fit();
     render();
 
@@ -176,10 +209,16 @@ function pageLoad(source, options) {
       model,
       source,
       state,
+      realtime,
+      advance,
+      tickerUpdate,
+      syncTicker,
       fit,
       render,
       dispose: async () => {
         try {
+          app.stop();
+          if (realtime) app.ticker.remove(tickerUpdate);
           app.destroy(true, { children: true, texture: true, baseTexture: true });
         } finally {
           if (createdCanvas && canvas.parentNode) canvas.parentNode.removeChild(canvas);
@@ -215,6 +254,7 @@ function pagePlayMotion(motionId, loop, speed, start, priority) {
     if (start > 0) runtime.model.update(start * 1000 * speed);
     else runtime.model.update(1);
     runtime.render();
+    runtime.syncTicker();
     return { ...runtime.state };
   })();
 }
@@ -231,6 +271,7 @@ function pagePause() {
   const runtime = window.__live2petPixiLive2D;
   if (!runtime) throw new Error('Renderer is not loaded.');
   runtime.state.playing = false;
+  runtime.syncTicker();
   return { ...runtime.state };
 }
 
@@ -238,6 +279,7 @@ function pageResume() {
   const runtime = window.__live2petPixiLive2D;
   if (!runtime || !runtime.state.motionId) throw new Error('There is no Motion available to resume.');
   runtime.state.playing = true;
+  runtime.syncTicker();
   return { ...runtime.state };
 }
 
@@ -250,6 +292,7 @@ function pageRestart(priority) {
   return runtime.model.motion(motion.group, motion.index, priority).then(() => {
     runtime.model.update(1);
     runtime.render();
+    runtime.syncTicker();
     return { ...runtime.state };
   });
 }
@@ -277,23 +320,11 @@ function pageStep(deltaSeconds) {
   const runtime = window.__live2petPixiLive2D;
   if (!runtime) throw new Error('Renderer is not loaded.');
   if (!runtime.state.motionId || !runtime.state.playing) return { ...runtime.state };
-  const motion = runtime.source.motions.find((item) => item.id === runtime.state.motionId);
-  const next = runtime.state.time + deltaSeconds * runtime.state.speed;
-  const duration = motion.duration;
-  const advance = duration > 0 && !runtime.state.loop ? Math.min(deltaSeconds * runtime.state.speed, Math.max(0, duration - runtime.state.time)) : deltaSeconds * runtime.state.speed;
-  runtime.model.update(advance * 1000);
-  if (duration === 0) {
-    runtime.state.time = 0;
-    runtime.state.playing = runtime.state.loop;
-  } else if (next < duration) {
-    runtime.state.time = next;
-  } else if (runtime.state.loop) {
-    runtime.state.time = next % duration;
-  } else {
-    runtime.state.time = duration;
-    runtime.state.playing = false;
-  }
+  const resumeRealtime = runtime.realtime && runtime.app.ticker.started;
+  runtime.app.stop();
+  runtime.advance(deltaSeconds);
   runtime.render();
+  if (resumeRealtime && runtime.state.playing) runtime.app.start();
   return { ...runtime.state };
 }
 
@@ -321,22 +352,28 @@ function pageCapture(motionId, time, width, height, priority) {
     if (!runtime) throw new Error('Renderer is not loaded.');
     const motion = runtime.source.motions.find((item) => item.id === motionId);
     if (!motion) throw new Error(`Motion is not available: ${motionId}`);
-    const captureTime = Math.min(Math.max(0, time), motion.duration);
-    await runtime.model.motion(motion.group, motion.index, priority);
-    runtime.state.motionId = motion.id;
-    runtime.state.time = captureTime;
-    runtime.state.playing = true;
-    if (width !== runtime.app.renderer.width || height !== runtime.app.renderer.height) {
-      runtime.app.renderer.resize(width, height);
-      runtime.fit();
+    const resumeRealtime = runtime.realtime && runtime.app.ticker.started;
+    runtime.app.stop();
+    try {
+      const captureTime = Math.min(Math.max(0, time), motion.duration);
+      await runtime.model.motion(motion.group, motion.index, priority);
+      runtime.state.motionId = motion.id;
+      runtime.state.time = captureTime;
+      runtime.state.playing = true;
+      if (width !== runtime.app.renderer.width || height !== runtime.app.renderer.height) {
+        runtime.app.renderer.resize(width, height);
+        runtime.fit();
+      }
+      runtime.model.update(Math.max(1, captureTime * 1000 * runtime.state.speed));
+      runtime.render();
+      const extractor = runtime.app.renderer.extract || (runtime.app.renderer.plugins && runtime.app.renderer.plugins.extract);
+      if (!extractor || typeof extractor.pixels !== 'function') throw new Error('Pixi Extract plugin is unavailable; RGBA capture cannot proceed.');
+      const frame = new window.PIXI.Rectangle(0, 0, width, height);
+      const pixels = extractor.pixels(runtime.app.stage, frame);
+      return { width, height, motionId: motion.id, time: captureTime, rgba: Array.from(pixels) };
+    } finally {
+      if (resumeRealtime && runtime.state.playing) runtime.app.start();
     }
-    runtime.model.update(Math.max(1, captureTime * 1000 * runtime.state.speed));
-    runtime.render();
-    const extractor = runtime.app.renderer.extract || (runtime.app.renderer.plugins && runtime.app.renderer.plugins.extract);
-    if (!extractor || typeof extractor.pixels !== 'function') throw new Error('Pixi Extract plugin is unavailable; RGBA capture cannot proceed.');
-    const frame = new window.PIXI.Rectangle(0, 0, width, height);
-    const pixels = extractor.pixels(runtime.app.stage, frame);
-    return { width, height, motionId: motion.id, time: captureTime, rgba: Array.from(pixels) };
   })();
 }
 
@@ -351,7 +388,9 @@ class PixiLive2dAdapter {
       height: positiveInteger(options.height == null ? DEFAULT_OPTIONS.height : options.height, 'Renderer height'),
       padding: finiteNumber(options.padding == null ? DEFAULT_OPTIONS.padding : options.padding, 'Renderer padding', { min: 0, max: 4096 }),
       motionPriority: Number.isInteger(options.motionPriority == null ? DEFAULT_OPTIONS.motionPriority : options.motionPriority) ? Number(options.motionPriority == null ? DEFAULT_OPTIONS.motionPriority : options.motionPriority) : DEFAULT_OPTIONS.motionPriority,
+      playbackMode: options.playbackMode == null ? DEFAULT_OPTIONS.playbackMode : options.playbackMode,
     };
+    if (!['manual', 'realtime'].includes(this.options.playbackMode)) fail('INVALID_RENDERER_ARGUMENT', 'playbackMode must be manual or realtime.');
     this.source = null;
     this.state = cloneState();
   }

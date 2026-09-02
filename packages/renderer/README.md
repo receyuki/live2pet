@@ -31,6 +31,7 @@ const renderer = createRendererAdapter({
   page,
   width: 512,
   height: 512,
+  playbackMode: 'realtime',
 });
 
 await renderer.load({
@@ -57,10 +58,17 @@ web-security defaults. `createRendererCsp` produces the restrictive document
 policy. `createRendererIpcRouter` and `createRendererPreloadApi` expose only the
 13 renderer-contract methods over the `live2pet:renderer` channel.
 
-`createRendererAssetServer` serves the selected Source Package root and one
-explicitly selected runtime file over loopback, with real-path containment
-checks. The host is responsible for serving `modelUrl` and its referenced files
-through this boundary.
+`createRendererAssetServer` serves either the selected Source Package root or
+an inspected PCK resource map, plus one explicitly selected runtime file, over
+loopback. Directory sources use real-path containment checks; PCK resources are
+copied into an exact normalized-path allowlist. The host is responsible for
+serving `modelUrl` and its referenced files through this boundary.
+
+Pixi adapters default to `playbackMode: 'manual'` for deterministic capture.
+An embedded interactive preview opts into `playbackMode: 'realtime'`, which
+owns the page-local Pixi ticker while playing. Explicit stepping and RGBA
+capture suspend that ticker temporarily, so both modes continue to share the
+same renderer contract.
 
 `createRendererRealmHost` owns one BrowserWindow-like realm and destroys it on
 page, process, or unknown renderer failures. `restart()` always creates a new
