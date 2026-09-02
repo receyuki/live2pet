@@ -40,9 +40,12 @@ The center column of the Mapper is the only user-visible Source Package preview.
 - Welcome provides recent projects, Open Project, and Import Source Package without showing project-only controls before a project exists.
 - One project window provides Source, Map, and Build destinations through a compact application toolbar and preserves project state when switching between them.
 - Source owns inspection and resource compatibility, Map owns source playback and semantic Assignment, and Build owns readiness, progress, generated preview, download, and installation.
-- Settings owns General, Runtimes, Targets & Installation, and Storage. App-global controls do not appear as bars inside a project destination.
+- Settings is a full in-window destination with General, Runtimes, Targets & Installation, and Storage sections. It is not a modal, sheet, or separate window, and leaving it restores the previous project destination and state.
 - The App provides standard application menus and keyboard shortcuts for Open, Save, Undo, Redo, Settings, and Build.
-- The window uses system typography, semantic light/dark tokens, desktop control density, clear focus, and restrained motion. Website hero copy, marketing footers, and dashboard card grids are not part of the App shell.
+- The production interface uses React, TypeScript, Vite, HeroUI v3, and HeroUI's Tailwind CSS v4 foundation. HeroUI is the only general-purpose component system in the production renderer.
+- Standard controls use HeroUI components and semantic theme variables. Custom presentation is limited to the App shell, three-column workspace, Live2D canvas and timeline, and restrained Live2Pet branding.
+- The window uses system typography, neutral surfaces with one violet-blue brand accent, semantic light/dark tokens, desktop control density, clear focus, and restrained motion. Large-area glass, persistent glow, website hero copy, marketing footers, and dashboard card grids are not part of the App shell.
+- A runnable preview using real HeroUI components must validate Map, Settings, English and Simplified Chinese layout, keyboard focus, and light/dark appearance before the working Mapper controls are migrated.
 - Unavailable actions state the missing requirement and recovery action rather than appearing as unexplained disabled controls.
 - Long builds remain observable and cancellable without freezing project navigation; one terminal success, failure, or cancelled state replaces indefinite busy copy.
 
@@ -169,6 +172,7 @@ Verify that deferred setup, incompatible runtime, unsupported PCK, missing resou
 - Implementation order: `docs/plans/live2pet-v1-implementation-plan.md`
 - Renderer decision: `docs/adr/0011-use-pixi-for-the-personal-use-v1-renderer.md`
 - Desktop App shell decision: `docs/adr/0012-use-a-project-oriented-desktop-app-shell.md`
+- Desktop interface system decision: `docs/adr/0013-use-heroui-for-the-desktop-interface.md`
 - Codex Pet workflow: <https://github.com/openai/skills/tree/main/skills/.curated/hatch-pet>
 - Clawd theme guide: <https://github.com/rullerzhou-afk/clawd-on-desk/blob/main/docs/guides/guide-theme-creation.md>
 - Cubism Core: <https://docs.live2d.com/en/cubism-sdk-manual/cubism-core/>

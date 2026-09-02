@@ -31,8 +31,8 @@ top-level states:
 2. a Welcome surface for recent projects, opening a `.live2pet` document, or
    importing a Source Package;
 3. one project workspace with Source, Map, and Build destinations; and
-4. App-global Settings opened from the application menu or the standard
-   Settings shortcut.
+4. an App-global, full-page Settings destination opened from the application
+   toolbar, application menu, or the standard Settings shortcut.
 
 The project window uses the platform title bar, an application toolbar, one
 visible project destination at a time, and a compact status bar. The Map
@@ -48,6 +48,11 @@ Settings owns:
 - Clawd and Codex installation destinations and conflict policy; and
 - aggregate build-cache status and explicit cache clearing.
 
+Settings replaces the project workspace while it is open and uses its own
+section navigation for General, Runtimes, Targets & Installation, and Storage.
+It is not presented as a modal, sheet, or separate child window. Leaving
+Settings returns to the project destination and state from which it was opened.
+
 The Setup Assistant reuses the same runtime-settings model and controls rather
 than maintaining a second provisioning implementation. It detects already
 saved runtimes, accepts one or both runtime families, allows setup to be
@@ -59,15 +64,22 @@ Generated-package installation remains user initiated. The Build destination
 may offer an explicit **Build & Install** command that uses a previously saved
 destination, but an ordinary Build or Download never installs implicitly.
 
-The V1 redesign is framework-agnostic and does not require replacing Electron,
-the domain packages, renderer adapters, or build services. UI modules may be
-extracted from the current renderer incrementally; a front-end framework
-migration is not a prerequisite for the new workflow.
+The V1 production shell uses the React, TypeScript, Vite, and HeroUI v3
+interface foundation defined by ADR 0013. This does not replace Electron, the
+domain packages, renderer adapters, or build services. The current Mapper may
+remain as an internal behavioral reference while the production destinations
+are migrated behind the existing application-service boundaries.
 
 ## Interaction and visual rules
 
-- Use system typography, semantic color tokens, thin dividers, and a compact
-  4/8-point spacing rhythm instead of landing-page typography and card grids.
+- Use HeroUI components and semantic theme variables for standard controls,
+  system typography, interaction states, and light/dark appearance.
+- Use neutral surfaces, one violet-blue brand accent, thin dividers, and a
+  compact 4/8-point spacing rhythm instead of landing-page typography and card
+  grids.
+- Limit custom styling to the App shell, three-column workspace, Live2D canvas,
+  playback timeline, and restrained product branding. Do not mix general UI
+  component systems.
 - Keep one primary action per destination and show an actionable reason for an
   unavailable action.
 - Provide native application menus and standard Open, Save, Undo, Redo,
@@ -93,8 +105,9 @@ migration is not a prerequisite for the new workflow.
   it is not the V1 product navigation or acceptance target.
 - Existing project, renderer, build, cache, and installation contracts remain
   valid; the redesign primarily changes presentation and App-owned settings.
-- A production shell preview is reviewed before the existing workflow is
-  migrated, reducing the risk of completing another unsuitable page layout.
+- A runnable production shell preview made with real HeroUI components is
+  reviewed before the existing workflow is migrated, reducing the risk of
+  completing another unsuitable page layout.
 
 ## Alternatives considered
 
@@ -112,5 +125,11 @@ more space for animation preview and Assignment.
 ### Build a multi-window editor with detachable panels
 
 Rejected because panel docking and cross-window state add complexity without
-improving the single-project V1 workflow. Settings may be presented as a sheet
-or child window while remaining outside project navigation.
+improving the single-project V1 workflow. Settings remains a full in-window
+destination outside project navigation.
+
+### Present Settings as a modal or child window
+
+Rejected because runtime provisioning, installation destinations, and storage
+management are durable application tasks that need stable navigation, enough
+space for recovery guidance, and an uninterrupted first-run reuse path.

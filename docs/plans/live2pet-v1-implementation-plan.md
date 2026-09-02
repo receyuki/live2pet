@@ -40,18 +40,22 @@ Outcome: a fresh or returning user sees an application lifecycle rather than a b
 
 Work:
 
-1. Add a production App shell with platform title bar, application menu, compact toolbar, status bar, and Welcome versus Project states.
-2. Provide Source, Map, and Build destinations that preserve one project and renderer session while changing the visible task surface.
-3. Add Settings sections for General, Runtimes, Targets & Installation, and Storage. Move the existing runtime and cache controls out of the project document.
-4. Add a skippable first-run Setup Assistant that reuses runtime Settings, detects existing runtimes, supports one or both families, and remains available from Help.
-5. Persist locale, appearance, recent projects, reopen behavior, installation destinations, and window bounds as App settings; do not put them in `.live2pet`.
-6. Add native Open, Save, Undo, Redo, Settings, and Build menu commands and shortcuts.
-7. Remove landing-page headings, explanatory banners, duplicate global bars, and footer content from the packaged App navigation.
+1. Establish the React, TypeScript, and Vite production renderer with HeroUI v3 and its required Tailwind CSS v4 foundation. Use HeroUI as the only general-purpose component system.
+2. Add a production App shell with platform title bar, application menu, compact toolbar, status bar, and Welcome versus Project states.
+3. Provide Source, Map, and Build destinations that preserve one project and renderer session while changing the visible task surface.
+4. Add a full in-window Settings destination with General, Runtimes, Targets & Installation, and Storage section navigation. Move the existing runtime and cache controls out of the project document and restore the previous project context when Settings closes.
+5. Add a skippable full-page Setup Assistant that reuses runtime Settings, detects existing runtimes, supports one or both families, and remains available from Help.
+6. Persist locale, appearance, recent projects, reopen behavior, installation destinations, and window bounds as App settings; do not put them in `.live2pet`.
+7. Add native Open, Save, Undo, Redo, Settings, and Build menu commands and shortcuts.
+8. Replace hand-written standard controls with HeroUI components; keep custom presentation limited to the shell, three-column workspace, Live2D canvas and timeline, and restrained brand surfaces.
+9. Remove landing-page headings, explanatory banners, duplicate global bars, and footer content from the packaged App navigation.
 
 First review gate:
 
 - run the real Electron App with representative non-copyrighted data;
-- review Welcome, first-run setup, Settings, the project toolbar, Source/Map/Build switching, and the three-column Map layout before migrating all working controls; and
+- first validate a small HeroUI integration slice through Vite packaging and the Electron content security policy;
+- review a runnable HeroUI preview of Welcome, full-page first-run setup, full-page Settings, the project toolbar, Source/Map/Build switching, and the three-column Map layout before migrating all working controls;
+- review English and Simplified Chinese layout, keyboard focus, reduced motion, and both light and dark appearance; and
 - do not commit generated UI concept artwork or model examples as product assets without a separate approval.
 
 Acceptance gate:
@@ -61,7 +65,9 @@ Acceptance gate:
 - setup can be deferred without blocking Source inspection;
 - a missing matching runtime opens Settings at the correct entry and returns to the project after configuration;
 - `Cmd+,`, Open, Save, Undo, Redo, and Build commands reach the correct App state; and
-- App-global configuration is absent from Source, Map, and Build content.
+- App-global configuration is absent from Source, Map, and Build content;
+- Settings is a full in-window destination rather than a modal or child window; and
+- no second general-purpose component system or duplicate local primitive set is present in the production renderer.
 
 ### P0 — Make one preview-and-mapping flow dependable
 
@@ -230,6 +236,7 @@ An issue closes when its observable acceptance evidence exists, even if optional
 6. No runtime, model, generated character package, secret, token, or unrelated absolute path is introduced.
 7. The Issue body and native GitHub dependencies match the actual remaining work.
 
-The desktop information architecture is recorded in ADR-0012. The first UI
-review uses the production Electron shell with synthetic representative data,
-not a separate throwaway browser prototype.
+The desktop information architecture is recorded in ADR-0012, and the HeroUI
+interface foundation is recorded in ADR-0013. The first UI review uses the
+production Electron shell with synthetic representative data, not a separate
+throwaway browser prototype.
