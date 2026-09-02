@@ -384,7 +384,7 @@ function pckEntryType(bytes) {
 function parsePck(filePath, sourceBytes = null) {
   const bytes = sourceBytes || fs.readFileSync(filePath);
   if (bytes.length > MAX_PCK_BYTES) fail('PCK_TOO_LARGE', `PCK exceeds the ${MAX_PCK_BYTES} byte inspection limit.`);
-  if (bytes.length < 12 || !bytesMatch(bytes, [0x50, 0x43, 0x4b, 0x00])) fail('INVALID_PCK_HEADER', 'Not a Destiny Child PCK: missing PCK\\0 header.');
+  if (bytes.length < 12 || !bytesMatch(bytes, [0x50, 0x43, 0x4b, 0x00])) fail('INVALID_PCK_HEADER', 'Not a supported Live2D PCK file: missing PCK\\0 header.');
   const version = bytes.readFloatLE(4);
   const count = bytes.readUInt32LE(8);
   const headerSize = 12 + count * PCK_RECORD_SIZE;
@@ -448,7 +448,7 @@ function parsePck(filePath, sourceBytes = null) {
 function inspectPck(filePath, { bytes = null, fingerprint = null, withResources = false } = {}) {
   const parsed = parsePck(filePath, bytes);
   const source = {
-    kind: 'destiny-child-pck',
+    kind: 'pck',
     name: path.basename(filePath),
     fingerprint: fingerprint || hashBuffer(bytes || fs.readFileSync(filePath)),
     fileCount: parsed.buffers.size,

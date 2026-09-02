@@ -4,7 +4,7 @@ This directory contains English research and decision material for Live2Pet.
 
 ## Current conclusions
 
-- Live2Pet should treat a standard Cubism model directory as its primary input and support format-specific importers, such as the tested Destiny Child PCK layout, as adapters.
+- Live2Pet should treat a Live2D model folder as its primary input and support tested PCK layouts through format-specific adapters.
 - The conversion pipeline should render transparent RGBA frames at deterministic time steps, encode animated WebP, and generate a state-mapping manifest and Clawd theme package.
 - The mapper should remain separate from model rendering and Codex state collection so each layer can evolve independently.
 - Live2DViewerEX and VTube Studio are useful runtime adapters, but neither should define the conversion architecture.

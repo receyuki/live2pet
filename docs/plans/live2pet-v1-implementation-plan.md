@@ -4,7 +4,7 @@ Status: Rescoped on 2026-09-02 — project-oriented desktop App shell
 
 ## Outcome and boundary
 
-The only current release outcome is a dependable personal-use macOS Desktop App that completes one-time setup, converts a permitted standard Live2D model or supported Destiny Child PCK into a previewed, validated, downloadable Clawd or Codex ZIP, and explicitly installs the generated package when the user chooses Install or Build & Install.
+The only current release outcome is a dependable personal-use macOS Desktop App that completes one-time setup, converts a permitted Live2D model folder or supported PCK file into a previewed, validated, downloadable Clawd or Codex ZIP, and explicitly installs the generated package when the user chooses Install or Build & Install.
 
 V1 does not include the official Cubism Web Framework integration, a Codex skill, Mapper Session, Windows qualification, signing, notarization, or public binary distribution. Only Windows and public distribution remain possible future milestones; the other removed product surfaces are not part of the current roadmap.
 
@@ -16,7 +16,7 @@ Success is measured by one continuous desktop workflow: skippable first-run setu
 
 The repository already contains:
 
-- standard-folder and supported Destiny Child PCK inspection;
+- Live2D-folder and supported PCK inspection;
 - versioned reference-only projects, recipes, separate target mappings, autosave, relinking, and review gates;
 - Pixi-based modern and Cubism 2 adapters, an App-managed Desktop runtime library, and internal renderer isolation seams;
 - Clawd and Codex target validators and builders;
@@ -79,7 +79,7 @@ Work:
 
 1. Make the App-managed runtime library in Settings the sole runtime source of truth in Desktop mode, remove any second Mapper-managed runtime copy, and automatically select saved runtimes by inspected Cubism generation.
 2. Keep modern production rendering on the existing Pixi adapter with user-provided official Cubism Core.
-3. Keep Cubism 2 behind its legacy adapter and qualify the locally owned Destiny Child fixture through the same visible preview controls.
+3. Keep Cubism 2 behind its legacy adapter and qualify the locally owned PCK fixture through the same visible preview controls.
 4. Keep preview and capture in the center Map destination; do not maintain a separate preview window or its lifecycle API.
 5. Complete center-column Motion/Expression controls, full-bounds framing, recoverable failure handling, and actionable mismatch errors.
 6. Verify Motion-plus-Expression recipes, separate Clawd/Codex mappings, validation, undo/redo, keyboard operation, autosave, explicit save/reopen, and source relinking.
@@ -208,7 +208,7 @@ An issue closes when its observable acceptance evidence exists, even if optional
 
 | Surface | Automated evidence | Local acceptance evidence |
 | --- | --- | --- |
-| Source inspection | Synthetic standard/PCK contracts and malformed-input tests | Owned modern model and Destiny Child PCK |
+| Source inspection | Synthetic standard/PCK contracts and malformed-input tests | Owned modern model and Live2D PCK file |
 | Runtime library | Validation, persistence, generation selection, clear/replace tests | Restart and reopen without reselection |
 | Desktop shell | First-run state, Settings ownership, menu routing, destination-state, and window-bounds tests | Clean-profile setup and returning-project flow |
 | Renderer | Shared deterministic playback/capture contract and failure-recovery tests | Center-column Motion/Expression playback on both generations |

@@ -13,7 +13,7 @@ The center column of the Mapper is the only user-visible Source Package preview.
 ## Primary workflow
 
 1. Open the macOS Desktop App and complete or skip the first-run Setup Assistant.
-2. From Welcome, open a `.live2pet` project or select a standard Cubism model directory or supported Destiny Child PCK.
+2. From Welcome, open a `.live2pet` project or select a Live2D model folder or supported PCK file.
 3. Let Live2Pet identify the Cubism generation and use a compatible runtime from App Settings; configure a missing runtime once through the matching Settings entry.
 4. Review normalized model and resource results in Source.
 5. In Map, browse Motions and Expressions, play them in the center-column preview, and create a Motion-plus-optional-Expression Animation Recipe.
@@ -52,7 +52,7 @@ The center column of the Mapper is the only user-visible Source Package preview.
 ### Source Packages
 
 - Accept a directory containing a valid Cubism 2 `model.json` or Cubism 3+ `.model3.json` and its referenced local resources.
-- Accept the already-tested uncompressed and unencrypted Destiny Child `PCK\0` shape.
+- Accept the already-tested uncompressed and unencrypted Live2D `PCK\0` layout.
 - List discovered Motions and Expressions without guessing their semantic meaning.
 - Report missing or incompatible resources by actionable relative identity.
 - Reject compressed, encrypted, malformed, oversized, or unknown containers explicitly. V1 does not decrypt or heuristically repair them.
@@ -127,7 +127,7 @@ On a clean macOS user profile, complete the Setup Assistant with a permitted off
 
 ### Legacy PCK path
 
-On the same App, select the locally owned tested Destiny Child PCK and a compatible Cubism 2 runtime once. Reopen it without selecting the runtime again, preview a Motion in the same center column, map it, and complete at least one target build, ZIP download, and explicit target-host installation.
+On the same App, select a locally owned tested Live2D PCK file and a compatible Cubism 2 runtime once. Reopen it without selecting the runtime again, preview a Motion in the same center column, map it, and complete at least one target build, ZIP download, and explicit target-host installation.
 
 ### Both-target project path
 

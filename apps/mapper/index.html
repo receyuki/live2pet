@@ -304,7 +304,7 @@
       <div>
         <div class="eyebrow" data-i18n="app.eyebrow">Live2Pet Source Inspector</div>
         <h1 data-i18n="app.heading">Inspect a Live2D Source Package</h1>
-        <p class="muted" data-i18n="app.description">Choose a standard Cubism directory or a supported Destiny Child PCK to inspect its model, Motions, Expressions, and referenced resources locally.</p>
+        <p class="muted" data-i18n="app.description">Choose a Live2D folder or supported PCK file to inspect its model, Motions, Expressions, and referenced resources locally.</p>
       </div>
       <div class="top-tools">
         <label class="language-picker"><span data-i18n="language.label">Language</span><select id="languageSelect" aria-label="Language" data-i18n-aria-label="language.label"><option value="en" data-i18n="language.en">English</option><option value="zh-CN" data-i18n="language.zh">中文</option></select></label>
@@ -317,7 +317,7 @@
     <section class="loadbar">
       <button id="chooseFolder" class="primary" data-i18n="source.chooseFolder">Choose Source Package directory</button>
       <input id="folderInput" class="hidden" type="file" webkitdirectory multiple>
-      <button id="choosePck" data-i18n="source.choosePck">Choose Destiny Child PCK</button>
+      <button id="choosePck" data-i18n="source.choosePck">Choose Live2D PCK file</button>
       <input id="pckInput" class="hidden" type="file" accept=".pck,application/octet-stream">
       <span id="loadHint" class="muted" aria-live="polite" data-i18n="source.loadHint">Supports .pck, .model3.json, or Cubism 2 model.json</span>
     </section>
@@ -574,7 +574,7 @@
           "app.title": "Live2Pet Mapper",
           "app.eyebrow": "Live2Pet Source Inspector",
           "app.heading": "Inspect a Live2D Source Package",
-          "app.description": "Choose a standard Cubism directory or a supported Destiny Child PCK to inspect its model, Motions, Expressions, and referenced resources locally.",
+          "app.description": "Choose a Live2D folder or supported PCK file to inspect its model, Motions, Expressions, and referenced resources locally.",
           "app.badge": "ALPHA · LOCAL ONLY",
           "language.label": "Language",
           "language.en": "English",
@@ -582,7 +582,7 @@
           "question.label": "Current seam:",
           "question.copy": "inspection is complete before preview or mapping. Unsupported or incomplete input is reported with a recovery path instead of being treated as a valid Source Package.",
           "source.chooseFolder": "Choose Source Package directory",
-          "source.choosePck": "Choose Destiny Child PCK",
+          "source.choosePck": "Choose Live2D PCK file",
           "source.loadHint": "Supports .pck, .model3.json, or Cubism 2 model.json",
           "runtime.heading": "Local Cubism runtime",
           "runtime.choose": "Add Cubism runtime",
@@ -889,7 +889,7 @@
           "build.clawdNoApp": "Clawd builds require the Live2Pet Desktop App; browser-only preview is still available.",
           "build.downloadFirst.codex": "Build a Codex Pet ZIP first.",
           "build.downloadFirst.clawd": "Build a Clawd Theme ZIP first.",
-          "inspection.source.destiny": "Destiny Child PCK",
+          "inspection.source.pck": "Live2D PCK file",
           "inspection.source.directory": "Standard directory",
           "inspection.resource.present": "Present",
           "inspection.resource.missing": "Missing",
@@ -943,7 +943,7 @@
           "app.title": "Live2Pet 映射器",
           "app.eyebrow": "Live2Pet 资源检查器",
           "app.heading": "检查 Live2D 资源包",
-          "app.description": "选择标准 Cubism 目录或受支持的 Destiny Child PCK，在本地检查模型、动作、表情和引用资源。",
+          "app.description": "选择 Live2D 文件夹或受支持的 PCK 文件，在本地检查模型、动作、表情和引用资源。",
           "app.badge": "内测 · 仅本地",
           "language.label": "语言",
           "language.en": "English",
@@ -951,7 +951,7 @@
           "question.label": "当前边界：",
           "question.copy": "预览或映射前会先完成资源检查。不支持或不完整的输入会给出恢复路径，不会被当作有效资源包继续处理。",
           "source.chooseFolder": "选择资源包目录",
-          "source.choosePck": "选择 Destiny Child PCK",
+          "source.choosePck": "选择 Live2D PCK 文件",
           "source.loadHint": "支持 .pck、.model3.json 或 Cubism 2 model.json",
           "runtime.heading": "本地 Cubism 运行时",
           "runtime.choose": "添加 Cubism 运行时",
@@ -1258,7 +1258,7 @@
           "build.clawdNoApp": "Clawd 构建需要 Live2Pet Desktop App；浏览器预览仍可使用。",
           "build.downloadFirst.codex": "请先构建 Codex Pet ZIP。",
           "build.downloadFirst.clawd": "请先构建 Clawd 主题 ZIP。",
-          "inspection.source.destiny": "Destiny Child PCK",
+          "inspection.source.pck": "Live2D PCK 文件",
           "inspection.source.directory": "标准目录",
           "inspection.resource.present": "存在",
           "inspection.resource.missing": "缺失",
@@ -2312,7 +2312,7 @@
       const stateClass = missing ? "bad" : "good";
       status.className = `inspection-status ${stateClass}`;
       status.textContent = missing ? I18n.t(missing === 1 ? "inspection.status.missing.one" : "inspection.status.missing.many", { count: missing }) : I18n.t("inspection.status.complete");
-      const sourceLabel = inspection.source.kind === "destiny-child-pck" ? I18n.t("inspection.source.destiny") : I18n.t("inspection.source.directory");
+      const sourceLabel = ["pck", "destiny-child-pck"].includes(inspection.source.kind) ? I18n.t("inspection.source.pck") : I18n.t("inspection.source.directory");
       const summary = [
         [I18n.t("inspection.label.source"), sourceLabel],
         [I18n.t("inspection.label.cubism"), I18n.t("inspection.generation", { version: inspection.model.cubism })],
@@ -2843,7 +2843,7 @@
       }
       return {
         schemaVersion: 1,
-        source: { kind: options.source === "destiny-child-pck" ? "destiny-child-pck" : "standard-directory", name: options.sourceName || options.modelName || modelFile.name, modelConfig: modelPath, fingerprint: options.fingerprint || await fingerprintBrowser(list), fileCount: list.length, ...(options.entryCount ? { entryCount: options.entryCount } : {}), ...(Number.isFinite(options.version) ? { version: options.version } : {}) },
+        source: { kind: options.source === "pck" ? "pck" : "standard-directory", name: options.sourceName || options.modelName || modelFile.name, modelConfig: modelPath, fingerprint: options.fingerprint || await fingerprintBrowser(list), fileCount: list.length, ...(options.entryCount ? { entryCount: options.entryCount } : {}), ...(Number.isFinite(options.version) ? { version: options.version } : {}) },
         model,
         motions,
         expressions,
@@ -2852,11 +2852,11 @@
       };
     }
 
-    async function unpackDestinyChildPck(file) {
+    async function unpackLive2dPck(file) {
       const buffer = await file.arrayBuffer();
       const bytes = new Uint8Array(buffer);
       const view = new DataView(buffer);
-      if (bytes.length < 12 || !bytesMatch(bytes,[0x50,0x43,0x4b,0x00])) throw browserInspectionError("INVALID_PCK_HEADER", "Not a valid Destiny Child PCK (missing the PCK\\0 header).");
+      if (bytes.length < 12 || !bytesMatch(bytes,[0x50,0x43,0x4b,0x00])) throw browserInspectionError("INVALID_PCK_HEADER", "Not a supported Live2D PCK file (missing the PCK\\0 header).");
       const version = view.getFloat32(4,true);
       const count = view.getUint32(8,true);
       const recordSize = 25;
@@ -2929,13 +2929,13 @@
         $("stageMessage").classList.remove("hidden");
         $("stageMessage").textContent = I18n.t("source.stage.inspecting", { name: file.name });
         const inspectionManifest = await inspectThroughDesktop([file], { sourcePath: localFilePath(file), modelName: file.name.replace(/\.pck$/i, "") });
-        const unpacked = await unpackDestinyChildPck(file);
+        const unpacked = await unpackLive2dPck(file);
         await loadFolder(unpacked.files,{
           modelName:file.name.replace(/\.pck$/i,""),
           sourceName:file.name,
           sourceFile:file.name,
           sourcePath:localFilePath(file),
-          source:"destiny-child-pck",
+          source:"pck",
           entryCount:unpacked.count,
           version:unpacked.version,
           fingerprint:await fingerprintBrowser([file]),

@@ -31,7 +31,7 @@ export type SourceExpression = {
 
 export type SourceInspection = {
   schemaVersion: 1;
-  source: { kind: 'standard-directory' | 'destiny-child-pck'; name: string; fingerprint: string; modelConfig: string };
+  source: { kind: 'standard-directory' | 'pck' | 'destiny-child-pck'; name: string; fingerprint: string; modelConfig: string };
   model: { cubism: number; configFile: string; modelFile: string | null; textures: string[] };
   motions: SourceMotion[];
   expressions: SourceExpression[];

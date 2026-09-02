@@ -7,7 +7,7 @@ Live2Pet is an early-stage local desktop toolchain for loading Cubism models, pr
 ## Components
 
 - `apps/mapper/` — browser-based Live2D motion preview, Clawd mapping, user-configurable Clawd idle/tier behavior pools, Codex nine-row mapping, local Codex ZIP fallback build, shared-App Clawd Theme ZIP build, generated target previews, final-size Codex row playback, and explicit Desktop-App installation controls. The Mapper has no runtime CDN dependency: modern Core can be selected locally, and Cubism 2 preview requires a user-selected local `live2d.min.js`. Selected runtimes are saved only in the browser profile and restored on the next launch; the clear-saved control removes those local copies. Its first English/Chinese (`zh-CN`) locale layer is presentation-only and does not change project or package schemas.
-- `packages/source-inspector/` — normalized Source Package inspection API and versioned `live2pet-inspect` CLI for standard Cubism directories and the supported Destiny Child PCK shape.
+- `packages/source-inspector/` — normalized Source Package inspection API and versioned `live2pet-inspect` CLI for standard Cubism directories and supported Live2D PCK files.
 - `packages/project/` — reference-only `.live2pet` Project schema, reusable Motion-plus-Expression Animation Recipes, target Render Preset persistence, deterministic serialization, atomic file I/O, autosave recovery, source relinking, and review gating.
 - `packages/runtime/` — user-provided Cubism runtime discovery, bounded validation, redacted diagnosis, persistent App-managed copies, and generation-aware selection metadata.
 - `packages/renderer/` — versioned playback/capture contract, deterministic motion candidate sampling, copyright-safe synthetic renderer for CI, and automatic selection between the V1 Pixi modern and legacy adapters.
@@ -19,7 +19,7 @@ Live2Pet is an early-stage local desktop toolchain for loading Cubism models, pr
 - `apps/desktop/` — Electron App that loads the Mapper and builds, downloads, previews, and explicitly installs generated artifacts without bundling user runtimes or models. The center column is the V1 source preview.
 - `packages/clawd-target/` — guide-aligned Clawd Target Profile validation for states, sleep modes, fallbacks, and reactions.
 - `packages/codex-target/` — Codex Pet V1 atlas geometry, nine-row mapping, frame-reference layout planning, RGBA composition, and package-shape validation.
-- `packages/live2d-exporter/` — deterministic transparent-frame exporter and Destiny Child PCK unpacker.
+- `packages/live2d-exporter/` — deterministic transparent-frame exporter and Live2D PCK unpacker.
 - `docs/research/` — architecture, integration, and ecosystem research.
 - `docs/agents/` — repository conventions consumed by engineering skills.
 

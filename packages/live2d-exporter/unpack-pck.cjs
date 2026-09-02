@@ -47,7 +47,7 @@ function main() {
   const options = parseArgs(process.argv);
   const bytes = fs.readFileSync(options.pck);
   if (bytes.length < 12 || !bytesMatch(bytes, [0x50, 0x43, 0x4b, 0x00])) {
-    throw new Error('Not a Destiny Child PCK (missing PCK\\0 header)');
+    throw new Error('Not a supported Live2D PCK file (missing PCK\\0 header)');
   }
 
   const version = bytes.readFloatLE(4);

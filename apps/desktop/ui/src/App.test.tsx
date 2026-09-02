@@ -11,7 +11,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false }: { runt
     ok: true,
     result: {
       schemaVersion: 1 as const,
-      source: { kind: 'destiny-child-pck' as const, name: 'Vicious Khepri', fingerprint: 'fixture', modelConfig: 'model.json' },
+      source: { kind: 'pck' as const, name: 'Vicious Khepri', fingerprint: 'fixture', modelConfig: 'model.json' },
       model: { cubism: 2, configFile: 'model.json', modelFile: 'model.moc', textures: ['texture.png'] },
       motions: [{ id: 'idle:0', group: 'idle', index: 0, name: 'Breathing', sourceFile: 'idle.mtn', duration: 2.5 }],
       expressions: [{ id: '0', index: 0, name: 'Smile', sourceFile: 'smile.exp.json' }],
@@ -132,7 +132,7 @@ describe('Live2Pet desktop shell', () => {
     render(<App />);
     const pck = new File(['fixture'], 'Vicious Khepri.pck');
 
-    fireEvent.drop(screen.getByLabelText('Import Source Package'), {
+    fireEvent.drop(screen.getByLabelText('Import Live2D source'), {
       dataTransfer: {
         types: ['Files'],
         files: [pck],
@@ -160,7 +160,7 @@ describe('Live2Pet desktop shell', () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const { inspectSource } = installDesktopApi();
     render(<App />);
-    fireEvent.drop(screen.getByLabelText('Import Source Package'), {
+    fireEvent.drop(screen.getByLabelText('Import Live2D source'), {
       dataTransfer: {
         types: ['Files'],
         files: [new File(['a'], 'one.pck'), new File(['b'], 'two.pck')],

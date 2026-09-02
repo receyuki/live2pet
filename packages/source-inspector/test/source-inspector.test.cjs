@@ -147,11 +147,11 @@ test('reports missing referenced resources without hiding the rest of the manife
   assert.equal(manifest.motions.length, 2);
 });
 
-test('inspects the supported uncompressed and unencrypted Destiny Child PCK layout', () => {
+test('inspects the supported uncompressed and unencrypted Live2D PCK layout', () => {
   const fixture = pckFixture();
   const manifest = inspectSourcePackage(fixture.pck);
 
-  assert.equal(manifest.source.kind, 'destiny-child-pck');
+  assert.equal(manifest.source.kind, 'pck');
   assert.equal(manifest.source.entryCount, 5);
   assert.equal(manifest.model.cubism, 2);
   assert.equal(manifest.motions[0].name, 'idle');

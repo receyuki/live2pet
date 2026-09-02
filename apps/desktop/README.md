@@ -18,7 +18,7 @@ dependency because a local unsigned App needs only the smaller
 `@electron/packager` build dependency.
 
 The main process also injects the shared Source Package inspector into the typed
-`inspectSource` method. Standard directories and supported Destiny Child PCK
+`inspectSource` method. Standard Live2D directories and supported PCK
 files therefore produce the same normalized manifest as the CLI. PCK-derived
 resources are retained only in an App-owned bounded cache under the Electron
 user-data directory; the renderer receives metadata and warnings, never source

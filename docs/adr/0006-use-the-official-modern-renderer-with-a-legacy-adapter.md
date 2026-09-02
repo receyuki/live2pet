@@ -8,14 +8,14 @@ Superseded by ADR-0011
 
 ## Context
 
-Live2Pet V1 must preview and render both modern Cubism Source Packages and tested legacy Destiny Child assets. The existing prototype uses `pixi-live2d-display`, whose stable release line is no longer an appropriate long-term base. Live2D maintains the [official Cubism Web Framework](https://github.com/Live2D/CubismWebFramework) for current Cubism models, while [Cubism 2.1 SDK downloads and updates ended in 2019](https://help.live2d.com/en/other/other_20/).
+Live2Pet V1 must preview and render both modern Cubism Source Packages and tested legacy Live2D assets supplied as folders or PCK files. The existing prototype uses `pixi-live2d-display`, whose stable release line is no longer an appropriate long-term base. Live2D maintains the [official Cubism Web Framework](https://github.com/Live2D/CubismWebFramework) for current Cubism models, while [Cubism 2.1 SDK downloads and updates ended in 2019](https://help.live2d.com/en/other/other_20/).
 
 ## Decision
 
 Live2Pet will expose one internal renderer interface with two isolated implementations:
 
 - the official Cubism Web Framework is the canonical implementation for Cubism 3, 4, and 5 models; and
-- a replaceable legacy adapter handles Cubism 2.1 models and the tested Destiny Child input path.
+- a replaceable legacy adapter handles Cubism 2.1 models and the tested PCK input path.
 
 The application selects the adapter after Source Package inspection. Preview, frame sampling, bounds calculation, and recipe rendering use the same application-level commands regardless of adapter. Modern and legacy runtimes execute in dedicated sandboxed render windows and do not execute in the main React UI.
 
@@ -41,4 +41,4 @@ Rejected because its stable release line is stale relative to current Electron, 
 
 ### Drop Cubism 2 support
 
-Rejected for V1 because the already-tested Destiny Child workflow is a core input case. Cubism 2 remains explicitly labeled legacy rather than defining the modern renderer architecture.
+Rejected for V1 because the already-tested Cubism 2 PCK workflow is a core input case. Cubism 2 remains explicitly labeled legacy rather than defining the modern renderer architecture.

@@ -125,7 +125,7 @@ test('opens a directory Source in an attached view and exposes playback controls
 });
 
 test('parses a PCK into buffers instead of exposing its file path to the server', async () => {
-  const pckManifest = manifest({ source: { kind: 'destiny-child-pck', fingerprint: FINGERPRINT, modelConfig: 'model.json' }, model: { cubism: 2 } });
+  const pckManifest = manifest({ source: { kind: 'pck', fingerprint: FINGERPRINT, modelConfig: 'model.json' }, model: { cubism: 2 } });
   const { calls, service } = fixture({ source: { inputPath: '/private/models/character.pck', sourceFingerprint: FINGERPRINT, manifest: pckManifest } });
   await service.open({ projectId: 'pck-project', sourceFingerprint: FINGERPRINT, bounds: { x: 0, y: 0, width: 512, height: 512 } });
 

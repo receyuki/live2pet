@@ -26,7 +26,7 @@ function fixture() {
     appVersion: '0.1.0',
     name: "Saint Louis - Holy Knight's Resplendence",
     source: {
-      kind: 'destiny-child-pck',
+      kind: 'pck',
       name: 'c311_02.pck',
       path: '/private/models/c311_02.pck',
       fingerprint: 'sha256:fixture',

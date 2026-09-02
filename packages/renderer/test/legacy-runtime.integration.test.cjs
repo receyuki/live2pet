@@ -26,7 +26,7 @@ const skipReason = !runtimePath || !sourceRoot
   ? 'Set LIVE2PET_CUBISM2_RUNTIME and LIVE2PET_CUBISM2_SOURCE to run the opt-in Cubism 2 test.'
   : (!puppeteer ? 'Puppeteer is not installed in this environment; use the legacy exporter smoke command instead.' : null);
 
-test('opt-in Cubism 2 adapter renders the local Destiny Child fixture through the shared contract', { skip: skipReason || false }, async () => {
+test('opt-in Cubism 2 adapter renders the local Live2D PCK fixture through the shared contract', { skip: skipReason || false }, async () => {
   const runtime = await inspectRuntime(runtimePath);
   assert.equal(runtime.runtimeKind, 'legacy-cubism2');
   const manifest = inspectSourcePackage(sourceRoot);
@@ -71,4 +71,3 @@ test('opt-in Cubism 2 adapter renders the local Destiny Child fixture through th
     await server.close();
   }
 });
-
