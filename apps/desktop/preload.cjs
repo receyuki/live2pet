@@ -101,6 +101,8 @@ contextBridge.exposeInMainWorld('live2pet', Object.freeze({
   saveProject: (input) => invoke('saveProject', input),
   onAppCommand,
   inspectSource: (input) => invoke('inspectSource', input),
+  relinkSource: (input) => invoke('relinkSource', input),
+  acknowledgeSourceReview: (input) => invoke('acknowledgeSourceReview', input),
   getRuntimeSettings: () => invoke('getRuntimeSettings'),
   configureRuntime: (input) => invoke('configureRuntime', input),
   clearRuntimeSettings: () => invoke('clearRuntimeSettings'),

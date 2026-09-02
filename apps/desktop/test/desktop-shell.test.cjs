@@ -26,6 +26,7 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(main, /webContents\.send\(APP_BUILD_PROGRESS_CHANNEL/);
   assert.match(main, /installPackageService: installPackage/);
   assert.match(main, /installRootPickerService: chooseInstallRoot/);
+  assert.match(main, /projectSourceService: getProjectSourceService\(\)/);
   assert.match(main, /dialog\.showOpenDialog/);
   assert.match(main, /event\.sender !== mainWindow\.webContents/);
   assert.match(main, /setWindowOpenHandler\(\(\) => \(\{ action: 'deny' \}\)\)/);
@@ -45,7 +46,7 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(preload, /new Set\(\['open', 'save', 'settings', 'build', 'setup', 'undo', 'redo'\]\)/);
   assert.match(preload, /webUtils\.getPathForFile/);
   assert.match(preload, /getFilePath,/);
-  for (const method of ['getVersion', 'inspectSource', 'getRuntimeSettings', 'configureRuntime', 'clearRuntimeSettings', 'buildProject', 'cancelBuild', 'getBuildArtifact', 'chooseInstallRoot', 'installArtifact', 'getCaptureCacheStatus', 'putCaptureCache', 'getBuildCacheStatus', 'clearBuildCache']) {
+  for (const method of ['getVersion', 'inspectSource', 'relinkSource', 'acknowledgeSourceReview', 'getRuntimeSettings', 'configureRuntime', 'clearRuntimeSettings', 'buildProject', 'cancelBuild', 'getBuildArtifact', 'chooseInstallRoot', 'installArtifact', 'getCaptureCacheStatus', 'putCaptureCache', 'getBuildCacheStatus', 'clearBuildCache']) {
     assert.match(preload, new RegExp(`invoke\\('${method}'`));
   }
   for (const method of ['getRecentProjects', 'openProject', 'saveProject']) assert.match(preload, new RegExp(`invoke\\('${method}'`));

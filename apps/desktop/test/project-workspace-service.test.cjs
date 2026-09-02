@@ -7,6 +7,7 @@ const test = require('node:test');
 const { createProject, loadProjectFile, saveProjectFile } = require('../../../packages/project/src/index.cjs');
 const {
   MAX_RECENT_PROJECTS,
+  createProjectSourceService,
   createProjectWorkspaceService,
   loadWindowBounds,
   normalizeRecentState,
@@ -89,6 +90,57 @@ test('project workspace does not expose local paths in file-system errors', asyn
     assert.equal(error.message.includes('private-project-name'), false);
     return true;
   });
+});
+
+test('project Source service relinks inspected manifests, retains host paths privately, and gates changed recipes', async () => {
+  const sourceRegistry = new Map();
+  const project = createProject({
+    name: 'Relink fixture', projectId: 'relink-fixture',
+    source: { kind: 'standard-directory', name: 'old', fingerprint: 'old-fingerprint', modelConfig: 'old.model3.json' },
+    recipes: [
+      { id: 'idle-recipe', motionId: 'idle', expressionId: null },
+      { id: 'smile-recipe', motionId: 'wave', expressionId: 'smile' },
+    ],
+    targets: {},
+  });
+  sourceRegistry.set(project.projectId, {
+    inputPath: '/private/old-source', sourceFingerprint: project.source.fingerprint,
+    manifest: { motions: [{ id: 'idle' }, { id: 'wave' }], expressions: [{ id: 'smile' }] },
+  });
+  const nextManifest = {
+    schemaVersion: 1,
+    source: { kind: 'pck', name: 'new', fingerprint: 'new-fingerprint', modelConfig: 'new.model3.json' },
+    model: { cubism: 4 }, motions: [{ id: 'idle' }], expressions: [], resources: [], warnings: [],
+  };
+  const calls = [];
+  const service = createProjectSourceService({
+    sourceRegistry,
+    inspectSource: async (input) => { calls.push(input); return nextManifest; },
+  });
+
+  const result = await service.relink({ project, inputPath: '/private/new-source.pck' });
+  assert.deepEqual(calls, [{ inputPath: '/private/new-source.pck' }]);
+  assert.equal(result.status, 'source-changed');
+  assert.equal(result.reviewRequired, true);
+  assert.deepEqual(result.affectedRecipeIds, ['smile-recipe']);
+  assert.equal(result.project.source.fingerprint, 'new-fingerprint');
+  assert.equal(result.project.source.path, '/private/new-source.pck');
+  assert.equal(sourceRegistry.get(project.projectId).inputPath, '/private/new-source.pck');
+  assert.equal(sourceRegistry.get(project.projectId).manifest, nextManifest);
+
+  const acknowledged = await service.acknowledgeReview({ project: result.project });
+  assert.equal(acknowledged.project.sourceReview.required, false);
+  assert.equal(acknowledged.project.sourceReview.reviewedFingerprint, 'new-fingerprint');
+});
+
+test('project Source service never registers failed inspections', async () => {
+  const sourceRegistry = new Map([['existing-1', {}], ['existing-2', {}]]);
+  const service = createProjectSourceService({
+    sourceRegistry, maxSources: 2,
+    inspectSource: async () => { throw Object.assign(new Error('inspection failed'), { code: 'SOURCE_INVALID' }); },
+  });
+  await assert.rejects(service.relink({ project: fixtureProject('Failed relink'), inputPath: '/private/failure' }), (error) => error.code === 'SOURCE_INVALID');
+  assert.deepEqual([...sourceRegistry.keys()], ['existing-1', 'existing-2']);
 });
 
 test('window bounds restore only validated, visible geometry and clamp to a display', (t) => {

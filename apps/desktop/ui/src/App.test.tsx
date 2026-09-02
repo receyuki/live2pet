@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { App } from './App';
 import type { Live2PetProject } from './app-host';
 import { CLAWD_PROFILE, CODEX_PROFILE } from './target-profiles';
+import { PROJECT_DRAFT_KEY, writeProjectDraft } from './project-draft';
 
 const emptyRuntimes = { schemaVersion: 2 as const, configured: false, restartRequired: false, runtimes: [] };
 
@@ -35,6 +36,24 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, buildHos
     },
   }));
   const configureRuntime = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: runtimes }));
+  const relinkSource = vi.fn(async ({ project }: { project: Live2PetProject; inputPath: string }) => ({
+    protocolVersion: 1 as const,
+    ok: true,
+    result: {
+      project,
+      inspection: {
+        schemaVersion: 1 as const,
+        source: { kind: project.source.kind, name: project.source.name, fingerprint: project.source.fingerprint, modelConfig: project.source.modelConfig ?? 'model.json' },
+        model: { cubism: 2, configFile: project.source.modelConfig ?? 'model.json', modelFile: 'model.moc', textures: ['texture.png'] },
+        motions: [{ id: 'idle:0', group: 'idle', index: 0, name: 'Breathing', sourceFile: 'idle.mtn', duration: 2.5 }],
+        expressions: [{ id: '0', index: 0, name: 'Smile', sourceFile: 'smile.exp.json' }], resources: [], warnings: [],
+      },
+      status: 'relinked' as const,
+      reviewRequired: false,
+      affectedRecipeIds: [],
+    },
+  }));
+  const acknowledgeSourceReview = vi.fn(async ({ project }: { project: Live2PetProject }) => ({ protocolVersion: 1 as const, ok: true, result: { project: { ...project, sourceReview: { ...project.sourceReview!, required: false, reviewedFingerprint: project.source.fingerprint } } } }));
   const openPreview = vi.fn(async (input: { projectId: string; sourceFingerprint: string; bounds: { x: number; y: number; width: number; height: number } }) => ({ protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, state: 'ready' as const, projectId: input.projectId, sourceFingerprint: input.sourceFingerprint, visible: true, bounds: input.bounds, playback: { motionId: null, expressionId: null, playing: false, loop: true, speed: 1 } } }));
   const openProject = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: openCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-document', fileName: 'saved.live2pet', project: openedProject, recentProjects } }));
   const saveProject = vi.fn(async (input: { project: Live2PetProject }) => ({ protocolVersion: 1 as const, ok: true, result: saveCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-saved-document', fileName: `${input.project.name}.live2pet`, project: input.project, recentProjects } }));
@@ -49,6 +68,8 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, buildHos
     value: {
       getVersion: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { appVersion: '0.1.0', protocolVersion: 1, methods: [] } })),
       inspectSource,
+      relinkSource,
+      acknowledgeSourceReview,
       getRecentProjects: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { recentProjects } })),
       openProject,
       saveProject,
@@ -78,7 +99,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, buildHos
       } : {}),
     },
   });
-  return { configureRuntime, inspectSource, openPreview, openProject, saveProject, buildProject, emitAppCommand: (command: 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => appCommandListener?.(command) };
+  return { configureRuntime, inspectSource, relinkSource, acknowledgeSourceReview, openPreview, openProject, saveProject, buildProject, emitAppCommand: (command: 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => appCommandListener?.(command) };
 }
 
 function setSystemDarkMode(matches: boolean) {
@@ -121,6 +142,88 @@ describe('Live2Pet desktop shell', () => {
     expect(saveProject.mock.calls[0][0]).toMatchObject({ project: { schemaVersion: 1, projectId: 'vicious-khepri', source: { path: '/Users/test/Vicious Khepri.pck' }, recipes: [] } });
     expect(await screen.findByText('Saved')).toBeVisible();
     expect(screen.getByText('Vicious Khepri.live2pet')).toBeVisible();
+  });
+
+  it('autosaves only the project document and clears the draft after a successful Save', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const { saveProject } = installDesktopApi();
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+
+    await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await vi.waitFor(() => expect(localStorage.getItem(PROJECT_DRAFT_KEY)).not.toBeNull());
+    const envelope = JSON.parse(localStorage.getItem(PROJECT_DRAFT_KEY)!);
+    expect(Object.keys(envelope).sort()).toEqual(['project', 'savedAt', 'schemaVersion']);
+    expect(envelope.project).not.toHaveProperty('inspection');
+    expect(envelope.project).not.toHaveProperty('runtimeSettings');
+    expect(envelope.project).not.toHaveProperty('buildState');
+
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
+    await vi.waitFor(() => expect(saveProject).toHaveBeenCalledOnce());
+    expect(localStorage.getItem(PROJECT_DRAFT_KEY)).toBeNull();
+  });
+
+  it('offers explicit recovery, re-inspects the source reference, and restores a dirty project', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    writeProjectDraft(savedProject, localStorage, new Date('2026-09-03T01:02:03.000Z'));
+    const { relinkSource } = installDesktopApi();
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(screen.getByRole('region', { name: 'Recover unsaved project' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Recover' }));
+
+    await vi.waitFor(() => expect(relinkSource).toHaveBeenCalledWith({ project: savedProject, inputPath: '/Users/test/Saved Source.pck' }));
+    expect(await screen.findByRole('heading', { name: 'Source Package' })).toBeVisible();
+    expect(screen.getByText('Unsaved changes')).toBeVisible();
+    expect(localStorage.getItem(PROJECT_DRAFT_KEY)).not.toBeNull();
+  });
+
+  it('keeps the recovery draft when Save is cancelled', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const { saveProject } = installDesktopApi({ saveCancelled: true });
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+
+    await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await vi.waitFor(() => expect(localStorage.getItem(PROJECT_DRAFT_KEY)).not.toBeNull());
+    const draftBeforeSave = localStorage.getItem(PROJECT_DRAFT_KEY);
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
+    await vi.waitFor(() => expect(saveProject).toHaveBeenCalledOnce());
+    expect(localStorage.getItem(PROJECT_DRAFT_KEY)).toBe(draftBeforeSave);
+  });
+
+  it('discards a recovery draft only through its explicit action', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    writeProjectDraft(savedProject);
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('region', { name: 'Recover unsaved project' })).not.toBeInTheDocument();
+    expect(localStorage.getItem(PROJECT_DRAFT_KEY)).toBeNull();
+  });
+
+  it('guards replacing a dirty project and warns before window unload', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const api = installDesktopApi();
+    const { openProject } = api;
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+
+    await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+
+    window.dispatchEvent(new KeyboardEvent('keydown'));
+    const openButton = screen.queryByRole('button', { name: 'Open project' });
+    expect(openButton).not.toBeInTheDocument();
+    // Native Open is also a replacement path and must respect the same guard.
+    api.emitAppCommand('open');
+    expect(confirm).toHaveBeenCalled();
+    expect(openProject).not.toHaveBeenCalled();
   });
 
   it('renders every shared target slot without creating automatic mappings', async () => {
@@ -287,17 +390,81 @@ describe('Live2Pet desktop shell', () => {
     expect(screen.getByText('saved-clawd.zip')).toBeVisible();
   });
 
-  it('opens a recent project by opaque id and re-inspects its referenced source', async () => {
+  it('opens a recent project by opaque id and relinks its referenced source through the host', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const recent = [{ documentId: 'opaque-document', name: 'Saved Project', fileName: 'saved.live2pet', available: true }];
-    const { openProject, inspectSource } = installDesktopApi({ recentProjects: recent });
+    const { openProject, relinkSource } = installDesktopApi({ recentProjects: recent });
     const user = userEvent.setup();
     render(<App />);
 
     await user.click(await screen.findByRole('button', { name: /Saved Project/ }));
     expect(openProject).toHaveBeenCalledWith({ documentId: 'opaque-document' });
-    await vi.waitFor(() => expect(inspectSource).toHaveBeenCalledWith({ inputPath: '/Users/test/Saved Source.pck', projectId: 'saved-project' }));
+    await vi.waitFor(() => expect(relinkSource).toHaveBeenCalledWith({ project: savedProject, inputPath: '/Users/test/Saved Source.pck' }));
     expect(await screen.findByRole('heading', { name: 'Source Package' })).toBeVisible();
+  });
+
+  it('blocks Map and Build until changed Source recipes are explicitly reviewed', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const projectWithRecipe: Live2PetProject = {
+      ...savedProject,
+      recipes: [{ id: 'idle-recipe', motionId: 'idle:0', expressionId: null, label: 'Friendly idle' }],
+    };
+    const recent = [{ documentId: 'opaque-document', name: 'Saved Project', fileName: 'saved.live2pet', available: true }];
+    const api = installDesktopApi({ recentProjects: recent, openedProject: projectWithRecipe });
+    api.relinkSource.mockResolvedValueOnce({
+      protocolVersion: 1,
+      ok: true,
+      result: {
+        project: {
+          ...projectWithRecipe,
+          source: { ...projectWithRecipe.source, fingerprint: 'changed-fingerprint' },
+          sourceReview: { required: true, reason: 'source-fingerprint-changed', affectedRecipeIds: ['idle-recipe'] },
+        },
+        inspection: {
+          schemaVersion: 1,
+          source: { kind: 'pck', name: 'Saved Source', fingerprint: 'changed-fingerprint', modelConfig: 'model.json' },
+          model: { cubism: 2, configFile: 'model.json', modelFile: 'model.moc', textures: [] },
+          motions: [], expressions: [], resources: [], warnings: [],
+        },
+        status: 'source-changed',
+        reviewRequired: true,
+        affectedRecipeIds: ['idle-recipe'],
+      },
+    } as any);
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: /Saved Project/ }));
+    const review = await screen.findByRole('region', { name: 'Review changed Source Package' });
+    expect(within(review).getByText('Friendly idle')).toBeVisible();
+    expect(within(review).getByText('idle-recipe')).toBeVisible();
+    const projectNav = within(screen.getByRole('navigation', { name: 'Project' }));
+    expect(projectNav.getByRole('button', { name: 'Map' })).toBeDisabled();
+    expect(projectNav.getByRole('button', { name: 'Build' })).toBeDisabled();
+    expect(screen.queryByText('/Users/test/Saved Source.pck')).not.toBeInTheDocument();
+
+    await user.click(within(review).getByRole('button', { name: 'I reviewed these recipes' }));
+    await vi.waitFor(() => expect(api.acknowledgeSourceReview).toHaveBeenCalledOnce());
+    expect(projectNav.getByRole('button', { name: 'Map' })).toBeEnabled();
+    expect(projectNav.getByRole('button', { name: 'Build' })).toBeEnabled();
+    expect(screen.getByText('Unsaved changes')).toBeVisible();
+  });
+
+  it('relinks one dropped Live2D PCK from Source without exposing its absolute path', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const recent = [{ documentId: 'opaque-document', name: 'Saved Project', fileName: 'saved.live2pet', available: true }];
+    const api = installDesktopApi({ recentProjects: recent });
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    await user.click(await screen.findByRole('button', { name: /Saved Project/ }));
+    await vi.waitFor(() => expect(api.relinkSource).toHaveBeenCalledOnce());
+
+    fireEvent.drop(container.querySelector('.source-grid [data-slot="card"]') as HTMLElement, {
+      dataTransfer: { types: ['Files'], files: [new File(['new'], 'Replacement.pck')], items: [] },
+    });
+
+    await vi.waitFor(() => expect(api.relinkSource).toHaveBeenLastCalledWith({ project: savedProject, inputPath: '/Users/test/Replacement.pck' }));
+    expect(screen.queryByText('/Users/test/Replacement.pck')).not.toBeInTheDocument();
   });
 
   it('routes native menu commands and returns from reopened Setup to the project', async () => {

@@ -176,4 +176,59 @@ describe("appReducer", () => {
     state = appReducer(state, { type: "CLOSE_PROJECT" });
     expect(state.projectHistory).toEqual({ past: [], future: [], saved: null });
   });
+
+  it("starts a fresh history boundary when a Source Package is relinked", () => {
+    const original = projectDocument();
+    let state = appReducer(initialAppState({ setupCompleted: true }), {
+      type: "OPEN_PROJECT",
+      project: { id: "one", name: "One", document: original },
+    });
+    state = appReducer(state, { type: "SET_RENDER_PRESET", target: "clawd", preset: "high" });
+    const inspection = {
+      schemaVersion: 1 as const,
+      source: { kind: "pck" as const, name: "replacement", fingerprint: "def", modelConfig: "model.json" },
+      model: { cubism: 4, configFile: "model.json", modelFile: "model.moc3", textures: [] },
+      motions: [], expressions: [], resources: [], warnings: [],
+    };
+    const relinked = {
+      ...state.project!.document!,
+      source: { kind: "pck" as const, name: "replacement", fingerprint: "def", path: "/private/replacement.pck" },
+      sourceReview: { required: true, affectedRecipeIds: [] },
+    };
+
+    state = appReducer(state, { type: "SOURCE_RELINKED", document: relinked, inspection, sourcePath: "/private/replacement.pck" });
+    expect(state.projectHistory.past).toEqual([]);
+    expect(state.projectHistory.future).toEqual([]);
+    expect(state.project?.dirty).toBe(true);
+    expect(state.destination).toBe("source");
+    expect(appReducer(state, { type: "UNDO_PROJECT_EDIT" })).toBe(state);
+  });
+
+  it("keeps an unchanged relink clean, blocks Map and Build during review, and makes acknowledgement undoable", () => {
+    const original = projectDocument();
+    let state = appReducer(initialAppState({ setupCompleted: true }), {
+      type: "OPEN_PROJECT",
+      project: { id: "one", name: "One", document: original },
+    });
+    const inspection = {
+      schemaVersion: 1 as const,
+      source: { kind: "standard-directory" as const, name: "one", fingerprint: "abc", modelConfig: "model.json" },
+      model: { cubism: 4, configFile: "model.json", modelFile: "model.moc3", textures: [] },
+      motions: [], expressions: [], resources: [], warnings: [],
+    };
+    state = appReducer(state, { type: "SOURCE_RELINKED", document: original, inspection, sourcePath: "/private/one" });
+    expect(state.project?.dirty).toBe(false);
+
+    const needsReview = { ...original, sourceReview: { required: true, affectedRecipeIds: ["idle-recipe"] } };
+    state = appReducer(state, { type: "SOURCE_RELINKED", document: needsReview, inspection, sourcePath: "/private/one" });
+    expect(appReducer(state, { type: "NAVIGATE", destination: "map" })).toBe(state);
+    expect(appReducer(state, { type: "NAVIGATE", destination: "build" })).toBe(state);
+
+    const acknowledged = { ...needsReview, sourceReview: { required: false, affectedRecipeIds: ["idle-recipe"], reviewedFingerprint: "abc" } };
+    state = appReducer(state, { type: "SOURCE_REVIEW_ACKNOWLEDGED", document: acknowledged });
+    expect(state.projectHistory.past).toEqual([needsReview]);
+    expect(state.project?.document?.sourceReview?.required).toBe(false);
+    state = appReducer(state, { type: "UNDO_PROJECT_EDIT" });
+    expect(state.project?.document?.sourceReview?.required).toBe(true);
+  });
 });

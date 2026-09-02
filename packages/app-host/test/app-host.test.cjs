@@ -31,6 +31,8 @@ const {
   normalizeRequest,
   normalizeOpenProjectRequest,
   normalizeSaveProjectRequest,
+  normalizeRelinkSourceRequest,
+  normalizeAcknowledgeSourceReviewRequest,
   normalizeRecentProjects,
 } = require('../src/index.cjs');
 
@@ -47,6 +49,8 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.equal(APP_IPC_METHODS.includes('installArtifact'), true);
   assert.equal(APP_IPC_METHODS.includes('chooseInstallRoot'), true);
   assert.equal(APP_IPC_METHODS.includes('inspectSource'), true);
+  assert.equal(APP_IPC_METHODS.includes('relinkSource'), true);
+  assert.equal(APP_IPC_METHODS.includes('acknowledgeSourceReview'), true);
   assert.equal(APP_IPC_METHODS.includes('getRecentProjects'), true);
   assert.equal(APP_IPC_METHODS.includes('openProject'), true);
   assert.equal(APP_IPC_METHODS.includes('saveProject'), true);
@@ -61,6 +65,10 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.throws(() => normalizeInspectRequest({ inputPath: '/tmp/source', shell: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_INSPECT_REQUEST');
   assert.deepEqual(normalizeRuntimeRequest({ inputPath: '/tmp/live2d.min.js' }), { inputPath: '/tmp/live2d.min.js' });
   assert.throws(() => normalizeRuntimeRequest({ inputPath: '/tmp/runtime', shell: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_RUNTIME_REQUEST');
+  assert.deepEqual(normalizeRelinkSourceRequest({ project: { schemaVersion: 1 }, inputPath: '/tmp/replacement.pck' }), { project: { schemaVersion: 1 }, inputPath: '/tmp/replacement.pck' });
+  assert.throws(() => normalizeRelinkSourceRequest({ project: {}, inputPath: '/tmp/source', path: '/tmp/leak' }), (error) => error instanceof AppHostError && error.code === 'INVALID_SOURCE_RELINK_REQUEST');
+  assert.deepEqual(normalizeAcknowledgeSourceReviewRequest({ project: { schemaVersion: 1 } }), { project: { schemaVersion: 1 } });
+  assert.throws(() => normalizeAcknowledgeSourceReviewRequest({ project: {}, confirm: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_SOURCE_REVIEW_REQUEST');
   assert.deepEqual(normalizeCaptureCacheStatusRequest({ sourceFingerprint: 'a'.repeat(64), cubismVersion: 3, target: 'clawd', renderPreset: 'balanced', motions: [{ motionId: 'idle', duration: 1.2, width: 768, height: 768, frameCount: 29, fps: 24 }] }), { sourceFingerprint: 'a'.repeat(64), cubismVersion: 3, target: 'clawd', renderPreset: 'balanced', motions: [{ motionId: 'idle', expressionId: null, duration: 1.2, width: 768, height: 768, frameCount: 29, fps: 24 }] });
   assert.throws(() => normalizeCaptureCacheStatusRequest({ sourceFingerprint: 'not-a-digest', cubismVersion: 3, target: 'clawd', renderPreset: 'balanced', motions: [] }), (error) => error instanceof AppHostError && error.code === 'INVALID_CAPTURE_CACHE_REQUEST');
   assert.deepEqual(normalizeBuildCacheClearRequest({ confirmClear: true }), { confirmClear: true });
@@ -100,6 +108,51 @@ test('routes project workspace operations without exposing project file paths', 
   assert.equal(opened.ok, true);
   assert.equal(Object.hasOwn(opened.result, 'path'), false);
   assert.deepEqual((await router({ protocolVersion: 1, method: 'saveProject', args: [{ project }] })).result, { cancelled: true, recentProjects: [{ documentId: 'document_123', name: 'Cat', fileName: 'cat.live2pet', available: true }] });
+});
+
+test('routes Source relink and review acknowledgement with the project reference path only', async () => {
+  const project = createProject({
+    name: 'Relink', projectId: 'relink-app-host',
+    source: { kind: 'standard-directory', name: 'old', fingerprint: 'old' },
+    recipes: [{ id: 'idle-recipe', motionId: 'idle', expressionId: null }], targets: {},
+  });
+  const inspection = {
+    schemaVersion: 1,
+    source: { kind: 'pck', name: 'replacement', fingerprint: 'new', modelConfig: 'replacement.model3.json' },
+    model: { cubism: 4, configFile: 'replacement.model3.json', modelFile: 'replacement.moc3', textures: ['replacement.png'] },
+    motions: [{ id: 'idle', group: 'Main', index: 0, name: 'Idle', sourceFile: 'idle.motion3.json', duration: 1 }],
+    expressions: [], resources: [], warnings: [],
+  };
+  const relinkedProject = { ...project, source: { ...project.source, ...inspection.source, path: '/Users/RY/Downloads/replacement.pck' }, sourceReview: { required: true, reason: 'source-fingerprint-changed', affectedRecipeIds: ['idle-recipe'] } };
+  const calls = [];
+  const router = createAppIpcRouter({
+    projectSourceService: {
+      relink: async (input) => { calls.push(input); return { project: relinkedProject, inspection, status: 'source-changed', reviewRequired: true, affectedRecipeIds: ['idle-recipe'], inputPath: input.inputPath }; },
+      acknowledgeReview: async (input) => ({ project: { ...input.project, sourceReview: { ...input.project.sourceReview, required: false, reviewedFingerprint: 'new' } } }),
+    },
+  });
+  const selectedPath = '/Users/RY/Downloads/replacement.pck';
+  const response = await router({ protocolVersion: 1, method: 'relinkSource', args: [{ project, inputPath: selectedPath }] });
+  assert.equal(response.ok, true);
+  assert.equal(response.result.status, 'source-changed');
+  assert.deepEqual(response.result.affectedRecipeIds, ['idle-recipe']);
+  assert.equal(response.result.project.source.path, selectedPath);
+  assert.equal(Object.hasOwn(response.result, 'inputPath'), false);
+  assert.equal(Object.hasOwn(response.result.inspection.source, 'path'), false);
+  assert.equal(calls[0].inputPath, selectedPath);
+  const acknowledged = await router({ protocolVersion: 1, method: 'acknowledgeSourceReview', args: [{ project: response.result.project }] });
+  assert.equal(acknowledged.ok, true);
+  assert.equal(acknowledged.result.project.sourceReview.required, false);
+
+  const leaking = createAppIpcRouter({
+    projectSourceService: {
+      relink: async () => { throw Object.assign(new Error(`Could not inspect ${selectedPath}`), { code: 'SOURCE_INVALID', details: { nested: { inputPath: selectedPath } } }); },
+      acknowledgeReview: async () => ({ project }),
+    },
+  });
+  const failed = await leaking({ protocolVersion: 1, method: 'relinkSource', args: [{ project, inputPath: selectedPath }] });
+  assert.equal(failed.error.code, 'SOURCE_INVALID');
+  assert.equal(JSON.stringify(failed).includes(selectedPath), false);
 });
 
 test('routes a multi-runtime library without exposing App storage paths', async () => {
@@ -688,6 +741,8 @@ test('preload exposes only typed methods and the window options keep Electron sa
   await api.getBuildArtifact('fixture-artifact', 1024);
   await api.installArtifact({ artifactId: 'fixture-artifact', target: 'codex-pet', confirmInstall: true });
   await api.inspectSource({ inputPath: '/tmp/source' });
+  await api.relinkSource({ project: { schemaVersion: 1 }, inputPath: '/tmp/replacement' });
+  await api.acknowledgeSourceReview({ project: { schemaVersion: 1 } });
   await api.getRuntimeSettings();
   await api.configureRuntime({ inputPath: '/tmp/live2d.min.js' });
   await api.clearRuntimeSettings();
@@ -703,11 +758,13 @@ test('preload exposes only typed methods and the window options keep Electron sa
   assert.deepEqual(calls[6][1], { protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'fixture-artifact', offset: 1024 }] });
   assert.deepEqual(calls[7][1], { protocolVersion: 1, method: 'installArtifact', args: [{ artifactId: 'fixture-artifact', target: 'codex-pet', confirmInstall: true }] });
   assert.deepEqual(calls[8][1], { protocolVersion: 1, method: 'inspectSource', args: [{ inputPath: '/tmp/source' }] });
-  assert.deepEqual(calls[9][1], { protocolVersion: 1, method: 'getRuntimeSettings', args: [] });
-  assert.deepEqual(calls[10][1], { protocolVersion: 1, method: 'configureRuntime', args: [{ inputPath: '/tmp/live2d.min.js' }] });
-  assert.deepEqual(calls[11][1], { protocolVersion: 1, method: 'clearRuntimeSettings', args: [] });
-  assert.deepEqual(calls[12][1], { protocolVersion: 1, method: 'chooseInstallRoot', args: [{ target: 'clawd' }] });
-  assert.deepEqual(calls[13][1], { protocolVersion: 1, method: 'cancelBuild', args: [{ buildId: 'build_1234' }] });
+  assert.deepEqual(calls[9][1], { protocolVersion: 1, method: 'relinkSource', args: [{ project: { schemaVersion: 1 }, inputPath: '/tmp/replacement' }] });
+  assert.deepEqual(calls[10][1], { protocolVersion: 1, method: 'acknowledgeSourceReview', args: [{ project: { schemaVersion: 1 } }] });
+  assert.deepEqual(calls[11][1], { protocolVersion: 1, method: 'getRuntimeSettings', args: [] });
+  assert.deepEqual(calls[12][1], { protocolVersion: 1, method: 'configureRuntime', args: [{ inputPath: '/tmp/live2d.min.js' }] });
+  assert.deepEqual(calls[13][1], { protocolVersion: 1, method: 'clearRuntimeSettings', args: [] });
+  assert.deepEqual(calls[14][1], { protocolVersion: 1, method: 'chooseInstallRoot', args: [{ target: 'clawd' }] });
+  assert.deepEqual(calls[15][1], { protocolVersion: 1, method: 'cancelBuild', args: [{ buildId: 'build_1234' }] });
   for (const method of ['getSkillStatus', 'installSkill', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'closeMapperSession', 'startRendererPreview', 'loadRendererSource', 'rendererCommand', 'getRendererPreviewStatus', 'restartRendererPreview', 'closeRendererPreview']) {
     assert.equal(Object.hasOwn(api, method), false);
   }

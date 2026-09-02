@@ -7,6 +7,7 @@ import {
 } from "@heroui/react";
 import {
   Archive,
+  AlertTriangle,
   Box,
   ChevronRight,
   CircleCheck,
@@ -48,6 +49,8 @@ import {
   hasDesktopApi,
   hasPreviewApi,
   inspectSource,
+  relinkSourcePath,
+  acknowledgeSourceReview,
   Live2PetProject,
   layoutLive2DPreview,
   onLive2DPreviewStatus,
@@ -77,6 +80,13 @@ import { hasDraggedFiles } from "./file-drop";
 import { CLAWD_PROFILE, CODEX_PROFILE, MappingDestination } from "./target-profiles";
 import { BuildView } from "./BuildView";
 import { buildReducer, initialBuildState } from "./build-state";
+import {
+  clearProjectDraft,
+  PROJECT_DRAFT_DEBOUNCE_MS,
+  readProjectDraft,
+  writeProjectDraft,
+} from "./project-draft";
+import type { ProjectDraft } from "./project-draft";
 
 const SETUP_KEY = "live2pet.desktop.setup-completed";
 const LOCALE_KEY = "live2pet.desktop.locale";
@@ -314,7 +324,7 @@ function SetupView({ locale, returning, onComplete, onRuntimeSettingsChange }: {
   );
 }
 
-function WelcomeView({ locale, busy, error, recentProjects, onImport, onOpenProject, onOpenRecent, onOpenPreview }: { locale: Locale; busy: boolean; error: string; recentProjects: RecentProject[]; onImport: (files: File[], directDrop?: boolean) => void; onOpenProject: () => void; onOpenRecent: (project: RecentProject) => void; onOpenPreview: () => void }) {
+function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onOpenProject, onOpenRecent, onOpenPreview, onRecoverDraft, onDiscardDraft }: { locale: Locale; busy: boolean; error: string; recentProjects: RecentProject[]; draft: ProjectDraft | null; onImport: (files: File[], directDrop?: boolean) => void; onOpenProject: () => void; onOpenRecent: (project: RecentProject) => void; onOpenPreview: () => void; onRecoverDraft: () => void; onDiscardDraft: () => void }) {
   const t = (key: MessageKey) => translate(locale, key);
   const [dragActive, setDragActive] = useState(false);
   const dragDepth = useRef(0);
@@ -365,6 +375,18 @@ function WelcomeView({ locale, busy, error, recentProjects, onImport, onOpenProj
           <span className="fake-window fake-front"><i className="fake-list" /><i className="fake-stage"><BrandMark large /></i><i className="fake-map" /></span>
         </div>
       </section>
+      {draft && <section className="draft-recovery" aria-label={t("draftRecoveryTitle")}>
+        <Card className="surface-card"><Card.Content>
+          <div className="draft-recovery-copy">
+            <span className="large-icon"><RotateCcw size={18} /></span>
+            <span><strong>{t("draftRecoveryTitle")}</strong><small>{translate(locale, "draftRecoveryBody", { name: draft.project.name, savedAt: new Date(draft.savedAt).toLocaleString(locale) })}</small></span>
+          </div>
+          <div className="draft-recovery-actions">
+            <Button variant="ghost" isDisabled={busy} onPress={onDiscardDraft}>{t("discardDraft")}</Button>
+            <Button variant="primary" isDisabled={busy} onPress={onRecoverDraft}>{t("recoverDraft")}</Button>
+          </div>
+        </Card.Content></Card>
+      </section>}
       <section className="recent-section">
         <p className="eyebrow">{t("recent")}</p>
         <h2>{t("recent")}</h2>
@@ -389,8 +411,31 @@ function WelcomeView({ locale, busy, error, recentProjects, onImport, onOpenProj
   );
 }
 
-function SourceView({ locale, inspection, inspectionRequired, runtimeReady, onConfigureRuntime, onMap }: { locale: Locale; inspection?: SourceInspection; inspectionRequired: boolean; runtimeReady: boolean; onConfigureRuntime: () => void; onMap: () => void }) {
+function SourceView({ locale, project, inspection, inspectionRequired, runtimeReady, busy, onConfigureRuntime, onRelink, onAcknowledgeReview, onMap }: { locale: Locale; project: Live2PetProject | null; inspection?: SourceInspection; inspectionRequired: boolean; runtimeReady: boolean; busy: boolean; onConfigureRuntime: () => void; onRelink: (files: File[], directDrop?: boolean) => Promise<void>; onAcknowledgeReview: () => Promise<void>; onMap: () => void }) {
   const t = (key: MessageKey) => translate(locale, key);
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepth = useRef(0);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
+  const review = project?.sourceReview?.required ? project.sourceReview : null;
+  const affectedRecipes = (review?.affectedRecipeIds ?? []).map((id) => {
+    const recipe = project?.recipes.find((candidate) => candidate.id === id);
+    return { id, label: recipe?.label };
+  });
+
+  function chooseFiles(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (files.length) void onRelink(files);
+  }
+
+  function dropSource(event: DragEvent<HTMLElement>) {
+    if (busy || !hasDraggedFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    dragDepth.current = 0;
+    setDragActive(false);
+    void onRelink(Array.from(event.dataTransfer.files), true);
+  }
   const facts = inspection
     ? [["sourceModel", inspection.model.modelFile ?? "—"], ["sourceTextures", String(inspection.model.textures.length)], ["sourceMotions", String(inspection.motions.length)], ["sourceExpressions", String(inspection.expressions.length)]]
     : inspectionRequired
@@ -403,7 +448,22 @@ function SourceView({ locale, inspection, inspectionRequired, runtimeReady, onCo
     <main className="page">
       <PageHeading eyebrow={t("source")} title={t("sourceTitle")} body={t("sourceBody")} />
       <div className="source-grid">
-        <Card className="surface-card"><Card.Content><div className="model-placeholder"><BrandMark large /></div><div className="ready-box"><CircleCheck size={20} /><span><strong>{inspectionRequired && !inspection ? t("sourceUnavailable") : t("sourceReady")}</strong><small>{summary}</small></span></div>{!runtimeReady && <div className="runtime-required"><Gauge size={18} /><span><strong>{t("runtimeRequired")}</strong><small>{t("runtimeRequiredBody")}</small></span><Button size="sm" variant="secondary" onPress={onConfigureRuntime}>{t("configureRuntime")}</Button></div>}<Button variant="primary" isDisabled={inspectionRequired && !inspection} onPress={onMap}>{t("map")}<ChevronRight size={16} /></Button></Card.Content></Card>
+        <Card
+          className={`surface-card drop-zone${dragActive ? " drop-zone-active" : ""}`}
+          onDragEnter={(event) => { if (!busy && hasDraggedFiles(event.dataTransfer)) { event.preventDefault(); dragDepth.current += 1; setDragActive(true); } }}
+          onDragOver={(event) => { if (hasDraggedFiles(event.dataTransfer)) event.preventDefault(); }}
+          onDragLeave={() => { dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDragActive(false); }}
+          onDrop={dropSource}
+        ><Card.Content><div className="model-placeholder"><BrandMark large /></div><div className="ready-box"><CircleCheck size={20} /><span><strong>{inspectionRequired && !inspection ? t("sourceUnavailable") : t("sourceReady")}</strong><small>{summary}</small></span></div>
+          <input ref={fileInput} className="visually-hidden" type="file" accept=".pck" tabIndex={-1} onChange={chooseFiles} disabled={busy} />
+          <input ref={folderInput} className="visually-hidden" type="file" multiple {...{ webkitdirectory: "" }} tabIndex={-1} onChange={chooseFiles} disabled={busy} />
+          <div className="source-actions"><Button variant="secondary" isDisabled={busy || !project} onPress={() => folderInput.current?.click()}><FolderOpen size={16} />{t("relinkFolder")}</Button><Button variant="secondary" isDisabled={busy || !project} onPress={() => fileInput.current?.click()}><Upload size={16} />{t("relinkPck")}</Button></div>
+          <p className="drop-hint">{t("relinkSourceHint")}</p>
+          {busy && <ProgressBar aria-label={t("loading")} isIndeterminate className="mt-4" />}
+          {dragActive && <div className="drop-overlay" aria-hidden="true"><Upload size={20} />{t("dropSource")}</div>}
+          {!runtimeReady && <div className="runtime-required"><Gauge size={18} /><span><strong>{t("runtimeRequired")}</strong><small>{t("runtimeRequiredBody")}</small></span><Button size="sm" variant="secondary" onPress={onConfigureRuntime}>{t("configureRuntime")}</Button></div>}
+          {review && <section className="source-review-card" aria-label={t("sourceReviewRequired")}><AlertTriangle size={20} /><div className="grow-copy"><strong>{t("sourceReviewRequired")}</strong><p>{t("sourceReviewBody")}</p>{affectedRecipes.length > 0 && <ul>{affectedRecipes.map((recipe) => <li key={recipe.id}><span>{recipe.label || recipe.id}</span>{recipe.label && <small>{recipe.id}</small>}</li>)}</ul>}</div><Button variant="primary" size="sm" isDisabled={busy} onPress={() => void onAcknowledgeReview()}>{t("acknowledgeReview")}</Button></section>}
+          <Button variant="primary" isDisabled={(inspectionRequired && !inspection) || Boolean(review)} onPress={onMap}>{t("map")}<ChevronRight size={16} /></Button></Card.Content></Card>
         <Card className="surface-card source-facts"><Card.Content>{facts.map(([key, value]) => <div className="fact" key={key}><span>{t(key as MessageKey)}</span><strong title={value}>{value}</strong></div>)}</Card.Content></Card>
       </div>
     </main>
@@ -601,6 +661,7 @@ export function App() {
   const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings | null>(null);
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [actionFeedback, setActionFeedback] = useState("");
+  const [projectDraft, setProjectDraft] = useState<ProjectDraft | null>(() => readProjectDraft());
   const locale = state.settings.language;
   const appearance = state.settings.appearance;
   const t = (key: MessageKey) => translate(locale, key);
@@ -618,6 +679,23 @@ export function App() {
   useEffect(() => { void getRuntimeSettings().then(setRuntimeSettings).catch(() => undefined); }, []);
   useEffect(() => { void getRecentProjects().then(setRecentProjects).catch(() => undefined); }, []);
   useEffect(() => onBuildProgress((event) => dispatchBuild({ type: "PROGRESS", event })), []);
+  useEffect(() => {
+    if (!state.project?.dirty || !state.project.document) return;
+    const timer = window.setTimeout(() => {
+      const draft = writeProjectDraft(state.project!.document!);
+      if (draft) setProjectDraft(draft);
+    }, PROJECT_DRAFT_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [state.project?.dirty, state.project?.document]);
+  useEffect(() => {
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!state.project?.dirty) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [state.project?.dirty]);
   useEffect(() => {
     const preventFileNavigation = (event: globalThis.DragEvent) => {
       if (event.dataTransfer && hasDraggedFiles(event.dataTransfer)) event.preventDefault();
@@ -645,9 +723,22 @@ export function App() {
   }, []);
 
   function completeSetup() { localStorage.setItem(SETUP_KEY, "true"); dispatch({ type: "COMPLETE_SETUP" }); }
-  function openPreview() { dispatch({ type: "OPEN_PROJECT", project: { id: "design-preview", name: t("project"), selectedMotionId: motions[0].id } }); }
+  function confirmProjectReplacement(): boolean {
+    if (!state.project?.dirty) return true;
+    if (!window.confirm(t("confirmReplaceDirtyProject"))) return false;
+    if (state.project.document) {
+      const draft = writeProjectDraft(state.project.document);
+      if (draft) setProjectDraft(draft);
+    }
+    return true;
+  }
+  function openPreview() {
+    if (!confirmProjectReplacement()) return;
+    dispatch({ type: "OPEN_PROJECT", project: { id: "design-preview", name: t("project"), selectedMotionId: motions[0].id } });
+  }
 
   async function openProjectDocument(documentId?: string) {
+    if (!confirmProjectReplacement()) return;
     setImportBusy(true);
     setImportError("");
     setActionFeedback("");
@@ -655,13 +746,13 @@ export function App() {
       const result = await openProject(documentId);
       setRecentProjects(result.recentProjects);
       if (result.cancelled) return;
-      let inspection: SourceInspection | undefined;
+      let relinked: Awaited<ReturnType<typeof relinkSourcePath>> | undefined;
       let relinkError = "";
       if (!result.project.source.path) {
         relinkError = t("sourceRelinkRequired");
       } else {
         try {
-          inspection = await inspectSource(result.project.source.path, result.project.projectId);
+          relinked = await relinkSourcePath(result.project, result.project.source.path);
         } catch {
           relinkError = t("sourceRelinkRequired");
         }
@@ -676,11 +767,13 @@ export function App() {
           fileName: result.fileName,
           dirty: false,
           sourcePath: result.project.source.path,
-          inspection,
-          selectedMotionId: inspection?.motions[0]?.id ?? null,
+          selectedMotionId: null,
           selectedExpressionId: null,
         },
       });
+      if (relinked && result.project.source.path) {
+        dispatch({ type: "SOURCE_RELINKED", document: relinked.project, inspection: relinked.inspection, sourcePath: result.project.source.path });
+      }
       if (relinkError) setActionFeedback(relinkError);
     } catch (cause) {
       setActionFeedback(cause instanceof Error ? cause.message : t("error"));
@@ -704,6 +797,8 @@ export function App() {
       setRecentProjects(result.recentProjects);
       if (result.cancelled) return;
       dispatch({ type: "PROJECT_SAVED", document: result.project, documentId: result.documentId, fileName: result.fileName });
+      clearProjectDraft();
+      setProjectDraft(null);
     } catch (cause) {
       setActionFeedback(cause instanceof Error ? cause.message : t("error"));
     }
@@ -738,6 +833,7 @@ export function App() {
     }
   }
   async function importSourceFiles(files: File[], directDrop = false) {
+    if (!confirmProjectReplacement()) return;
     setImportBusy(true);
     setImportError("");
     try {
@@ -785,13 +881,91 @@ export function App() {
     }
   }
 
+  async function relinkCurrentSource(files: File[], directDrop = false) {
+    const project = state.project?.document;
+    if (!project) return;
+    setImportBusy(true);
+    setActionFeedback("");
+    try {
+      if (directDrop && files.length !== 1) throw new Error(t("dropOne"));
+      const inputPath = sourcePathFromSelection(files, getDesktopFilePath, directDrop);
+      if (!inputPath) throw new Error(t("sourcePathUnavailable"));
+      const result = await relinkSourcePath(project, inputPath);
+      dispatch({ type: "SOURCE_RELINKED", document: result.project, inspection: result.inspection, sourcePath: inputPath });
+      if (result.reviewRequired) setActionFeedback(t("sourceReviewRequired"));
+    } catch (cause) {
+      setActionFeedback(cause instanceof Error ? cause.message : t("error"));
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  async function acknowledgeCurrentSourceReview() {
+    const project = state.project?.document;
+    if (!project?.sourceReview?.required) return;
+    setImportBusy(true);
+    setActionFeedback("");
+    try {
+      const document = await acknowledgeSourceReview(project);
+      dispatch({ type: "SOURCE_REVIEW_ACKNOWLEDGED", document });
+    } catch (cause) {
+      setActionFeedback(cause instanceof Error ? cause.message : t("error"));
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  async function recoverProjectDraft() {
+    if (!projectDraft || !confirmProjectReplacement()) return;
+    setImportBusy(true);
+    setImportError("");
+    setActionFeedback("");
+    let relinked: Awaited<ReturnType<typeof relinkSourcePath>> | undefined;
+    try {
+      if (projectDraft.project.source.path) {
+        try {
+          relinked = await relinkSourcePath(projectDraft.project, projectDraft.project.source.path);
+        } catch {
+          setActionFeedback(t("sourceRelinkRequired"));
+        }
+      } else {
+        setActionFeedback(t("sourceRelinkRequired"));
+      }
+      dispatch({
+        type: "OPEN_PROJECT",
+        project: {
+          id: projectDraft.project.projectId,
+          name: projectDraft.project.name,
+          document: projectDraft.project,
+          dirty: true,
+          sourcePath: projectDraft.project.source.path,
+          selectedMotionId: null,
+          selectedExpressionId: null,
+        },
+      });
+      if (relinked && projectDraft.project.source.path) {
+        dispatch({ type: "SOURCE_RELINKED", document: relinked.project, inspection: relinked.inspection, sourcePath: projectDraft.project.source.path });
+      }
+    } catch (cause) {
+      setActionFeedback(cause instanceof Error ? cause.message : t("error"));
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  function discardProjectDraft() {
+    clearProjectDraft();
+    setProjectDraft(null);
+  }
+
   useEffect(() => onAppCommand((command) => {
     if (command === "open") void openProjectDocument();
     else if (command === "save") void saveProjectDocument();
     else if (command === "settings") dispatch({ type: "OPEN_SETTINGS" });
     else if (command === "setup") dispatch({ type: "OPEN_SETUP" });
     else if (command === "build") {
-      if (state.project?.document) dispatch({ type: "NAVIGATE", destination: "build" });
+      if (state.project?.document?.sourceReview?.required) setActionFeedback(t("sourceReviewRequired"));
+      else if (state.project?.document) dispatch({ type: "NAVIGATE", destination: "build" });
       else setActionFeedback(t("buildRequiresProject"));
     } else if (command === "undo" || command === "redo") {
       if (!preserveTextEditingHistory(command)) dispatch({ type: command === "undo" ? "UNDO_PROJECT_EDIT" : "REDO_PROJECT_EDIT" });
@@ -806,17 +980,18 @@ export function App() {
   if (state.destination === "settings") return <SettingsView locale={locale} section={state.settingsSection} appearance={appearance} onSection={(section) => dispatch({ type: "SELECT_SETTINGS_SECTION", section })} onLocale={(language) => dispatch({ type: "UPDATE_LANGUAGE", language })} onAppearance={(value) => dispatch({ type: "UPDATE_APPEARANCE", appearance: value })} onRuntimeSettingsChange={setRuntimeSettings} onClose={() => dispatch({ type: "CLOSE_SETTINGS" })} />;
 
   const projectOpen = state.project !== null;
+  const sourceReviewRequired = Boolean(state.project?.document?.sourceReview?.required);
   return (
     <div className="app-shell">
       <header className="app-toolbar">
         <div className="toolbar-brand"><BrandMark /><strong>Live2Pet</strong>{projectOpen && <><i /><span>{state.project?.name}</span></>}</div>
-        {projectOpen ? <nav aria-label="Project"><ButtonGroup>{(["source", "map", "build"] as const).map((destination) => <Button key={destination} variant={state.destination === destination ? "primary" : "ghost"} onPress={() => dispatch({ type: "NAVIGATE", destination })}>{t(destination)}</Button>)}</ButtonGroup></nav> : <span />}
+        {projectOpen ? <nav aria-label="Project"><ButtonGroup>{(["source", "map", "build"] as const).map((destination) => <Button key={destination} isDisabled={sourceReviewRequired && destination !== "source"} variant={state.destination === destination ? "primary" : "ghost"} onPress={() => dispatch({ type: "NAVIGATE", destination })}>{t(destination)}</Button>)}</ButtonGroup></nav> : <span />}
         <div className="toolbar-actions"><Chip className="chip" size="sm" variant="soft"><span className="status-dot" />{state.project?.inspection ? t("localProject") : t("designPreview")}</Chip>{projectOpen && <Button aria-label={t("saveProject")} variant="ghost" onPress={() => void saveProjectDocument()}><Save size={17} />{t("save")}</Button>}<Button isIconOnly aria-label={t("settings")} variant="ghost" onPress={() => dispatch({ type: "OPEN_SETTINGS" })}><SettingsIcon size={18} /></Button></div>
       </header>
       <div className="app-content">
         {actionFeedback && <div className="action-feedback" role="alert">{actionFeedback}</div>}
-        {state.destination === "welcome" && <WelcomeView locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onOpenPreview={openPreview} />}
-        {state.destination === "source" && <SourceView locale={locale} inspection={state.project?.inspection} inspectionRequired={Boolean(state.project?.document)} runtimeReady={runtimeReady} onConfigureRuntime={openRuntimeSettings} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
+        {state.destination === "welcome" && <WelcomeView locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} draft={projectDraft} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onOpenPreview={openPreview} onRecoverDraft={() => void recoverProjectDraft()} onDiscardDraft={discardProjectDraft} />}
+        {state.destination === "source" && <SourceView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} inspectionRequired={Boolean(state.project?.document)} runtimeReady={runtimeReady} busy={importBusy} onConfigureRuntime={openRuntimeSettings} onRelink={relinkCurrentSource} onAcknowledgeReview={acknowledgeCurrentSourceReview} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
         {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={openRuntimeSettings} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => dispatch({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => dispatch({ type: "CLEAR_ASSIGNMENT", destination })} />}
         {state.destination === "build" && <BuildView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} runtimeReady={runtimeReady} state={buildState} onPreset={(target, preset) => dispatch({ type: "SET_RENDER_PRESET", target, preset })} onBuild={(target) => void buildProjectTarget(target)} onCancel={(target) => void cancelProjectBuild(target)} />}
       </div>

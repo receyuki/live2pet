@@ -11,6 +11,7 @@ const {
 } = require('@live2pet/app-host');
 const {
   createProjectWorkspaceService,
+  createProjectSourceService,
   createWindowStateWriter,
   loadWindowBounds,
 } = require('./project-workspace-service.cjs');
@@ -53,6 +54,7 @@ let captureCacheService = null;
 let previewSession = null;
 let mainRendererRecoveryInProgress = false;
 let projectWorkspaceService = null;
+let projectSourceService = null;
 const sourceRegistry = new Map();
 
 protocol.registerSchemesAsPrivileged([{
@@ -222,6 +224,16 @@ function getProjectWorkspaceService() {
   return projectWorkspaceService;
 }
 
+function getProjectSourceService() {
+  if (!projectSourceService) {
+    projectSourceService = createProjectSourceService({
+      inspectSource: sourceInspectionService,
+      sourceRegistry,
+    });
+  }
+  return projectSourceService;
+}
+
 function sendAppCommand(command) {
   if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
   mainWindow.webContents.send(APP_COMMAND_CHANNEL, command);
@@ -261,6 +273,7 @@ function installApplicationMenu() {
 function registerIpc() {
   route = createAppIpcRouter({
     projectWorkspaceService: getProjectWorkspaceService(),
+    projectSourceService: getProjectSourceService(),
     sourceInspectionService,
     runtimeSettingsService,
     captureCacheService: getCaptureCacheService(),

@@ -73,6 +73,13 @@ export type RecentProject = { documentId: string; name: string; fileName: string
 export type ProjectFileResult =
   | { cancelled: true; recentProjects: RecentProject[] }
   | { cancelled: false; documentId: string; fileName: string; project: Live2PetProject; recentProjects: RecentProject[] };
+export type SourceRelinkResult = {
+  project: Live2PetProject;
+  inspection: SourceInspection;
+  status: 'relinked' | 'source-changed';
+  reviewRequired: boolean;
+  affectedRecipeIds: string[];
+};
 export type AppCommand = 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo';
 export type BuildTarget = 'clawd' | 'codex-pet';
 export type RenderPreset = 'compact' | 'balanced' | 'high';
@@ -136,6 +143,8 @@ type Live2PetApi = {
     }>
   >;
   inspectSource(input: { inputPath: string; projectId: string }): Promise<AppResponse<SourceInspection>>;
+  relinkSource(input: { project: Live2PetProject; inputPath: string }): Promise<AppResponse<SourceRelinkResult>>;
+  acknowledgeSourceReview(input: { project: Live2PetProject }): Promise<AppResponse<{ project: Live2PetProject }>>;
   getRecentProjects(): Promise<AppResponse<{ recentProjects: RecentProject[] }>>;
   openProject(input?: { documentId?: string }): Promise<AppResponse<ProjectFileResult>>;
   saveProject(input: { documentId?: string; project: Live2PetProject; saveAs?: boolean }): Promise<AppResponse<ProjectFileResult>>;
@@ -242,6 +251,26 @@ export async function inspectSource(inputPath: string, projectId: string): Promi
   const api = desktopApi();
   if (!api) throw new DesktopApiError('DESKTOP_REQUIRED', 'Source Packages can only be inspected from the Desktop App.');
   return unwrap(api.inspectSource({ inputPath, projectId }));
+}
+
+export async function relinkSource(project: Live2PetProject, file: File): Promise<SourceRelinkResult> {
+  const api = desktopApi();
+  if (!api) throw new DesktopApiError('DESKTOP_REQUIRED', 'Source Packages can only be relinked from the Desktop App.');
+  const inputPath = api.getFilePath(file);
+  if (!inputPath) throw new DesktopApiError('SOURCE_PATH_UNAVAILABLE', 'The selected Source Package path is unavailable.');
+  return unwrap(api.relinkSource({ project, inputPath }));
+}
+
+export async function relinkSourcePath(project: Live2PetProject, inputPath: string): Promise<SourceRelinkResult> {
+  const api = desktopApi();
+  if (!api) throw new DesktopApiError('DESKTOP_REQUIRED', 'Source Packages can only be relinked from the Desktop App.');
+  return unwrap(api.relinkSource({ project, inputPath }));
+}
+
+export async function acknowledgeSourceReview(project: Live2PetProject): Promise<Live2PetProject> {
+  const api = desktopApi();
+  if (!api) throw new DesktopApiError('DESKTOP_REQUIRED', 'Source review can only be acknowledged from the Desktop App.');
+  return (await unwrap(api.acknowledgeSourceReview({ project }))).project;
 }
 
 export async function getRecentProjects(): Promise<RecentProject[]> {

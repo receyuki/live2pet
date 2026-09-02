@@ -56,6 +56,8 @@ const APP_IPC_METHODS = Object.freeze([
   'openProject',
   'saveProject',
   'inspectSource',
+  'relinkSource',
+  'acknowledgeSourceReview',
   'getRuntimeSettings',
   'configureRuntime',
   'clearRuntimeSettings',
@@ -480,6 +482,48 @@ function normalizeSaveProjectRequest(value) {
   };
 }
 
+function normalizeRelinkSourceRequest(value) {
+  if (!isRecord(value)) fail('INVALID_SOURCE_RELINK_REQUEST', 'relinkSource input must be an object.');
+  const allowed = new Set(['project', 'inputPath']);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) fail('INVALID_SOURCE_RELINK_REQUEST', `relinkSource input contains unsupported fields: ${unknown.join(', ')}.`);
+  if (!isRecord(value.project)) fail('INVALID_SOURCE_RELINK_REQUEST', 'relinkSource requires a project object.');
+  if (typeof value.inputPath !== 'string' || !value.inputPath.trim() || value.inputPath.length > 4096 || value.inputPath.includes('\0')) fail('INVALID_SOURCE_RELINK_REQUEST', 'relinkSource requires a valid local inputPath.');
+  return { project: value.project, inputPath: value.inputPath.trim() };
+}
+
+function normalizeAcknowledgeSourceReviewRequest(value) {
+  if (!isRecord(value)) fail('INVALID_SOURCE_REVIEW_REQUEST', 'acknowledgeSourceReview input must be an object.');
+  const unknown = Object.keys(value).filter((key) => key !== 'project');
+  if (unknown.length) fail('INVALID_SOURCE_REVIEW_REQUEST', `acknowledgeSourceReview input contains unsupported fields: ${unknown.join(', ')}.`);
+  if (!isRecord(value.project)) fail('INVALID_SOURCE_REVIEW_REQUEST', 'acknowledgeSourceReview requires a project object.');
+  return { project: value.project };
+}
+
+function normalizeAffectedRecipeIds(value) {
+  if (!Array.isArray(value) || value.length > 10000) fail('INVALID_SOURCE_RELINK_RESULT', 'Source relink affectedRecipeIds must be a bounded array.');
+  return value.map((id, index) => {
+    if (typeof id !== 'string' || !id.trim() || id.length > 128 || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id.trim())) fail('INVALID_SOURCE_RELINK_RESULT', `Source relink affectedRecipeIds[${index}] is invalid.`);
+    return id.trim();
+  });
+}
+
+function summarizeSourceRelink(result) {
+  if (!isRecord(result) || !isRecord(result.project) || !['relinked', 'source-changed'].includes(result.status) || typeof result.reviewRequired !== 'boolean') fail('INVALID_SOURCE_RELINK_RESULT', 'Source relink did not return the supported result contract.');
+  return {
+    project: result.project,
+    inspection: summarizeSourceInspection(result.inspection),
+    status: result.status,
+    reviewRequired: result.reviewRequired,
+    affectedRecipeIds: normalizeAffectedRecipeIds(result.affectedRecipeIds),
+  };
+}
+
+function summarizeSourceReview(result) {
+  if (!isRecord(result) || !isRecord(result.project)) fail('INVALID_SOURCE_REVIEW_RESULT', 'Source review acknowledgement did not return the supported result contract.');
+  return { project: result.project };
+}
+
 function normalizeRecentProjects(value) {
   if (!Array.isArray(value) || value.length > 10) fail('INVALID_PROJECT_RESULT', 'Recent projects must be an array with at most ten entries.');
   return value.map((entry, index) => {
@@ -496,10 +540,21 @@ function summarizeProjectOperation(result) {
   return { cancelled: false, documentId: result.documentId, fileName: result.fileName, project: result.project, recentProjects };
 }
 
+function sanitizeErrorDetail(value, key = '', depth = 0) {
+  if (depth > 8) return '<redacted>';
+  if (['path', 'targetRoot', 'destination', 'inputPath'].includes(key)) return '<redacted-path>';
+  if (typeof value === 'string') return value.replace(/(?:[A-Za-z]:[\\/]|\/(?:Users|home|private|tmp)\/)[^\s'"`]+/g, '<redacted-path>').slice(0, 4096);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'boolean' || value === null) return value;
+  if (Array.isArray(value)) return value.slice(0, 10000).map((item) => sanitizeErrorDetail(item, '', depth + 1));
+  if (!isRecord(value)) return null;
+  return Object.fromEntries(Object.entries(value).map(([childKey, child]) => [childKey, sanitizeErrorDetail(child, childKey, depth + 1)]));
+}
+
 function typedError(error) {
   const redactedKeys = new Set(['path', 'targetRoot', 'destination']);
   const details = error && error.details && typeof error.details === 'object'
-    ? Object.fromEntries(Object.entries(error.details).map(([key, value]) => [key, redactedKeys.has(key) ? '<redacted-path>' : value]))
+    ? Object.fromEntries(Object.entries(error.details).map(([key, value]) => [key, redactedKeys.has(key) ? '<redacted-path>' : sanitizeErrorDetail(value, key)]))
     : undefined;
   const message = error && error.message ? String(error.message) : String(error);
   return {
@@ -509,8 +564,9 @@ function typedError(error) {
   };
 }
 
-function createAppIpcRouter({ projectWorkspaceService = null, sourceInspectionService = null, runtimeSettingsService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
+function createAppIpcRouter({ projectWorkspaceService = null, projectSourceService = null, sourceInspectionService = null, runtimeSettingsService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
   if (projectWorkspaceService !== null && (!isRecord(projectWorkspaceService) || typeof projectWorkspaceService.getRecentProjects !== 'function' || typeof projectWorkspaceService.openProject !== 'function' || typeof projectWorkspaceService.saveProject !== 'function')) fail('INVALID_APP_ROUTER', 'projectWorkspaceService must expose getRecentProjects, openProject, and saveProject functions when provided.');
+  if (projectSourceService !== null && (!isRecord(projectSourceService) || typeof projectSourceService.relink !== 'function' || typeof projectSourceService.acknowledgeReview !== 'function')) fail('INVALID_APP_ROUTER', 'projectSourceService must expose relink and acknowledgeReview functions when provided.');
   if (sourceInspectionService !== null && typeof sourceInspectionService !== 'function') fail('INVALID_APP_ROUTER', 'sourceInspectionService must be a function when provided.');
   if (runtimeSettingsService !== null && (!isRecord(runtimeSettingsService) || typeof runtimeSettingsService.get !== 'function' || typeof runtimeSettingsService.configure !== 'function' || typeof runtimeSettingsService.clear !== 'function')) fail('INVALID_APP_ROUTER', 'runtimeSettingsService must expose get, configure, and clear functions when provided.');
   if (captureCacheService !== null && (!isRecord(captureCacheService) || typeof captureCacheService.status !== 'function')) fail('INVALID_APP_ROUTER', 'captureCacheService must expose a status function when provided.');
@@ -559,6 +615,15 @@ function createAppIpcRouter({ projectWorkspaceService = null, sourceInspectionSe
           warnings: inspected.warnings,
           result: inspected,
         };
+      }
+      if (normalized.method === 'relinkSource') {
+        if (!projectSourceService) fail('APP_SOURCE_RELINK_UNAVAILABLE', 'The App Source Package relink service is not configured.');
+        const result = summarizeSourceRelink(await projectSourceService.relink(normalizeRelinkSourceRequest(normalized.args[0])));
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, warnings: result.inspection.warnings, result };
+      }
+      if (normalized.method === 'acknowledgeSourceReview') {
+        if (!projectSourceService) fail('APP_SOURCE_RELINK_UNAVAILABLE', 'The App Source Package relink service is not configured.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeSourceReview(await projectSourceService.acknowledgeReview(normalizeAcknowledgeSourceReviewRequest(normalized.args[0]))) };
       }
       if (normalized.method === 'getRuntimeSettings') {
         if (!runtimeSettingsService) fail('APP_RUNTIME_UNAVAILABLE', 'The App runtime settings service is not configured.');
@@ -758,6 +823,8 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
     saveProject: (input) => invoke('saveProject', input),
     onAppCommand,
     inspectSource: (input) => invoke('inspectSource', input),
+    relinkSource: (input) => invoke('relinkSource', input),
+    acknowledgeSourceReview: (input) => invoke('acknowledgeSourceReview', input),
     getRuntimeSettings: () => invoke('getRuntimeSettings'),
     configureRuntime: (input) => invoke('configureRuntime', input),
     clearRuntimeSettings: () => invoke('clearRuntimeSettings'),
@@ -812,6 +879,8 @@ module.exports = {
   normalizeRequest,
   normalizeOpenProjectRequest,
   normalizeSaveProjectRequest,
+  normalizeRelinkSourceRequest,
+  normalizeAcknowledgeSourceReviewRequest,
   normalizeRecentProjects,
   summarizeProjectOperation,
   normalizeInspectRequest,

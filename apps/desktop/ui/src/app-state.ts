@@ -65,6 +65,8 @@ export type AppAction =
   | { type: "ASSIGN_SELECTED_RECIPE"; destination: MappingDestination }
   | { type: "CLEAR_ASSIGNMENT"; destination: MappingDestination }
   | { type: "SET_RENDER_PRESET"; target: "clawd" | "codex-pet"; preset: "compact" | "balanced" | "high" }
+  | { type: "SOURCE_RELINKED"; document: import('./app-host').Live2PetProject; inspection: import('./app-host').SourceInspection; sourcePath: string }
+  | { type: "SOURCE_REVIEW_ACKNOWLEDGED"; document: import('./app-host').Live2PetProject }
   | { type: "UNDO_PROJECT_EDIT" }
   | { type: "REDO_PROJECT_EDIT" }
   | { type: "PROJECT_SAVED"; document: import('./app-host').Live2PetProject; documentId: string; fileName: string }
@@ -146,6 +148,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case "NAVIGATE":
       if (!state.project || state.destination === "setup") return state;
+      if ((action.destination === "map" || action.destination === "build") && state.project.document?.sourceReview?.required) return state;
       return { ...state, destination: action.destination, settingsReturnDestination: null };
 
     case "OPEN_SETTINGS": {
@@ -205,11 +208,36 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return applyDocumentEdit(state, document);
     }
 
+    case "SOURCE_RELINKED": {
+      if (!state.project) return state;
+      const dirty = dirtyFromBaseline(action.document, state.projectHistory.saved);
+      return {
+        ...state,
+        destination: "source",
+        project: {
+          ...state.project,
+          id: action.document.projectId,
+          name: action.document.name,
+          document: action.document,
+          dirty,
+          sourcePath: action.sourcePath,
+          inspection: action.inspection,
+          selectedMotionId: action.inspection.motions[0]?.id ?? null,
+          selectedExpressionId: null,
+        },
+        projectHistory: { past: [], future: [], saved: dirty ? state.projectHistory.saved : action.document },
+      };
+    }
+
+    case "SOURCE_REVIEW_ACKNOWLEDGED":
+      return applyDocumentEdit(state, action.document);
+
     case "UNDO_PROJECT_EDIT": {
       if (!state.project?.document || state.projectHistory.past.length === 0) return state;
       const document = state.projectHistory.past[state.projectHistory.past.length - 1];
       return {
         ...state,
+        destination: document.sourceReview?.required ? "source" : state.destination,
         project: { ...state.project, document, dirty: dirtyFromBaseline(document, state.projectHistory.saved) },
         projectHistory: {
           past: state.projectHistory.past.slice(0, -1),

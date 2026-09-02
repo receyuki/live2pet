@@ -2,7 +2,13 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { loadProjectFile, saveProjectFile, validateProject } = require('@live2pet/project');
+const {
+  acknowledgeSourceReview,
+  loadProjectFile,
+  relinkProjectSource,
+  saveProjectFile,
+  validateProject,
+} = require('@live2pet/project');
 
 const PROJECT_STATE_VERSION = 1;
 const WINDOW_STATE_VERSION = 1;
@@ -158,6 +164,43 @@ function createProjectWorkspaceService({ stateFile, showOpenDialog, showSaveDial
   });
 }
 
+function createProjectSourceService({ inspectSource, sourceRegistry, maxSources = 8 } = {}) {
+  if (typeof inspectSource !== 'function') throw new TypeError('Project Source service requires an inspectSource function.');
+  if (!(sourceRegistry instanceof Map)) throw new TypeError('Project Source service requires a sourceRegistry Map.');
+  if (!Number.isInteger(maxSources) || maxSources < 1 || maxSources > 64) throw new TypeError('Project Source service maxSources must be an integer from 1 to 64.');
+
+  const register = (projectId, inputPath, manifest) => {
+    sourceRegistry.delete(projectId);
+    sourceRegistry.set(projectId, {
+      inputPath,
+      sourceFingerprint: manifest.source.fingerprint,
+      manifest,
+    });
+    while (sourceRegistry.size > maxSources) sourceRegistry.delete(sourceRegistry.keys().next().value);
+  };
+
+  return Object.freeze({
+    relink: async ({ project, inputPath }) => {
+      const current = validateProject(project);
+      const previousRecord = sourceRegistry.get(current.projectId);
+      const previousManifest = previousRecord?.sourceFingerprint === current.source.fingerprint
+        ? previousRecord.manifest
+        : undefined;
+      const inspection = await inspectSource({ inputPath });
+      const relinked = relinkProjectSource(current, {
+        kind: inspection.source.kind,
+        name: inspection.source.name,
+        fingerprint: inspection.source.fingerprint,
+        path: inputPath,
+        modelConfig: inspection.source.modelConfig,
+      }, { previousManifest, nextManifest: inspection });
+      register(current.projectId, inputPath, inspection);
+      return { ...relinked, inspection };
+    },
+    acknowledgeReview: async ({ project }) => ({ project: acknowledgeSourceReview(project) }),
+  });
+}
+
 function intersectionArea(a, b) {
   const width = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
   const height = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
@@ -210,6 +253,7 @@ function createWindowStateWriter({ stateFile, getBounds, debounceMs = 250 } = {}
 
 module.exports = {
   MAX_RECENT_PROJECTS,
+  createProjectSourceService,
   createProjectWorkspaceService,
   createWindowStateWriter,
   loadWindowBounds,
