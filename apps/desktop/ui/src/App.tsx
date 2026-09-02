@@ -193,7 +193,7 @@ function SetupView({ locale, onComplete }: { locale: Locale; onComplete: () => v
         <i className="orbit orbit-one" /><i className="orbit orbit-two" />
         <BrandMark large />
         <span className="floating-pill pill-top"><WandSparkles size={15} />Live2D</span>
-        <span className="floating-pill pill-bottom"><PackageCheck size={15} />Pet theme</span>
+        <span className="floating-pill pill-bottom"><PackageCheck size={15} />{t("petPackage")}</span>
       </section>
       <section className="setup-content">
         <p className="eyebrow"><Sparkles size={13} />{t("setupEyebrow")}</p>
@@ -244,7 +244,7 @@ function SourceView({ locale, onMap }: { locale: Locale; onMap: () => void }) {
     <main className="page">
       <PageHeading eyebrow={t("source")} title={t("sourceTitle")} body={t("sourceBody")} />
       <div className="source-grid">
-        <Card className="surface-card"><Card.Content><div className="model-placeholder"><BrandMark large /></div><div className="ready-box"><CircleCheck size={20} /><span><strong>{t("sourceReady")}</strong><small>Cubism 4 · 5 motions · 3 expressions</small></span></div><Button variant="primary" onPress={onMap}>{t("map")}<ChevronRight size={16} /></Button></Card.Content></Card>
+        <Card className="surface-card"><Card.Content><div className="model-placeholder"><BrandMark large /></div><div className="ready-box"><CircleCheck size={20} /><span><strong>{t("sourceReady")}</strong><small>{t("sourceSummary")}</small></span></div><Button variant="primary" onPress={onMap}>{t("map")}<ChevronRight size={16} /></Button></Card.Content></Card>
         <Card className="surface-card source-facts"><Card.Content>{[["sourceModel", "model3.json"], ["sourceTextures", "4"], ["sourceMotions", "5"], ["sourceExpressions", "3"]].map(([key, value]) => <div className="fact" key={key}><span>{t(key as MessageKey)}</span><strong>{value}</strong></div>)}</Card.Content></Card>
       </div>
     </main>
@@ -294,7 +294,7 @@ function MapView({ locale, selectedMotionId, selectedExpressionId, onSelectMotio
 
 function BuildView({ locale }: { locale: Locale }) {
   const t = (key: MessageKey) => translate(locale, key);
-  return <main className="page"><PageHeading eyebrow={t("build")} title={t("buildTitle")} body={t("buildBody")} /><div className="build-grid">{["Clawd Theme Package", "Codex Pet Package"].map((target) => <Card className="surface-card build-card" key={target}><Card.Content><div className="build-top"><span className="large-icon"><PackageCheck size={20} /></span><Chip variant="soft">{t("designPreview")}</Chip></div><h2>{target}</h2><p>{t("buildSummaryBody")}</p><Button variant="primary" isDisabled><Download size={16} />{t("buildPackage")}</Button></Card.Content></Card>)}</div></main>;
+  return <main className="page"><PageHeading eyebrow={t("build")} title={t("buildTitle")} body={t("buildBody")} /><div className="build-grid">{(["clawdPackage", "codexPackage"] as const).map((target) => <Card className="surface-card build-card" key={target}><Card.Content><div className="build-top"><span className="large-icon"><PackageCheck size={20} /></span><Chip variant="soft">{t("designPreview")}</Chip></div><h2>{t(target)}</h2><p>{t("buildSummaryBody")}</p><Button variant="primary" isDisabled><Download size={16} />{t("buildPackage")}</Button></Card.Content></Card>)}</div></main>;
 }
 
 function SettingsView({ locale, section, appearance, onSection, onLocale, onAppearance, onClose }: { locale: Locale; section: SettingsSection; appearance: AppSettings["appearance"]; onSection: (section: SettingsSection) => void; onLocale: (locale: Locale) => void; onAppearance: (appearance: AppSettings["appearance"]) => void; onClose: () => void }) {
