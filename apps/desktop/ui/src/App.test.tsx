@@ -5,7 +5,7 @@ import { App } from './App';
 
 const emptyRuntimes = { schemaVersion: 2 as const, configured: false, restartRequired: false, runtimes: [] };
 
-function installDesktopApi() {
+function installDesktopApi({ runtimes = emptyRuntimes, preview = false }: { runtimes?: typeof emptyRuntimes | { schemaVersion: 2; configured: boolean; restartRequired: false; runtimes: Array<{ runtimeName: string; runtimeKind: 'legacy-cubism2'; cubismGenerations: number[]; fingerprint: string; available: boolean }> }; preview?: boolean } = {}) {
   const inspectSource = vi.fn(async () => ({
     protocolVersion: 1 as const,
     ok: true,
@@ -19,21 +19,31 @@ function installDesktopApi() {
       warnings: [],
     },
   }));
-  const configureRuntime = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: emptyRuntimes }));
+  const configureRuntime = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: runtimes }));
+  const openPreview = vi.fn(async (input: { projectId: string; sourceFingerprint: string; bounds: { x: number; y: number; width: number; height: number } }) => ({ protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, state: 'ready' as const, projectId: input.projectId, sourceFingerprint: input.sourceFingerprint, visible: true, bounds: input.bounds, playback: { motionId: null, expressionId: null, playing: false, loop: true, speed: 1 } } }));
   Object.defineProperty(window, 'live2pet', {
     configurable: true,
     value: {
       getVersion: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { appVersion: '0.1.0', protocolVersion: 1, methods: [] } })),
       inspectSource,
-      getRuntimeSettings: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: emptyRuntimes })),
+      getRuntimeSettings: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: runtimes })),
       configureRuntime,
       clearRuntimeSettings: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: emptyRuntimes })),
       getBuildCacheStatus: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { byteLength: 0, entryCount: 0, maxBytes: 1024 } })),
       clearBuildCache: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { removedEntries: 0, removedBytes: 0 } })),
       getFilePath: vi.fn((file: File) => `/Users/test/${file.name}`),
+      ...(preview ? {
+        openPreview,
+        layoutPreview: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { schemaVersion: 1, state: 'ready', projectId: 'vicious-khepri', sourceFingerprint: 'fixture', visible: false, bounds: null } })),
+        playPreview: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { schemaVersion: 1, state: 'ready' } })),
+        setPreviewExpression: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { schemaVersion: 1, state: 'ready' } })),
+        controlPreview: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { schemaVersion: 1, state: 'ready' } })),
+        closePreview: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { schemaVersion: 1, state: 'idle' } })),
+        onPreviewStatus: vi.fn(() => () => undefined),
+      } : {}),
     },
   });
-  return { configureRuntime, inspectSource };
+  return { configureRuntime, inspectSource, openPreview };
 }
 
 function setSystemDarkMode(matches: boolean) {
@@ -99,6 +109,21 @@ describe('Live2Pet desktop shell', () => {
     );
 
     expect(screen.getByText('Breathing · Base expression')).toBeVisible();
+  });
+
+  it('opens the embedded preview with the same project id used for PCK inspection', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const runtimes = { schemaVersion: 2 as const, configured: true, restartRequired: false as const, runtimes: [{ runtimeName: 'live2d.min.js', runtimeKind: 'legacy-cubism2' as const, cubismGenerations: [2], fingerprint: 'a'.repeat(64), available: true }] };
+    const { openPreview } = installDesktopApi({ runtimes, preview: true });
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
+    const surface = container.querySelector('.preview-native-surface') as HTMLDivElement;
+    vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue({ x: 280, y: 90, width: 640, height: 520, top: 90, right: 920, bottom: 610, left: 280, toJSON: () => ({}) });
+    fireEvent(window, new Event('resize'));
+
+    await vi.waitFor(() => expect(openPreview).toHaveBeenCalledWith({ projectId: 'vicious-khepri', sourceFingerprint: 'fixture', bounds: { x: 280, y: 90, width: 640, height: 520 } }));
   });
 
   it('imports a dropped Source Package without browser navigation', async () => {

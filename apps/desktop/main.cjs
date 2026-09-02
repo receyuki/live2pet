@@ -1,6 +1,6 @@
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { app, BrowserWindow, dialog, ipcMain, protocol } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, protocol, WebContentsView } = require('electron');
 
 const {
   APP_BUILD_PROGRESS_CHANNEL,
@@ -11,6 +11,7 @@ const {
 const { CacheStore, SHARP_ENCODER_VERSION, buildProjectTargets } = require('@live2pet/package-build');
 const { installPackage } = require('@live2pet/installation');
 const { inspectSourcePackage } = require('@live2pet/source-inspector');
+const { createPreviewSessionService } = require('./preview-session-service.cjs');
 const { createCaptureCacheService } = require('./capture-cache-service.cjs');
 const { createCaptureCacheBuildService } = require('./capture-cache-build.cjs');
 const { RUNTIME_PROTOCOL_SCHEME, createRuntimeProtocolHandler } = require('./runtime-protocol.cjs');
@@ -32,6 +33,9 @@ const ENCODED_CACHE_ENCODER_VERSION = SHARP_ENCODER_VERSION;
 const APP_BUNDLE_SMOKE_ARGUMENT = '--live2pet-smoke-test';
 const UI_PREVIEW_ARGUMENT = '--live2pet-ui-preview';
 const APP_NAME = 'Live2Pet';
+const PREVIEW_IPC_CHANNEL = 'live2pet:preview';
+const PREVIEW_STATUS_CHANNEL = 'live2pet:preview-status';
+const PREVIEW_METHODS = new Set(['open', 'layout', 'play', 'setExpression', 'control', 'close', 'getStatus']);
 const APP_DEV_ICON_PATH = path.resolve(__dirname, 'assets', 'icon.png');
 let mainWindow = null;
 let route = null;
@@ -39,7 +43,9 @@ let sourceCache = null;
 let runtimeSettingsFile = null;
 let captureCacheStore = null;
 let captureCacheService = null;
+let previewSession = null;
 let mainRendererRecoveryInProgress = false;
+const sourceRegistry = new Map();
 
 protocol.registerSchemesAsPrivileged([{
   scheme: RUNTIME_PROTOCOL_SCHEME,
@@ -64,7 +70,13 @@ function sourceInspectionService({ inputPath, projectId } = {}) {
       maxBytes: SOURCE_CACHE_LIMIT,
     });
   }
-  return inspectSourcePackage(inputPath, { cache: sourceCache, projectId });
+  const manifest = inspectSourcePackage(inputPath, { cache: sourceCache, projectId });
+  if (projectId) {
+    sourceRegistry.delete(projectId);
+    sourceRegistry.set(projectId, { inputPath, sourceFingerprint: manifest.source.fingerprint, manifest });
+    while (sourceRegistry.size > 8) sourceRegistry.delete(sourceRegistry.keys().next().value);
+  }
+  return manifest;
 }
 
 function runtimeSettingsPath() {
@@ -74,9 +86,61 @@ function runtimeSettingsPath() {
 
 const runtimeSettingsService = Object.freeze({
   get: async () => redactRuntimeSettings(await loadRuntimeSettings(runtimeSettingsPath())),
-  configure: async ({ inputPath } = {}) => redactRuntimeSettings(await saveRuntimeSettings(runtimeSettingsPath(), inputPath)),
-  clear: async () => redactRuntimeSettings(clearRuntimeSettings(runtimeSettingsPath())),
+  configure: async ({ inputPath } = {}) => {
+    if (previewSession) await previewSession.close();
+    return redactRuntimeSettings(await saveRuntimeSettings(runtimeSettingsPath(), inputPath));
+  },
+  clear: async () => {
+    if (previewSession) await previewSession.close();
+    return redactRuntimeSettings(clearRuntimeSettings(runtimeSettingsPath()));
+  },
 });
+
+function previewVendorPaths(cubismVersion) {
+  const vendorRoot = app.isPackaged
+    ? path.join(process.resourcesPath, 'mapper-dist', 'vendor')
+    : path.resolve(__dirname, 'mapper-dist', 'vendor');
+  return {
+    pixi: path.join(vendorRoot, 'pixi.min.js'),
+    unsafeEval: path.join(vendorRoot, 'unsafe-eval.min.js'),
+    live2dAdapter: path.join(vendorRoot, Number(cubismVersion) === 2 ? 'cubism2.min.js' : 'cubism4.min.js'),
+  };
+}
+
+function createPreviewView() {
+  const view = new WebContentsView({
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      webviewTag: false,
+      backgroundThrottling: false,
+    },
+  });
+  view.setBackgroundColor('#00000000');
+  view.setBorderRadius(12);
+  view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  view.webContents.on('will-attach-webview', (event) => event.preventDefault());
+  return view;
+}
+
+async function routePreviewRequest(request) {
+  try {
+    if (!request || typeof request !== 'object' || Array.isArray(request) || request.protocolVersion !== 1 || !PREVIEW_METHODS.has(request.method)) {
+      throw Object.assign(new Error('Preview request is not supported.'), { code: 'INVALID_PREVIEW_REQUEST' });
+    }
+    if (!previewSession) throw Object.assign(new Error('Preview session is not available.'), { code: 'PREVIEW_UNAVAILABLE' });
+    const input = request.input === undefined ? {} : request.input;
+    const result = request.method === 'close' || request.method === 'getStatus'
+      ? await previewSession[request.method]()
+      : await previewSession[request.method](input);
+    return { protocolVersion: 1, ok: true, result };
+  } catch (error) {
+    return { protocolVersion: 1, ok: false, error: { code: error.code || 'PREVIEW_COMMAND_FAILED', message: String(error.message || error).replace(/(?:[A-Za-z]:[\\/]|\/(?:Users|home|private|tmp)\/)[^\s'"`]+/g, '<redacted-path>') } };
+  }
+}
 
 function getCaptureCacheStore() {
   if (!captureCacheStore) {
@@ -139,9 +203,14 @@ function registerIpc() {
     if (!mainWindow || event.sender !== mainWindow.webContents) return { protocolVersion: 1, ok: false, error: { code: 'APP_SENDER_NOT_ALLOWED', message: 'The App IPC sender is not allowed.' } };
     return route(request);
   });
+  ipcMain.handle(PREVIEW_IPC_CHANNEL, (event, request) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return { protocolVersion: 1, ok: false, error: { code: 'APP_SENDER_NOT_ALLOWED', message: 'The App IPC sender is not allowed.' } };
+    return routePreviewRequest(request);
+  });
 }
 
 async function closeActiveSession() {
+  if (previewSession) await previewSession.close();
   if (route && typeof route.close === 'function') await route.close();
 }
 
@@ -158,6 +227,20 @@ async function createMainWindow() {
     });
   }
   mainWindow = new BrowserWindow(windowOptions);
+  previewSession = createPreviewSessionService({
+    ownerWindow: mainWindow,
+    createView: createPreviewView,
+    resolveSource: ({ projectId, sourceFingerprint }) => {
+      const record = sourceRegistry.get(projectId);
+      return record && record.sourceFingerprint === sourceFingerprint ? record : null;
+    },
+    resolveRuntime: (cubismVersion) => loadRuntimeForGeneration(runtimeSettingsPath(), cubismVersion),
+    vendorPaths: previewVendorPaths,
+    onStatus: (status) => {
+      if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+      try { mainWindow.webContents.send(PREVIEW_STATUS_CHANNEL, status); } catch {}
+    },
+  });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   const mapperUrl = pathToFileURL(documentPath).href;
   mainWindow.webContents.on('will-navigate', (event, url) => {
@@ -180,7 +263,12 @@ async function createMainWindow() {
         .finally(() => { mainRendererRecoveryInProgress = false; });
     }, 100);
   });
-  mainWindow.on('closed', () => { mainWindow = null; });
+  mainWindow.on('closed', () => {
+    const sessionToClose = previewSession;
+    previewSession = null;
+    mainWindow = null;
+    if (sessionToClose) void sessionToClose.close();
+  });
   const showWindow = () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show(); };
   mainWindow.once('ready-to-show', showWindow);
   await mainWindow.loadFile(documentPath);

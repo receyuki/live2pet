@@ -18,8 +18,10 @@ import {
   Languages,
   Moon,
   PackageCheck,
+  Pause,
   Play,
   Plus,
+  RotateCcw,
   Search,
   Settings as SettingsIcon,
   SlidersHorizontal,
@@ -41,7 +43,15 @@ import {
   getRuntimeSettings,
   getDesktopFilePath,
   hasDesktopApi,
+  hasPreviewApi,
   inspectSource,
+  layoutLive2DPreview,
+  onLive2DPreviewStatus,
+  openLive2DPreview,
+  playLive2DPreview,
+  controlLive2DPreview,
+  setLive2DPreviewExpression,
+  PreviewStatus,
   RuntimeSettings,
   SourceInspection,
 } from "./app-host";
@@ -349,8 +359,11 @@ function PanelHeading({ icon, title, body }: { icon: ReactNode; title: string; b
   return <header className="panel-heading"><span className="square-icon">{icon}</span><div><h2>{title}</h2><p>{body}</p></div></header>;
 }
 
-function MapView({ locale, inspection, runtimeReady, selectedMotionId, selectedExpressionId, onConfigureRuntime, onSelectMotion, onSelectExpression }: { locale: Locale; inspection?: SourceInspection; runtimeReady: boolean; selectedMotionId: string | null; selectedExpressionId: string | null; onConfigureRuntime: () => void; onSelectMotion: (id: string) => void; onSelectExpression: (id: string | null) => void }) {
+function MapView({ locale, projectId, inspection, runtimeReady, selectedMotionId, selectedExpressionId, onConfigureRuntime, onSelectMotion, onSelectExpression }: { locale: Locale; projectId: string; inspection?: SourceInspection; runtimeReady: boolean; selectedMotionId: string | null; selectedExpressionId: string | null; onConfigureRuntime: () => void; onSelectMotion: (id: string) => void; onSelectExpression: (id: string | null) => void }) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
+  const previewSurface = useRef<HTMLDivElement>(null);
+  const [previewStatus, setPreviewStatus] = useState<PreviewStatus | null>(null);
+  const [previewRetry, setPreviewRetry] = useState(0);
   const displayedMotions = inspection?.motions.length
     ? inspection.motions.map((motion) => ({ id: motion.id, name: motion.name, seconds: motion.duration?.toFixed(1) ?? "—", tint: "" }))
     : motions.map((motion) => ({ ...motion, name: t(motion.nameKey) }));
@@ -360,6 +373,59 @@ function MapView({ locale, inspection, runtimeReady, selectedMotionId, selectedE
   const selected = displayedMotions.find((motion) => motion.id === selectedMotionId) ?? displayedMotions[0];
   const selectedExpression = displayedExpressions.find((expression) => expression.id === selectedExpressionId);
   const selectedName = selected?.name ?? "—";
+  const nativePreview = Boolean(inspection && runtimeReady && hasPreviewApi());
+
+  useEffect(() => {
+    if (!nativePreview || !inspection) return;
+    let active = true;
+    let opened = false;
+    let syncing = false;
+    const syncBounds = async () => {
+      const element = previewSurface.current;
+      if (!element || !active || syncing) return;
+      const rect = element.getBoundingClientRect();
+      if (rect.width < 64 || rect.height < 64) return;
+      const bounds = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      syncing = true;
+      try {
+        const status = opened
+          ? await layoutLive2DPreview({ visible: true, bounds })
+          : await openLive2DPreview({ projectId, sourceFingerprint: inspection.source.fingerprint, bounds });
+        opened = true;
+        if (active) setPreviewStatus(status);
+        else await layoutLive2DPreview({ visible: false }).catch(() => undefined);
+      } catch (cause) {
+        if (active) setPreviewStatus({ schemaVersion: 1, state: 'failed', projectId, sourceFingerprint: inspection.source.fingerprint, visible: false, bounds: null, error: { code: cause instanceof Error && 'code' in cause ? String(cause.code) : 'PREVIEW_OPEN_FAILED', message: cause instanceof Error ? cause.message : t('previewFailed') } });
+      } finally {
+        syncing = false;
+      }
+    };
+    const unsubscribe = onLive2DPreviewStatus((status) => { if (active) setPreviewStatus(status); });
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { void syncBounds(); }) : null;
+    if (previewSurface.current) observer?.observe(previewSurface.current);
+    window.addEventListener('resize', syncBounds);
+    void syncBounds();
+    return () => {
+      active = false;
+      observer?.disconnect();
+      window.removeEventListener('resize', syncBounds);
+      unsubscribe();
+      void layoutLive2DPreview({ visible: false }).catch(() => undefined);
+    };
+  }, [inspection, nativePreview, previewRetry, projectId]);
+
+  useEffect(() => {
+    if (previewStatus?.state === 'ready' && selectedMotionId) void playLive2DPreview({ motionId: selectedMotionId, loop: true, speed: 1 }).catch(() => undefined);
+  }, [previewStatus?.state, selectedMotionId]);
+
+  useEffect(() => {
+    if (previewStatus?.state === 'ready') void setLive2DPreviewExpression(selectedExpressionId).catch(() => undefined);
+  }, [previewStatus?.state, selectedExpressionId]);
+
+  const togglePlayback = () => {
+    if (previewStatus?.state !== 'ready') return;
+    void controlLive2DPreview(previewStatus.playback?.playing ? 'pause' : 'resume').then(setPreviewStatus).catch(() => undefined);
+  };
   return (
     <main className="map-workspace">
       <section className="workspace-panel">
@@ -380,8 +446,9 @@ function MapView({ locale, inspection, runtimeReady, selectedMotionId, selectedE
       </section>
       <section className="workspace-panel">
         <PanelHeading icon={<Sparkles size={16} />} title={t("preview")} body={t("previewHint")} />
-        <div className="preview-stage"><i className="stage-grid" /><i className="stage-glow" /><Chip className="stage-chip" variant="soft">{selectedName} · {selectedExpression?.name ?? t("baseExpression")}</Chip>{runtimeReady ? <div className="character"><BrandMark large /><i /></div> : <div className="preview-runtime-required"><Gauge size={28} /><strong>{t("runtimeRequired")}</strong><p>{t("runtimeRequiredBody")}</p><Button size="sm" variant="primary" onPress={onConfigureRuntime}>{t("configureRuntime")}</Button></div>}</div>
-        <div className="playback"><Button isIconOnly aria-label={t("play")} variant="primary" size="sm" isDisabled><Play size={15} /></Button><span className="timeline"><i /></span><small>00:01 / 00:04</small></div>
+        <div className="preview-caption"><Chip variant="soft">{selectedName} · {selectedExpression?.name ?? t("baseExpression")}</Chip></div>
+        <div className="preview-stage"><i className="stage-grid" /><i className="stage-glow" />{!runtimeReady ? <div className="preview-runtime-required"><Gauge size={28} /><strong>{t("runtimeRequired")}</strong><p>{t("runtimeRequiredBody")}</p><Button size="sm" variant="primary" onPress={onConfigureRuntime}>{t("configureRuntime")}</Button></div> : nativePreview ? <><div ref={previewSurface} className="preview-native-surface" />{previewStatus?.state === 'opening' && <div className="preview-message">{t('previewLoading')}</div>}{previewStatus?.state === 'failed' && <div className="preview-runtime-required"><strong>{t('previewFailed')}</strong><p>{previewStatus.error?.message}</p><Button size="sm" variant="primary" onPress={() => setPreviewRetry((value) => value + 1)}>{t('retry')}</Button></div>}</> : <div className="character"><BrandMark large /><i /></div>}</div>
+        <div className="playback"><Button isIconOnly aria-label={previewStatus?.playback?.playing ? t('pause') : t('play')} variant="primary" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={togglePlayback}>{previewStatus?.playback?.playing ? <Pause size={15} /> : <Play size={15} />}</Button><Button isIconOnly aria-label={t('restart')} variant="ghost" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={() => void controlLive2DPreview('restart').then(setPreviewStatus).catch(() => undefined)}><RotateCcw size={15} /></Button><span className="timeline"><i /></span><small>{previewStatus?.state === 'ready' ? t('previewReady') : t('previewWaiting')}</small></div>
       </section>
       <section className="workspace-panel assignment-panel">
         <PanelHeading icon={<WandSparkles size={16} />} title={t("assignment")} body={t("assignmentHint")} />
@@ -467,11 +534,12 @@ export function App() {
       const inputPath = sourcePathFromSelection(files, getDesktopFilePath, directDrop);
       if (!inputPath) throw new Error(t("sourcePathUnavailable"));
       const sourceName = files[0]?.webkitRelativePath?.split('/')[0] || files[0]?.name.replace(/\.pck$/i, '') || 'Live2Pet';
-      const inspection = await inspectSource(inputPath, projectIdFromSourceName(sourceName));
+      const projectId = projectIdFromSourceName(sourceName);
+      const inspection = await inspectSource(inputPath, projectId);
       dispatch({
         type: "OPEN_PROJECT",
         project: {
-          id: projectIdFromSourceName(inspection.source.name),
+          id: projectId,
           name: inspection.source.name,
           sourcePath: inputPath,
           inspection,
@@ -504,7 +572,7 @@ export function App() {
       <div className="app-content">
         {state.destination === "welcome" && <WelcomeView locale={locale} busy={importBusy} error={importError} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onOpenProject={openPreview} />}
         {state.destination === "source" && <SourceView locale={locale} inspection={state.project?.inspection} runtimeReady={runtimeReady} onConfigureRuntime={openRuntimeSettings} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
-        {state.destination === "map" && <MapView locale={locale} inspection={state.project?.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project?.selectedMotionId ?? null} selectedExpressionId={state.project?.selectedExpressionId ?? null} onConfigureRuntime={openRuntimeSettings} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} />}
+        {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={openRuntimeSettings} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} />}
         {state.destination === "build" && <BuildView locale={locale} />}
       </div>
       <footer className="status-bar"><span><i className="status-dot" />{hasDesktopApi() ? t("saved") : t("notConnected")}</span><span>Live2Pet {appVersion}</span></footer>

@@ -39,6 +39,18 @@ export type SourceInspection = {
   warnings: Array<{ code: string; resource?: string; kind?: string }>;
 };
 
+export type PreviewBounds = { x: number; y: number; width: number; height: number };
+export type PreviewStatus = {
+  schemaVersion: 1;
+  state: 'idle' | 'opening' | 'ready' | 'failed';
+  projectId: string | null;
+  sourceFingerprint: string | null;
+  visible: boolean;
+  bounds: PreviewBounds | null;
+  playback?: { motionId: string | null; expressionId: string | null; playing: boolean; loop: boolean; speed: number };
+  error?: { code: string; message: string };
+};
+
 type AppResponse<T> = {
   protocolVersion: 1;
   ok: boolean;
@@ -61,6 +73,13 @@ type Live2PetApi = {
   getBuildCacheStatus(): Promise<AppResponse<{ schemaVersion: 1; byteLength: number; entryCount: number; maxBytes: number }>>;
   clearBuildCache(input: { confirmClear: true }): Promise<AppResponse<{ removedEntries: number; removedBytes: number; schemaVersion: 1; byteLength: number; entryCount: number; maxBytes: number }>>;
   getFilePath(file: File): string | null;
+  openPreview?(input: { projectId: string; sourceFingerprint: string; bounds: PreviewBounds }): Promise<AppResponse<PreviewStatus>>;
+  layoutPreview?(input: { visible: boolean; bounds?: PreviewBounds }): Promise<AppResponse<PreviewStatus>>;
+  playPreview?(input: { motionId: string; loop?: boolean; speed?: number }): Promise<AppResponse<PreviewStatus>>;
+  setPreviewExpression?(input: { expressionId: string | null }): Promise<AppResponse<PreviewStatus>>;
+  controlPreview?(input: { action: 'pause' | 'resume' | 'restart' }): Promise<AppResponse<PreviewStatus>>;
+  closePreview?(): Promise<AppResponse<PreviewStatus>>;
+  onPreviewStatus?(listener: (status: PreviewStatus) => void): () => void;
 };
 
 declare global {
@@ -148,4 +167,51 @@ export async function inspectSource(inputPath: string, projectId: string): Promi
 
 export function getDesktopFilePath(file: File): string | null {
   return desktopApi()?.getFilePath(file) ?? null;
+}
+
+function previewApi() {
+  const api = desktopApi();
+  if (!api?.openPreview || !api.layoutPreview || !api.playPreview || !api.setPreviewExpression || !api.controlPreview || !api.closePreview) {
+    throw new DesktopApiError('PREVIEW_UNAVAILABLE', 'Live2D preview requires the Desktop App preview service.');
+  }
+  return api;
+}
+
+export function hasPreviewApi(): boolean {
+  const api = desktopApi();
+  return Boolean(api?.openPreview && api.layoutPreview && api.playPreview && api.setPreviewExpression && api.controlPreview && api.closePreview);
+}
+
+export function openLive2DPreview(input: { projectId: string; sourceFingerprint: string; bounds: PreviewBounds }) {
+  const api = previewApi();
+  return unwrap(api.openPreview!(input));
+}
+
+export function layoutLive2DPreview(input: { visible: boolean; bounds?: PreviewBounds }) {
+  const api = previewApi();
+  return unwrap(api.layoutPreview!(input));
+}
+
+export function playLive2DPreview(input: { motionId: string; loop?: boolean; speed?: number }) {
+  const api = previewApi();
+  return unwrap(api.playPreview!(input));
+}
+
+export function setLive2DPreviewExpression(expressionId: string | null) {
+  const api = previewApi();
+  return unwrap(api.setPreviewExpression!({ expressionId }));
+}
+
+export function controlLive2DPreview(action: 'pause' | 'resume' | 'restart') {
+  const api = previewApi();
+  return unwrap(api.controlPreview!({ action }));
+}
+
+export function closeLive2DPreview() {
+  const api = previewApi();
+  return unwrap(api.closePreview!());
+}
+
+export function onLive2DPreviewStatus(listener: (status: PreviewStatus) => void): () => void {
+  return desktopApi()?.onPreviewStatus?.(listener) ?? (() => undefined);
 }

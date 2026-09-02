@@ -5,6 +5,8 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 // sync with createAppPreloadApi() in packages/app-host/src/index.cjs.
 const APP_IPC_CHANNEL = 'live2pet:app';
 const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';
+const PREVIEW_IPC_CHANNEL = 'live2pet:preview';
+const PREVIEW_STATUS_CHANNEL = 'live2pet:preview-status';
 const APP_IPC_PROTOCOL_VERSION = 1;
 const BUILD_PROGRESS_FIELDS = [
   'target', 'stage', 'status', 'motionId', 'name', 'width', 'height', 'samples', 'duration',
@@ -18,6 +20,11 @@ const invoke = (method, ...args) => ipcRenderer.invoke(APP_IPC_CHANNEL, {
   protocolVersion: APP_IPC_PROTOCOL_VERSION,
   method,
   args,
+});
+const invokePreview = (method, input) => ipcRenderer.invoke(PREVIEW_IPC_CHANNEL, {
+  protocolVersion: APP_IPC_PROTOCOL_VERSION,
+  method,
+  ...(input === undefined ? {} : { input }),
 });
 const normalizeBuildProgressPayload = (payload) => {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
@@ -57,6 +64,20 @@ const getFilePath = (file) => {
     return null;
   }
 };
+const onPreviewStatus = (listener) => {
+  if (typeof listener !== 'function') throw new TypeError('onPreviewStatus requires a function listener.');
+  const handler = (_event, payload) => {
+    if (!payload || typeof payload !== 'object' || payload.schemaVersion !== 1 || !['idle', 'opening', 'ready', 'failed'].includes(payload.state)) return;
+    listener(Object.freeze(payload));
+  };
+  ipcRenderer.on(PREVIEW_STATUS_CHANNEL, handler);
+  let active = true;
+  return () => {
+    if (!active) return;
+    active = false;
+    ipcRenderer.removeListener(PREVIEW_STATUS_CHANNEL, handler);
+  };
+};
 
 contextBridge.exposeInMainWorld('live2pet', Object.freeze({
   getVersion: () => invoke('getVersion'),
@@ -75,4 +96,12 @@ contextBridge.exposeInMainWorld('live2pet', Object.freeze({
   getBuildArtifact: (artifactId, offset = 0) => invoke('getBuildArtifact', { artifactId, offset }),
   chooseInstallRoot: (target) => invoke('chooseInstallRoot', { target }),
   installArtifact: (request) => invoke('installArtifact', request),
+  openPreview: (input) => invokePreview('open', input),
+  layoutPreview: (input) => invokePreview('layout', input),
+  playPreview: (input) => invokePreview('play', input),
+  setPreviewExpression: (input) => invokePreview('setExpression', input),
+  controlPreview: (input) => invokePreview('control', input),
+  closePreview: () => invokePreview('close'),
+  getPreviewStatus: () => invokePreview('getStatus'),
+  onPreviewStatus,
 }));
