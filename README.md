@@ -57,6 +57,34 @@ using the English or Chinese README according to the App's current language.
 
 ## Components
 
+### Targets and installation
+
+**Settings → Targets & Installation** detects the Clawd on Desk and Codex macOS
+Apps in `/Applications` and `~/Applications`, validating each bundle identifier
+and displaying its version. **Locate App** supports another location or a renamed
+bundle. A missing result means only that the checked locations did not match;
+other platforms currently report App detection as unavailable.
+
+App presence and package-folder readiness are separate checks. The page shows
+the resolved folder, whether it is writable, or whether it will be created only
+on confirmed installation. Clawd's default macOS folder is
+`~/Library/Application Support/clawd-on-desk/themes`, as documented in the
+[host's theme guide](https://github.com/rullerzhou-afk/clawd-on-desk/blob/main/docs/guides/guide-theme-creation.md).
+Codex defaults to `$CODEX_HOME/pets`, or `~/.codex/pets` when `CODEX_HOME` is unset.
+The existing `LIVE2PET_CLAWD_ROOT` / `LIVE2PET_CODEX_ROOT` overrides remain supported.
+
+Choose a custom package folder to save it on this device. Build uses that folder
+and confirms the exact destination before installing; existing packages are not
+silently overwritten. The Build page's folder picker also remembers its choice.
+Resetting a location removes only the preference, not any installed files.
+Selecting an App does not change its data folder or prove pet-format compatibility.
+Detection never launches an App, creates a package folder, or installs a pet.
+
+Absolute installation paths are visible only in local settings/confirmation UI;
+these preferences are not stored in projects or exported pet packages.
+
+### Workspace packages
+
 - `apps/mapper/` — browser-based Live2D motion preview, Clawd mapping, user-configurable Clawd idle/tier behavior pools, Codex nine-row mapping, local Codex ZIP fallback build, shared-App Clawd Theme ZIP build, generated target previews, final-size Codex row playback, and explicit Desktop-App installation controls. The Mapper has no runtime CDN dependency: modern Core can be selected locally, and Cubism 2 preview requires a user-selected local `live2d.min.js`. Selected runtimes are saved only in the browser profile and restored on the next launch; the clear-saved control removes those local copies. Its first English/Chinese (`zh-CN`) locale layer is presentation-only and does not change project or package schemas.
 - `packages/source-inspector/` — normalized Source Package inspection API and versioned `live2pet-inspect` CLI for standard Cubism directories and supported Live2D PCK files.
 - `packages/project/` — reference-only `.live2pet` Project schema, reusable Motion-plus-Expression Animation Recipes, target Render Preset persistence, deterministic serialization, atomic file I/O, autosave recovery, source relinking, and review gating.

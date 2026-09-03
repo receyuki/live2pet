@@ -1,8 +1,8 @@
 import { Button, ButtonGroup, Card, Chip, ProgressBar, Input, Label, TextField } from "@heroui/react";
 import { CircleCheck, Download, FolderOpen, PackageCheck, Square, XCircle } from "lucide-react";
-import { useState } from "react";
-import type { BuildArtifact, BuildTarget, InstallRootResult, Live2PetProject, RenderPreset, SourceInspection } from "./app-host";
-import { chooseInstallRoot, hasBuildApi, installArtifact } from "./app-host";
+import { useEffect, useState } from "react";
+import type { BuildArtifact, BuildTarget, InstallRootResult, Live2PetProject, RenderPreset, SourceInspection, TargetInstallations } from "./app-host";
+import { chooseInstallRoot, hasBuildApi, installArtifact, getTargetInstallations, hasTargetInstallationApi } from "./app-host";
 import { downloadBuildArtifact } from "./build-artifact";
 import type { BuildState } from "./build-state";
 import { GeneratedPreview } from "./generated-preview";
@@ -50,7 +50,14 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   const [locations, setLocations] = useState<Partial<Record<BuildTarget, Extract<InstallRootResult, { cancelled: false }>>>>({});
   const [feedback, setFeedback] = useState<Partial<Record<BuildTarget, string>>>({});
+  const [installations, setInstallations] = useState<TargetInstallations | null>(null);
   const hostReady = hasBuildApi();
+  useEffect(() => {
+    if (!hasTargetInstallationApi()) return;
+    let active = true;
+    void getTargetInstallations().then(value => { if (active) setInstallations(value); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   async function download(artifact: BuildArtifact) {
     try {
@@ -65,7 +72,9 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
     try {
       const result = await chooseInstallRoot(target);
       if (!result.cancelled) {
-        setLocations((value) => ({ ...value, [target]: result }));
+        const detected = hasTargetInstallationApi() ? await getTargetInstallations() : null;
+        if (detected) setInstallations(detected);
+        setLocations((value) => ({ ...value, [target]: { ...result, displayPath: detected?.targets.find(record => record.target === target)?.root.path } }));
         setFeedback((value) => ({ ...value, [target]: t("installFolderChosen") }));
       }
     } catch (cause) {
@@ -74,9 +83,17 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
   }
 
   async function install(target: BuildTarget, artifact: BuildArtifact) {
-    if (!window.confirm(t("confirmInstallArtifact", { filename: artifact.filename }))) return;
     try {
-      await installArtifact({ artifactId: artifact.artifactId, target, conflict: "cancel", confirmInstall: true, ...(locations[target] ? { locationId: locations[target]!.locationId } : {}) });
+      const detected = hasTargetInstallationApi() ? await getTargetInstallations() : null;
+      if (detected) setInstallations(detected);
+      const destination = detected?.targets.find(record => record.target === target);
+      const selected = locations[target];
+      const locationId = destination?.locationId ?? selected?.locationId;
+      const installPath = destination?.root.path ?? selected?.displayPath;
+      if (destination && !['ready', 'will-create'].includes(destination.root.state)) throw new Error(t(`targetRoot_${destination.root.state}`));
+      const warning = destination && destination.application.status !== 'found' ? `\n\n${t('installAppMissing')}` : '';
+      if (!window.confirm((installPath ? t('confirmInstallAt', { filename: artifact.filename, path: installPath }) : t("confirmInstallArtifact", { filename: artifact.filename })) + warning)) return;
+      await installArtifact({ artifactId: artifact.artifactId, target, conflict: "cancel", confirmInstall: true, ...(locationId ? { locationId } : {}) });
       setFeedback((value) => ({ ...value, [target]: t("installSucceeded") }));
     } catch (cause) {
       setFeedback((value) => ({ ...value, [target]: cause instanceof Error ? cause.message : t("buildFailed") }));
@@ -100,6 +117,7 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
               <Card.Content>
                 <div className="build-top"><span className="large-icon"><PackageCheck size={20} /></span><Chip variant="soft">{readiness.ready ? t("ready") : t("notReady")}</Chip></div>
                 <h2>{title}</h2>
+                {(locations[target]?.displayPath || installations?.targets.find(record => record.target === target)) && <p className="install-destination">{t('targetRoot')} · {locations[target]?.displayPath ?? installations?.targets.find(record => record.target === target)?.root.path}</p>}
                 {target === 'codex-pet' && <><p>{t('codexV2Hint')}</p><p>{t('codexTimingHint')}</p></>}
                 <p>{readiness.ready ? t("targetReadyBody") : t("targetMissing", { value: readiness.missing.join(", ") })}</p>
                 <div className="preset-row"><strong>{t("renderPreset")}</strong><ButtonGroup aria-label={`${title} ${t("renderPreset")}`}>{presets.map((value) => <Button size="sm" key={value} variant={preset === value ? "primary" : "secondary"} onPress={() => onPreset(target, value)}>{t(value)}</Button>)}</ButtonGroup></div>

@@ -33,6 +33,18 @@ App 的“下载指南”按钮会在系统浏览器中打开本节，并根据 
 
 ## 项目组成
 
+### 目标与安装
+
+**设置 → 目标与安装** 会在 macOS 的 `/Applications` 和 `~/Applications` 中查找 Clawd on Desk 与 Codex，核对应用标识并显示版本。安装在其他位置或改过名字的 App 可通过“手动定位 App”选择。“未找到”仅表示检查位置没有匹配结果；其他平台目前会显示暂不支持 App 检测。
+
+App 是否存在与宠物目录是否可用分别检测。页面显示实际目录、可写状态，或提示该目录将在确认安装时创建。Clawd 的 macOS 默认目录是 `~/Library/Application Support/clawd-on-desk/themes`，见[宿主主题指南](https://github.com/rullerzhou-afk/clawd-on-desk/blob/main/docs/guides/guide-theme-creation.md)。Codex 默认使用 `$CODEX_HOME/pets`，未设置 `CODEX_HOME` 时使用 `~/.codex/pets`。已有的 `LIVE2PET_CLAWD_ROOT` / `LIVE2PET_CODEX_ROOT` 环境变量覆盖仍然有效。
+
+选择自定义安装目录后会在本机保存，构建页安装时复用，并在确认框里显示完整目的路径，不会静默覆盖已有包。构建页选择目录也会记住选择。恢复默认位置只移除偏好，不删除已安装文件。选择 App 不会改变其数据目录，也不代表已经验证宠物格式兼容。检测不会启动 App、创建宠物目录或安装宠物。
+
+完整安装路径仅用于本机设置和安装确认；这些偏好不会写入项目或导出的宠物包。
+
+### 工作区模块
+
 - `apps/mapper/`：浏览器版 Live2D 动作预览和映射参考工具，包含 Clawd 待机/分层行为池、Codex 九行映射、本地 Codex ZIP 回退构建、共享 App Clawd 构建、生成结果预览、实际尺寸播放和明确的安装操作。运行时不依赖 CDN；现代 Core 和 Cubism 2 的 `live2d.min.js` 均由用户本地选择，副本仅保存在浏览器配置中，清除操作移除这些副本。中英文界面不改变项目或包格式。
 - `packages/source-inspector/`：标准 Cubism 文件夹和受支持 Live2D PCK 的规范化资源检查 API 与版本化 `live2pet-inspect` CLI。
 - `packages/project/`：仅保存引用的 `.live2pet` 项目格式、可复用的动作与表情配方、各目标渲染预设、确定性序列化、原子文件读写、自动保存恢复、资源重新关联和变更确认。

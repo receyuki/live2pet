@@ -69,6 +69,8 @@ const APP_IPC_METHODS = Object.freeze([
   'cancelBuild',
   'getBuildArtifact',
   'chooseInstallRoot',
+  'getTargetInstallations',
+  'configureTargetInstallation',
   'installArtifact',
 ]);
 
@@ -568,7 +570,7 @@ function typedError(error) {
   };
 }
 
-function createAppIpcRouter({ projectWorkspaceService = null, projectSourceService = null, sourceInspectionService = null, runtimeSettingsService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
+function createAppIpcRouter({ projectWorkspaceService = null, projectSourceService = null, sourceInspectionService = null, runtimeSettingsService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, targetInstallationService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
   if (projectWorkspaceService !== null && (!isRecord(projectWorkspaceService) || typeof projectWorkspaceService.getRecentProjects !== 'function' || typeof projectWorkspaceService.openProject !== 'function' || typeof projectWorkspaceService.saveProject !== 'function')) fail('INVALID_APP_ROUTER', 'projectWorkspaceService must expose getRecentProjects, openProject, and saveProject functions when provided.');
   if (projectSourceService !== null && (!isRecord(projectSourceService) || typeof projectSourceService.relink !== 'function' || typeof projectSourceService.acknowledgeReview !== 'function')) fail('INVALID_APP_ROUTER', 'projectSourceService must expose relink and acknowledgeReview functions when provided.');
   if (sourceInspectionService !== null && typeof sourceInspectionService !== 'function') fail('INVALID_APP_ROUTER', 'sourceInspectionService must be a function when provided.');
@@ -577,6 +579,7 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
   if (buildProjectService !== null && typeof buildProjectService !== 'function') fail('INVALID_APP_ROUTER', 'buildProjectService must be a function when provided.');
   if (installPackageService !== null && typeof installPackageService !== 'function') fail('INVALID_APP_ROUTER', 'installPackageService must be a function when provided.');
   if (installRootPickerService !== null && typeof installRootPickerService !== 'function') fail('INVALID_APP_ROUTER', 'installRootPickerService must be a function when provided.');
+  if (targetInstallationService !== null && (!isRecord(targetInstallationService) || typeof targetInstallationService.get !== 'function' || typeof targetInstallationService.configure !== 'function')) fail('INVALID_APP_ROUTER', 'targetInstallationService must expose get and configure.');
   if (onBuildProgress !== null && typeof onBuildProgress !== 'function') fail('INVALID_APP_ROUTER', 'onBuildProgress must be a function when provided.');
   if (typeof appVersion !== 'string' || !appVersion.trim()) fail('INVALID_APP_ROUTER', 'appVersion must be a non-empty string.');
   let buildArtifacts = new Map();
@@ -744,6 +747,24 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
           },
         };
       }
+      if (normalized.method === 'getTargetInstallations') {
+        if (normalized.args.length) fail('INVALID_INSTALL_SETTINGS_REQUEST', 'Target detection does not accept arguments.');
+        if (!targetInstallationService) fail('APP_INSTALL_SETTINGS_UNAVAILABLE', 'Target installation settings require the Desktop App.');
+        const status = await targetInstallationService.get();
+        const targets = status.targets.map(record => {
+          const locationId = crypto.randomUUID();
+          installLocations.set(locationId, { target: record.target, path: record.root.path });
+          return { ...record, locationId };
+        });
+        while (installLocations.size > APP_INSTALL_LOCATION_LIMIT) installLocations.delete(installLocations.keys().next().value);
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: { ...status, targets } };
+      }
+      if (normalized.method === 'configureTargetInstallation') {
+        const input = normalized.args[0];
+        if (normalized.args.length !== 1 || !isRecord(input) || Object.keys(input).some(key => !['target', 'action'].includes(key)) || !['clawd', 'codex-pet'].includes(input.target) || !['choose-root', 'reset-root', 'choose-app', 'reset-app'].includes(input.action)) fail('INVALID_INSTALL_SETTINGS_REQUEST', 'Choose a supported target and native configuration action.');
+        if (!targetInstallationService) fail('APP_INSTALL_SETTINGS_UNAVAILABLE', 'Target installation settings require the Desktop App.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: await targetInstallationService.configure(input) };
+      }
       if (normalized.method === 'chooseInstallRoot') {
         if (!installRootPickerService) fail('APP_INSTALL_ROOT_UNAVAILABLE', 'The App install root picker is not configured.');
         const input = normalizeInstallRootRequest(normalized.args[0]);
@@ -761,8 +782,13 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
         const artifact = buildArtifacts.get(input.artifactId);
         if (!artifact) fail('BUILD_ARTIFACT_NOT_FOUND', 'The requested build artifact is no longer available. Build the project again.');
         if (artifact.target !== input.target) fail('INSTALL_TARGET_MISMATCH', 'The selected artifact does not belong to the requested Target Profile.');
-        const location = input.locationId ? installLocations.get(input.locationId) : null;
+        let location = input.locationId ? installLocations.get(input.locationId) : null;
         if (input.locationId && !location) fail('INSTALL_LOCATION_EXPIRED', 'The selected install folder is no longer available. Choose it again.');
+        if (!location && targetInstallationService) {
+          const status = await targetInstallationService.get();
+          const record = status.targets.find(record => record.target === input.target);
+          location = { target: input.target, path: record.root.path };
+        }
         if (location && location.target !== input.target) fail('INSTALL_LOCATION_MISMATCH', 'The selected install folder belongs to another Target Profile.');
         const progress = [];
         const installed = await installPackageService({
@@ -844,6 +870,8 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
     onBuildProgress,
     getBuildArtifact: (artifactId, offset = 0) => invoke('getBuildArtifact', { artifactId, offset }),
     chooseInstallRoot: (target) => invoke('chooseInstallRoot', { target }),
+    getTargetInstallations: () => invoke('getTargetInstallations'),
+    configureTargetInstallation: (input) => invoke('configureTargetInstallation', input),
     installArtifact: (request) => invoke('installArtifact', request),
   });
 }

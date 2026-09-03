@@ -2,6 +2,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, screen, shell, WebContentsView } = require('electron');
 const { createRuntimeHelpWindowHandler } = require('./runtime-help.cjs');
+const { createTargetInstallationService } = require('./target-installation-service.cjs');
 
 const {
   APP_COMMAND_CHANNEL,
@@ -192,12 +193,25 @@ const buildProjectWithHostedRenderer = createHostedBuildService({
   buildProject: buildProjectWithCaptureCache,
 });
 
+let targetInstallationService;
+function getTargetInstallationService() {
+  if (!targetInstallationService) targetInstallationService = createTargetInstallationService({
+    settingsPath: path.join(app.getPath('userData'), 'installation', 'settings.json'),
+    pick: async ({ target, kind, defaultPath }) => {
+      const title = kind === 'application' ? `Choose ${target === 'clawd' ? 'Clawd on Desk' : 'Codex'} App` : `Choose ${target === 'clawd' ? 'Clawd themes' : 'Codex pets'} folder`;
+      const result = await dialog.showOpenDialog(mainWindow, { title, defaultPath, properties: kind === 'application' ? ['openFile'] : ['openDirectory', 'createDirectory'], ...(kind === 'application' ? { filters: [{ name: 'macOS application', extensions: ['app'] }] } : {}) });
+      return result.canceled ? null : result.filePaths?.[0];
+    },
+  });
+  return targetInstallationService;
+}
+
 async function chooseInstallRoot({ target } = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) throw new Error('The Live2Pet window is not available for folder selection.');
-  const title = target === 'clawd' ? 'Choose a Clawd themes folder' : 'Choose a Codex pets folder';
-  const result = await dialog.showOpenDialog(mainWindow, { title, properties: ['openDirectory', 'createDirectory'] });
-  if (result.canceled || !result.filePaths?.[0]) return { cancelled: true };
-  return { path: result.filePaths[0] };
+  const service = getTargetInstallationService();
+  const result = await service.configure({ target, action: 'choose-root' });
+  if (result.cancelled) return result;
+  return { path: (await service.get()).targets.find(record => record.target === target).root.path };
 }
 
 function projectWorkspaceStatePath() {
@@ -275,6 +289,7 @@ function registerIpc() {
     buildProjectService: buildProjectWithHostedRenderer,
     installPackageService: installPackage,
     installRootPickerService: chooseInstallRoot,
+    targetInstallationService: getTargetInstallationService(),
     onBuildProgress: (event) => {
       if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
       try { mainWindow.webContents.send(APP_BUILD_PROGRESS_CHANNEL, event); } catch {}

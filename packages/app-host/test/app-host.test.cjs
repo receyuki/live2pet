@@ -84,6 +84,34 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.throws(() => normalizeCancelBuildRequest({ buildId: 'build_1234', extra: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_BUILD_CANCEL_REQUEST');
 });
 
+test('target settings accept native actions only and installation consumes configured or snapshot destinations', async () => {
+  const calls = [];
+  const router = createAppIpcRouter({
+    targetInstallationService: {
+      get: async () => ({platform:'darwin',targets:[{target:'codex-pet',application:{status:'found'},root:{path:'/Users/test/saved-pets',state:'ready'}}]}),
+      configure: async input => { calls.push(input); return {cancelled:true}; },
+    },
+    buildProjectService: async () => ({projectId:'installation-settings',targets:['codex-pet'],builds:{'codex-pet':{target:'codex-pet',package:{artifactName:'pet.zip',byteLength:1,files:['pet.json'],buffer:Uint8Array.from([7])}}}}),
+    installPackageService: async input => { calls.push(input); return {target:input.target,packageId:'pet',files:['pet.json'],byteLength:1,path:input.targetRoot}; },
+  });
+  const request = (method, ...args) => router({protocolVersion:1,method,args});
+  assert.equal((await request('getTargetInstallations', {path:'/tmp'})).ok, false);
+  assert.equal((await request('configureTargetInstallation', {target:'clawd',action:'choose-root',path:'/tmp'})).ok, false);
+  assert.equal((await request('configureTargetInstallation', {target:'other',action:'choose-root'})).ok, false);
+  assert.equal((await request('configureTargetInstallation', {target:'clawd',action:'execute'})).ok, false);
+  assert.deepEqual((await request('configureTargetInstallation', {target:'clawd',action:'choose-root'})).result, {cancelled:true});
+  const detected = await request('getTargetInstallations');
+  assert.equal(detected.result.targets[0].root.path, '/Users/test/saved-pets');
+  assert.match(detected.result.targets[0].locationId, /^[0-9a-f-]{36}$/);
+  const built = await request('buildProject', {project:{projectId:'installation-settings'},targets:['codex-pet']});
+  const artifactId = built.result.artifacts[0].artifactId;
+  for (const locationId of [undefined, detected.result.targets[0].locationId]) {
+    assert.equal((await request('installArtifact',{artifactId,target:'codex-pet',confirmInstall:true,...(locationId ? {locationId} : {})})).ok, true);
+    assert.equal(calls.at(-1).targetRoot, '/Users/test/saved-pets');
+  }
+  await router.close();
+});
+
 test('normalizes project requests and strips private paths from recent results', () => {
   assert.deepEqual(normalizeOpenProjectRequest(undefined), {});
   assert.deepEqual(normalizeOpenProjectRequest({ documentId: 'document_123' }), { documentId: 'document_123' });

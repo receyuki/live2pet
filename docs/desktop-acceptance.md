@@ -149,3 +149,36 @@ Settings and workspace toolbar heights matched; Done remained inside the toolbar
 on the right, no horizontal page overflow occurred, and closing Settings returned
 to the previous destination. Model playback and Package Build services were not
 changed by this presentation-only update.
+
+### Real target detection and durable installation preferences
+
+Targets & Installation is no longer a placeholder. On macOS it checks the two
+standard Applications directories (or a native-picker-selected App) against
+the Clawd/Codex bundle identifiers, and displays the detected version and path.
+Detection is explicitly bounded, not proof that an unmatched App is uninstalled;
+other platforms currently report App detection as unsupported.
+
+Package folder inspection is independent of App presence. It reports a writable
+folder, a missing folder whose existing ancestor is writable, a file collision,
+or an inaccessible destination. Read-only detection never creates a folder.
+Manual App and folder choices persist atomically in private App settings;
+cancelling the picker or resetting a preference never deletes host files.
+Corrupt preferences fail explicitly instead of silently overwriting settings.
+
+Build folder selection persists through the same service. Before installation,
+the UI refreshes detection, confirms the exact path, and submits a target-bound
+opaque location handle. Known inaccessible destinations are rejected before
+confirmation. The App router also resolves saved preferences for callers that
+omit a handle. Existing explicit confirmation and non-overwrite behavior remain.
+Local paths are deliberately displayed by this settings-only API, not embedded
+in project documents, build reports, or generated packages.
+
+Verification: 255 Node tests passed with two opt-in skips; all 99 UI tests and
+type checking passed. Source and packaged asset scans passed. Actual local
+detection found Clawd on Desk 0.16.0 and Codex 26.901.20858 with writable default
+pet directories. A disposable-profile packaged App test selected a scratch
+folder and the real Clawd bundle through native-picker responses, restarted
+the App, confirmed both preferences persisted, then reset them without deleting
+the scratch folder or writing any package. The Chinese 1024-by-768 layout had
+no horizontal overflow. This verifies detection/configuration and the shared
+installation routing tests, not actual target-host pet loading or activation.

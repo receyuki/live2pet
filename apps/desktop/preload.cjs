@@ -116,6 +116,8 @@ contextBridge.exposeInMainWorld('live2pet', Object.freeze({
   onBuildProgress,
   getBuildArtifact: (artifactId, offset = 0) => invoke('getBuildArtifact', { artifactId, offset }),
   chooseInstallRoot: (target) => invoke('chooseInstallRoot', { target }),
+  getTargetInstallations: () => invoke('getTargetInstallations'),
+  configureTargetInstallation: (input) => invoke('configureTargetInstallation', input),
   installArtifact: (request) => invoke('installArtifact', request),
   openPreview: (input) => invokePreview('open', input),
   layoutPreview: (input) => invokePreview('layout', input),

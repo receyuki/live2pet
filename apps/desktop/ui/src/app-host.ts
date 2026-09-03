@@ -112,7 +112,15 @@ export type BuildProjectResult = {
   artifacts: BuildArtifact[];
 };
 export type BuildArtifactChunk = BuildArtifact & { offset: number; nextOffset: number; done: boolean; bytes: Uint8Array };
-export type InstallRootResult = { target: BuildTarget; cancelled: true } | { target: BuildTarget; cancelled: false; locationId: string; label: string };
+export type InstallRootResult = { target: BuildTarget; cancelled: true } | { target: BuildTarget; cancelled: false; locationId: string; label: string; displayPath?: string };
+export type InstallationAction = 'choose-root' | 'reset-root' | 'choose-app' | 'reset-app';
+export type TargetInstallation = {
+  target: BuildTarget;
+  locationId: string;
+  application: { status: 'found' | 'not-found' | 'unavailable' | 'unsupported'; source: 'auto' | 'manual'; path?: string; version?: string };
+  root: { path: string; source: 'manual' | 'default' | 'environment'; state: 'ready' | 'will-create' | 'not-directory' | 'unavailable' };
+};
+export type TargetInstallations = { platform: string; targets: TargetInstallation[] };
 export type InstallResult = { protocolVersion?: number; target: BuildTarget; packageId?: string; conflict?: string; files: string[]; byteLength?: number; path: '<selected-install-root>' | '<platform-default-target-root>' };
 
 export type PreviewBounds = { x: number; y: number; width: number; height: number };
@@ -159,6 +167,8 @@ type Live2PetApi = {
   onBuildProgress?(listener: (event: BuildProgressEvent) => void): () => void;
   getBuildArtifact?(artifactId: string, offset?: number): Promise<AppResponse<BuildArtifactChunk>>;
   chooseInstallRoot?(target: BuildTarget): Promise<AppResponse<InstallRootResult>>;
+  getTargetInstallations?(): Promise<AppResponse<TargetInstallations>>;
+  configureTargetInstallation?(input: { target: BuildTarget; action: InstallationAction }): Promise<AppResponse<{ cancelled: boolean }>>;
   installArtifact?(input: { artifactId: string; target: BuildTarget; conflict?: 'cancel' | 'upgrade' | 'side-by-side'; confirmInstall: true; locationId?: string }): Promise<AppResponse<InstallResult>>;
   getFilePath(file: File): string | null;
   openPreview?(input: { projectId: string; sourceFingerprint: string; bounds: PreviewBounds }): Promise<AppResponse<PreviewStatus>>;
@@ -327,6 +337,22 @@ export function getBuildArtifact(artifactId: string, offset = 0): Promise<BuildA
 
 export function chooseInstallRoot(target: BuildTarget): Promise<InstallRootResult> {
   return unwrap(buildApi().chooseInstallRoot!(target));
+}
+
+export function hasTargetInstallationApi(): boolean {
+  return Boolean(desktopApi()?.getTargetInstallations && desktopApi()?.configureTargetInstallation);
+}
+
+export function getTargetInstallations(): Promise<TargetInstallations> {
+  const api = desktopApi();
+  if (!api?.getTargetInstallations) return Promise.reject(new DesktopApiError('APP_INSTALL_SETTINGS_UNAVAILABLE', 'Target detection requires the Desktop App.'));
+  return unwrap(api.getTargetInstallations());
+}
+
+export function configureTargetInstallation(target: BuildTarget, action: InstallationAction): Promise<{ cancelled: boolean }> {
+  const api = desktopApi();
+  if (!api?.configureTargetInstallation) return Promise.reject(new DesktopApiError('APP_INSTALL_SETTINGS_UNAVAILABLE', 'Target configuration requires the Desktop App.'));
+  return unwrap(api.configureTargetInstallation({ target, action }));
 }
 
 export function installArtifact(input: { artifactId: string; target: BuildTarget; conflict?: 'cancel' | 'upgrade' | 'side-by-side'; confirmInstall: true; locationId?: string }): Promise<InstallResult> {

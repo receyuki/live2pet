@@ -2,12 +2,12 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BuildView, targetReadiness } from "./BuildView";
-import { chooseInstallRoot, installArtifact } from "./app-host";
+import { chooseInstallRoot, installArtifact, getTargetInstallations, hasTargetInstallationApi } from "./app-host";
 import { downloadBuildArtifact } from "./build-artifact";
 import { initialBuildState } from "./build-state";
 import type { Live2PetProject, SourceInspection } from "./app-host";
 
-vi.mock("./app-host", async (importOriginal) => ({ ...(await importOriginal<typeof import("./app-host")>()), hasBuildApi: () => true, chooseInstallRoot: vi.fn(), installArtifact: vi.fn() }));
+vi.mock("./app-host", async (importOriginal) => ({ ...(await importOriginal<typeof import("./app-host")>()), hasBuildApi: () => true, hasTargetInstallationApi: vi.fn(() => false), getTargetInstallations: vi.fn(), chooseInstallRoot: vi.fn(), installArtifact: vi.fn() }));
 vi.mock("./build-artifact", () => ({ downloadBuildArtifact: vi.fn() }));
 vi.mock("./generated-preview", () => ({ GeneratedPreview: () => <div>generated preview</div> }));
 
@@ -22,10 +22,12 @@ const project = {
 
 afterEach(cleanup);
 beforeEach(() => {
+  vi.mocked(hasTargetInstallationApi).mockReturnValue(false);
+  vi.mocked(getTargetInstallations).mockReset();
   vi.mocked(downloadBuildArtifact).mockReset().mockResolvedValue();
   vi.mocked(chooseInstallRoot).mockReset().mockResolvedValue({ target: "clawd", cancelled: false, locationId: "location-12345678", label: "selected-folder" });
   vi.mocked(installArtifact).mockReset().mockResolvedValue({ target: "clawd", files: [], path: "<selected-install-root>" });
-  vi.spyOn(window, "confirm").mockReturnValue(true);
+  vi.spyOn(window, "confirm").mockReset().mockReturnValue(true);
 });
 
 it('exposes the durable package name and blocks builds for an empty name', async () => {
@@ -34,6 +36,21 @@ it('exposes the durable package name and blocks builds for an empty name', async
   await userEvent.setup().type(screen.getByRole('textbox', { name: /Pet \/ theme name/ }), 'A');
   expect(onName).toHaveBeenCalledWith('PetA');
   expect(targetReadiness({ ...project, name: '' }, inspection, true, 'clawd').ready).toBe(false);
+});
+
+it('confirms the detected saved destination and installs through its opaque handle', async () => {
+  vi.mocked(hasTargetInstallationApi).mockReturnValue(true);
+  vi.mocked(getTargetInstallations).mockResolvedValue({platform:'darwin',targets:[{target:'clawd',locationId:'saved-root-token',application:{status:'found',source:'auto'},root:{path:'/Users/test/custom-themes',source:'manual',state:'ready'}}]});
+  const state = initialBuildState();
+  state.clawd = {...state.clawd,status:'succeeded',progress:100,artifact:{artifactId:'artifact-1',target:'clawd',filename:'clawd.zip',byteLength:3},summary:{target:'clawd',validation:{ok:true},preview:{ready:true}}};
+  render(<BuildView locale="en" project={project} inspection={inspection} runtimeReady state={state} onBuild={vi.fn()} onCancel={vi.fn()} onPreset={vi.fn()} />);
+  await userEvent.setup().click(screen.getByRole('button',{name:'Install Clawd Theme Package'}));
+  expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('/Users/test/custom-themes'));
+  expect(installArtifact).toHaveBeenCalledWith({artifactId:'artifact-1',target:'clawd',conflict:'cancel',confirmInstall:true,locationId:'saved-root-token'});
+  vi.mocked(window.confirm).mockReturnValueOnce(false);
+  vi.mocked(installArtifact).mockClear();
+  await userEvent.setup().click(screen.getByRole('button',{name:'Install Clawd Theme Package'}));
+  expect(installArtifact).not.toHaveBeenCalled();
 });
 
 describe("BuildView", () => {

@@ -368,3 +368,4 @@
 
 /* Settings shares the workspace toolbar and its native traffic-light clearance. */
 .settings-toolbar>.toolbar-actions{grid-column:3}.toolbar-title{font-size:15px;font-weight:700}.settings-sidebar{overflow-y:auto}
+.target-settings{display:grid;gap:16px}.target-settings h2{font-size:18px;font-weight:650}.target-settings-tools{display:flex;justify-content:flex-end}.target-detection-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:18px}.target-settings-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.target-path{overflow-wrap:anywhere;margin-top:8px;font-family:ui-monospace,monospace;font-size:12px;color:var(--muted)}.target-settings small,.target-settings>.muted{color:var(--muted);line-height:1.6}.install-destination{overflow-wrap:anywhere;font-size:12px}
