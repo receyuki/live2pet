@@ -100,13 +100,13 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
               <Card.Content>
                 <div className="build-top"><span className="large-icon"><PackageCheck size={20} /></span><Chip variant="soft">{readiness.ready ? t("ready") : t("notReady")}</Chip></div>
                 <h2>{title}</h2>
-                {target === 'codex-pet' && <p>{t('codexTimingHint')}</p>}
+                {target === 'codex-pet' && <><p>{t('codexV2Hint')}</p><p>{t('codexTimingHint')}</p></>}
                 <p>{readiness.ready ? t("targetReadyBody") : t("targetMissing", { value: readiness.missing.join(", ") })}</p>
                 <div className="preset-row"><strong>{t("renderPreset")}</strong><ButtonGroup aria-label={`${title} ${t("renderPreset")}`}>{presets.map((value) => <Button size="sm" key={value} variant={preset === value ? "primary" : "secondary"} onPress={() => onPreset(target, value)}>{t(value)}</Button>)}</ButtonGroup></div>
                 <div className={`build-result build-result-${current.status}`} role="status" aria-live="polite">
-                  <div><strong>{t(`buildStatus_${current.status}` as MessageKey)}</strong><span>{current.progress}%</span></div>
+                  <div><strong>{t(`buildStatus_${current.status === 'building' && current.stage === 'queue' ? 'queued' : current.status}` as MessageKey)}</strong><span>{current.progress}%</span></div>
                   <ProgressBar aria-label={`${title} ${t("buildProgress")}`} value={current.progress}><ProgressBar.Track><ProgressBar.Fill /></ProgressBar.Track></ProgressBar>
-                  <small>{current.error ?? current.message ?? (current.stage ? t("buildStage", { value: current.stage }) : t("buildWaiting"))}</small>
+                  <small>{current.error ?? (current.status === 'building' && current.stage === 'queue' ? t('buildQueuedHint') : current.message ?? (current.status === 'building' && (!current.stage || current.stage === 'prepare') ? t('buildPreparing') : current.stage ? t("buildStage", { value: current.stage }) : current.status === 'idle' ? t('buildWaiting') : t(`buildStatus_${current.status}` as MessageKey)))}</small>
                 </div>
                 <div className="build-actions">
                   {current.status === "building" ? <Button variant="secondary" onPress={() => onCancel(target)} isDisabled={!current.buildId}><Square size={14} />{t("cancelBuild")}</Button> : <Button variant="primary" onPress={() => onBuild(target)} isDisabled={!hostReady || !readiness.ready}><PackageCheck size={16} />{t("buildPackage")}</Button>}

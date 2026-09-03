@@ -8,6 +8,7 @@ const {
   ATLAS,
   ROWS,
 } = require('@live2pet/codex-target');
+const CODEX_PROFILE = require('@live2pet/codex-target/profile');
 
 const PREVIEW_CONTRACT_VERSION = 1;
 
@@ -454,7 +455,9 @@ function createCodexPreview({ manifest } = {}) {
   if (!isRecord(manifest) || !isRecord(manifest.atlas) || !Array.isArray(manifest.rows)) {
     fail('INVALID_TARGET_PREVIEW', 'Codex target preview requires a generated manifest with atlas rows.');
   }
-  for (const [key, expected] of Object.entries(ATLAS)) {
+  const atlas = CODEX_PROFILE.atlases[manifest.spriteVersionNumber ?? 1];
+  if (!atlas) fail('INVALID_TARGET_PREVIEW', 'Codex sprite version must be 1 or 2.');
+  for (const [key, expected] of Object.entries(atlas)) {
     if (manifest.atlas[key] !== expected) fail('INVALID_TARGET_PREVIEW', `Codex preview atlas ${key} must be ${expected}.`, { field: key, expected, actual: manifest.atlas[key] });
   }
   const rows = manifest.rows.map((row, rowIndex) => {
@@ -486,11 +489,11 @@ function createCodexPreview({ manifest } = {}) {
     spritesheet: {
       path: typeof manifest.spritesheetPath === 'string' && manifest.spritesheetPath.trim() ? manifest.spritesheetPath.trim() : 'spritesheet.webp',
       width: ATLAS.width,
-      height: ATLAS.height,
+      height: atlas.height,
       cellWidth: ATLAS.cellWidth,
       cellHeight: ATLAS.cellHeight,
       columns: ATLAS.columns,
-      rows: ATLAS.rows,
+      rows: atlas.rows,
     },
     frameSize: { width: ATLAS.cellWidth, height: ATLAS.cellHeight },
     rows,

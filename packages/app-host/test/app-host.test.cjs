@@ -110,6 +110,14 @@ test('routes project workspace operations without exposing project file paths', 
   assert.deepEqual((await router({ protocolVersion: 1, method: 'saveProject', args: [{ project }] })).result, { cancelled: true, recentProjects: [{ documentId: 'document_123', name: 'Cat', fileName: 'cat.live2pet', available: true }] });
 });
 
+test('accepts a single dropped project path and rejects ambiguous or non-project paths', () => {
+  const inputPath = path.resolve('My Pet.live2pet');
+  assert.deepEqual(normalizeOpenProjectRequest({ inputPath }), { inputPath });
+  for (const input of [{ inputPath: 'relative.live2pet' }, { inputPath: path.resolve('model.json') }, { inputPath, documentId: 'document_123' }, { inputPath: `${inputPath}\0` }, { inputPath: 42 }]) {
+    assert.throws(() => normalizeOpenProjectRequest(input), error => error.code === 'INVALID_PROJECT_REQUEST');
+  }
+});
+
 test('routes Source relink and review acknowledgement with the project reference path only', async () => {
   const project = createProject({
     name: 'Relink', projectId: 'relink-app-host',

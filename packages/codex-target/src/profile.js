@@ -7,6 +7,8 @@
 }(typeof globalThis === 'object' ? globalThis : this, function createCodexProfile() {
   const freezeList = (values) => Object.freeze([...values]);
   const atlas = Object.freeze({ width: 1536, height: 1872, columns: 8, rows: 9, cellWidth: 192, cellHeight: 208 });
+  // Codex 26.901.20858 adds 16 static look-direction cells after the nine animation rows.
+  const atlases = Object.freeze({ 1: atlas, 2: Object.freeze({ ...atlas, height: 2288, rows: 11 }) });
   // Verified against the installed Codex host on 2026-09-03; milliseconds per frame.
   const frameDurations = Object.freeze({
     idle: freezeList([280, 110, 110, 140, 140, 320]),
@@ -40,6 +42,7 @@
     contractVersion: 1,
     atlas,
     frameDurations,
+    atlases,
     rows,
     rowIds: freezeList(rows.map((row) => row.id)),
     renderPresets,

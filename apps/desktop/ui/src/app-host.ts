@@ -146,7 +146,7 @@ type Live2PetApi = {
   relinkSource(input: { project: Live2PetProject; inputPath: string }): Promise<AppResponse<SourceRelinkResult>>;
   acknowledgeSourceReview(input: { project: Live2PetProject }): Promise<AppResponse<{ project: Live2PetProject }>>;
   getRecentProjects(): Promise<AppResponse<{ recentProjects: RecentProject[] }>>;
-  openProject(input?: { documentId?: string }): Promise<AppResponse<ProjectFileResult>>;
+  openProject(input?: { documentId?: string; inputPath?: string }): Promise<AppResponse<ProjectFileResult>>;
   saveProject(input: { documentId?: string; project: Live2PetProject; saveAs?: boolean }): Promise<AppResponse<ProjectFileResult>>;
   onAppCommand?(listener: (command: AppCommand) => void): () => void;
   getRuntimeSettings(): Promise<AppResponse<RuntimeSettings>>;
@@ -154,7 +154,7 @@ type Live2PetApi = {
   clearRuntimeSettings(input?: { fingerprint: string }): Promise<AppResponse<RuntimeSettings>>;
   getBuildCacheStatus(): Promise<AppResponse<{ schemaVersion: 1; byteLength: number; entryCount: number; maxBytes: number }>>;
   clearBuildCache(input: { confirmClear: true }): Promise<AppResponse<{ removedEntries: number; removedBytes: number; schemaVersion: 1; byteLength: number; entryCount: number; maxBytes: number }>>;
-  buildProject?(input: { project: Live2PetProject; targets: BuildTarget[]; optionsByTarget: Partial<Record<BuildTarget, { package: true }>> }): Promise<AppResponse<BuildProjectResult>>;
+  buildProject?(input: { project: Live2PetProject; targets: BuildTarget[]; optionsByTarget: Partial<Record<BuildTarget, { package: true; spriteVersionNumber?: 2 }>> }): Promise<AppResponse<BuildProjectResult>>;
   cancelBuild?(buildId: string): Promise<AppResponse<{ buildId: string; cancelled: boolean; active: boolean }>>;
   onBuildProgress?(listener: (event: BuildProgressEvent) => void): () => void;
   getBuildArtifact?(artifactId: string, offset?: number): Promise<AppResponse<BuildArtifactChunk>>;
@@ -280,10 +280,10 @@ export async function getRecentProjects(): Promise<RecentProject[]> {
   return (await unwrap(api.getRecentProjects())).recentProjects;
 }
 
-export async function openProject(documentId?: string): Promise<ProjectFileResult> {
+export async function openProject(documentId?: string, inputPath?: string): Promise<ProjectFileResult> {
   const api = desktopApi();
   if (!api) throw new DesktopApiError('DESKTOP_REQUIRED', 'Projects can only be opened from the Desktop App.');
-  return unwrap(api.openProject(documentId ? { documentId } : {}));
+  return unwrap(api.openProject(inputPath ? { inputPath } : documentId ? { documentId } : {}));
 }
 
 export async function saveProject(input: { documentId?: string; project: Live2PetProject; saveAs?: boolean }): Promise<ProjectFileResult> {
@@ -310,7 +310,7 @@ function buildApi(): Live2PetApi {
 }
 
 export function buildProject(project: Live2PetProject, target: BuildTarget): Promise<BuildProjectResult> {
-  return unwrap(buildApi().buildProject!({ project, targets: [target], optionsByTarget: { [target]: { package: true } } }));
+  return unwrap(buildApi().buildProject!({ project, targets: [target], optionsByTarget: { [target]: { package: true, ...(target === 'codex-pet' ? { spriteVersionNumber: 2 as const } : {}) } } }));
 }
 
 export function cancelBuild(buildId: string) {

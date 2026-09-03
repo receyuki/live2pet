@@ -75,3 +75,35 @@ Mapping groups now carry explicit Required / Optional badges and short skip guid
 The bottom status bar shares the existing build state with the Build destination, remains present in Settings, and offers navigation back to the build result. Both progress displays include HeroUI Track and Fill components; an empty ProgressBar root alone supplies accessibility state but no visible track. The result-header flex rule is restricted to the title row so it cannot collapse the progress component's grid track to zero width. Success, failure, and cancellation remain visible without triggering downloads or installation. The two-ear `BrandMark` is an existing CSS-drawn decorative mascot, not a loaded model or runtime indicator; it was not changed in this fix.
 
 Verification passed 86 UI tests, TypeScript checking, and packaged startup/resource checks. A fresh-profile packaged Clawd build from `shengluyisi_4` passed at 1024-, 1280-, and 1600-pixel window widths, with a generated-result frame no wider than 400 pixels, a square stage, selectable animations, and no horizontal page overflow. The Settings footer was also checked during the actual build. Source files, runtimes, test profiles, generated packages, and screenshots remain local and are not published.
+
+### Follow-up: project drops, queued builds, and responsive results
+
+The subsequent user review superseded the fixed 400-pixel preview cap: the
+result panel and square stage now follow the available card width. Intrinsic
+image sizes and long animation names cannot widen the card or page.
+
+Dropping a `.live2pet` file opens it through the same validated document service
+as the picker, including recent-document registration and the existing
+unsaved-project confirmation. Project files are not sent to model or runtime
+inspection. The IPC contract accepts either a recent `documentId` or one
+absolute `.live2pet` `inputPath`, never both.
+
+Hosted renderer builds are serialized. Submitted requests now report Queue
+and Prepare events before capture begins. Waiting targets show a localized
+Queued explanation in Build and a matching footer label; a never-submitted
+target remains Not built. Cancelling a queued request settles it immediately
+and skips its renderer operation without breaking subsequent requests.
+
+Desktop Codex builds now explicitly use sprite V2 with approved neutral-look
+compatibility. See [Codex sprite V2 compatibility](codex-sprite-v2.md) for the
+versioned dimensions, neutral-pose limitation, and local host verification.
+
+The follow-up regression passed 248 Node tests (two opt-in skips), 91 UI tests,
+type checking, and source/bundle asset scans. In the final packaged App, a
+native-backed dropped project File opened without a picker; a real
+`shengluyisi_4` Clawd build left Codex idle until it was submitted, then Codex
+displayed Queued and automatically started after Clawd released the renderer.
+Both builds completed, including the V2 neutral-look preview choice. At window
+widths 1024, 1280, and 1600, the result frame matched its card content width,
+the stage remained square, and the page had no horizontal overflow. A declined
+project-replacement prompt preserved unsaved work in the UI regression.

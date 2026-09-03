@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { afterEach, expect, it } from 'vitest';
 import { buildProject, getBuildArtifact } from './app-host';
 import { CODEX_PROFILE } from './target-profiles';
+import { parseGeneratedPreview } from './generated-preview';
 
 const require = createRequire(import.meta.url);
 const { createAppIpcRouter } = require('../../../../packages/app-host/src/index.cjs');
@@ -41,4 +42,12 @@ it.each(['clawd', 'codex-pet'] as const)('requests a downloadable %s ZIP through
   expect(artifact.filename).toMatch(/\.zip$/);
   expect(artifact.filename).toContain('ui-build-fixture');
   expect([...artifact.bytes.subarray(0, 2)]).toEqual([80, 75]);
+  if (target === 'codex-pet') {
+    const preview = await parseGeneratedPreview(artifact.bytes, target);
+    expect(preview.target).toBe('codex-pet');
+    if (preview.target === 'codex-pet') {
+      expect(preview.atlas.height).toBe(2288);
+      expect(preview.rows.at(-1)?.id).toBe('neutral-look');
+    }
+  }
 });

@@ -25,6 +25,17 @@ function codexManifest() {
   };
 }
 
+it('previews V2 neutral-look cells without treating them as extra required animations', async () => {
+  const manifest = { ...codexManifest(), spriteVersionNumber: 2, atlas: { ...codexManifest().atlas, rows: 11, height: 2288 }, gaze: { mode: 'neutral' } };
+  const preview = await parseGeneratedPreview(await archive({ 'pet.json': JSON.stringify(manifest), 'spritesheet.webp': new Uint8Array([1, 2, 3]) }), 'codex-pet');
+  expect(preview.target).toBe('codex-pet');
+  if (preview.target === 'codex-pet') {
+    expect(preview.atlas.rows).toBe(11);
+    expect(preview.rows.at(-1)).toMatchObject({ id: 'neutral-look', row: 9, frameCount: 1 });
+    expect(preview.rows).toHaveLength(10);
+  }
+});
+
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 beforeEach(() => {

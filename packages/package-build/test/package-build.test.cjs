@@ -54,6 +54,26 @@ function mapping() {
   };
 }
 
+test('builds Codex sprite V2 with sixteen neutral look cells and preserves V1 validation', async () => {
+  const result = await buildCodexPet({ mapping: { mappings: mapping() }, candidatesByRow: candidatesByRow() }, { spriteVersionNumber: 2, package: true });
+  assert.equal(result.manifest.spriteVersionNumber, 2);
+  assert.equal(result.atlas.width, 1536);
+  assert.equal(result.atlas.height, 2288);
+  assert.equal(result.manifest.atlas.rows, 11);
+  assert.equal(result.manifest.rows.length, 9);
+  assert.equal(result.manifest.gaze.mode, 'neutral');
+  for (let direction = 0; direction < 16; direction++) {
+    const x = direction % 8 * 192, y = (9 + Math.floor(direction / 8)) * 208;
+    for (const line of [0, 207]) {
+      const start = ((y + line) * 1536 + x) * 4;
+      assert.deepEqual(result.atlas.rgba.slice(start, start + 192 * 4), result.atlas.rgba.slice(line * 1536 * 4, (line * 1536 + 192) * 4));
+    }
+  }
+  assert.equal(validateCodexPetPackage({ manifest: result.manifest, spritesheet: result.spritesheet }).ok, true);
+  assert.equal(validateCodexPetPackage({ manifest: { ...result.manifest, spriteVersionNumber: 1 }, spritesheet: result.spritesheet }).ok, false);
+  await assert.rejects(buildCodexPet({ mapping: { mappings: mapping() }, candidatesByRow: candidatesByRow() }, { spriteVersionNumber: 3 }), /sprite version/i);
+});
+
 function candidatesByRow() {
   const counts = { idle: 6, 'running-right': 8, 'running-left': 8, waving: 4, jumping: 5, failed: 8, waiting: 6, running: 6, review: 6 };
   return Object.fromEntries(Object.entries(counts).map(([row, count]) => [row, Array.from({ length: count }, (_, index) => {

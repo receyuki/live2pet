@@ -77,7 +77,7 @@ import {
 } from "./app-state";
 import { Locale, MessageKey, translate } from "./i18n";
 import { projectIdFromSourceName, sourcePathFromSelection } from "./source-selection";
-import { hasDraggedFiles } from "./file-drop";
+import { hasDraggedFiles, isProjectFile } from "./file-drop";
 import { CLAWD_PROFILE, CODEX_PROFILE, MappingDestination } from "./target-profiles";
 import { BuildView } from "./BuildView";
 import { buildReducer, initialBuildState } from "./build-state";
@@ -228,6 +228,7 @@ function RuntimePanel({ locale, compact = false, onSettingsChange }: { locale: L
     event.preventDefault();
     dragDepth.current = 0;
     setDragActive(false);
+    if (Array.from(event.dataTransfer.files).some(isProjectFile)) return;
     if (event.dataTransfer.files.length !== 1) { setError(t("dropOne")); return; }
     void saveRuntime(event.dataTransfer.files[0]);
   }
@@ -344,6 +345,7 @@ function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onO
     dragDepth.current = 0;
     setDragActive(false);
     const files = Array.from(event.dataTransfer.files);
+    if (files.some(isProjectFile)) return;
     if (files.length) onImport(files, true);
   }
   return (
@@ -437,6 +439,7 @@ function SourceView({ locale, project, inspection, inspectionRequired, runtimeRe
     event.preventDefault();
     dragDepth.current = 0;
     setDragActive(false);
+    if (Array.from(event.dataTransfer.files).some(isProjectFile)) return;
     void onRelink(Array.from(event.dataTransfer.files), true);
   }
   const facts = inspection
@@ -742,6 +745,20 @@ export function App() {
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, [state.project?.dirty, state.project?.document]);
   useEffect(() => {
+    const openDroppedProject = (event: globalThis.DragEvent) => {
+      const files = Array.from(event.dataTransfer?.files ?? []);
+      if (!files.some(isProjectFile)) return;
+      event.preventDefault();
+      if (importBusy) return;
+      if (files.length !== 1) { setActionFeedback(t('dropOne')); return; }
+      const inputPath = getDesktopFilePath(files[0]);
+      if (!inputPath) { setActionFeedback(t('projectDropDesktop')); return; }
+      void openProjectDocument(undefined, inputPath);
+    };
+    window.addEventListener('drop', openDroppedProject, true);
+    return () => window.removeEventListener('drop', openDroppedProject, true);
+  }, [state.project, importBusy, locale]);
+  useEffect(() => {
     const preventFileNavigation = (event: globalThis.DragEvent) => {
       if (event.dataTransfer && hasDraggedFiles(event.dataTransfer)) event.preventDefault();
     };
@@ -782,13 +799,13 @@ export function App() {
     dispatch({ type: "OPEN_PROJECT", project: { id: "design-preview", name: t("project"), selectedMotionId: motions[0].id } });
   }
 
-  async function openProjectDocument(documentId?: string) {
+  async function openProjectDocument(documentId?: string, inputPath?: string) {
     if (!confirmProjectReplacement()) return;
     setImportBusy(true);
     setImportError("");
     setActionFeedback("");
     try {
-      const result = await openProject(documentId);
+      const result = await openProject(documentId, inputPath);
       setRecentProjects(result.recentProjects);
       if (result.cancelled) return;
       let relinked: Awaited<ReturnType<typeof relinkSourcePath>> | undefined;
@@ -1027,7 +1044,7 @@ export function App() {
       const name = target === 'clawd' ? 'Clawd' : 'Codex';
       return <div className="footer-build" key={target} title={current.error ?? current.message ?? t('build')}>
         <Button size="sm" variant="ghost" onPress={() => dispatch({ type: 'NAVIGATE', destination: 'build' })}>
-          {name} · {t(`buildStatus_${current.status}` as MessageKey)}{current.status === 'building' ? ` ${current.progress}%` : ''}
+          {name} · {t(`buildStatus_${current.status === 'building' && current.stage === 'queue' ? 'queued' : current.status}` as MessageKey)}{current.status === 'building' && current.stage !== 'queue' ? ` ${current.progress}%` : ''}
         </Button>
         {current.status === 'building' && <ProgressBar size="sm" aria-label={`${name} ${t('buildProgress')}`} value={current.progress}><ProgressBar.Track><ProgressBar.Fill /></ProgressBar.Track></ProgressBar>}
       </div>;

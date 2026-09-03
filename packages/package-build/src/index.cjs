@@ -908,6 +908,9 @@ async function buildClawdTheme(input = {}, options = {}) {
 }
 
 async function buildCodexPet(input = {}, options = {}) {
+  const spriteVersionNumber = options.spriteVersionNumber ?? 1;
+  if (![1, 2].includes(spriteVersionNumber)) fail('INVALID_SPRITE_VERSION', 'Codex sprite version must be 1 or 2.');
+  const spriteAtlas = CODEX_PROFILE.atlases[spriteVersionNumber];
   const mapping = input.mapping || input;
   const candidatesByRow = input.candidatesByRow || input.candidates;
   const signal = options.signal || input.signal;
@@ -933,6 +936,22 @@ async function buildCodexPet(input = {}, options = {}) {
 
   progress(onProgress, STAGES[2], 'started');
   const atlas = composeCodexAtlasRgba(atlasPlan, captureMap(selection.frameSets));
+  if (spriteVersionNumber === 2) {
+    const rgba = new Uint8Array(spriteAtlas.width * spriteAtlas.height * 4);
+    rgba.set(atlas.rgba);
+    // Compatibility mode: all look directions use the first idle pose, not an invented animation.
+    for (let direction = 0; direction < 16; direction += 1) {
+      const x = direction % 8 * ATLAS.cellWidth;
+      const y = (9 + Math.floor(direction / 8)) * ATLAS.cellHeight;
+      for (let row = 0; row < ATLAS.cellHeight; row += 1) {
+        const source = row * ATLAS.width * 4;
+        rgba.set(atlas.rgba.subarray(source, source + ATLAS.cellWidth * 4), ((y + row) * spriteAtlas.width + x) * 4);
+      }
+    }
+    atlas.rgba = rgba;
+    atlas.height = spriteAtlas.height;
+    atlas.occupiedCells += 16;
+  }
   checkCancelled(signal);
   progress(onProgress, STAGES[2], 'completed', { occupiedCells: atlas.occupiedCells, transparentCells: atlas.transparentCells });
 
@@ -951,7 +970,8 @@ async function buildCodexPet(input = {}, options = {}) {
       renderPreset: renderSelection.name,
       recipe: {
         rows: Object.fromEntries(Object.entries(selection.frameSets).map(([rowId, frames]) => [rowId, frames.map((frame, index) => typeof frame.id === 'string' && frame.id ? frame.id : `frame-${index}`)])),
-        atlas: { width: atlas.width, height: atlas.height, columns: ATLAS.columns, rows: ATLAS.rows },
+        atlas: { ...spriteAtlas },
+        spriteVersionNumber,
         encoding: { quality, alphaQuality, lossless },
         encoderVersion: cacheContext.encoderVersion,
       },
@@ -988,7 +1008,9 @@ async function buildCodexPet(input = {}, options = {}) {
     target: target.profile,
     contractVersion: target.contractVersion,
     packageFiles: target.packageFiles,
-    atlas: { ...ATLAS },
+    spriteVersionNumber,
+    ...(spriteVersionNumber === 2 ? { gaze: { mode: 'neutral', directions: 16, rows: [9, 10] } } : {}),
+    atlas: { ...spriteAtlas },
     rows: atlasPlan.rows.map((row) => ({
       id: row.id,
       row: row.row,

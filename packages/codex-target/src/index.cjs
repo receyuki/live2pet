@@ -83,9 +83,9 @@ function webpInfoFromBytes(value) {
   fail('INVALID_CODEX_PACKAGE', 'spritesheet.webp is missing a supported VP8, VP8L, or VP8X image chunk.');
 }
 
-function validateAtlasGeometry(input = ATLAS) {
+function validateAtlasGeometry(input = ATLAS, expectedAtlas = ATLAS) {
   const errors = [];
-  for (const [key, expected] of Object.entries(ATLAS)) if (input[key] !== expected) errors.push({ code: 'INVALID_ATLAS_GEOMETRY', field: key, expected, actual: input[key], message: `Codex atlas ${key} must be ${expected}.` });
+  for (const [key, expected] of Object.entries(expectedAtlas)) if (input[key] !== expected) errors.push({ code: 'INVALID_ATLAS_GEOMETRY', field: key, expected, actual: input[key], message: `Codex atlas ${key} must be ${expected}.` });
   if (input.width !== input.columns * input.cellWidth) errors.push({ code: 'ATLAS_WIDTH_MISMATCH', message: 'Codex atlas width must equal columns × cellWidth.' });
   if (input.height !== input.rows * input.cellHeight) errors.push({ code: 'ATLAS_HEIGHT_MISMATCH', message: 'Codex atlas height must equal rows × cellHeight.' });
   return { ok: errors.length === 0, errors };
@@ -164,6 +164,10 @@ function validateManifestFields(manifest, errors) {
   if (!normalized.displayName) packageError(errors, 'INVALID_DISPLAY_NAME', 'pet.json displayName must be a non-empty string.');
   if (!normalized.description) packageError(errors, 'INVALID_DESCRIPTION', 'pet.json description must be a non-empty string.');
   if (normalized.spritesheetPath !== 'spritesheet.webp') packageError(errors, 'INVALID_SPRITESHEET_PATH', 'pet.json spritesheetPath must be "spritesheet.webp".', { actual: normalized.spritesheetPath || null });
+  if (manifest.spriteVersionNumber !== undefined) {
+    normalized.spriteVersionNumber = manifest.spriteVersionNumber;
+    if (![1, 2].includes(manifest.spriteVersionNumber)) packageError(errors, 'INVALID_SPRITE_VERSION', 'Codex sprite version must be 1 or 2.');
+  }
   return normalized;
 }
 
@@ -213,13 +217,14 @@ function validateCodexPetPackage(input = {}) {
   const errors = [];
   validatePackageFiles(input.files, errors);
   const manifest = validateManifestFields(normalizePackageManifest(input.manifest, errors), errors);
+  const atlas = PROFILE.atlases[manifest?.spriteVersionNumber ?? 1] || ATLAS;
   const spritesheet = normalizePackageSpritesheet(input.spritesheet, errors);
   if (!spritesheet) packageError(errors, 'MISSING_SPRITESHEET', 'spritesheet metadata or bytes are required.');
   if (spritesheet) {
-    const geometry = validateAtlasGeometry({ width: spritesheet.width, height: spritesheet.height, columns: ATLAS.columns, rows: ATLAS.rows, cellWidth: ATLAS.cellWidth, cellHeight: ATLAS.cellHeight });
+    const geometry = validateAtlasGeometry({ ...atlas, width: spritesheet.width, height: spritesheet.height }, atlas);
     errors.push(...geometry.errors);
     if (spritesheet.width == null) packageError(errors, 'INVALID_SPRITESHEET_WIDTH', `spritesheet.webp width must be ${ATLAS.width}.`);
-    if (spritesheet.height == null) packageError(errors, 'INVALID_SPRITESHEET_HEIGHT', `spritesheet.webp height must be ${ATLAS.height}.`);
+    if (spritesheet.height == null) packageError(errors, 'INVALID_SPRITESHEET_HEIGHT', `spritesheet.webp height must be ${atlas.height}.`);
   }
   if (manifest && spritesheet && manifest.spritesheetPath && spritesheet.path && manifest.spritesheetPath !== spritesheet.path) {
     packageError(errors, 'INVALID_SPRITESHEET_PATH', 'pet.json spritesheetPath must match the packaged spritesheet path.');
@@ -227,7 +232,7 @@ function validateCodexPetPackage(input = {}) {
   return {
     contractVersion: CONTRACT_VERSION,
     packageFiles: [...PACKAGE_FILES],
-    atlas: { ...ATLAS },
+    atlas: { ...atlas },
     rows: ROWS.map((row) => ({ ...row })),
     manifest,
     spritesheet: spritesheet ? {

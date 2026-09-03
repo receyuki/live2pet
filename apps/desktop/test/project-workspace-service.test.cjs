@@ -18,6 +18,18 @@ function fixtureProject(name = 'Cat Project') {
   return createProject({ name, projectId: `project-${name.toLowerCase().replace(/\W+/g, '-')}`, source: { kind: 'live2d', name: 'cat', fingerprint: 'fixture' }, targets: {} });
 }
 
+test('opens a dropped project path without showing the picker and registers it for saving', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-project-drop-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const inputPath = path.join(root, 'dropped.live2pet');
+  saveProjectFile(inputPath, fixtureProject());
+  const service = createProjectWorkspaceService({ stateFile: path.join(root, 'recent.json'), showOpenDialog: async () => { assert.fail('A drop must not open the picker'); }, showSaveDialog: async () => { assert.fail('A dropped document is already registered'); } });
+  const opened = await service.openProject({ inputPath });
+  assert.equal(opened.fileName, 'dropped.live2pet');
+  await service.saveProject({ documentId: opened.documentId, project: { ...opened.project, name: 'Renamed' } });
+  assert.equal(loadProjectFile(inputPath).name, 'Renamed');
+});
+
 test('project workspace opens, saves, and persists opaque recent documents', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-workspace-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

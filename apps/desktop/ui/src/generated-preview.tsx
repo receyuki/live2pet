@@ -13,7 +13,7 @@ const MAX_ENTRY_BYTES = 64 * 1024 * 1024;
 const MAX_EXPANDED_PREVIEW_BYTES = 128 * 1024 * 1024;
 const MAX_ENTRY_COUNT = 2048;
 const MAX_MANIFEST_BYTES = 2 * 1024 * 1024;
-const CODEX_ATLAS = { width: 1536, height: 1872, columns: 8, rows: 9, cellWidth: 192, cellHeight: 208 } as const;
+const CODEX_ATLAS = CODEX_PROFILE.atlases[1];
 const CODEX_ROWS = ["idle", "running-right", "running-left", "waving", "jumping", "failed", "waiting", "running", "review"] as const;
 
 type PreviewAsset = { id: string; label: string; path: string };
@@ -140,14 +140,18 @@ async function parseCodex(files: Map<string, Entry>): Promise<CodexGeneratedPrev
   const spriteEntry = files.get("spritesheet.webp");
   if (!manifestEntry || !spriteEntry) fail("The Codex package is missing pet.json or spritesheet.webp.");
   const manifest = parseJson(await readEntry(manifestEntry, "pet.json", MAX_MANIFEST_BYTES), "pet.json");
+  const version = manifest.spriteVersionNumber ?? 1;
+  if (version !== 1 && version !== 2) fail('pet.json has an unsupported sprite version.');
+  const atlas = CODEX_PROFILE.atlases[version];
   if (!record(manifest.atlas) || !Array.isArray(manifest.rows) || manifest.spritesheetPath !== "spritesheet.webp") fail("pet.json does not match the generated preview contract.");
-  for (const [key, expected] of Object.entries(CODEX_ATLAS)) if (manifest.atlas[key] !== expected) fail(`pet.json has an invalid atlas ${key}.`);
-  const rows = manifest.rows.map((value, index) => {
+  for (const [key, expected] of Object.entries(atlas)) if (manifest.atlas[key] !== expected) fail(`pet.json has an invalid atlas ${key}.`);
+  const rows: CodexGeneratedPreview['rows'] = manifest.rows.map((value, index) => {
     if (!record(value) || value.id !== CODEX_ROWS[index] || value.row !== index || !Number.isInteger(value.frameCount) || Number(value.frameCount) < 1 || Number(value.frameCount) > CODEX_ATLAS.columns || !Array.isArray(value.frames) || value.frames.length !== value.frameCount) fail(`pet.json row ${index} is malformed.`);
     return { id: CODEX_ROWS[index], row: index, frameCount: Number(value.frameCount) };
   });
   if (rows.length !== CODEX_ATLAS.rows) fail("pet.json does not contain every generated preview row.");
-  return { target: "codex-pet", spritesheet: await readEntry(spriteEntry, "spritesheet.webp"), atlas: CODEX_ATLAS, rows };
+  if (version === 2 && record(manifest.gaze) && manifest.gaze.mode === 'neutral') rows.push({ id: 'neutral-look', row: 9, frameCount: 1 });
+  return { target: "codex-pet", spritesheet: await readEntry(spriteEntry, "spritesheet.webp"), atlas, rows };
 }
 
 export async function parseGeneratedPreview(bytes: Uint8Array, target: BuildTarget): Promise<GeneratedPreviewData> {
@@ -236,7 +240,7 @@ export function GeneratedPreview({ artifact, locale }: Props) {
 
   const codexRow = preview?.target === "codex-pet" ? preview.rows[selected] : null;
   useEffect(() => {
-    if (!codexRow || !playing) return;
+    if (!codexRow || codexRow.frameCount === 1 || !playing) return;
     const timer = window.setTimeout(() => setFrame((value) => (value + 1) % codexRow.frameCount), CODEX_PROFILE.frameDurations[codexRow.id][frame]);
     return () => window.clearTimeout(timer);
   }, [codexRow, playing, frame]);
@@ -271,7 +275,7 @@ export function GeneratedPreview({ artifact, locale }: Props) {
       </div>
       <div className="generated-preview-controls">
         <div role="group" aria-label={t("generatedPreviewSelection")} className="generated-preview-choices">
-          {(preview.target === "clawd" ? preview.assets : preview.rows).map((item, index) => <Button size="sm" key={item.id} variant={selected === index ? "primary" : "secondary"} onPress={() => { setSelected(index); setFrame(0); }}>{"label" in item ? item.label : item.id}</Button>)}
+          {(preview.target === "clawd" ? preview.assets : preview.rows).map((item, index) => <Button size="sm" key={item.id} variant={selected === index ? "primary" : "secondary"} onPress={() => { setSelected(index); setFrame(0); }}>{"label" in item ? item.label : item.id === 'neutral-look' ? t('codexNeutralLook') : item.id}</Button>)}
         </div>
         {preview.target === "codex-pet" && <ButtonGroup aria-label={t("generatedPlayback")}><Button size="sm" variant="secondary" aria-label={playing ? t("pause") : t("play")} onPress={() => setPlaying((value) => !value)}>{playing ? <Pause size={14} /> : <Play size={14} />}</Button><Button size="sm" variant="secondary" aria-label={t("restart")} onPress={() => setFrame(0)}><RotateCcw size={14} /></Button></ButtonGroup>}
       </div>

@@ -463,8 +463,12 @@ function normalizeDocumentId(value) {
 function normalizeOpenProjectRequest(value) {
   if (value === undefined) return {};
   if (!isRecord(value)) fail('INVALID_PROJECT_REQUEST', 'openProject input must be an object.');
-  const unknown = Object.keys(value).filter((key) => key !== 'documentId');
+  const unknown = Object.keys(value).filter((key) => !['documentId', 'inputPath'].includes(key));
   if (unknown.length) fail('INVALID_PROJECT_REQUEST', `openProject input contains unsupported fields: ${unknown.join(', ')}.`);
+  if (value.inputPath !== undefined) {
+    if (value.documentId !== undefined || typeof value.inputPath !== 'string' || value.inputPath.includes('\0') || !path.isAbsolute(value.inputPath) || path.extname(value.inputPath).toLowerCase() !== '.live2pet') fail('INVALID_PROJECT_REQUEST', 'Provide one absolute .live2pet project path without documentId.');
+    return { inputPath: value.inputPath };
+  }
   return value.documentId === undefined ? {} : { documentId: normalizeDocumentId(value.documentId) };
 }
 

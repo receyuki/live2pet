@@ -31,11 +31,28 @@ function createHostedBuildService({ previewSession, buildProject, captureBounds 
   if (!previewSession || typeof previewSession.withRenderer !== 'function') fail('INVALID_HOSTED_BUILD_SERVICE', 'Hosted builds require a preview session renderer provider.');
   if (typeof buildProject !== 'function') fail('INVALID_HOSTED_BUILD_SERVICE', 'Hosted builds require a buildProject function.');
   let captureQueue = Promise.resolve();
+  let pendingCaptures = 0;
 
-  const runCaptured = (operation) => {
-    const result = captureQueue.then(operation, operation);
+  const runCaptured = (operation, { signal, onProgress, targets }) => {
+    const emit = (stage, status) => {
+      for (const target of targets) {
+        try { onProgress?.({ target, stage, status, fraction: 0 }); } catch { /* Progress must not fail a build. */ }
+      }
+    };
+    if (pendingCaptures++ > 0) emit('queue', 'queued');
+    const result = captureQueue.then(() => {
+      if (signal?.aborted) fail('BUILD_CANCELLED', 'Package Build was cancelled while waiting for the renderer.');
+      emit('prepare', 'started');
+      return operation();
+    }).finally(() => { pendingCaptures -= 1; });
     captureQueue = result.then(() => undefined, () => undefined);
-    return result;
+    if (!signal) return result;
+    return new Promise((resolve, reject) => {
+      const abort = () => reject(new HostedBuildError('BUILD_CANCELLED', 'Package Build was cancelled.'));
+      signal.addEventListener('abort', abort, { once: true });
+      result.then(value => { signal.removeEventListener('abort', abort); resolve(value); }, error => { signal.removeEventListener('abort', abort); reject(error); });
+      if (signal.aborted) abort();
+    });
   };
 
   return async function hostedBuild(input = {}) {
@@ -55,7 +72,7 @@ function createHostedBuildService({ previewSession, buildProject, captureBounds 
         if (error instanceof HostedBuildError) throw error;
         throw new HostedBuildError(error?.code || 'HOSTED_BUILD_FAILED', error?.message || error);
       }
-    });
+    }, { signal: input.signal, onProgress: input.onProgress, targets });
   };
 }
 

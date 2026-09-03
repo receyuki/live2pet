@@ -88,3 +88,35 @@ test('serializes hosted renderer capture builds', async () => {
   assert.deepEqual(await Promise.all([first, second]), ['first', 'second']);
   assert.deepEqual(order, ['start:first', 'end:first', 'start:second', 'end:second']);
 });
+
+test('reports only submitted targets as queued, then preparing when the renderer is acquired', async () => {
+  let release;
+  const firstEvents = [], secondEvents = [];
+  const service = createHostedBuildService({ previewSession: { withRenderer: async (_, operation) => operation({}) }, buildProject: async input => { if (input.targets[0] === 'clawd') await new Promise(resolve => { release = resolve; }); return input.targets[0]; } });
+  const first = service({ project: project(), targets: ['clawd'], onProgress: event => firstEvents.push(event) });
+  const second = service({ project: project(), targets: ['codex-pet'], onProgress: event => secondEvents.push(event) });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(firstEvents.every(event => event.target === 'clawd'));
+  assert.equal(secondEvents[0]?.stage, 'queue');
+  assert.equal(secondEvents[0]?.status, 'queued');
+  release();
+  await Promise.all([first, second]);
+  assert.ok(secondEvents.some(event => event.stage === 'prepare' && event.target === 'codex-pet'));
+});
+
+test('cancels a queued request immediately without opening its renderer or breaking later builds', async () => {
+  let release;
+  const entered = [];
+  const service = createHostedBuildService({ previewSession: { withRenderer: async (_, operation) => operation({}) }, buildProject: async input => { entered.push(input.marker); if (input.marker === 'first') await new Promise(resolve => { release = resolve; }); return input.marker; } });
+  const first = service({ project: project(), targets: ['clawd'], marker: 'first' });
+  const controller = new AbortController();
+  const second = service({ project: project(), targets: ['codex-pet'], marker: 'cancelled', signal: controller.signal });
+  await new Promise(resolve => setImmediate(resolve));
+  controller.abort();
+  await assert.rejects(second, error => error.code === 'BUILD_CANCELLED');
+  assert.deepEqual(entered, ['first']);
+  release();
+  await first;
+  assert.equal(await service({ project: project(), targets: ['codex-pet'], marker: 'third' }), 'third');
+  assert.deepEqual(entered, ['first', 'third']);
+});

@@ -122,7 +122,7 @@ function createProjectWorkspaceService({ stateFile, showOpenDialog, showSaveDial
 
   return Object.freeze({
     getRecentProjects: async () => publicRecent(),
-    openProject: async ({ documentId } = {}) => {
+    openProject: async ({ documentId, inputPath } = {}) => {
       let filePath;
       let existingId = null;
       if (documentId !== undefined) {
@@ -130,6 +130,8 @@ function createProjectWorkspaceService({ stateFile, showOpenDialog, showSaveDial
         if (!entry) throw Object.assign(new Error('The recent project is no longer registered.'), { code: 'PROJECT_DOCUMENT_NOT_FOUND' });
         filePath = entry.path;
         existingId = entry.documentId;
+      } else if (inputPath !== undefined) {
+        filePath = inputPath;
       } else {
         const selected = await showOpenDialog(projectDialogOptions('open'));
         if (selected?.canceled || !selected?.filePaths?.[0]) return { cancelled: true, recentProjects: publicRecent() };

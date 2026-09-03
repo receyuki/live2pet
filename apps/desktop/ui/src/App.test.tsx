@@ -653,6 +653,38 @@ describe('Live2Pet desktop shell', () => {
     expect(inspectSource).toHaveBeenCalledOnce();
   });
 
+  it.each(['welcome', 'settings'])('opens a dropped project from %s without inspecting it as a model', async (destination) => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const { openProject, inspectSource } = installDesktopApi();
+    const user = userEvent.setup();
+    render(<App />);
+    if (destination === 'settings') await user.click(screen.getByRole('button', { name: /^Settings$/ }));
+    fireEvent.drop(destination === 'welcome' ? screen.getByLabelText('Import Live2D source') : screen.getByRole('main'), { dataTransfer: { types: ['Files'], files: [new File(['{}'], 'My Pet.live2pet')] } });
+    await vi.waitFor(() => expect(openProject).toHaveBeenCalledWith({ inputPath: '/Users/test/My Pet.live2pet' }));
+    expect(inspectSource).not.toHaveBeenCalled();
+    expect(await screen.findByRole('heading', { name: 'Source Package' })).toBeVisible();
+  });
+
+  it('preserves unsaved work when a dropped project replacement is declined', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const { openProject, relinkSource } = installDesktopApi();
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await screen.findByRole('heading', { name: 'Source Package' });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const zone = container.querySelector('.source-grid .drop-zone')!;
+    const dataTransfer = { types: ['Files'], files: [new File(['{}'], 'Another.live2pet')] };
+    fireEvent.dragEnter(zone, { dataTransfer });
+    fireEvent.drop(zone, { dataTransfer });
+    expect(confirm).toHaveBeenCalled();
+    expect(openProject).not.toHaveBeenCalled();
+    expect(relinkSource).not.toHaveBeenCalled();
+    expect(screen.getByText('Unsaved changes')).toBeVisible();
+    expect(container.querySelector('.drop-overlay')).toBeNull();
+    confirm.mockRestore();
+  });
+
   it('saves a runtime dropped on first-time setup', async () => {
     const { configureRuntime } = installDesktopApi();
     render(<App />);

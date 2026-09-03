@@ -37,6 +37,14 @@ it('exposes the durable package name and blocks builds for an empty name', async
 });
 
 describe("BuildView", () => {
+  it('explains a queued target without marking the other idle target as building', () => {
+    const state = initialBuildState();
+    state['codex-pet'] = { ...state['codex-pet'], status: 'building', stage: 'queue', buildId: 'queued-build' };
+    render(<BuildView locale="en" project={project} inspection={inspection} runtimeReady state={state} onPreset={vi.fn()} onBuild={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getByText('Queued', { exact: true })).toBeVisible();
+    expect(screen.getByText(/Waiting for another build to release the shared renderer/)).toBeVisible();
+    expect(screen.getByText('Not built', { exact: true })).toBeVisible();
+  });
   it("computes readiness independently from shared target profiles", () => {
     expect(targetReadiness(project, inspection, true, "clawd")).toEqual({ ready: true, missing: [] });
     const incomplete = { ...project, targets: { ...project.targets, "codex-pet": { ...project.targets["codex-pet"], mappings: {} } } };
