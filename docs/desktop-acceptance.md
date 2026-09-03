@@ -63,3 +63,5 @@ The initial gate verified rendering and package decoding, but did not establish 
 - Source has a compact identity summary and a link to Map; the empty visual placeholder was not a functioning model thumbnail and has been removed. The only interactive source-model preview remains in Map, as specified by ADR-0012.
 
 The updated real-model workflow passed for both the permitted modern folder and Cubism 2 PCK, including both target builds. Existing packages produced by the old capture path need to be rebuilt; this change does not modify or reinstall them automatically.
+
+Additional two-motion checks confirmed selectable generated Clawd assets and all nine Codex rows in the packaged App. A legacy banner motion took longer in WebP encoding, not capture; encoding progress now advances by completed motion count as well. This is measured stage progress, not a promise of uniform wall-clock speed. The final regression run passed 243 Node tests (two opt-in skips) and 83 UI tests, plus type checking and packaged startup checks.

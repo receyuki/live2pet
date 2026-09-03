@@ -815,6 +815,7 @@ async function buildClawdTheme(input = {}, options = {}) {
     }) : null;
     return { motionId, index, frameSet, firstFrame, delays, cacheKey };
   });
+  let completedEncodes = 0;
   const encodedResults = await mapConcurrentOrdered(jobs, encodingConcurrency, async (job) => {
     checkCancelled(signal);
     const { motionId, index, frameSet, firstFrame, delays, cacheKey } = job;
@@ -844,7 +845,8 @@ async function buildClawdTheme(input = {}, options = {}) {
       if (cacheKey) cache.put(cacheKey, encodeAsset({ format: encoded.format, width: encoded.width, height: encoded.height, frameCount: encoded.frameCount, delays: encoded.delays, bytes: encoded.buffer }), { projectId: cacheContext.projectId, sourceFingerprint: cacheContext.sourceFingerprint, artifact: 'encoded-webp' });
     }
     checkCancelled(signal);
-    progress(onProgress, CLAWD_STAGES[1], 'motion-completed', { motionId, index, total: motionIds.length, cache: cacheStatus, frameCount: encoded.frameCount });
+    completedEncodes += 1;
+    progress(onProgress, CLAWD_STAGES[1], 'motion-completed', { motionId, index, completed: completedEncodes, total: motionIds.length, fraction: completedEncodes / motionIds.length, cache: cacheStatus, frameCount: encoded.frameCount });
     return { motionId, encoded };
   }, signal);
   for (const { motionId, encoded } of encodedResults) {

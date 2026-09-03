@@ -134,6 +134,7 @@ test('builds a guide-shaped Clawd theme package from captured Motion frames', as
   assert.deepEqual(events.filter(({ status }) => status === 'started' || status === 'completed').map(({ stage, status }) => `${stage}:${status}`), ['validate:started', 'validate:completed', 'encode:started', 'encode:completed', 'manifest:started', 'manifest:completed', 'preview:started', 'preview:completed', 'package:started', 'package:completed', 'report:started', 'report:completed']);
   const motionStarted = events.filter(({ stage, status }) => stage === 'encode' && status === 'motion-started');
   const motionCompleted = events.filter(({ stage, status }) => stage === 'encode' && status === 'motion-completed');
+  assert.deepEqual(motionCompleted.map((event) => event.fraction), motionCompleted.map((_, index) => (index + 1) / motionCompleted.length));
   assert.equal(DEFAULT_CLAWD_ENCODING_CONCURRENCY, 2);
   assert.deepEqual(motionStarted.map(({ motionId }) => motionId), ['idle', 'thinking', 'working', 'error', 'attention']);
   assert.deepEqual(motionCompleted.map(({ motionId }) => motionId).sort(), ['attention', 'error', 'idle', 'thinking', 'working']);
