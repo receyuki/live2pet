@@ -91,6 +91,7 @@ async function sampleMotionCandidates(renderer, options = {}) {
   let previousBounds = null;
   try {
     for (let index = 0; index < samples; index += 1) {
+      if (options.signal?.aborted) fail('BUILD_CANCELLED', 'Package Build was cancelled.');
       const time = duration * (samples === 1 ? 0 : index / (samples - 1));
       const capture = await renderer.captureRgba({ width, height, motionId, time });
       if (!capture || capture.width !== width || capture.height !== height || !ArrayBuffer.isView(capture.rgba) || capture.rgba.byteLength !== width * height * 4) fail('INVALID_RENDER_CAPTURE', `Renderer returned an invalid RGBA capture for ${motionId} at sample ${index}.`);
@@ -99,6 +100,7 @@ async function sampleMotionCandidates(renderer, options = {}) {
       candidates.push({ id: `${motionId}#${index}`, time, bounds, visualChange: rgbaDifference(previousRgba, rgba), boundsDelta: boundsDifference(previousBounds, bounds), width, height, rgba: new Uint8Array(rgba) });
       previousRgba = rgba;
       previousBounds = bounds;
+      options.onFrame?.({ completed: index + 1, total: samples });
     }
   } finally {
     if (hasExpression) await renderer.setExpression(previousExpressionId);

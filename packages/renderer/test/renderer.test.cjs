@@ -33,6 +33,7 @@ const {
   pagePlayMotion,
   pageResize,
   pageResume,
+  pageSeek,
   pageStep,
   pageUnload,
   pixiSourceFromManifest,
@@ -270,6 +271,7 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     x: 0,
     y: 0,
     getLocalBounds: () => ({ x: 0, y: 0, width: 100, height: 200 }),
+    internalModel: { motionManager: { stopAllMotions() { updates.push('reset'); } } },
     motion: async () => undefined,
     update: (deltaMilliseconds) => updates.push(deltaMilliseconds),
   };
@@ -333,9 +335,17 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
 
     const capture = await pageCapture('Base:wave', 0.5, 8, 4, 3);
     assert.equal(capture.time, 0.5);
-    assert.equal(updates.at(-1), 1000);
+    assert.ok(updates.includes('reset'), 'seeking backwards resets the active motion');
     assert.equal(captureObservedTicker, false);
-    assert.equal(ticker.started, true);
+    assert.equal(ticker.started, false, 'capture must not resume the realtime clock between frames');
+    updates.length = 0;
+    await pageCapture('Base:wave', 0.6, 8, 4, 3);
+    assert.ok(Math.abs(updates.filter(Number.isFinite).reduce((a, b) => a + b, 0) - 100) < 0.001, 'capture advances by the frame delta, not the absolute timestamp or preview speed');
+    pagePause();
+    const sought = await pageSeek(0.25, 3);
+    assert.equal(sought.time, 0.25);
+    assert.equal(sought.playing, false);
+    assert.equal(ticker.started, false, 'paused seeking never starts the realtime ticker');
 
     await pageUnload();
     assert.equal(ticker.started, false);

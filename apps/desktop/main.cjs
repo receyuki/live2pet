@@ -93,9 +93,9 @@ const runtimeSettingsService = Object.freeze({
     if (previewSession) await previewSession.close();
     return redactRuntimeSettings(await saveRuntimeSettings(runtimeSettingsPath(), inputPath));
   },
-  clear: async () => {
+  clear: async (fingerprint) => {
     if (previewSession) await previewSession.close();
-    return redactRuntimeSettings(clearRuntimeSettings(runtimeSettingsPath()));
+    return redactRuntimeSettings(await clearRuntimeSettings(runtimeSettingsPath(), fingerprint));
   },
 });
 
@@ -136,6 +136,7 @@ async function routePreviewRequest(request) {
     }
     if (!previewSession) throw Object.assign(new Error('Preview session is not available.'), { code: 'PREVIEW_UNAVAILABLE' });
     const input = request.input === undefined ? {} : request.input;
+    if (request.method === 'getStatus') return { protocolVersion: 1, ok: true, result: await previewSession.readStatus() };
     const result = request.method === 'close' || request.method === 'getStatus'
       ? await previewSession[request.method]()
       : await previewSession[request.method](input);

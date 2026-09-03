@@ -157,6 +157,13 @@ function pageLoad(source, options) {
       model.y = (app.renderer.height - bounds.height * scale) / 2 - bounds.y * scale;
     };
     const render = () => app.renderer.render(app.stage);
+    const resetMotion = async (motion, priority) => {
+      model.internalModel.motionManager.stopAllMotions();
+      await model.motion(motion.group, motion.index, priority);
+      // Prime the queue entry at t=0 before advancing its clock.
+      model.update(0.001);
+      render();
+    };
     const state = {
       contractVersion: 1,
       loaded: true,
@@ -203,6 +210,7 @@ function pageLoad(source, options) {
     render();
 
     const runtime = {
+      resetMotion,
       app,
       canvas,
       createdCanvas,
@@ -255,13 +263,14 @@ function pagePlayMotion(motionId, loop, speed, start, priority) {
     if (!runtime) throw new Error('Renderer is not loaded.');
     const motion = runtime.source.motions.find((item) => item.id === motionId);
     if (!motion) throw new Error(`Motion is not available: ${motionId}`);
+    runtime.app.stop();
     runtime.state.loop = loop;
     runtime.state.speed = speed;
     runtime.state.motionId = motion.id;
     runtime.state.time = start;
     runtime.state.playing = true;
-    await runtime.model.motion(motion.group, motion.index, priority);
-    if (start > 0) runtime.model.update(start * 1000 * speed);
+    await runtime.resetMotion(motion, priority);
+    if (start > 0) runtime.model.update(start * 1000);
     else runtime.model.update(1);
     runtime.render();
     runtime.syncTicker();
@@ -297,14 +306,29 @@ function pageRestart(priority) {
   const runtime = window.__live2petPixiLive2D;
   if (!runtime || !runtime.state.motionId) throw new Error('There is no Motion available to restart.');
   const motion = runtime.source.motions.find((item) => item.id === runtime.state.motionId);
+  runtime.app.stop();
   runtime.state.time = 0;
   runtime.state.playing = true;
-  return runtime.model.motion(motion.group, motion.index, priority).then(() => {
+  return runtime.resetMotion(motion, priority).then(() => {
     runtime.model.update(1);
     runtime.render();
     runtime.syncTicker();
     return { ...runtime.state };
   });
+}
+
+async function pageSeek(time, priority) {
+  const runtime = window.__live2petPixiLive2D;
+  const playing = runtime.state.playing;
+  const motion = runtime.source.motions.find((item) => item.id === runtime.state.motionId);
+  runtime.app.stop();
+  await runtime.resetMotion(motion, priority);
+  runtime.model.update(time * 1000);
+  runtime.state.time = time;
+  runtime.state.playing = playing;
+  runtime.render();
+  runtime.syncTicker();
+  return { ...runtime.state };
 }
 
 function pageSetExpression(id) {
@@ -362,28 +386,26 @@ function pageCapture(motionId, time, width, height, priority) {
     if (!runtime) throw new Error('Renderer is not loaded.');
     const motion = runtime.source.motions.find((item) => item.id === motionId);
     if (!motion) throw new Error(`Motion is not available: ${motionId}`);
-    const resumeRealtime = runtime.realtime && runtime.app.ticker.started;
     runtime.app.stop();
-    try {
-      const captureTime = Math.min(Math.max(0, time), motion.duration);
-      await runtime.model.motion(motion.group, motion.index, priority);
-      runtime.state.motionId = motion.id;
-      runtime.state.time = captureTime;
-      runtime.state.playing = true;
-      if (width !== runtime.app.renderer.width || height !== runtime.app.renderer.height) {
-        runtime.app.renderer.resize(width, height);
-        runtime.fit();
-      }
-      runtime.model.update(Math.max(1, captureTime * 1000 * runtime.state.speed));
-      runtime.render();
-      const extractor = runtime.app.renderer.extract || (runtime.app.renderer.plugins && runtime.app.renderer.plugins.extract);
-      if (!extractor || typeof extractor.pixels !== 'function') throw new Error('Pixi Extract plugin is unavailable; RGBA capture cannot proceed.');
-      const frame = new window.PIXI.Rectangle(0, 0, width, height);
-      const pixels = extractor.pixels(runtime.app.stage, frame);
-      return { width, height, motionId: motion.id, time: captureTime, rgba: Array.from(pixels) };
-    } finally {
-      if (resumeRealtime && runtime.state.playing) runtime.app.start();
+    const captureTime = Math.min(Math.max(0, time), motion.duration);
+    const restart = runtime.state.motionId !== motionId || captureTime <= runtime.state.time;
+    const previousTime = restart ? 0 : runtime.state.time;
+    if (restart) await runtime.resetMotion(motion, priority);
+    runtime.state.motionId = motion.id;
+    runtime.state.time = captureTime;
+    runtime.state.playing = true;
+    if (width !== runtime.app.renderer.width || height !== runtime.app.renderer.height) {
+      runtime.app.renderer.resize(width, height);
+      runtime.fit();
     }
+    // Capture uses source time, independent of preview speed and wall time.
+    runtime.model.update(Math.max(0.001, (captureTime - previousTime) * 1000));
+    runtime.render();
+    const extractor = runtime.app.renderer.extract || (runtime.app.renderer.plugins && runtime.app.renderer.plugins.extract);
+    if (!extractor || typeof extractor.pixels !== 'function') throw new Error('Pixi Extract plugin is unavailable; RGBA capture cannot proceed.');
+    const frame = new window.PIXI.Rectangle(0, 0, width, height);
+    const pixels = extractor.pixels(runtime.app.stage, frame);
+    return { width, height, motionId: motion.id, time: captureTime, rgba: Array.from(pixels) };
   })();
 }
 
@@ -515,6 +537,19 @@ class PixiLive2dAdapter {
     return cloneState(this.state);
   }
 
+  async readState() {
+    this.state = cloneState(await this.evaluate(() => ({ ...window.__live2petPixiLive2D.state })));
+    return this.getState();
+  }
+
+  async seek(time) {
+    this.requireLoaded();
+    const state = await this.readState();
+    const value = finiteNumber(time, 'Motion seek time', { min: 0, max: this.motion(state.motionId).duration });
+    this.state = cloneState(await this.evaluate(pageSeek, value, this.options.motionPriority));
+    return this.getState();
+  }
+
   async getBounds({ motionId = this.state.motionId } = {}) {
     this.requireLoaded();
     this.motion(motionId);
@@ -583,6 +618,7 @@ module.exports = {
   pageRestart,
   pageResize,
   pageResume,
+  pageSeek,
   pageSetExpression,
   pageSetPlayback,
   pageStep,

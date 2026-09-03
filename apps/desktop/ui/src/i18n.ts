@@ -2,6 +2,10 @@ export type Locale = 'en' | 'zh-CN';
 
 const messages = {
   en: {
+    codexTimingHint: 'Codex uses short, fixed-frame loops. We sample the opening of each motion at the host’s timing instead of speeding up the entire animation. Use Clawd for full-length motions.',
+    packageName: 'Pet / theme name', packageNameHint: 'Used in both packages and their filenames. Change it to create a different pet.',
+    confirmRemoveRuntime: 'Remove this saved runtime from Live2Pet? The original file is not changed.', removeRuntime: 'Remove {name}',
+    sourcePreviewHint: 'Open Map to choose and preview the model’s motions.', noExpressions: 'This model has no Expressions. Motions can be used on their own.', seekMotion: 'Motion position',
     appName: 'Live2Pet',
     setupEyebrow: 'First-time setup', setupTitle: 'Bring your models to life.', setupBody: 'Add the Live2D runtimes you already own. Live2Pet keeps a private local copy and automatically chooses the compatible generation later.',
     setupRuntime: 'Runtime library', setupEmpty: 'No runtimes saved yet', setupSkip: 'Set up later', setupContinue: 'Continue to Live2Pet', setupDone: 'Return to workspace', addRuntime: 'Add runtime', addRuntimeFolder: 'Choose SDK folder', replaceRuntime: 'Add or replace', removeAll: 'Remove all', dropRuntime: 'Drop a runtime file or SDK folder here', dropOne: 'Drop one file or folder at a time.',
@@ -34,6 +38,10 @@ const messages = {
     cacheRefresh: 'Refresh cache state',
   },
   'zh-CN': {
+    codexTimingHint: 'Codex 使用固定少量帧的短循环。将按宿主节奏采样动作开头，而非把完整动作加速压缩。需要完整长动作请使用 Clawd。',
+    packageName: '宠物 / 主题名称', packageNameHint: '用于两个主题包及其文件名。修改名称可生成不同的宠物。',
+    confirmRemoveRuntime: '从 Live2Pet 删除这个已保存的运行时？不会改动原始文件。', removeRuntime: '删除 {name}',
+    sourcePreviewHint: '进入“映射”即可选择并预览模型动作。', noExpressions: '此模型没有独立表情，直接使用动作即可。', seekMotion: '动作播放位置',
     appName: 'Live2Pet',
     setupEyebrow: '首次设置', setupTitle: '让你的模型真正动起来。', setupBody: '添加你已经拥有的 Live2D 运行时。Live2Pet 会在本地私密保存副本，之后自动选择匹配的 Cubism 版本。',
     setupRuntime: '运行时资源库', setupEmpty: '尚未保存运行时', setupSkip: '稍后设置', setupContinue: '进入 Live2Pet', setupDone: '返回工作区', addRuntime: '添加运行时', addRuntimeFolder: '选择 SDK 文件夹', replaceRuntime: '添加或替换', removeAll: '全部移除', dropRuntime: '将运行时文件或 SDK 文件夹拖到这里', dropOne: '每次只能拖入一个文件或文件夹。',

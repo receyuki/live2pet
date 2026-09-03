@@ -17,6 +17,17 @@ function projectDocument(): Live2PetProject {
   };
 }
 
+it('saves the chosen name in the project and keeps undo/redo titles consistent', () => {
+  let state = appReducer(initialAppState(), { type: 'OPEN_PROJECT', project: { id: 'one', name: 'One', document: projectDocument() } });
+  state = appReducer(state, { type: 'RENAME_PROJECT', name: '新宠物' });
+  expect(state.project?.document?.name).toBe('新宠物');
+  expect(state.project?.dirty).toBe(true);
+  state = appReducer(state, { type: 'UNDO_PROJECT_EDIT' });
+  expect(state.project?.name).toBe('One');
+  state = appReducer(state, { type: 'REDO_PROJECT_EDIT' });
+  expect(state.project?.name).toBe('新宠物');
+});
+
 describe("initialAppState", () => {
   it("opens Setup once and Welcome for a returning profile", () => {
     expect(initialAppState().destination).toBe("setup");

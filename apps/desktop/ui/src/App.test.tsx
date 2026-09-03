@@ -139,7 +139,8 @@ describe('Live2Pet desktop shell', () => {
     await screen.findByRole('heading', { name: 'Source Package' });
     await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
     expect(document.querySelectorAll('.motion-item')).toHaveLength(0);
-    expect(document.querySelectorAll('.expression-grid button')).toHaveLength(1);
+    expect(document.querySelectorAll('.expression-grid button')).toHaveLength(0);
+    expect(screen.getByText(/This model has no Expressions/)).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Smile' })).not.toBeInTheDocument();
   });
   it('creates an unsaved schema-1 project on import and saves it through the opaque document API', async () => {
@@ -531,7 +532,7 @@ describe('Live2Pet desktop shell', () => {
 
     await user.upload(input, new File(['fixture'], 'Vicious Khepri.pck'));
 
-    expect(await screen.findByText('Vicious Khepri')).toBeVisible();
+    expect((await screen.findAllByText('Vicious Khepri'))[0]).toBeVisible();
     expect(screen.getByText(/Cubism 2/)).toBeVisible();
     expect(screen.getByText('model.moc')).toBeVisible();
     expect(inspectSource).toHaveBeenCalledWith({ inputPath: '/Users/test/Vicious Khepri.pck', projectId: 'vicious-khepri' });
@@ -561,6 +562,19 @@ describe('Live2Pet desktop shell', () => {
     expect(screen.getByText('Breathing · Base expression')).toBeVisible();
   });
 
+  it('removes one chosen runtime without sending a clear-all request', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const runtimes = { schemaVersion: 2 as const, configured: true, restartRequired: false as const, runtimes: [{ runtimeName: 'live2d.min.js', runtimeKind: 'legacy-cubism2' as const, cubismGenerations: [2], fingerprint: 'a'.repeat(64), available: true }] };
+    installDesktopApi({ runtimes });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('button', { name: 'Runtimes' }));
+    await user.click(await screen.findByRole('button', { name: 'Remove live2d.min.js' }));
+    expect(window.live2pet!.clearRuntimeSettings).toHaveBeenCalledWith({ fingerprint: 'a'.repeat(64) });
+  });
+
   it('opens the embedded preview with the same project id used for PCK inspection', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const runtimes = { schemaVersion: 2 as const, configured: true, restartRequired: false as const, runtimes: [{ runtimeName: 'live2d.min.js', runtimeKind: 'legacy-cubism2' as const, cubismGenerations: [2], fingerprint: 'a'.repeat(64), available: true }] };
@@ -574,6 +588,13 @@ describe('Live2Pet desktop shell', () => {
     fireEvent(window, new Event('resize'));
 
     await vi.waitFor(() => expect(openPreview).toHaveBeenCalledWith({ projectId: 'vicious-khepri', sourceFingerprint: 'fixture', bounds: { x: 280, y: 90, width: 640, height: 520 } }));
+    const slider = screen.getByRole('slider', { name: 'Motion position' });
+    await vi.waitFor(() => expect(slider).toBeEnabled());
+    await vi.waitFor(() => expect(window.live2pet!.playPreview).toHaveBeenCalled());
+    fireEvent.input(slider, { target: { value: '0.5' } });
+    fireEvent.change(slider, { target: { value: '0.07' } });
+    await vi.waitFor(() => expect(window.live2pet!.controlPreview).toHaveBeenCalledWith({ action: 'seek', time: 0.5 }));
+    expect(window.live2pet!.controlPreview).not.toHaveBeenCalledWith({ action: 'seek', time: 0.07 });
   });
 
   it('imports a dropped Source Package without browser navigation', async () => {

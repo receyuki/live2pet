@@ -13,6 +13,12 @@ const progress = (overrides: Partial<{ buildId: string; sequence: number; target
 });
 
 describe("buildReducer", () => {
+  it("shows real hosted-render progress before encoding starts", () => {
+    let state = buildReducer(initialBuildState(), { type: "START", target: "clawd" });
+    state = buildReducer(state, { type: "PROGRESS", event: { ...progress({ stage: "render", status: "frame-completed" }), fraction: 0.25 } });
+    expect(state.clawd.progress).toBeGreaterThan(0);
+    expect(state.clawd.progress).toBeLessThan(50);
+  });
   it("ignores stale sequences and events from another build id", () => {
     let state = buildReducer(initialBuildState(), { type: "START", target: "clawd" });
     state = buildReducer(state, { type: "PROGRESS", event: progress() });

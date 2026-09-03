@@ -49,3 +49,17 @@ The current x64 unsigned macOS App passed the full opt-in workflow with one perm
 The synthetic regression run passed 241 Node tests and 79 UI tests; two standalone opt-in renderer tests were skipped in that run because real-runtime verification was performed through the packaged Electron workflow instead. TypeScript and source-release checks passed.
 
 Acceptance uncovered and fixed four migration defects: omitted ZIP packaging options in the UI build request, checkout-relative imports in the packaged preview service, design-only inventory fallback for empty real catalogs, and loss of pending review on reinspection. Native unsaved-exit confirmation and immediate draft flush were added after the real recovery test exposed a blocked unload.
+
+## Playback and usability follow-up — 2026-09-03
+
+The initial gate verified rendering and package decoding, but did not establish correct playback timing. User testing exposed several gaps; the acceptance harness now checks native paused time, seeking, replay, intermediate capture progress, named artifacts, generated-animation selection, and Settings title-bar clearance.
+
+- Capture advances by adjacent source timestamps. It no longer adds each absolute timestamp to an already-playing motion. Restart explicitly clears the current motion because Pixi refuses to restart an active identical motion even with force priority. Capture does not resume the wall-clock ticker between frames. Timing changes invalidate old capture cache identities.
+- The Map timeline is interactive and reads native playback time. Scrubbing has its own pending value and coalesces input; status refreshes cannot overwrite a user's requested position. Paused seeking does not temporarily resume playback.
+- Codex playback uses the host's per-frame delays, verified against the installed application's `app-initial` animation definitions on this date, rather than a guessed uniform 12 FPS. Its fixed-frame atlas cannot preserve a multi-second motion in full at original speed. Hosted builds sample the opening segment at host timestamps, holding the last available pose for shorter sources. Clawd retains full-length motion timing. The Build page explains this distinction.
+- Build names come from the editable project name, survive save/reopen and undo/redo, and generate safe, distinct identifiers for non-ASCII names. Previously generated artifacts remain explicitly identified by their original filenames until rebuilt.
+- Runtime import controls are grouped at the right edge, and each saved runtime has its own confirmed removal action. Removal affects the App's private copy, not the user's original file. Settings leaves a dedicated native title-bar region.
+- Map and generated-preview surfaces have bounded widths. Generated-animation choices wrap instead of being hidden in a horizontal button group. Models without Expressions show a short explanation rather than fabricated choices.
+- Source has a compact identity summary and a link to Map; the empty visual placeholder was not a functioning model thumbnail and has been removed. The only interactive source-model preview remains in Map, as specified by ADR-0012.
+
+The updated real-model workflow passed for both the permitted modern folder and Cubism 2 PCK, including both target builds. Existing packages produced by the old capture path need to be rebuilt; this change does not modify or reinstall them automatically.

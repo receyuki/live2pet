@@ -105,7 +105,7 @@ contextBridge.exposeInMainWorld('live2pet', Object.freeze({
   acknowledgeSourceReview: (input) => invoke('acknowledgeSourceReview', input),
   getRuntimeSettings: () => invoke('getRuntimeSettings'),
   configureRuntime: (input) => invoke('configureRuntime', input),
-  clearRuntimeSettings: () => invoke('clearRuntimeSettings'),
+  clearRuntimeSettings: (input) => input === undefined ? invoke('clearRuntimeSettings') : invoke('clearRuntimeSettings', input),
   getCaptureCacheStatus: (input) => invoke('getCaptureCacheStatus', input),
   putCaptureCache: (input) => invoke('putCaptureCache', input),
   getBuildCacheStatus: () => invoke('getBuildCacheStatus'),

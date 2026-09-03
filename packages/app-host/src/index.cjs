@@ -637,7 +637,10 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
       }
       if (normalized.method === 'clearRuntimeSettings') {
         if (!runtimeSettingsService) fail('APP_RUNTIME_UNAVAILABLE', 'The App runtime settings service is not configured.');
-        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRuntimeSettings(await runtimeSettingsService.clear()) };
+        const input = normalized.args[0] || {};
+        if (!isRecord(input) || Object.keys(input).some((key) => key !== 'fingerprint')) fail('INVALID_RUNTIME_REQUEST', 'Runtime removal accepts only an optional fingerprint.');
+        if (input.fingerprint !== undefined && (typeof input.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(input.fingerprint))) fail('INVALID_RUNTIME_REQUEST', 'A valid runtime fingerprint is required.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRuntimeSettings(await runtimeSettingsService.clear(input.fingerprint)) };
       }
       if (normalized.method === 'getCaptureCacheStatus') {
         if (!captureCacheService) fail('APP_CAPTURE_CACHE_UNAVAILABLE', 'The App capture cache service is not configured.');
@@ -827,7 +830,7 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
     acknowledgeSourceReview: (input) => invoke('acknowledgeSourceReview', input),
     getRuntimeSettings: () => invoke('getRuntimeSettings'),
     configureRuntime: (input) => invoke('configureRuntime', input),
-    clearRuntimeSettings: () => invoke('clearRuntimeSettings'),
+    clearRuntimeSettings: (input) => input === undefined ? invoke('clearRuntimeSettings') : invoke('clearRuntimeSettings', input),
     getCaptureCacheStatus: (input) => invoke('getCaptureCacheStatus', input),
     getBuildCacheStatus: () => invoke('getBuildCacheStatus'),
     clearBuildCache: (input) => invoke('clearBuildCache', input),

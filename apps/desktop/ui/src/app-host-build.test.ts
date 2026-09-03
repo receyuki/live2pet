@@ -39,5 +39,6 @@ it.each(['clawd', 'codex-pet'] as const)('requests a downloadable %s ZIP through
   expect(result.builds[target]?.validation?.ok).toBe(true);
   const artifact = await getBuildArtifact(result.artifacts[0].artifactId);
   expect(artifact.filename).toMatch(/\.zip$/);
+  expect(artifact.filename).toContain('ui-build-fixture');
   expect([...artifact.bytes.subarray(0, 2)]).toEqual([80, 75]);
 });

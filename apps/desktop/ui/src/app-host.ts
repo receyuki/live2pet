@@ -123,7 +123,7 @@ export type PreviewStatus = {
   sourceFingerprint: string | null;
   visible: boolean;
   bounds: PreviewBounds | null;
-  playback?: { motionId: string | null; expressionId: string | null; playing: boolean; loop: boolean; speed: number };
+  playback?: { motionId: string | null; expressionId: string | null; playing: boolean; loop: boolean; speed: number; time?: number };
   error?: { code: string; message: string };
 };
 
@@ -151,7 +151,7 @@ type Live2PetApi = {
   onAppCommand?(listener: (command: AppCommand) => void): () => void;
   getRuntimeSettings(): Promise<AppResponse<RuntimeSettings>>;
   configureRuntime(input: { inputPath: string }): Promise<AppResponse<RuntimeSettings>>;
-  clearRuntimeSettings(): Promise<AppResponse<RuntimeSettings>>;
+  clearRuntimeSettings(input?: { fingerprint: string }): Promise<AppResponse<RuntimeSettings>>;
   getBuildCacheStatus(): Promise<AppResponse<{ schemaVersion: 1; byteLength: number; entryCount: number; maxBytes: number }>>;
   clearBuildCache(input: { confirmClear: true }): Promise<AppResponse<{ removedEntries: number; removedBytes: number; schemaVersion: 1; byteLength: number; entryCount: number; maxBytes: number }>>;
   buildProject?(input: { project: Live2PetProject; targets: BuildTarget[]; optionsByTarget: Partial<Record<BuildTarget, { package: true }>> }): Promise<AppResponse<BuildProjectResult>>;
@@ -165,7 +165,8 @@ type Live2PetApi = {
   layoutPreview?(input: { visible: boolean; bounds?: PreviewBounds }): Promise<AppResponse<PreviewStatus>>;
   playPreview?(input: { motionId: string; loop?: boolean; speed?: number }): Promise<AppResponse<PreviewStatus>>;
   setPreviewExpression?(input: { expressionId: string | null }): Promise<AppResponse<PreviewStatus>>;
-  controlPreview?(input: { action: 'pause' | 'resume' | 'restart' }): Promise<AppResponse<PreviewStatus>>;
+  controlPreview?(input: { action: 'pause' | 'resume' | 'restart' | 'seek'; time?: number }): Promise<AppResponse<PreviewStatus>>;
+  getPreviewStatus?(): Promise<AppResponse<PreviewStatus>>;
   closePreview?(): Promise<AppResponse<PreviewStatus>>;
   onPreviewStatus?(listener: (status: PreviewStatus) => void): () => void;
 };
@@ -222,10 +223,10 @@ export async function configureRuntimePath(inputPath: string): Promise<RuntimeSe
   return unwrap(api.configureRuntime({ inputPath }));
 }
 
-export async function clearRuntimeSettings(): Promise<RuntimeSettings> {
+export async function clearRuntimeSettings(fingerprint?: string): Promise<RuntimeSettings> {
   const api = desktopApi();
   if (!api) return { schemaVersion: 2, configured: false, restartRequired: false, runtimes: [] };
-  return unwrap(api.clearRuntimeSettings());
+  return unwrap(api.clearRuntimeSettings(fingerprint ? { fingerprint } : undefined));
 }
 
 export async function getCacheStatus() {
@@ -369,9 +370,14 @@ export function setLive2DPreviewExpression(expressionId: string | null) {
   return unwrap(api.setPreviewExpression!({ expressionId }));
 }
 
-export function controlLive2DPreview(action: 'pause' | 'resume' | 'restart') {
+export function controlLive2DPreview(action: 'pause' | 'resume' | 'restart' | 'seek', time?: number) {
   const api = previewApi();
-  return unwrap(api.controlPreview!({ action }));
+  return unwrap(api.controlPreview!({ action, ...(time === undefined ? {} : { time }) }));
+}
+
+export async function readLive2DPreviewStatus() {
+  const api = previewApi();
+  return api.getPreviewStatus ? unwrap(api.getPreviewStatus()) : null;
 }
 
 export function closeLive2DPreview() {

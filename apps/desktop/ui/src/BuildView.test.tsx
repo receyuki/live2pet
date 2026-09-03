@@ -28,6 +28,14 @@ beforeEach(() => {
   vi.spyOn(window, "confirm").mockReturnValue(true);
 });
 
+it('exposes the durable package name and blocks builds for an empty name', async () => {
+  const onName = vi.fn();
+  render(<BuildView locale="en" project={project} inspection={inspection} runtimeReady state={initialBuildState()} onName={onName} onBuild={vi.fn()} onCancel={vi.fn()} onPreset={vi.fn()} />);
+  await userEvent.setup().type(screen.getByRole('textbox', { name: /Pet \/ theme name/ }), 'A');
+  expect(onName).toHaveBeenCalledWith('PetA');
+  expect(targetReadiness({ ...project, name: '' }, inspection, true, 'clawd').ready).toBe(false);
+});
+
 describe("BuildView", () => {
   it("computes readiness independently from shared target profiles", () => {
     expect(targetReadiness(project, inspection, true, "clawd")).toEqual({ ready: true, missing: [] });

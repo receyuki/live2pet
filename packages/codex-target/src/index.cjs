@@ -1,6 +1,6 @@
 const PROFILE = require('./profile.js');
 const CONTRACT_VERSION = PROFILE.contractVersion;
-const { selectMotionFrames } = require('@live2pet/frame-selection');
+const { selectMotionFrames, normalizeCandidates } = require('@live2pet/frame-selection');
 const PACKAGE_FILES = PROFILE.package.files;
 const ATLAS = PROFILE.atlas;
 const ROWS = PROFILE.rows;
@@ -309,6 +309,18 @@ function selectCodexFrameSets(input = {}, options = {}) {
     if (!Array.isArray(candidates)) fail('INVALID_CODEX_FRAME_SET', `${row.id} candidates must be an array.`, { slot: row.id });
     try {
       const rowOptions = options[row.id] && typeof options[row.id] === 'object' ? options[row.id] : options;
+      if (rowOptions.preserveTiming) {
+        const source = normalizeCandidates(candidates);
+        let time = 0;
+        const frames = PROFILE.frameDurations[row.id].map((delay) => {
+          const nearest = source.reduce((best, frame) => Math.abs(frame.time - time) < Math.abs(best.time - time) ? frame : best);
+          time += delay / 1000;
+          return nearest;
+        });
+        selections[row.id] = { requestedCount: row.frames, candidateCount: candidates.length, frames, indices: frames.map((frame) => frame.index) };
+        frameSets[row.id] = frames;
+        continue;
+      }
       const selection = selectMotionFrames(candidates, row.frames, rowOptions);
       selections[row.id] = selection;
       frameSets[row.id] = selection.frames;

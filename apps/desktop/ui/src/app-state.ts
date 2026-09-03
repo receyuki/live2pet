@@ -64,6 +64,7 @@ export type AppAction =
   | { type: "SELECT_EXPRESSION"; expressionId: string | null }
   | { type: "ASSIGN_SELECTED_RECIPE"; destination: MappingDestination }
   | { type: "CLEAR_ASSIGNMENT"; destination: MappingDestination }
+  | { type: "RENAME_PROJECT"; name: string }
   | { type: "SET_RENDER_PRESET"; target: "clawd" | "codex-pet"; preset: "compact" | "balanced" | "high" }
   | { type: "SOURCE_RELINKED"; document: import('./app-host').Live2PetProject; inspection: import('./app-host').SourceInspection; sourcePath: string }
   | { type: "SOURCE_REVIEW_ACKNOWLEDGED"; document: import('./app-host').Live2PetProject }
@@ -108,7 +109,7 @@ function applyDocumentEdit(state: AppState, document: import('./app-host').Live2
   if (!state.project?.document || document === state.project.document) return state;
   return {
     ...state,
-    project: { ...state.project, document, dirty: dirtyFromBaseline(document, state.projectHistory.saved) },
+    project: { ...state.project, document, name: document.name, dirty: dirtyFromBaseline(document, state.projectHistory.saved) },
     projectHistory: {
       past: [...state.projectHistory.past, state.project.document].slice(-HISTORY_LIMIT),
       future: [],
@@ -123,6 +124,8 @@ function safeDestination(destination: ReturnDestination, project: ProjectSession
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
+    case "RENAME_PROJECT":
+      return state.project?.document ? applyDocumentEdit(state, { ...state.project.document, name: action.name }) : state;
     case "OPEN_PROJECT":
       return {
         ...state,
@@ -238,7 +241,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         destination: document.sourceReview?.required ? "source" : state.destination,
-        project: { ...state.project, document, dirty: dirtyFromBaseline(document, state.projectHistory.saved) },
+        project: { ...state.project, document, name: document.name, dirty: dirtyFromBaseline(document, state.projectHistory.saved) },
         projectHistory: {
           past: state.projectHistory.past.slice(0, -1),
           future: [state.project.document, ...state.projectHistory.future].slice(0, HISTORY_LIMIT),
@@ -252,7 +255,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const [document, ...future] = state.projectHistory.future;
       return {
         ...state,
-        project: { ...state.project, document, dirty: dirtyFromBaseline(document, state.projectHistory.saved) },
+        project: { ...state.project, document, name: document.name, dirty: dirtyFromBaseline(document, state.projectHistory.saved) },
         projectHistory: {
           past: [...state.projectHistory.past, state.project.document].slice(-HISTORY_LIMIT),
           future,

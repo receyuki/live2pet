@@ -58,6 +58,7 @@ import {
   onAppCommand,
   openProject,
   openLive2DPreview,
+  readLive2DPreviewStatus,
   playLive2DPreview,
   controlLive2DPreview,
   setLive2DPreviewExpression,
@@ -231,12 +232,12 @@ function RuntimePanel({ locale, compact = false, onSettingsChange }: { locale: L
     void saveRuntime(event.dataTransfer.files[0]);
   }
 
-  async function removeRuntimes() {
-    if (!window.confirm(t("confirmRemoveRuntimes"))) return;
+  async function removeRuntimes(fingerprint?: string) {
+    if (!window.confirm(t(fingerprint ? "confirmRemoveRuntime" : "confirmRemoveRuntimes"))) return;
     setBusy(true);
     setError("");
     try {
-      const next = await clearRuntimeSettings();
+      const next = await clearRuntimeSettings(fingerprint);
       setSettings(next);
       onSettingsChange?.(next);
     } catch (cause) {
@@ -265,12 +266,13 @@ function RuntimePanel({ locale, compact = false, onSettingsChange }: { locale: L
           </div>
           <input ref={fileInput} className="visually-hidden" type="file" tabIndex={-1} onChange={addRuntime} disabled={busy} />
           <input ref={folderInput} className="visually-hidden" type="file" multiple {...{ webkitdirectory: "" }} tabIndex={-1} onChange={addRuntimeFolder} disabled={busy} />
-          <Button variant="secondary" size="sm" onPress={() => fileInput.current?.click()} isDisabled={busy}>
+          <div className="runtime-actions"><Button variant="secondary" size="sm" onPress={() => fileInput.current?.click()} isDisabled={busy}>
             <Plus size={15} />{runtimes.length ? t("replaceRuntime") : t("addRuntime")}
           </Button>
           <Button variant="secondary" size="sm" onPress={() => folderInput.current?.click()} isDisabled={busy}>
             <FolderOpen size={15} />{t("addRuntimeFolder")}
           </Button>
+          </div>
         </div>
         {busy && <ProgressBar aria-label={t("loading")} isIndeterminate className="mt-4" />}
         <p className="drop-hint">{t("dropRuntime")}</p>
@@ -286,12 +288,13 @@ function RuntimePanel({ locale, compact = false, onSettingsChange }: { locale: L
                 <small>{t("generations", { value: runtime.cubismGenerations.join(", ") })}</small>
               </span>
               <Chip color="success" size="sm" variant="soft">{t("runtimeAvailable")}</Chip>
+              <Button isIconOnly aria-label={t('removeRuntime', { name: runtime.runtimeName })} variant="ghost" size="sm" isDisabled={busy} onPress={() => void removeRuntimes(runtime.fingerprint)}><Trash2 size={14} /></Button>
             </div>
           ))}
         </div>
         {error && <p className="inline-error" role="alert">{error}</p>}
         {runtimes.length > 0 && (
-          <Button className="danger-link" variant="ghost" size="sm" onPress={removeRuntimes} isDisabled={busy}>
+          <Button className="danger-link" variant="ghost" size="sm" onPress={() => void removeRuntimes()} isDisabled={busy}>
             <Trash2 size={14} />{t("removeAll")}
           </Button>
         )}
@@ -454,7 +457,7 @@ function SourceView({ locale, project, inspection, inspectionRequired, runtimeRe
           onDragOver={(event) => { if (hasDraggedFiles(event.dataTransfer)) event.preventDefault(); }}
           onDragLeave={() => { dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDragActive(false); }}
           onDrop={dropSource}
-        ><Card.Content><div className="model-placeholder"><BrandMark large /></div><div className="ready-box"><CircleCheck size={20} /><span><strong>{inspectionRequired && !inspection ? t("sourceUnavailable") : t("sourceReady")}</strong><small>{summary}</small></span></div>
+        ><Card.Content><div className="source-identity"><Box size={32} /><strong>{inspection?.source.name ?? project?.source.name ?? t('source')}</strong><small>{t('sourcePreviewHint')}</small></div><div className="ready-box"><CircleCheck size={20} /><span><strong>{inspectionRequired && !inspection ? t("sourceUnavailable") : t("sourceReady")}</strong><small>{summary}</small></span></div>
           <input ref={fileInput} className="visually-hidden" type="file" accept=".pck" tabIndex={-1} onChange={chooseFiles} disabled={busy} />
           <input ref={folderInput} className="visually-hidden" type="file" multiple {...{ webkitdirectory: "" }} tabIndex={-1} onChange={chooseFiles} disabled={busy} />
           <div className="source-actions"><Button variant="secondary" isDisabled={busy || !project} onPress={() => folderInput.current?.click()}><FolderOpen size={16} />{t("relinkFolder")}</Button><Button variant="secondary" isDisabled={busy || !project} onPress={() => fileInput.current?.click()}><Upload size={16} />{t("relinkPck")}</Button></div>
@@ -479,6 +482,15 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   const previewSurface = useRef<HTMLDivElement>(null);
   const [previewStatus, setPreviewStatus] = useState<PreviewStatus | null>(null);
   const [previewRetry, setPreviewRetry] = useState(0);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [seekTime, setSeekTime] = useState<number | null>(null);
+  const commandSequence = useRef(0);
+  const runPlayback = async (operation: () => Promise<PreviewStatus>) => {
+    const sequence = ++commandSequence.current;
+    setPlaybackError(null);
+    try { const status = await operation(); if (sequence === commandSequence.current) setPreviewStatus(status); }
+    catch (cause) { if (sequence === commandSequence.current) setPlaybackError(cause instanceof Error ? cause.message : t('previewFailed')); }
+  };
   const [mappingTarget, setMappingTarget] = useState<MappingTargetId>("clawd");
   const displayedMotions = inspection
     ? inspection.motions.map((motion) => ({ id: motion.id, name: motion.name, seconds: motion.duration?.toFixed(1) ?? "—", tint: "" }))
@@ -489,6 +501,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   const selected = displayedMotions.find((motion) => motion.id === selectedMotionId) ?? displayedMotions[0];
   const selectedExpression = displayedExpressions.find((expression) => expression.id === selectedExpressionId);
   const selectedName = selected?.name ?? "—";
+  const selectedDuration = inspection?.motions.find((motion) => motion.id === selectedMotionId)?.duration ?? (Number(selected?.seconds) || 0);
   const nativePreview = Boolean(inspection && runtimeReady && hasPreviewApi());
   const canEditMappings = Boolean(projectDocument && inspection);
   const canAssign = canEditMappings && Boolean(selectedMotionId);
@@ -559,16 +572,42 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   }, [inspection, nativePreview, previewRetry, projectId]);
 
   useEffect(() => {
-    if (previewStatus?.state === 'ready' && selectedMotionId) void playLive2DPreview({ motionId: selectedMotionId, loop: true, speed: 1 }).catch(() => undefined);
+    setSeekTime(null);
+    if (previewStatus?.state === 'ready' && selectedMotionId) void runPlayback(() => playLive2DPreview({ motionId: selectedMotionId, loop: true, speed: 1 }));
   }, [previewStatus?.state, selectedMotionId]);
 
   useEffect(() => {
     if (previewStatus?.state === 'ready') void setLive2DPreviewExpression(selectedExpressionId).catch(() => undefined);
   }, [previewStatus?.state, selectedExpressionId]);
 
+  useEffect(() => {
+    if (seekTime === null) return;
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      await runPlayback(() => controlLive2DPreview('seek', seekTime));
+      if (active) setSeekTime(null);
+    }, 80);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [seekTime]);
+
+  useEffect(() => {
+    if (previewStatus?.state !== 'ready') return;
+    let active = true;
+    let pending = false;
+    const timer = window.setInterval(async () => {
+      if (pending) return;
+      pending = true;
+      const sequence = commandSequence.current;
+      try { const status = await readLive2DPreviewStatus(); if (active && status && sequence === commandSequence.current) setPreviewStatus(status); }
+      catch { /* Command errors remain visible; transient status reads are retried. */ }
+      finally { pending = false; }
+    }, 150);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [previewStatus?.state]);
+
   const togglePlayback = () => {
     if (previewStatus?.state !== 'ready') return;
-    void controlLive2DPreview(previewStatus.playback?.playing ? 'pause' : 'resume').then(setPreviewStatus).catch(() => undefined);
+    void runPlayback(() => controlLive2DPreview(previewStatus.playback?.playing ? 'pause' : 'resume'));
   };
   return (
     <main className="map-workspace">
@@ -581,18 +620,19 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
               <span className="motion-icon"><Play size={15} /></span><span className="grow-copy"><strong>{motion.name}</strong><small>{t("motionDuration", { value: motion.seconds })}</small></span>{motion.id === selected?.id && <small>{t("selected")}</small>}
             </Button>
           ))}
-          <p className="library-subheading">{t("expressions")}</p>
+          {displayedExpressions.length > 0 ? <><p className="library-subheading">{t("expressions")}</p>
           <div className="expression-grid">
             <Button size="sm" variant={selectedExpressionId === null ? "secondary" : "ghost"} onPress={() => onSelectExpression(null)}>{t("baseExpression")}</Button>
             {displayedExpressions.map((expression) => <Button key={expression.id} size="sm" variant={expression.id === selectedExpression?.id ? "secondary" : "ghost"} onPress={() => onSelectExpression(expression.id)}>{expression.name}</Button>)}
-          </div>
+          </div></> : <p className="empty-expression-note">{t('noExpressions')}</p>}
         </div>
       </section>
       <section className="workspace-panel">
         <PanelHeading icon={<Sparkles size={16} />} title={t("preview")} body={t("previewHint")} />
         <div className="preview-caption"><Chip variant="soft">{selectedName} · {selectedExpression?.name ?? t("baseExpression")}</Chip></div>
         <div className="preview-stage"><i className="stage-grid" /><i className="stage-glow" />{!runtimeReady ? <div className="preview-runtime-required"><Gauge size={28} /><strong>{t("runtimeRequired")}</strong><p>{t("runtimeRequiredBody")}</p><Button size="sm" variant="primary" onPress={onConfigureRuntime}>{t("configureRuntime")}</Button></div> : nativePreview ? <><div ref={previewSurface} className="preview-native-surface" />{previewStatus?.state === 'opening' && <div className="preview-message">{t('previewLoading')}</div>}{previewStatus?.state === 'failed' && <div className="preview-runtime-required"><strong>{t('previewFailed')}</strong><p>{previewStatus.error?.message}</p><Button size="sm" variant="primary" onPress={() => setPreviewRetry((value) => value + 1)}>{t('retry')}</Button></div>}</> : <div className="character"><BrandMark large /><i /></div>}</div>
-        <div className="playback"><Button isIconOnly aria-label={previewStatus?.playback?.playing ? t('pause') : t('play')} variant="primary" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={togglePlayback}>{previewStatus?.playback?.playing ? <Pause size={15} /> : <Play size={15} />}</Button><Button isIconOnly aria-label={t('restart')} variant="ghost" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={() => void controlLive2DPreview('restart').then(setPreviewStatus).catch(() => undefined)}><RotateCcw size={15} /></Button><span className="timeline"><i /></span><small>{previewStatus?.state === 'ready' ? t('previewReady') : t('previewWaiting')}</small></div>
+        <div className="playback"><Button isIconOnly aria-label={previewStatus?.playback?.playing ? t('pause') : t('play')} variant="primary" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={togglePlayback}>{previewStatus?.playback?.playing ? <Pause size={15} /> : <Play size={15} />}</Button><Button isIconOnly aria-label={t('restart')} variant="ghost" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={() => void runPlayback(() => controlLive2DPreview('restart'))}><RotateCcw size={15} /></Button><input className="timeline" type="range" aria-label={t('seekMotion')} min={0} max={selectedDuration} step={0.01} value={seekTime ?? previewStatus?.playback?.time ?? 0} disabled={previewStatus?.state !== 'ready' || !selectedDuration} onInput={(event) => setSeekTime(Number(event.currentTarget.value))} /><small>{(previewStatus?.playback?.time ?? 0).toFixed(1)} / {selected?.seconds ?? '—'} s</small></div>
+        {playbackError && <p className="inline-error" role="alert">{playbackError}</p>}
       </section>
       <section className="workspace-panel assignment-panel">
         <PanelHeading icon={<WandSparkles size={16} />} title={t("assignment")} body={t("assignmentHint")} />
@@ -994,7 +1034,7 @@ export function App() {
         {state.destination === "welcome" && <WelcomeView locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} draft={projectDraft} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onOpenPreview={openPreview} onRecoverDraft={() => void recoverProjectDraft()} onDiscardDraft={discardProjectDraft} />}
         {state.destination === "source" && <SourceView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} inspectionRequired={Boolean(state.project?.document)} runtimeReady={runtimeReady} busy={importBusy} onConfigureRuntime={openRuntimeSettings} onRelink={relinkCurrentSource} onAcknowledgeReview={acknowledgeCurrentSourceReview} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
         {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={openRuntimeSettings} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => dispatch({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => dispatch({ type: "CLEAR_ASSIGNMENT", destination })} />}
-        {state.destination === "build" && <BuildView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} runtimeReady={runtimeReady} state={buildState} onPreset={(target, preset) => dispatch({ type: "SET_RENDER_PRESET", target, preset })} onBuild={(target) => void buildProjectTarget(target)} onCancel={(target) => void cancelProjectBuild(target)} />}
+        {state.destination === "build" && <BuildView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} runtimeReady={runtimeReady} state={buildState} onName={(name) => dispatch({ type: "RENAME_PROJECT", name })} onPreset={(target, preset) => dispatch({ type: "SET_RENDER_PRESET", target, preset })} onBuild={(target) => void buildProjectTarget(target)} onCancel={(target) => void cancelProjectBuild(target)} />}
       </div>
       <footer className="status-bar"><span><i className="status-dot" />{!hasDesktopApi() ? t("notConnected") : state.project?.dirty ? t("unsaved") : state.project?.documentId ? t("saved") : t("noSavedProject")}</span><span>{state.project?.fileName ?? `Live2Pet ${appVersion}`}</span></footer>
     </div>

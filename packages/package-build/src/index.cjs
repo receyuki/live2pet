@@ -7,6 +7,7 @@ const {
   validateCodexPetPackage,
 } = require('@live2pet/codex-target');
 const CODEX_PROFILE = require('@live2pet/codex-target/profile');
+const { createHash } = require('node:crypto');
 const { createClawdTarget, validateClawdThemePackage } = require('@live2pet/clawd-target');
 const CLAWD_PROFILE = require('@live2pet/clawd-target/profile');
 const { assertProjectBuildable, validateProject } = require('@live2pet/project');
@@ -349,8 +350,9 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
     const configuredDuration = render.durations && Object.prototype.hasOwnProperty.call(render.durations, motionId)
       ? render.durations[motionId]
       : descriptor && descriptor.duration;
-    const duration = configuredDuration == null ? 1 : Number(configuredDuration);
-    if (!Number.isFinite(duration) || duration < 0 || duration > 3600) fail('INVALID_MOTION_DURATION', `Motion ${motionId} has no valid duration for renderer capture.`);
+    const sourceDuration = configuredDuration == null ? 1 : Number(configuredDuration);
+    if (!Number.isFinite(sourceDuration) || sourceDuration < 0 || sourceDuration > 3600) fail('INVALID_MOTION_DURATION', `Motion ${motionId} has no valid duration for renderer capture.`);
+    const duration = target === 'codex-pet' ? Math.min(sourceDuration, Math.max(...Object.values(CODEX_PROFILE.frameDurations).map((delays) => delays.reduce((a, b) => a + b, 0) / 1000))) : sourceDuration;
     const samples = configuredSamples || (target === 'codex-pet'
       ? Math.max(2, Math.ceil(duration * preset.samplesPerSecond))
       : Math.max(2, Math.ceil(duration * preset.fps)));
@@ -364,7 +366,7 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
       recipe: {
         motionId,
         expressionId,
-        render: { width, height, samples, duration, fps: Number.isFinite(render.fps) ? render.fps : null },
+        render: { captureTimingVersion: 2, width, height, samples, duration, fps: Number.isFinite(render.fps) ? render.fps : null },
       },
       targetProfile: target,
       targetVersion: cacheContext.targetVersion,
@@ -378,7 +380,7 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
           const decoded = decodeFrameSet(cached.data);
           if (decoded.motionId === motionId && decoded.frames.length > 0) {
             framesByMotion[motionId] = decoded;
-            progress(onProgress, 'render', 'completed', { target, motionId, samples: decoded.frames.length, cache: 'hit' });
+            progress(onProgress, 'render', 'completed', { target, motionId, samples: decoded.frames.length, cache: 'hit', fraction: (motionIds.indexOf(motionId) + 1) / motionIds.length });
             continue;
           }
         } catch (error) {
@@ -386,8 +388,9 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
         }
       }
     }
-    progress(onProgress, 'render', 'started', { target, motionId, width, height, samples, duration });
-    const result = await sampleMotionCandidates(renderer, { motionId, duration, samples, width, height, expressionId });
+    const motionIndex = motionIds.indexOf(motionId);
+    progress(onProgress, 'render', 'started', { target, motionId, width, height, samples, duration, fraction: motionIndex / motionIds.length });
+    const result = await sampleMotionCandidates(renderer, { motionId, duration, samples, width, height, expressionId, signal, onFrame: ({ completed, total }) => progress(onProgress, 'render', 'frame-completed', { target, motionId, completed, total, fraction: (motionIndex + completed / total) / motionIds.length }) });
     checkCancelled(signal);
     framesByMotion[motionId] = {
       frames: result.candidates,
@@ -395,7 +398,7 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
       expressionId,
     };
     if (cacheKey) cache.put(cacheKey, encodeFrameSet({ motionId, ...framesByMotion[motionId] }), { projectId: cacheContext.projectId, sourceFingerprint: cacheContext.sourceFingerprint, artifact: 'render-candidates' });
-    progress(onProgress, 'render', 'completed', { target, motionId, samples: result.candidates.length });
+    progress(onProgress, 'render', 'completed', { target, motionId, samples: result.candidates.length, fraction: (motionIndex + 1) / motionIds.length });
   }
   return framesByMotion;
 }
@@ -1041,6 +1044,10 @@ async function buildCodexPet(input = {}, options = {}) {
 
 async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['clawd', 'codex-pet'], metadataByTarget = {}, optionsByTarget = {}, signal, onProgress } = {}) {
   const normalizedProject = validateProject(project);
+  const nameSlug = normalizedProject.name.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+  const defaultMetadata = { name: normalizedProject.name, id: /[^\x00-\x7f]/.test(normalizedProject.name)
+    ? `${nameSlug || 'pet'}-${createHash('sha256').update(normalizedProject.name).digest('hex').slice(0, 10)}`
+    : nameSlug || normalizedProject.projectId };
   assertProjectBuildable(normalizedProject);
   if (!Array.isArray(targets) || !targets.length || targets.some((target) => !['clawd', 'codex-pet'].includes(target))) fail('INVALID_BUILD_TARGETS', 'targets must contain clawd and/or codex-pet.');
   const uniqueTargets = [...new Set(targets)];
@@ -1067,6 +1074,7 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
         const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext || { sourceFingerprint: normalizedProject.source.fingerprint, runtimeVersion: targetOptions.runtimeVersion, rendererVersion: targetOptions.rendererVersion, targetVersion: targetOptions.targetVersion || '1', encoderVersion: targetOptions.encoderVersion, projectId: normalizedProject.projectId } });
         renderedInput = { ...targetInput, framesByMotion };
       } else if (targetId === 'codex-pet' && !targetInput.candidatesByRow && !targetInput.candidates) {
+        targetOptions.selection = { ...targetOptions.selection, preserveTiming: true };
         const ids = mappedMotionIds(targetProject.mappings);
         const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext || { sourceFingerprint: normalizedProject.source.fingerprint, runtimeVersion: targetOptions.runtimeVersion, rendererVersion: targetOptions.rendererVersion, targetVersion: targetOptions.targetVersion || '1', encoderVersion: targetOptions.encoderVersion, projectId: normalizedProject.projectId } });
         const candidatesByRow = Object.fromEntries(Object.entries(targetProject.mappings).map(([row, value]) => [row, framesByMotion[value.slice(7)]?.frames || []]));
@@ -1080,14 +1088,14 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
         framesByMotion: renderedInput.framesByMotion || renderedInput.frames,
         expressionByMotion,
         behavior: targetProject.options.behavior,
-        metadata: metadataByTarget[targetId] || renderedInput.metadata,
+        metadata: metadataByTarget[targetId] || renderedInput.metadata || defaultMetadata,
         readme: renderedInput.readme,
       }, targetOptions);
     } else {
       result = await buildCodexPet({
         mapping: { mappings: targetProject.mappings },
         candidatesByRow: renderedInput.candidatesByRow || renderedInput.candidates,
-        metadata: metadataByTarget[targetId] || renderedInput.metadata,
+        metadata: metadataByTarget[targetId] || renderedInput.metadata || defaultMetadata,
       }, targetOptions);
     }
     result.report = createBuildReport({ build: result, projectId: normalizedProject.projectId, source: normalizedProject.source });

@@ -6,6 +6,7 @@ import type { BuildArtifact, BuildTarget } from "./app-host";
 import { readCompleteBuildArtifact } from "./build-artifact";
 import type { Locale, MessageKey } from "./i18n";
 import { translate } from "./i18n";
+import { CODEX_PROFILE } from './target-profiles';
 
 const MAX_ARCHIVE_BYTES = 96 * 1024 * 1024;
 const MAX_ENTRY_BYTES = 64 * 1024 * 1024;
@@ -236,9 +237,9 @@ export function GeneratedPreview({ artifact, locale }: Props) {
   const codexRow = preview?.target === "codex-pet" ? preview.rows[selected] : null;
   useEffect(() => {
     if (!codexRow || !playing) return;
-    const timer = window.setInterval(() => setFrame((value) => (value + 1) % codexRow.frameCount), 1000 / 12);
-    return () => window.clearInterval(timer);
-  }, [codexRow, playing]);
+    const timer = window.setTimeout(() => setFrame((value) => (value + 1) % codexRow.frameCount), CODEX_PROFILE.frameDurations[codexRow.id][frame]);
+    return () => window.clearTimeout(timer);
+  }, [codexRow, playing, frame]);
 
   useEffect(() => {
     setImageReady(false);
@@ -269,9 +270,9 @@ export function GeneratedPreview({ artifact, locale }: Props) {
         {!imageUrl ? <span className="preview-message">{t("generatedPreviewLoading")}</span> : preview.target === "clawd" ? <img src={imageUrl} alt={preview.assets[selected]?.label ?? t("generatedPreview")} /> : <canvas ref={canvasRef} role="img" aria-label={`${codexRow?.id} ${t("generatedPreview")}`} className="generated-sprite-cell" width={preview.atlas.cellWidth} height={preview.atlas.cellHeight} />}
       </div>
       <div className="generated-preview-controls">
-        <ButtonGroup aria-label={t("generatedPreviewSelection")} className="generated-preview-choices">
+        <div role="group" aria-label={t("generatedPreviewSelection")} className="generated-preview-choices">
           {(preview.target === "clawd" ? preview.assets : preview.rows).map((item, index) => <Button size="sm" key={item.id} variant={selected === index ? "primary" : "secondary"} onPress={() => { setSelected(index); setFrame(0); }}>{"label" in item ? item.label : item.id}</Button>)}
-        </ButtonGroup>
+        </div>
         {preview.target === "codex-pet" && <ButtonGroup aria-label={t("generatedPlayback")}><Button size="sm" variant="secondary" aria-label={playing ? t("pause") : t("play")} onPress={() => setPlaying((value) => !value)}>{playing ? <Pause size={14} /> : <Play size={14} />}</Button><Button size="sm" variant="secondary" aria-label={t("restart")} onPress={() => setFrame(0)}><RotateCcw size={14} /></Button></ButtonGroup>}
       </div>
     </section>

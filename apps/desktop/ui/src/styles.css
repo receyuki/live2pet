@@ -284,6 +284,9 @@
 
 .generated-preview-stage {
   display: grid;
+  width: min(100%, 360px);
+  aspect-ratio: 1;
+  margin-inline: auto;
   min-height: 240px;
   place-items: center;
   overflow: hidden;
@@ -308,6 +311,21 @@
 .generated-preview-controls {
   align-items: flex-start;
 }
+
+/* Keep native traffic lights separate from Settings navigation. */
+.settings-view { padding-top: 40px; position: relative; }
+.settings-view::before { content: ''; position: absolute; inset: 0 0 auto; height: 40px; -webkit-app-region: drag; }
+.runtime-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; justify-content: flex-end; flex-shrink: 0; }
+.runtime-actions button { white-space: nowrap; }
+.runtime-list .runtime-item .grow-copy { min-width: 0; }
+.source-identity { display: grid; justify-items: start; gap: 10px; padding: 16px 0; }
+.source-identity small, .empty-expression-note { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.empty-expression-note { padding: 12px 8px; }
+.preview-stage { width: min(calc(100% - 24px), 560px); align-self: center; }
+.playback input.timeline { height: 20px; min-width: 40px; accent-color: var(--brand); cursor: pointer; }
+.package-name-field { max-width: 480px; margin-bottom: 24px; }
+.package-name-field small { color: var(--muted); }
+.generated-preview-choices { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .generated-preview-choices {
   max-width: 100%;

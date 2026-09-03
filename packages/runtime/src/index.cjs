@@ -324,7 +324,18 @@ async function loadRuntimeForGeneration(settingsPath, cubismVersion) {
   return settings.runtimes.find((runtime) => runtime.available === true && runtime.descriptor.cubismGenerations.includes(generation)) || null;
 }
 
-function clearRuntimeSettings(settingsPath) {
+function clearRuntimeSettings(settingsPath, fingerprint) {
+  if (fingerprint !== undefined) {
+    if (typeof fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(fingerprint)) fail('INVALID_RUNTIME_SETTINGS', 'A valid runtime fingerprint is required.');
+    const stored = parseRuntimeSettings(settingsPath);
+    if (!stored || stored.schemaVersion !== RUNTIME_SETTINGS_SCHEMA_VERSION) fail('INVALID_RUNTIME_SETTINGS', 'The runtime library must be saved before removing one runtime.');
+    const selected = stored.runtimes.find((runtime) => runtime.descriptor.fingerprint === fingerprint);
+    if (!selected) fail('RUNTIME_NOT_FOUND', 'The selected runtime is no longer saved.');
+    writeRuntimeSettings(settingsPath, { ...stored, runtimes: stored.runtimes.filter((runtime) => runtime !== selected) });
+    try { fs.unlinkSync(resolveStoredRuntimePath(settingsPath, selected.storagePath)); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    return loadRuntimeSettings(settingsPath);
+  }
   const absolute = normalizeSettingsPath(settingsPath);
   try { fs.unlinkSync(absolute); } catch (error) {
     if (error && error.code !== 'ENOENT') fail('RUNTIME_SETTINGS_CLEAR_FAILED', 'Runtime settings could not be cleared.', { cause: error.code || String(error.message || error) });

@@ -29,6 +29,23 @@ function modernFixture() {
   return root;
 }
 
+test('removes only the selected private runtime copy and keeps original files', async () => {
+  const root = temporaryDirectory();
+  const modern = modernFixture();
+  const legacy = path.join(root, 'live2d.min.js');
+  fs.writeFileSync(legacy, 'var Live2D = {}; var L2D = {};');
+  const settingsPath = path.join(root, 'settings', 'runtime.json');
+  await saveRuntimeSettings(settingsPath, modern);
+  const saved = await saveRuntimeSettings(settingsPath, legacy);
+  const selected = saved.runtimes.find((runtime) => runtime.descriptor.runtimeKind === 'legacy-cubism2');
+  const remaining = await clearRuntimeSettings(settingsPath, selected.descriptor.fingerprint);
+  assert.equal(remaining.runtimes.length, 1);
+  assert.equal(remaining.runtimes[0].descriptor.runtimeKind, 'modern-cubism-core');
+  assert.equal(fs.existsSync(selected.runtimePath), false);
+  assert.equal(fs.existsSync(legacy), true);
+  assert.equal((await loadRuntimeForGeneration(settingsPath, 4)).available, true);
+});
+
 test('recognizes a modern Cubism Core file in an SDK directory', async () => {
   const root = modernFixture();
   const descriptor = await inspectRuntime(root);

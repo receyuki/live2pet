@@ -129,5 +129,6 @@ module.exports = {
   MAX_CANDIDATES,
   boundsDelta,
   dedupeCandidates,
+  normalizeCandidates,
   selectMotionFrames,
 };

@@ -8,6 +8,6 @@ declare module "@live2pet/clawd-target/profile" {
 }
 
 declare module "@live2pet/codex-target/profile" {
-  const profile: Readonly<{ id: "codex-pet"; rows: readonly Readonly<{ id: string; frames: number }>[]; rowIds: readonly string[] }>;
+  const profile: Readonly<{ id: "codex-pet"; rows: readonly Readonly<{ id: string; frames: number }>[]; rowIds: readonly string[]; frameDurations: Readonly<Record<string, readonly number[]>> }>;
   export default profile;
 }

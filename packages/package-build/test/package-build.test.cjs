@@ -245,8 +245,8 @@ test('buildProjectTargets forwards Clawd behavior configuration from target opti
     },
   });
   const result = await buildProjectTargets({ project, targets: ['clawd'], inputsByTarget: { clawd: { framesByMotion: clawdFrames() } }, optionsByTarget: { clawd: { sharpFactory: clawdSharpFactory() } } });
-  assert.deepEqual(result.builds.clawd.manifest.idleAnimations, [{ file: 'live2pet-theme-attention.webp', duration: 1600 }]);
-  assert.deepEqual(result.builds.clawd.manifest.workingTiers, [{ minSessions: 2, file: 'live2pet-theme-error.webp' }]);
+  assert.deepEqual(result.builds.clawd.manifest.idleAnimations, [{ file: 'behavior-project-attention.webp', duration: 1600 }]);
+  assert.deepEqual(result.builds.clawd.manifest.workingTiers, [{ minSessions: 2, file: 'behavior-project-error.webp' }]);
   assert.equal(result.builds.clawd.manifest.roamFlipAssets, true);
 });
 

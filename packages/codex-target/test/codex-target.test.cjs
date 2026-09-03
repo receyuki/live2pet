@@ -1,6 +1,15 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
+test('host-timed selection does not compress a five-second motion into one short loop', () => {
+  const { selectCodexFrameSets, ROWS } = require('../src/index.cjs');
+  const candidates = Array.from({ length: 101 }, (_, index) => ({ id: `f${index}`, time: index / 20, visualChange: 1 }));
+  const result = selectCodexFrameSets({ mappings: Object.fromEntries(ROWS.map((row) => [row.id, 'motion:test'])), candidatesByRow: Object.fromEntries(ROWS.map((row) => [row.id, candidates])) }, { preserveTiming: true });
+  assert.deepEqual(result.frameSets.idle.map((frame) => frame.time), [0, 0.3, 0.4, 0.5, 0.65, 0.8]);
+  assert.equal(result.frameSets['running-right'].length, 8);
+  assert.ok(result.frameSets['running-right'].at(-1).time < 1);
+});
+
 const {
   CodexValidationError,
   assertValidCodexPetPackage,

@@ -1,4 +1,4 @@
-import { Button, ButtonGroup, Card, Chip, ProgressBar } from "@heroui/react";
+import { Button, ButtonGroup, Card, Chip, ProgressBar, Input, Label, TextField } from "@heroui/react";
 import { CircleCheck, Download, FolderOpen, PackageCheck, Square, XCircle } from "lucide-react";
 import { useState } from "react";
 import type { BuildArtifact, BuildTarget, InstallRootResult, Live2PetProject, RenderPreset, SourceInspection } from "./app-host";
@@ -14,6 +14,7 @@ export type TargetReadiness = { ready: boolean; missing: string[] };
 export function targetReadiness(project: Live2PetProject | null, inspection: SourceInspection | undefined, runtimeReady: boolean, target: BuildTarget): TargetReadiness {
   if (!project || !inspection) return { ready: false, missing: ["source"] };
   const commonMissing = [
+    ...(!project.name.trim() ? ["package name"] : []),
     ...(!runtimeReady ? ["matching Cubism runtime"] : []),
     ...(project.sourceReview?.required ? ["source review"] : []),
   ];
@@ -39,12 +40,13 @@ type Props = {
   onPreset: (target: BuildTarget, preset: RenderPreset) => void;
   onBuild: (target: BuildTarget) => void;
   onCancel: (target: BuildTarget) => void;
+  onName?: (name: string) => void;
 };
 
 const targets: BuildTarget[] = ["clawd", "codex-pet"];
 const presets: RenderPreset[] = ["compact", "balanced", "high"];
 
-export function BuildView({ locale, project, inspection, runtimeReady, state, onPreset, onBuild, onCancel }: Props) {
+export function BuildView({ locale, project, inspection, runtimeReady, state, onPreset, onBuild, onCancel, onName }: Props) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   const [locations, setLocations] = useState<Partial<Record<BuildTarget, Extract<InstallRootResult, { cancelled: false }>>>>({});
   const [feedback, setFeedback] = useState<Partial<Record<BuildTarget, string>>>({});
@@ -84,6 +86,7 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
   return (
     <main className="page build-page">
       <header className="page-heading"><p className="eyebrow">{t("build")}</p><h1>{t("buildTitle")}</h1><p>{t("buildBody")}</p></header>
+      {project && <TextField className="package-name-field" value={project.name} onChange={onName} isRequired isDisabled={targets.some((target) => state[target].status === 'building')}><Label>{t('packageName')}</Label><Input maxLength={256} /><small>{t('packageNameHint')}</small></TextField>}
       {!hostReady && <div className="action-feedback" role="alert">{t("buildHostUnavailable")}</div>}
       <div className="build-grid">
         {targets.map((target) => {
@@ -97,6 +100,7 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
               <Card.Content>
                 <div className="build-top"><span className="large-icon"><PackageCheck size={20} /></span><Chip variant="soft">{readiness.ready ? t("ready") : t("notReady")}</Chip></div>
                 <h2>{title}</h2>
+                {target === 'codex-pet' && <p>{t('codexTimingHint')}</p>}
                 <p>{readiness.ready ? t("targetReadyBody") : t("targetMissing", { value: readiness.missing.join(", ") })}</p>
                 <div className="preset-row"><strong>{t("renderPreset")}</strong><ButtonGroup aria-label={`${title} ${t("renderPreset")}`}>{presets.map((value) => <Button size="sm" key={value} variant={preset === value ? "primary" : "secondary"} onPress={() => onPreset(target, value)}>{t(value)}</Button>)}</ButtonGroup></div>
                 <div className={`build-result build-result-${current.status}`} role="status" aria-live="polite">

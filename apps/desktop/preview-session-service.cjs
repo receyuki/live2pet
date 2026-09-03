@@ -393,7 +393,11 @@ function createPreviewSessionService({
 
   async function control(input = {}) {
     const action = nonEmptyString(input.action, 'action');
-    if (!['pause', 'resume', 'restart'].includes(action)) fail('INVALID_PREVIEW_CONTROL', 'Preview control action must be pause, resume, or restart.');
+    if (action === 'seek') {
+      if (!Number.isFinite(input.time) || input.time < 0 || input.time > 3600) fail('INVALID_PREVIEW_CONTROL', 'Seek time must be between 0 and 3600 seconds.');
+      return enqueue(() => invokeNow('seek', input.time));
+    }
+    if (!['pause', 'resume', 'restart'].includes(action)) fail('INVALID_PREVIEW_CONTROL', 'Preview control action must be pause, resume, restart, or seek.');
     return enqueue(() => invokeNow(action));
   }
 
@@ -424,6 +428,10 @@ function createPreviewSessionService({
     control,
     close: () => enqueue(closeNow),
     getStatus,
+    readStatus: () => enqueue(async () => {
+      if (state === SESSION_STATES.ready && adapter?.readState) await adapter.readState();
+      return getStatus();
+    }),
     withRenderer,
   });
 }

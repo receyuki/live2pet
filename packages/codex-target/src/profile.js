@@ -7,6 +7,18 @@
 }(typeof globalThis === 'object' ? globalThis : this, function createCodexProfile() {
   const freezeList = (values) => Object.freeze([...values]);
   const atlas = Object.freeze({ width: 1536, height: 1872, columns: 8, rows: 9, cellWidth: 192, cellHeight: 208 });
+  // Verified against the installed Codex host on 2026-09-03; milliseconds per frame.
+  const frameDurations = Object.freeze({
+    idle: freezeList([280, 110, 110, 140, 140, 320]),
+    'running-right': freezeList([120, 120, 120, 120, 120, 120, 120, 220]),
+    'running-left': freezeList([120, 120, 120, 120, 120, 120, 120, 220]),
+    waving: freezeList([140, 140, 140, 280]),
+    jumping: freezeList([140, 140, 140, 140, 280]),
+    failed: freezeList([140, 140, 140, 140, 140, 140, 140, 240]),
+    waiting: freezeList([150, 150, 150, 150, 150, 260]),
+    running: freezeList([120, 120, 120, 120, 120, 220]),
+    review: freezeList([150, 150, 150, 150, 150, 280]),
+  });
   const rows = Object.freeze([
     Object.freeze({ id: 'idle', frames: 6 }),
     Object.freeze({ id: 'running-right', frames: 8 }),
@@ -27,6 +39,7 @@
     id: 'codex-pet',
     contractVersion: 1,
     atlas,
+    frameDurations,
     rows,
     rowIds: freezeList(rows.map((row) => row.id)),
     renderPresets,
