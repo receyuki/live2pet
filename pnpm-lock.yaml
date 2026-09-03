@@ -34,6 +34,9 @@ importers:
       '@live2pet/project':
         specifier: workspace:*
         version: link:../../packages/project
+      '@live2pet/renderer':
+        specifier: workspace:*
+        version: link:../../packages/renderer
       '@live2pet/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime

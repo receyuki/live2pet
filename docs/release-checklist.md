@@ -23,10 +23,11 @@ macOS or Windows release.
 
 ## Private macOS validation gate
 
-- [x] The current x64 machine produces an unsigned `.app` with the staged Mapper,
+- [x] The current x64 machine produces an unsigned `.app` with the default HeroUI renderer and internal rendering vendors,
       ASAR integrity metadata, an unpacked Sharp/libvips
       runtime, no prohibited character/runtime assets, and a passing packaged
       window smoke test.
+- [x] The default packaged HeroUI App passes the local modern-folder and legacy-PCK preview, mapping, save/reopen, recovery, both-target build, generated-preview, and runtime-reuse acceptance workflow. See `docs/desktop-acceptance.md` for scope and exclusions.
 - [ ] A clean current-machine user profile completes the personal-use V1 flow
       from runtime selection and model import through both ZIP downloads.
 - [ ] A profile without Spine support can inspect a supported Spine source,

@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const { execFileSync } = require('node:child_process');
 const { APP_NAME, FORBIDDEN_BUNDLE_ENTRY, currentMacArch, verifyBundleLayout } = require('./package-macos.cjs');
 
@@ -10,7 +11,7 @@ function packagedAppPath(arch = currentMacArch()) {
 }
 
 function runNodeSmoke(appPath) {
-  const executable = path.join(appPath, 'Contents', 'MacOS', 'live2pet');
+  const executable = path.join(appPath, 'Contents', 'MacOS', APP_NAME);
   const appAsar = path.join(appPath, 'Contents', 'Resources', 'app.asar');
   const source = `
     const fs = require('node:fs');
@@ -29,6 +30,8 @@ function runNodeSmoke(appPath) {
     const bad = files.filter((entry) => forbidden.test(entry));
     if (bad.length) throw new Error('Forbidden bundled source entries: ' + bad.join(', '));
     const sharp = require(path.join(root, 'node_modules', 'sharp'));
+    // Resolve the real main-process services from ASAR, not from checkout-relative paths.
+    for (const service of ['preview-session-service', 'hosted-build-service', 'project-workspace-service', 'capture-cache-build', 'capture-cache-service']) require(path.join(root, service + '.cjs'));
     const info = { sharp: sharp.versions.sharp, libvips: sharp.versions.vips, sourceFiles: files.length, forbiddenAssetCount: 0 };
     process.stdout.write(JSON.stringify(info));
   `;
@@ -40,16 +43,18 @@ function runNodeSmoke(appPath) {
 }
 
 function runWindowSmoke(appPath) {
-  const executable = path.join(appPath, 'Contents', 'MacOS', 'live2pet');
-  const output = execFileSync(executable, ['--live2pet-smoke-test'], {
+  const executable = path.join(appPath, 'Contents', 'MacOS', APP_NAME);
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-bundle-smoke-'));
+  let output;
+  try { output = execFileSync(executable, ['--live2pet-smoke-test', `--user-data-dir=${profile}`], {
     encoding: 'utf8',
     timeout: 30 * 1000,
     env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')),
-  });
+  }); } finally { fs.rmSync(profile, { recursive: true, force: true }); }
   const marker = output.split(/\r?\n/).find((line) => line.startsWith('LIVE2PET_BUNDLE_READY '));
-  if (!marker) throw new Error('The packaged App exited without reaching the Mapper ready state.');
+  if (!marker) throw new Error('The packaged App exited without reaching the HeroUI ready state.');
   const ready = JSON.parse(marker.slice('LIVE2PET_BUNDLE_READY '.length));
-  if (ready.packaged !== true || ready.mapper !== 'index.html') throw new Error('The packaged App reported an invalid Mapper ready state.');
+  if (ready.packaged !== true || ready.renderer !== 'heroui' || ready.mounted !== true || ready.document !== 'index.html') throw new Error('The packaged App reported an invalid HeroUI ready state.');
   return ready;
 }
 

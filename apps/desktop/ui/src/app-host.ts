@@ -154,7 +154,7 @@ type Live2PetApi = {
   clearRuntimeSettings(): Promise<AppResponse<RuntimeSettings>>;
   getBuildCacheStatus(): Promise<AppResponse<{ schemaVersion: 1; byteLength: number; entryCount: number; maxBytes: number }>>;
   clearBuildCache(input: { confirmClear: true }): Promise<AppResponse<{ removedEntries: number; removedBytes: number; schemaVersion: 1; byteLength: number; entryCount: number; maxBytes: number }>>;
-  buildProject?(input: { project: Live2PetProject; targets: BuildTarget[] }): Promise<AppResponse<BuildProjectResult>>;
+  buildProject?(input: { project: Live2PetProject; targets: BuildTarget[]; optionsByTarget: Partial<Record<BuildTarget, { package: true }>> }): Promise<AppResponse<BuildProjectResult>>;
   cancelBuild?(buildId: string): Promise<AppResponse<{ buildId: string; cancelled: boolean; active: boolean }>>;
   onBuildProgress?(listener: (event: BuildProgressEvent) => void): () => void;
   getBuildArtifact?(artifactId: string, offset?: number): Promise<AppResponse<BuildArtifactChunk>>;
@@ -309,7 +309,7 @@ function buildApi(): Live2PetApi {
 }
 
 export function buildProject(project: Live2PetProject, target: BuildTarget): Promise<BuildProjectResult> {
-  return unwrap(buildApi().buildProject!({ project, targets: [target] }));
+  return unwrap(buildApi().buildProject!({ project, targets: [target], optionsByTarget: { [target]: { package: true } } }));
 }
 
 export function cancelBuild(buildId: string) {

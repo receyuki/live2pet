@@ -28,7 +28,9 @@ The repository already contains:
 - a shared CLI for build, validation, export, and explicit target-package installation; and
 - release scans that exclude runtimes, models, copyrighted examples, and generated character packages.
 
-The current renderer still exposes the implemented features as one long document, mixing App-global runtime/cache controls with project inspection, mapping, and two target build panels. The remaining work therefore starts with a focused desktop-shell restructuring and real-runtime product-path hardening. V1 adds only two bounded renderer capabilities after that foundation: renderer-neutral Visual Settings for removable backgrounds and one isolated, optional Spine version line. Neither addition creates a second mapping UI or target build pipeline.
+The default development and packaged renderer now uses the HeroUI project shell. Setup, full-page Settings, native project operations, Source/Map/Build navigation, real embedded preview, durable mappings, history, recovery, and generated-package previews are connected to the existing App services. The legacy browser Mapper remains only a development reference. V1 adds two bounded renderer capabilities after this foundation: renderer-neutral Visual Settings for removable backgrounds and one isolated, optional Spine version line. Neither addition creates a second mapping UI or target build pipeline.
+
+The current follow-up order is target-host installation acceptance, shared Visibility (#13), optional Spine (#14), then final packaged-App accessibility and release qualification. Default-renderer promotion does not close #12 while its Visibility, optional renderer-pack Settings, and final UI review criteria remain outstanding. Local real-model verification is documented in [Desktop acceptance](../desktop-acceptance.md).
 
 ## Prioritized delivery sequence
 

@@ -87,12 +87,16 @@ test('bundle verification requires staged resources, unpacked Sharp, and no user
   const appPath = path.join(root, 'Live2Pet.app');
   const resources = path.join(appPath, 'Contents', 'Resources');
   try {
-    for (const relative of ['mapper-dist/index.html', 'app.asar', 'app.asar.unpacked/node_modules/@img/sharp-darwin-x64/lib/sharp-darwin-x64.node']) {
+    for (const relative of ['mapper-dist/index.html', 'renderer-dist/index.html', 'app.asar', 'app.asar.unpacked/node_modules/@img/sharp-darwin-x64/lib/sharp-darwin-x64.node']) {
       const absolute = path.join(resources, relative);
       fs.mkdirSync(path.dirname(absolute), { recursive: true });
       fs.writeFileSync(absolute, 'test');
     }
     assert.equal(verifyBundleLayout(appPath).nativeSharp, true);
+    assert.deepEqual(verifyBundleLayout(appPath).resources, ['mapper-dist', 'renderer-dist']);
+    fs.renameSync(path.join(resources, 'renderer-dist/index.html'), path.join(resources, 'renderer-dist/absent.html'));
+    assert.throws(() => verifyBundleLayout(appPath), (error) => error.code === 'PACKAGE_LAYOUT_INVALID');
+    fs.renameSync(path.join(resources, 'renderer-dist/absent.html'), path.join(resources, 'renderer-dist/index.html'));
     const forbidden = path.join(resources, 'models', 'sample.moc3');
     fs.mkdirSync(path.dirname(forbidden), { recursive: true });
     fs.writeFileSync(forbidden, 'test');

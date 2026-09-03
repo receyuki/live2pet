@@ -6,6 +6,7 @@ const { execFileSync } = require('node:child_process');
 const repositoryRoot = path.resolve(__dirname, '../../..');
 const desktopRoot = path.resolve(__dirname, '..');
 const mapperRoot = path.join(desktopRoot, 'mapper-dist');
+const rendererRoot = path.join(desktopRoot, 'renderer-dist');
 const outputRoot = path.join(desktopRoot, 'out');
 const APP_ICON_PATH = path.join(desktopRoot, 'assets', 'icon.icns');
 const ELECTRON_VERSION = '44.0.0';
@@ -41,11 +42,14 @@ function requireDirectory(directory, code, message) {
 
 function copyResources(tempRoot) {
   requireDirectory(mapperRoot, 'MAPPER_NOT_STAGED', 'Stage the Mapper assets before packaging the App.');
+  requireDirectory(rendererRoot, 'RENDERER_NOT_BUILT', 'Build the HeroUI renderer before packaging the App.');
   const resourcesRoot = path.join(tempRoot, 'resources');
   const mapperTarget = path.join(resourcesRoot, 'mapper-dist');
+  const rendererTarget = path.join(resourcesRoot, 'renderer-dist');
   fs.mkdirSync(resourcesRoot, { recursive: true });
   fs.cpSync(mapperRoot, mapperTarget, { recursive: true, dereference: true });
-  return [mapperTarget];
+  fs.cpSync(rendererRoot, rendererTarget, { recursive: true, dereference: true });
+  return [mapperTarget, rendererTarget];
 }
 
 function deployProductionStage(stageRoot, environment = process.env) {
@@ -61,7 +65,7 @@ function deployProductionStage(stageRoot, environment = process.env) {
     stageRoot,
   ], { cwd: repositoryRoot, env: environment, stdio: 'inherit' });
 
-  for (const relative of ['mapper-dist', 'test', 'scripts', 'out', 'make', 'forge.config.cjs']) {
+  for (const relative of ['mapper-dist', 'renderer-dist', 'ui', 'test', 'scripts', 'out', 'make', 'forge.config.cjs']) {
     fs.rmSync(path.join(stageRoot, relative), { recursive: true, force: true });
   }
   const internalPackages = path.join(stageRoot, 'node_modules', '@live2pet');
@@ -128,6 +132,7 @@ function verifyBundleLayout(appPath) {
   const required = [
     path.join(resources, 'app.asar'),
     path.join(resources, 'mapper-dist', 'index.html'),
+    path.join(resources, 'renderer-dist', 'index.html'),
   ];
   const missing = required.filter((entry) => !fs.existsSync(entry));
   if (missing.length) fail('PACKAGE_LAYOUT_INVALID', 'The packaged App is missing required resources.', { missing });
@@ -141,7 +146,7 @@ function verifyBundleLayout(appPath) {
   }
   return {
     appPath,
-    resources: ['mapper-dist'],
+    resources: ['mapper-dist', 'renderer-dist'],
     nativeSharp: true,
     forbiddenAssetCount: 0,
   };

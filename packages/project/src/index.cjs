@@ -291,8 +291,8 @@ function relinkProjectSource(project, nextSource, { previousManifest, nextManife
   const changed = current.source.fingerprint !== mergedSource.fingerprint;
   const nextProject = { ...current, source: mergedSource };
   if (!changed) {
-    delete nextProject.sourceReview;
-    return { project: validateProject(nextProject), status: 'relinked', reviewRequired: false, affectedRecipeIds: [] };
+    // Re-inspecting the same bytes is not user acknowledgement of an earlier change.
+    return { project: validateProject(nextProject), status: 'relinked', reviewRequired: Boolean(current.sourceReview?.required), affectedRecipeIds: current.sourceReview?.affectedRecipeIds ?? [] };
   }
 
   const previousMotions = new Set(Array.isArray(previousManifest?.motions) ? previousManifest.motions.map((motion) => String(motion.id)) : []);

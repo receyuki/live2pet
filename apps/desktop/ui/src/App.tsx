@@ -480,10 +480,10 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   const [previewStatus, setPreviewStatus] = useState<PreviewStatus | null>(null);
   const [previewRetry, setPreviewRetry] = useState(0);
   const [mappingTarget, setMappingTarget] = useState<MappingTargetId>("clawd");
-  const displayedMotions = inspection?.motions.length
+  const displayedMotions = inspection
     ? inspection.motions.map((motion) => ({ id: motion.id, name: motion.name, seconds: motion.duration?.toFixed(1) ?? "—", tint: "" }))
     : motions.map((motion) => ({ ...motion, name: t(motion.nameKey) }));
-  const displayedExpressions = inspection?.expressions.length
+  const displayedExpressions = inspection
     ? inspection.expressions.map((expression) => ({ id: expression.id, name: expression.name }))
     : expressions.map((expression) => ({ ...expression, name: t(expression.nameKey) }));
   const selected = displayedMotions.find((motion) => motion.id === selectedMotionId) ?? displayedMotions[0];
@@ -690,12 +690,13 @@ export function App() {
   useEffect(() => {
     const warnBeforeUnload = (event: BeforeUnloadEvent) => {
       if (!state.project?.dirty) return;
+      if (state.project.document) writeProjectDraft(state.project.document);
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", warnBeforeUnload);
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
-  }, [state.project?.dirty]);
+  }, [state.project?.dirty, state.project?.document]);
   useEffect(() => {
     const preventFileNavigation = (event: globalThis.DragEvent) => {
       if (event.dataTransfer && hasDraggedFiles(event.dataTransfer)) event.preventDefault();

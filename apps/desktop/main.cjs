@@ -31,15 +31,13 @@ const {
   saveRuntimeSettings,
 } = require('@live2pet/runtime');
 
-const DEVELOPMENT_MAPPER_PATH = path.resolve(__dirname, '../mapper/index.html');
 const DEVELOPMENT_RENDERER_PATH = path.resolve(__dirname, 'renderer-dist/index.html');
-const PACKAGED_MAPPER_PATH = path.join(process.resourcesPath, 'mapper-dist', 'index.html');
+const PACKAGED_RENDERER_PATH = path.join(process.resourcesPath, 'renderer-dist', 'index.html');
 const SOURCE_CACHE_LIMIT = 1024 * 1024 * 1024;
 const CAPTURE_CACHE_LIMIT = 1024 * 1024 * 1024;
 const ENCODED_CACHE_TARGET_VERSION = '1';
 const ENCODED_CACHE_ENCODER_VERSION = SHARP_ENCODER_VERSION;
 const APP_BUNDLE_SMOKE_ARGUMENT = '--live2pet-smoke-test';
-const UI_PREVIEW_ARGUMENT = '--live2pet-ui-preview';
 const APP_NAME = 'Live2Pet';
 const PREVIEW_IPC_CHANNEL = 'live2pet:preview';
 const PREVIEW_STATUS_CHANNEL = 'live2pet:preview-status';
@@ -64,13 +62,8 @@ protocol.registerSchemesAsPrivileged([{
 
 app.setName(APP_NAME);
 
-function mapperPath() {
-  return app.isPackaged ? PACKAGED_MAPPER_PATH : DEVELOPMENT_MAPPER_PATH;
-}
-
 function appDocumentPath() {
-  if (!app.isPackaged && process.argv.includes(UI_PREVIEW_ARGUMENT)) return DEVELOPMENT_RENDERER_PATH;
-  return mapperPath();
+  return app.isPackaged ? PACKAGED_RENDERER_PATH : DEVELOPMENT_RENDERER_PATH;
 }
 
 function sourceInspectionService({ inputPath, projectId } = {}) {
@@ -316,7 +309,7 @@ async function createMainWindow() {
     minHeight: 640,
     ...(restoredBounds ? { x: restoredBounds.x, y: restoredBounds.y } : {}),
   });
-  if (documentPath === DEVELOPMENT_RENDERER_PATH) {
+  if (process.platform === 'darwin') {
     Object.assign(windowOptions, {
       titleBarStyle: 'hiddenInset',
       trafficLightPosition: { x: 18, y: 19 },
@@ -345,14 +338,23 @@ async function createMainWindow() {
     },
   });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  const mapperUrl = pathToFileURL(documentPath).href;
+  const documentUrl = pathToFileURL(documentPath).href;
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (url !== mapperUrl) event.preventDefault();
+    if (url !== documentUrl) event.preventDefault();
   });
   mainWindow.webContents.on('will-attach-webview', (event) => event.preventDefault());
+  mainWindow.webContents.on('will-prevent-unload', (event) => {
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: 'question', buttons: ['Keep Editing', 'Leave'], defaultId: 0, cancelId: 0,
+      message: 'Leave this unsaved project?',
+      detail: 'Your latest changes remain in local recovery. Your saved project file will not be overwritten.',
+    });
+    // Electron uses preventDefault here to allow an unload blocked by the renderer.
+    if (choice === 1) event.preventDefault();
+  });
   mainWindow.webContents.on('render-process-gone', (_event, details = {}) => {
     const reason = typeof details.reason === 'string' ? details.reason : 'unknown';
-    console.error(`Live2Pet Mapper renderer exited unexpectedly (${reason}).`);
+    console.error(`Live2Pet App renderer exited unexpectedly (${reason}).`);
     const windowToRecover = mainWindow;
     if (reason === 'clean-exit' || mainRendererRecoveryInProgress || !windowToRecover || windowToRecover.isDestroyed()) return;
     mainRendererRecoveryInProgress = true;
@@ -362,7 +364,7 @@ async function createMainWindow() {
         return;
       }
       windowToRecover.loadFile(documentPath, { query: { rendererRecovered: reason } })
-        .catch((error) => console.error('Live2Pet could not recover the Mapper renderer.', error))
+        .catch((error) => console.error('Live2Pet could not recover the App renderer.', error))
         .finally(() => { mainRendererRecoveryInProgress = false; });
     }, 100);
   });
@@ -380,11 +382,19 @@ async function createMainWindow() {
   // development shell permanently hidden.
   if (mainWindow && !mainWindow.isVisible()) showWindow();
   if (process.argv.includes(APP_BUNDLE_SMOKE_ARGUMENT)) {
-    process.stdout.write(`LIVE2PET_BUNDLE_READY ${JSON.stringify({ packaged: app.isPackaged, mapper: path.basename(documentPath) })}\n`);
-    // Give the renderer one event-loop turn to settle its local subresources;
-    // quitting immediately can make Electron report a false ERR_FAILED after
-    // the ready marker even though the packaged Mapper loaded successfully.
-    setTimeout(() => app.quit(), 500);
+    // Loading index.html alone does not prove that React or its packaged chunks mounted.
+    const mounted = await mainWindow.webContents.executeJavaScript(`new Promise((resolve) => {
+      const deadline = Date.now() + 10000;
+      const check = () => {
+        if (document.querySelector('#root .setup-view, #root .welcome-view, #root .app-shell')) return resolve(true);
+        if (Date.now() >= deadline) return resolve(false);
+        setTimeout(check, 50);
+      };
+      check();
+    })`);
+    if (!mounted) { console.error('LIVE2PET_BUNDLE_FAILED HeroUI did not mount.'); app.exit(1); return mainWindow; }
+    process.stdout.write(`LIVE2PET_BUNDLE_READY ${JSON.stringify({ packaged: app.isPackaged, renderer: 'heroui', mounted, document: path.basename(documentPath) })}\n`);
+    setTimeout(() => app.quit(), 100);
   }
   return mainWindow;
 }

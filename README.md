@@ -16,7 +16,7 @@ Live2Pet is an early-stage local desktop toolchain for loading Cubism models, pr
 - `packages/cli/` — stable JSON CLI envelope over source inspection, runtime diagnosis, `.live2pet` project validation, shared Package Build from transient pre-captured inputs, ZIP package validation, export/install, and cache management.
 - `packages/installation/` — explicit, conflict-aware installation for generated Codex Pet and Clawd Theme packages; building and downloading never install implicitly.
 - `packages/app-host/` — typed IPC router, preload API, artifact download/install boundary, opaque native location handles, and hardened window defaults.
-- `apps/desktop/` — Electron App that loads the Mapper and builds, downloads, previews, and explicitly installs generated artifacts without bundling user runtimes or models. The center column is the V1 source preview.
+- `apps/desktop/` — Electron App with the default React/TypeScript/HeroUI interface: first-run Setup, Welcome, full-page Settings, and Source/Map/Build destinations. It saves projects, previews models, builds ZIPs, and explicitly installs generated artifacts without bundling user runtimes or models. The center column is the only Source Package preview; `apps/mapper/` remains a development reference, not the App entrypoint.
 - `packages/clawd-target/` — guide-aligned Clawd Target Profile validation for states, sleep modes, fallbacks, and reactions.
 - `packages/codex-target/` — Codex Pet V1 atlas geometry, nine-row mapping, frame-reference layout planning, RGBA composition, and package-shape validation.
 - `packages/live2d-exporter/` — deterministic transparent-frame exporter and Live2D PCK unpacker.
@@ -43,11 +43,23 @@ The official modern Cubism Core download is available from [Live2D's SDK for Web
 
 ## Development status
 
-The core inspection, project, mapping, center-column source preview, target-build, progress, cache, validation, generated-preview, artifact-download, and explicit package-install seams are implemented. The remaining V1 work is to qualify saved modern and legacy runtimes with locally owned models, prove both generated ZIPs and their explicit installation in the real target hosts, harden the long-build experience, and accept a locally built macOS App on a clean user profile.
+The core inspection, project, mapping, center-column source preview, target-build, progress, cache, validation, generated-preview, artifact-download, and explicit package-install seams are implemented in the default HeroUI App. Remaining V1 work includes actual target-host installation acceptance, shared model Visibility, optional versioned Spine support, and final macOS accessibility and release qualification.
 
 Codex Skill integration, a hosted Mapper Session, a separate preview window, the official Cubism Web Framework bridge, Windows qualification, and public signed binaries are outside the V1 product. See the [implementation plan](docs/plans/live2pet-v1-implementation-plan.md) for the current order and close criteria.
 
 ## Local verification
+
+Start the default Desktop App or build a local unsigned macOS bundle:
+
+```sh
+pnpm --filter @live2pet/desktop start
+pnpm --filter @live2pet/desktop package:mac
+pnpm --filter @live2pet/desktop smoke:mac
+```
+
+Start and package commands build the HeroUI assets and stage the internal rendering vendors automatically. The packaged App does not require a Vite server or a preview flag. `preview:shell` is retained as an alias for `start`.
+
+For opt-in real-model Desktop acceptance, see [the local acceptance guide](docs/desktop-acceptance.md).
 
 ```sh
 pnpm test

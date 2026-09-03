@@ -5,18 +5,24 @@ const test = require('node:test');
 
 const desktopRoot = path.resolve(__dirname, '..');
 
-test('HeroUI renderer is an explicit parallel Electron preview', () => {
+test('HeroUI is the default development and packaged Electron renderer', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(desktopRoot, 'package.json'), 'utf8'));
   const main = fs.readFileSync(path.join(desktopRoot, 'main.cjs'), 'utf8');
   const vite = fs.readFileSync(path.join(desktopRoot, 'vite.config.mts'), 'utf8');
 
   assert.equal(manifest.dependencies['@heroui/react'], '^3.2.4');
   assert.equal(manifest.dependencies.react, '^19.2.8');
-  assert.match(manifest.scripts['preview:shell'], /build:renderer.*--live2pet-ui-preview/);
-  assert.match(main, /UI_PREVIEW_ARGUMENT = '--live2pet-ui-preview'/);
+  assert.equal(manifest.dependencies['@live2pet/renderer'], 'workspace:*');
+  const previewService = fs.readFileSync(path.join(desktopRoot, 'preview-session-service.cjs'), 'utf8');
+  assert.match(previewService, /require\('@live2pet\/renderer'\)/);
+  assert.doesNotMatch(previewService, /require\('\.\.\/\.\.\/packages\//);
+  assert.equal(manifest.scripts['preview:shell'], 'pnpm start');
+  assert.match(manifest.scripts.start, /prepare:mapper.*build:renderer.*electron \./);
   assert.match(main, /DEVELOPMENT_RENDERER_PATH = path\.resolve\(__dirname, 'renderer-dist\/index\.html'\)/);
-  assert.match(main, /if \(!app\.isPackaged && process\.argv\.includes\(UI_PREVIEW_ARGUMENT\)\)/);
-  assert.match(main, /return mapperPath\(\)/, 'The working Mapper must remain the default before visual acceptance.');
+  assert.match(main, /return app\.isPackaged \? PACKAGED_RENDERER_PATH : DEVELOPMENT_RENDERER_PATH/);
+  assert.doesNotMatch(main, /UI_PREVIEW_ARGUMENT|DEVELOPMENT_MAPPER_PATH|PACKAGED_MAPPER_PATH/);
+  assert.match(main, /renderer: 'heroui'/);
+  assert.match(main, /#root.*\.setup-view/);
   assert.match(vite, /base:\s*'\.\/'/);
   assert.match(vite, /renderer-dist/);
 });

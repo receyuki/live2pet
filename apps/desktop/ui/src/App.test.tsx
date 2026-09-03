@@ -128,6 +128,20 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('Live2Pet desktop shell', () => {
+  it('does not replace empty real motion and expression inventories with design fixtures', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const api = installDesktopApi();
+    const response = await api.relinkSource({ project: savedProject, inputPath: savedProject.source.path });
+    api.relinkSource.mockResolvedValue({ ...response, result: { ...response.result, inspection: { ...response.result.inspection, motions: [], expressions: [] } } });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole('button', { name: 'Open project' }));
+    await screen.findByRole('heading', { name: 'Source Package' });
+    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
+    expect(document.querySelectorAll('.motion-item')).toHaveLength(0);
+    expect(document.querySelectorAll('.expression-grid button')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Smile' })).not.toBeInTheDocument();
+  });
   it('creates an unsaved schema-1 project on import and saves it through the opaque document API', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const { saveProject } = installDesktopApi();
@@ -383,7 +397,7 @@ describe('Live2Pet desktop shell', () => {
     expect(saveProject.mock.calls[0][0].project.targets.clawd.renderPreset).toBe('high');
 
     await user.click(within(clawdCard).getByRole('button', { name: 'Build Pet Package' }));
-    await vi.waitFor(() => expect(buildProject).toHaveBeenCalledWith({ project: expect.any(Object), targets: ['clawd'] }));
+    await vi.waitFor(() => expect(buildProject).toHaveBeenCalledWith({ project: expect.any(Object), targets: ['clawd'], optionsByTarget: { clawd: { package: true } } }));
     expect(await screen.findByText('saved-clawd.zip')).toBeVisible();
     await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
     await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Build' }));

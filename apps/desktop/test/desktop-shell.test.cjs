@@ -5,12 +5,11 @@ const test = require('node:test');
 
 const root = path.resolve(__dirname, '..');
 
-test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narrow', () => {
+test('desktop shell pins the HeroUI entrypoint and keeps navigation and IPC narrow', () => {
   const main = fs.readFileSync(path.join(root, 'main.cjs'), 'utf8');
   const preload = fs.readFileSync(path.join(root, 'preload.cjs'), 'utf8');
-  assert.match(main, /const DEVELOPMENT_MAPPER_PATH = path\.resolve\(__dirname, '\.\.\/mapper\/index\.html'\);/);
-  assert.match(main, /const PACKAGED_MAPPER_PATH = path\.join\(process\.resourcesPath, 'mapper-dist', 'index\.html'\);/);
-  assert.match(main, /return app\.isPackaged \? PACKAGED_MAPPER_PATH : DEVELOPMENT_MAPPER_PATH;/);
+  assert.match(main, /const PACKAGED_RENDERER_PATH = path\.join\(process\.resourcesPath, 'renderer-dist', 'index\.html'\);/);
+  assert.match(main, /return app\.isPackaged \? PACKAGED_RENDERER_PATH : DEVELOPMENT_RENDERER_PATH;/);
   assert.match(main, /loadRuntimeForGeneration/);
   assert.match(main, /protocol\.registerSchemesAsPrivileged/);
   assert.match(main, /defaultSession\.protocol\.handle\(RUNTIME_PROTOCOL_SCHEME/);
@@ -35,6 +34,9 @@ test('desktop shell pins the mapper entrypoint and keeps navigation and IPC narr
   assert.match(main, /LIVE2PET_BUNDLE_READY/);
   assert.match(main, /webContents\.on\('will-navigate'/);
   assert.match(main, /webContents\.on\('will-attach-webview'/);
+  assert.match(main, /webContents\.on\('will-prevent-unload'/);
+  assert.match(main, /dialog\.showMessageBoxSync/);
+  assert.match(main, /if \(choice === 1\) event\.preventDefault\(\)/);
   assert.match(main, /setPermissionRequestHandler/);
   assert.match(main, /setPermissionCheckHandler/);
   assert.doesNotMatch(main, /nodeIntegration:\s*true/);
@@ -83,8 +85,8 @@ test('desktop package keeps Electron and future Forge settings explicit', () => 
   assert.equal(manifest.devDependencies.electron, '44.0.0');
   assert.equal(manifest.productName, 'Live2Pet');
   assert.equal(manifest.devDependencies['@electron/packager'], '20.3.0');
-  assert.equal(manifest.scripts.start, 'electron .');
-  assert.equal(manifest.scripts['package:mac'], 'node scripts/stage-mapper-assets.cjs && node scripts/package-macos.cjs');
+  assert.equal(manifest.scripts.start, 'pnpm prepare:mapper && pnpm build:renderer && electron .');
+  assert.equal(manifest.scripts['package:mac'], 'pnpm prepare:mapper && pnpm build:renderer && node scripts/package-macos.cjs');
   assert.equal(manifest.scripts['smoke:mac'], 'node scripts/smoke-packaged-app.cjs');
   assert.match(forge, /asar:\s*\{\s*unpack:\s*'\*\*\/node_modules\/\{sharp,@img\}\/\*\*\/\*'\s*\}/);
   assert.match(forge, /executableName:\s*'Live2Pet'/);
@@ -92,7 +94,7 @@ test('desktop package keeps Electron and future Forge settings explicit', () => 
   assert.match(main, /app\.setName\(APP_NAME\)/);
   assert.match(main, /APP_DEV_ICON_PATH = path\.resolve\(__dirname, 'assets', 'icon\.png'\)/);
   assert.match(main, /app\.dock\.setIcon\(APP_DEV_ICON_PATH\)/);
-  assert.match(forge, /extraResource:\s*\[path\.resolve\(__dirname, 'mapper-dist'\)\]/);
+  assert.match(forge, /extraResource:\s*\[path\.resolve\(__dirname, 'mapper-dist'\), path\.resolve\(__dirname, 'renderer-dist'\)\]/);
   assert.doesNotMatch(forge, /live2pet-skill|renderer\.html/);
   assert.equal(manifest.scripts['prepare:mapper'], 'node scripts/stage-mapper-assets.cjs');
 });

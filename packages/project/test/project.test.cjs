@@ -163,6 +163,10 @@ test('persists a required source review across save and reload', () => {
 
   saveProjectFile(filePath, changed.project);
   const reopened = loadProjectFile(filePath);
+  const inspectedAgain = relinkProjectSource(reopened, reopened.source);
+  assert.equal(inspectedAgain.reviewRequired, true);
+  assert.deepEqual(inspectedAgain.affectedRecipeIds, changed.affectedRecipeIds);
+  assert.deepEqual(inspectedAgain.project.sourceReview, reopened.sourceReview);
   assert.deepEqual(reopened.sourceReview, changed.project.sourceReview);
   assert.equal(isProjectBuildable(reopened), false);
   assert.throws(

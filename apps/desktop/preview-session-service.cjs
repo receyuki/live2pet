@@ -5,8 +5,8 @@ const {
   createPixiLive2dAdapter,
   createRendererAssetServer,
   pixiSourceFromManifest,
-} = require('../../packages/renderer/src/index.cjs');
-const { parsePck: defaultParsePck } = require('../../packages/source-inspector/src/index.cjs');
+} = require('@live2pet/renderer');
+const { parsePck: defaultParsePck } = require('@live2pet/source-inspector');
 
 const SESSION_STATES = Object.freeze({
   idle: 'idle',

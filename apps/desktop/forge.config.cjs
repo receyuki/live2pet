@@ -6,7 +6,7 @@ module.exports = {
     name: 'Live2Pet',
     executableName: 'Live2Pet',
     icon: path.resolve(__dirname, 'assets', 'icon.icns'),
-    extraResource: [path.resolve(__dirname, 'mapper-dist')],
+    extraResource: [path.resolve(__dirname, 'mapper-dist'), path.resolve(__dirname, 'renderer-dist')],
   },
   makers: [],
 };
