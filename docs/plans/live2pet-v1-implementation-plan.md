@@ -1,6 +1,6 @@
 # Live2Pet Personal-Use V1 Implementation Plan
 
-Status: Expanded on 2026-09-03 — shared visual settings and optional Spine support
+Status: Acceptance updated on 2026-09-03 — modern preview, legacy preview, and durable mapping complete
 
 ## Outcome and boundary
 
@@ -31,6 +31,13 @@ The repository already contains:
 The default development and packaged renderer now uses the HeroUI project shell. Setup, full-page Settings, native project operations, Source/Map/Build navigation, real embedded preview, durable mappings, history, recovery, and generated-package previews are connected to the existing App services. The legacy browser Mapper remains only a development reference. V1 adds two bounded renderer capabilities after this foundation: renderer-neutral Visual Settings for removable backgrounds and one isolated, optional Spine version line. Neither addition creates a second mapping UI or target build pipeline.
 
 The current follow-up order is target-host installation acceptance, shared Visibility (#13), optional Spine (#14), then final packaged-App accessibility and release qualification. Default-renderer promotion does not close #12 while its Visibility, optional renderer-pack Settings, and final UI review criteria remain outstanding. Local real-model verification is documented in [Desktop acceptance](../desktop-acceptance.md).
+
+The acceptance audit now completes #3, #4, and #5. The final packaged App passes
+both real-model paths, both target builds, renderer-process crash/retry, project
+recovery/relinking, and restart/reopen after the imported runtime files are moved.
+These are completed preview/mapping slices, not target-host installation approval.
+The shell dependency of #5 is delivered; unrelated remaining work in #12 does
+not reopen the accepted mapping slice.
 
 ## Prioritized delivery sequence
 
@@ -250,9 +257,9 @@ flowchart LR
 | --- | --- | --- |
 | #2 Source inspection | Complete | Already closed |
 | #12 Desktop shell | P0 | First-run, Settings, Welcome, and Source/Map/Build navigation pass the real App review |
-| #3 Modern preview | P0 | Real modern model plays in the center column and captures with a saved runtime |
-| #4 Legacy preview | P0 | Locally owned PCK plays in the center column and captures with a saved runtime |
-| #5 Durable mapper | P0 | The single-preview three-column flow saves and reopens without mapping drift |
+| #3 Modern preview | Complete | Accepted with saved-runtime playback, capture, restart, and crash recovery |
+| #4 Legacy preview | Complete | Accepted with real PCK playback, both builds, restart, and crash recovery |
+| #5 Durable mapper | Complete | Accepted with direct assignments, save/reopen, review, recovery, and relinking |
 | #13 Model visibility | P0 | Hidden Live2D Parts persist and match preview, visible bounds, cache identity, and both builds |
 | #6 Clawd package | P0 | Core-state ZIP imports into pinned Clawd |
 | #7 Codex package | P0 | Nine-row ZIP loads in Codex |

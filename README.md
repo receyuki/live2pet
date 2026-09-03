@@ -122,6 +122,12 @@ For runtime sources and one-time import instructions, see [Runtime setup](#runti
 
 ## Development status
 
+Map provides keyboard-accessible loop and 0.5×/1×/1.5×/2× speed controls for
+source preview. Changing either replays the motion; these temporary controls do
+not change saved mappings or generated-package timing.
+Codex compatibility and timing notes are collapsed under Format details on
+the Build page; missing requirements and build errors remain visible.
+
 The core inspection, project, mapping, center-column source preview, target-build, progress, cache, validation, generated-preview, artifact-download, and explicit package-install seams are implemented in the default HeroUI App. Remaining V1 work includes actual target-host installation acceptance, shared model Visibility, optional versioned Spine support, and final macOS accessibility and release qualification.
 
 Codex Skill integration, a hosted Mapper Session, a separate preview window, the official Cubism Web Framework bridge, Windows qualification, and public signed binaries are outside the V1 product. See the [implementation plan](docs/plans/live2pet-v1-implementation-plan.md) for the current order and close criteria.

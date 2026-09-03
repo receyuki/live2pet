@@ -203,6 +203,20 @@ test('validates control input without destroying a ready session', async () => {
   await service.close();
 });
 
+test('a dead renderer does not block failure notification waiting for unload JavaScript', async () => {
+  const { adapter, service, statuses, webContents } = fixture();
+  await service.open({ projectId: 'project-1', sourceFingerprint: FINGERPRINT, bounds: { x: 0, y: 0, width: 512, height: 512 } });
+  let unloadCalled = false;
+  adapter.unload = () => { unloadCalled = true; return new Promise(() => {}); };
+  webContents.emit('render-process-gone', {}, { reason: 'crashed' });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(statuses.at(-1).state, 'failed', 'UI must receive the failure even when the dead page cannot execute unload');
+  assert.equal(webContents.closed, true);
+  assert.equal(unloadCalled, false);
+  await service.close();
+  assert.equal(service.getStatus().state, 'idle');
+});
+
 test('withRenderer reuses a matching session, hides it, and serializes preview commands', async () => {
   const { adapter, calls, service, view } = fixture();
   await service.open({ projectId: 'project-1', sourceFingerprint: FINGERPRINT, bounds: { x: 0, y: 0, width: 512, height: 512 } });

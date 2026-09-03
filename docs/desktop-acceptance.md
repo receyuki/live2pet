@@ -42,6 +42,10 @@ The smoke test checks the bundle resources, loads main-process services from ASA
 
 These checks do not establish real Clawd/Codex host installation acceptance, all-model compatibility, Spine/Visibility support, Windows support, or public binary distribution approval. Those remain separate V1/release gates.
 
+Do not rebuild or replace the App bundle while an acceptance process is using
+it. A reload reads its packaged resources again and can otherwise fail with
+`ERR_FILE_NOT_FOUND` during replacement.
+
 ## Recorded local result — 2026-09-03
 
 The current x64 unsigned macOS App passed the full opt-in workflow with one permitted modern Cubism folder and one Cubism 2 PCK. Both sources produced Clawd and Codex ZIP artifacts, and their generated previews decoded successfully. Save/reopen, changed-source review, recovery, moved-PCK relink, and restart/runtime reuse passed. The packaged startup gate confirmed `renderer: heroui` and `mounted: true`, loaded the packaged services and Sharp, and found no prohibited assets.
@@ -182,3 +186,38 @@ the App, confirmed both preferences persisted, then reset them without deleting
 the scratch folder or writing any package. The Chinese 1024-by-768 layout had
 no horizontal overflow. This verifies detection/configuration and the shared
 installation routing tests, not actual target-host pet loading or activation.
+
+### Preview and mapping acceptance closeout
+
+The 2026-09-03 audit found and fixed two actual gaps before closing #3, #4, and
+#5: the HeroUI preview had fixed loop/speed options, and crash cleanup awaited
+JavaScript unload in an already dead renderer. The latter prevented failure
+notification and the Retry control. Dead-renderer cleanup now closes host
+resources without asking the exited process to execute JavaScript. Normal
+healthy teardown still unloads the adapter.
+
+Map now exposes keyboard-accessible loop and 0.5x/1x/1.5x/2x preview speed.
+Changing either replays the motion and does not change project mappings or
+package timing. Codex's two format/timing explanations are collapsed behind
+Format details; build blockers remain visible. Existing HeroUI components are
+used for both changes.
+
+The final packaged x64 App completed the acceptance harness with a permitted
+modern folder and a legacy PCK: real playback controls, direct assignments,
+both target builds and decoded generated previews, Settings return, save/reopen,
+changed-source review, draft recovery, and moved-PCK relinking. Each renderer
+was deliberately crashed and successfully retried without changing the saved
+project. Imported runtime copies were moved inside the disposable test profile;
+both projects reopened and played after process restart using private runtime
+copies. Original user files were not moved or deleted. The harness exercises
+the first two available motions, not every motion or a performance benchmark.
+
+Regression: 256 Node tests passed (two opt-in skips), 102 UI tests passed,
+type checking and source scans passed, and the final bundle passed startup,
+native Sharp, and the current prohibited-asset checks. Keyboard assignment and
+preview controls are covered by UI tests; full accessibility review remains #12.
+
+An earlier long-motion Clawd run exceeded the harness's 180-second limit; this
+does not establish throughput for all models and remains part of #8 performance
+and long-build acceptance. No package was installed or activated in a target
+host. The broader #6, #7, #8, #10, #12, #13, and #14 gates remain open.

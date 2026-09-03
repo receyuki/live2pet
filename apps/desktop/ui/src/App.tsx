@@ -472,6 +472,8 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   const [previewRetry, setPreviewRetry] = useState(0);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [seekTime, setSeekTime] = useState<number | null>(null);
+  const [previewLoop, setPreviewLoop] = useState(true);
+  const [previewSpeed, setPreviewSpeed] = useState(1);
   const commandSequence = useRef(0);
   const runPlayback = async (operation: () => Promise<PreviewStatus>) => {
     const sequence = ++commandSequence.current;
@@ -561,8 +563,8 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
 
   useEffect(() => {
     setSeekTime(null);
-    if (previewStatus?.state === 'ready' && selectedMotionId) void runPlayback(() => playLive2DPreview({ motionId: selectedMotionId, loop: true, speed: 1 }));
-  }, [previewStatus?.state, selectedMotionId]);
+    if (previewStatus?.state === 'ready' && selectedMotionId) void runPlayback(() => playLive2DPreview({ motionId: selectedMotionId, loop: previewLoop, speed: previewSpeed }));
+  }, [previewStatus?.state, selectedMotionId, previewLoop, previewSpeed]);
 
   useEffect(() => {
     if (previewStatus?.state === 'ready') void setLive2DPreviewExpression(selectedExpressionId).catch(() => undefined);
@@ -620,6 +622,11 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
         <div className="preview-caption"><Chip variant="soft">{selectedName} · {selectedExpression?.name ?? t("baseExpression")}</Chip></div>
         <div className="preview-stage"><i className="stage-grid" />{!runtimeReady ? <div className="preview-runtime-required"><Gauge size={28} /><strong>{t("runtimeRequired")}</strong><p>{t("runtimeRequiredBody")}</p><Button size="sm" variant="primary" onPress={onConfigureRuntime}>{t("configureRuntime")}</Button></div> : nativePreview ? <><div ref={previewSurface} className="preview-native-surface" />{previewStatus?.state === 'opening' && <div className="preview-message">{t('previewLoading')}</div>}{previewStatus?.state === 'failed' && <div className="preview-runtime-required"><strong>{t('previewFailed')}</strong><p>{previewStatus.error?.message}</p><Button size="sm" variant="primary" onPress={() => setPreviewRetry((value) => value + 1)}>{t('retry')}</Button></div>}</> : <div className="preview-runtime-required"><Box size={28} aria-hidden="true" /><strong>{t('previewEmptyTitle')}</strong><p>{t(projectDocument ? 'previewDesktopRequired' : 'previewImportHint')}</p></div>}</div>
         <div className="playback"><Button isIconOnly aria-label={previewStatus?.playback?.playing ? t('pause') : t('play')} variant="primary" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={togglePlayback}>{previewStatus?.playback?.playing ? <Pause size={15} /> : <Play size={15} />}</Button><Button isIconOnly aria-label={t('restart')} variant="ghost" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={() => void runPlayback(() => controlLive2DPreview('restart'))}><RotateCcw size={15} /></Button><input className="timeline" type="range" aria-label={t('seekMotion')} min={0} max={selectedDuration} step={0.01} value={seekTime ?? previewStatus?.playback?.time ?? 0} disabled={previewStatus?.state !== 'ready' || !selectedDuration} onInput={(event) => setSeekTime(Number(event.currentTarget.value))} /><small>{(previewStatus?.playback?.time ?? 0).toFixed(1)} / {selected?.seconds ?? '—'} s</small></div>
+        <div className="playback-options">
+          <Button size="sm" variant={previewLoop ? 'secondary' : 'ghost'} aria-label={t('loopPreview')} aria-pressed={previewLoop} aria-describedby="preview-options-hint" isDisabled={previewStatus?.state !== 'ready' || !selectedMotionId} onPress={() => setPreviewLoop((value) => !value)}>{t('loopPreview')}</Button>
+          <Button size="sm" variant="ghost" aria-label={t('previewSpeed', { value: previewSpeed })} aria-describedby="preview-options-hint" isDisabled={previewStatus?.state !== 'ready' || !selectedMotionId} onPress={() => setPreviewSpeed((value) => { const speeds = [0.5, 1, 1.5, 2]; return speeds[(speeds.indexOf(value) + 1) % speeds.length]; })}>{previewSpeed}×</Button>
+          <small id="preview-options-hint">{t('previewOptionsHint')}</small>
+        </div>
         {playbackError && <p className="inline-error" role="alert">{playbackError}</p>}
       </section>
       <section className="workspace-panel assignment-panel">

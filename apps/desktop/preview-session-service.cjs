@@ -178,7 +178,7 @@ function createPreviewSessionService({
     }
   }
 
-  async function destroyResources() {
+  async function destroyResources({ rendererGone = false } = {}) {
     if (cleanupPromise) return cleanupPromise;
     const currentAdapter = adapter;
     const currentView = view;
@@ -188,7 +188,9 @@ function createPreviewSessionService({
     assetServer = null;
     cleanupPromise = (async () => {
       removeListeners();
-      if (currentAdapter && typeof currentAdapter.unload === 'function') {
+      // A dead page cannot execute the adapter's JavaScript unload operation.
+      // Close its host resources directly so failure notification and retry settle.
+      if (!rendererGone && currentAdapter && typeof currentAdapter.unload === 'function') {
         try { await currentAdapter.unload(); } catch {}
       }
       removeView(currentView);
@@ -218,7 +220,7 @@ function createPreviewSessionService({
     error = { code: typed.code, message: typed.message };
     state = SESSION_STATES.failed;
     visible = false;
-    await destroyResources();
+    await destroyResources({ rendererGone: ['PREVIEW_PROCESS_GONE', 'PREVIEW_VIEW_DESTROYED'].includes(typed.code) });
     emitStatus();
     return typed;
   }

@@ -51,6 +51,7 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
   const [locations, setLocations] = useState<Partial<Record<BuildTarget, Extract<InstallRootResult, { cancelled: false }>>>>({});
   const [feedback, setFeedback] = useState<Partial<Record<BuildTarget, string>>>({});
   const [installations, setInstallations] = useState<TargetInstallations | null>(null);
+  const [showCodexDetails, setShowCodexDetails] = useState(false);
   const hostReady = hasBuildApi();
   useEffect(() => {
     if (!hasTargetInstallationApi()) return;
@@ -118,8 +119,8 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
                 <div className="build-top"><span className="large-icon"><PackageCheck size={20} /></span><Chip variant="soft">{readiness.ready ? t("ready") : t("notReady")}</Chip></div>
                 <h2>{title}</h2>
                 {(locations[target]?.displayPath || installations?.targets.find(record => record.target === target)) && <p className="install-destination">{t('targetRoot')} · {locations[target]?.displayPath ?? installations?.targets.find(record => record.target === target)?.root.path}</p>}
-                {target === 'codex-pet' && <><p>{t('codexV2Hint')}</p><p>{t('codexTimingHint')}</p></>}
-                <p>{readiness.ready ? t("targetReadyBody") : t("targetMissing", { value: readiness.missing.join(", ") })}</p>
+                {!readiness.ready && <p>{t("targetMissing", { value: readiness.missing.join(", ") })}</p>}
+                {target === 'clawd' && readiness.ready && <p>{t('targetReadyBody')}</p>}
                 <div className="preset-row"><strong>{t("renderPreset")}</strong><ButtonGroup aria-label={`${title} ${t("renderPreset")}`}>{presets.map((value) => <Button size="sm" key={value} variant={preset === value ? "primary" : "secondary"} onPress={() => onPreset(target, value)}>{t(value)}</Button>)}</ButtonGroup></div>
                 <div className={`build-result build-result-${current.status}`} role="status" aria-live="polite">
                   <div><strong>{t(`buildStatus_${current.status === 'building' && current.stage === 'queue' ? 'queued' : current.status}` as MessageKey)}</strong><span>{current.progress}%</span></div>
@@ -128,7 +129,9 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
                 </div>
                 <div className="build-actions">
                   {current.status === "building" ? <Button variant="secondary" onPress={() => onCancel(target)} isDisabled={!current.buildId}><Square size={14} />{t("cancelBuild")}</Button> : <Button variant="primary" onPress={() => onBuild(target)} isDisabled={!hostReady || !readiness.ready}><PackageCheck size={16} />{t("buildPackage")}</Button>}
+                  {target === 'codex-pet' && <Button size="sm" variant="ghost" aria-expanded={showCodexDetails} aria-controls="codex-format-details" onPress={() => setShowCodexDetails(value => !value)}>{t('codexFormatDetails')}</Button>}
                 </div>
+                {target === 'codex-pet' && <div id="codex-format-details" hidden={!showCodexDetails}><p>{t('codexV2Hint')}</p><p>{t('codexTimingHint')}</p></div>}
                 {artifact && <div className="artifact-panel"><div><CircleCheck size={17} /><span><strong>{artifact.filename}</strong><small>{t("artifactSize", { value: Math.ceil(artifact.byteLength / 1024) })}</small></span></div><div className="artifact-actions"><Button size="sm" variant="secondary" aria-label={`${t("download")} ${title}`} onPress={() => void download(artifact)}><Download size={14} />{t("download")}</Button><Button size="sm" variant="secondary" aria-label={`${t("chooseFolder")} ${title}`} onPress={() => void chooseFolder(target)}><FolderOpen size={14} />{t("chooseFolder")}</Button><Button size="sm" variant="primary" aria-label={`${t("install")} ${title}`} onPress={() => void install(target, artifact)}>{t("install")}</Button></div></div>}
                 {artifact && <GeneratedPreview artifact={artifact} locale={locale} />}
                 {current.summary && <div className="validation-summary">{current.summary.preview?.ready ? <CircleCheck size={15} /> : <XCircle size={15} />}<span>{t("previewSummary", { value: current.summary.preview?.ready ? t("ready") : t("unavailable") })} · {t("validationSummary", { value: current.summary.validation?.ok ? t("passed") : t("failed") })}</span></div>}

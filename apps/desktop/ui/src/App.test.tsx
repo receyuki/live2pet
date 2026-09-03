@@ -350,6 +350,31 @@ describe('Live2Pet desktop shell', () => {
     });
   });
 
+  it('controls preview loop and speed by keyboard without changing the project', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    installDesktopApi({ preview: true, runtimes: { schemaVersion: 2, configured: true, restartRequired: false, runtimes: [{ runtimeName: 'live2d.min.js', runtimeKind: 'legacy-cubism2', cubismGenerations: [2], fingerprint: 'runtime', available: true }] } });
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
+    vi.spyOn(container.querySelector('.preview-native-surface')!, 'getBoundingClientRect').mockReturnValue({ x: 280, y: 90, width: 400, height: 520, top: 90, right: 680, bottom: 610, left: 280, toJSON: () => ({}) });
+    fireEvent(window, new Event('resize'));
+    await vi.waitFor(() => expect(window.live2pet!.playPreview).toHaveBeenCalledWith({ motionId: 'idle:0', loop: true, speed: 1 }));
+    await vi.waitFor(() => expect(localStorage.getItem(PROJECT_DRAFT_KEY)).not.toBeNull());
+    const draft = localStorage.getItem(PROJECT_DRAFT_KEY);
+    const loop = screen.getByRole('button', { name: 'Loop preview' });
+    expect(loop).toHaveAttribute('aria-pressed', 'true');
+    loop.focus();
+    await user.keyboard('{Enter}');
+    await vi.waitFor(() => expect(window.live2pet!.playPreview).toHaveBeenLastCalledWith({ motionId: 'idle:0', loop: false, speed: 1 }));
+    expect(loop).toHaveAttribute('aria-pressed', 'false');
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Preview speed: 1×' })).toHaveFocus();
+    await user.keyboard('{Enter}');
+    await vi.waitFor(() => expect(window.live2pet!.playPreview).toHaveBeenLastCalledWith({ motionId: 'idle:0', loop: false, speed: 1.5 }));
+    expect(localStorage.getItem(PROJECT_DRAFT_KEY)).toBe(draft);
+  });
+
   it('assigns only the selected target and can clear the assignment', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const user = userEvent.setup();
@@ -357,8 +382,10 @@ describe('Live2Pet desktop shell', () => {
 
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
     await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
-    await user.click(screen.getByRole('button', { name: 'Smile' }));
-    await user.click(screen.getByRole('button', { name: 'Use selected · Idle' }));
+    screen.getByRole('button', { name: 'Smile' }).focus();
+    await user.keyboard('{Enter}');
+    screen.getByRole('button', { name: 'Use selected · Idle' }).focus();
+    await user.keyboard('{Enter}');
     const assignedIdleRow = screen.getByRole('button', { name: 'Use selected · Idle' }).closest('.mapping-row');
     expect(within(assignedIdleRow as HTMLElement).getByText('Breathing · Smile')).toBeVisible();
 

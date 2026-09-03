@@ -54,6 +54,20 @@ it('confirms the detected saved destination and installs through its opaque hand
 });
 
 describe("BuildView", () => {
+  it.each(['en', 'zh-CN'] as const)('keeps Codex format explanations collapsed and keyboard accessible (%s)', async (locale) => {
+    const user = userEvent.setup();
+    render(<BuildView locale={locale} project={project} inspection={inspection} runtimeReady state={initialBuildState()} onPreset={vi.fn()} onBuild={vi.fn()} onCancel={vi.fn()} />);
+    const details = screen.getByText(/Codex V2/);
+    expect(details).not.toBeVisible();
+    const button = screen.getByRole('button', { name: locale === 'en' ? 'Format details' : '格式说明' });
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+    button.focus();
+    await user.keyboard('{Enter}');
+    expect(button).toHaveAttribute('aria-expanded', 'true');
+    expect(details).toBeVisible();
+    await user.keyboard('{Enter}');
+    expect(details).not.toBeVisible();
+  });
   it('explains a queued target without marking the other idle target as building', () => {
     const state = initialBuildState();
     state['codex-pet'] = { ...state['codex-pet'], status: 'building', stage: 'queue', buildId: 'queued-build' };
