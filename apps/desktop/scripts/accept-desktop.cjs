@@ -114,7 +114,8 @@ let app;
       assert.ok(previewBox.width <= 400.5, 'The generated result frame stays compact, not stretched across the card');
       assert.ok(previewBox.x + previewBox.width <= cardBox.x + cardBox.width, 'Generated preview stays inside its card');
       assert.ok(stageBox.width <= 360.5 && Math.abs(stageBox.width - stageBox.height) < 1, 'Generated stage stays square');
-      assert.ok((await card.locator('[data-slot="progress-bar-track"]').boundingBox()).height > 0, 'Build progress has a visible track');
+      const trackBox = await card.locator('[data-slot="progress-bar-track"]').boundingBox();
+      assert.ok(trackBox.width > 100 && trackBox.height > 0, 'Build progress has a visible width and height');
       const choices = card.locator('.generated-preview-choices button');
       if (await choices.count() > 1) {
         await choices.nth(1).click();

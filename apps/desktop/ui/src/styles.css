@@ -210,7 +210,7 @@
   background: var(--muted-surface);
 }
 
-.build-result > div {
+.build-result > div:first-child {
   display: flex;
   justify-content: space-between;
   gap: 12px;
