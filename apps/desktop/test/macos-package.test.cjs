@@ -13,7 +13,32 @@ const {
   findElectronZipDir,
   pnpmInvocation,
   verifyBundleLayout,
+  verifyProductionStage,
 } = require('../scripts/package-macos.cjs');
+
+test('production staging rejects duplicate UI dependencies and design assets', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-stage-test-'));
+  try {
+    fs.mkdirSync(path.join(root, 'node_modules', 'react'), { recursive: true });
+    assert.throws(() => verifyProductionStage(root), (error) => error.code === 'REDUNDANT_PACKAGE_CONTENT');
+    fs.rmSync(path.join(root, 'node_modules'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'assets'));
+    fs.writeFileSync(path.join(root, 'assets', 'icon-concept-v1.png'), 'private design');
+    assert.throws(() => verifyProductionStage(root), (error) => error.code === 'REDUNDANT_PACKAGE_CONTENT');
+    fs.rmSync(path.join(root, 'assets'), { recursive: true });
+    assert.doesNotThrow(() => verifyProductionStage(root));
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('desktop deploy manifest excludes frontend-only packages and local assets', () => {
+  const manifest = require('../package.json');
+  for (const name of ['@heroui/react', '@heroui/styles', 'lucide-react', 'react', 'react-dom']) {
+    assert.equal(manifest.dependencies[name], undefined);
+    assert.ok(manifest.devDependencies[name]);
+  }
+  assert.ok(manifest.dependencies['@zip.js/zip.js'], 'ZIP remains a main-process dependency');
+  assert.deepEqual(manifest.files, ['*.cjs', 'runtime-help-links.json', 'THIRD-PARTY-NOTICES.md']);
+});
 
 test('macOS package options remain local, unsigned, current-architecture, and Sharp-safe', () => {
   const options = createPackagerOptions({ stageRoot: '/tmp/live2pet-stage', extraResource: ['/tmp/mapper-dist'], arch: 'x64' });
@@ -87,13 +112,17 @@ test('bundle verification requires staged resources, unpacked Sharp, and no user
   const appPath = path.join(root, 'Live2Pet.app');
   const resources = path.join(appPath, 'Contents', 'Resources');
   try {
-    for (const relative of ['mapper-dist/index.html', 'renderer-dist/index.html', 'app.asar', 'app.asar.unpacked/node_modules/@img/sharp-darwin-x64/lib/sharp-darwin-x64.node']) {
+    for (const relative of ['mapper-dist/index.html', 'renderer-dist/index.html', 'renderer-dist/THIRD-PARTY-LICENSES.md', 'renderer-dist/licenses/@heroui_styles.txt', 'renderer-dist/licenses/tailwindcss.txt', 'app.asar', 'app.asar.unpacked/node_modules/@img/sharp-darwin-x64/lib/sharp-darwin-x64.node']) {
       const absolute = path.join(resources, relative);
       fs.mkdirSync(path.dirname(absolute), { recursive: true });
       fs.writeFileSync(absolute, 'test');
     }
     assert.equal(verifyBundleLayout(appPath).nativeSharp, true);
     assert.deepEqual(verifyBundleLayout(appPath).resources, ['mapper-dist', 'renderer-dist']);
+    const license = path.join(resources, 'renderer-dist/THIRD-PARTY-LICENSES.md');
+    fs.renameSync(license, `${license}.missing`);
+    assert.throws(() => verifyBundleLayout(appPath), (error) => error.code === 'PACKAGE_LAYOUT_INVALID');
+    fs.renameSync(`${license}.missing`, license);
     fs.renameSync(path.join(resources, 'renderer-dist/index.html'), path.join(resources, 'renderer-dist/absent.html'));
     assert.throws(() => verifyBundleLayout(appPath), (error) => error.code === 'PACKAGE_LAYOUT_INVALID');
     fs.renameSync(path.join(resources, 'renderer-dist/absent.html'), path.join(resources, 'renderer-dist/index.html'));

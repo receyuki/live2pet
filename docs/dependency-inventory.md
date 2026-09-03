@@ -17,6 +17,15 @@ the corresponding notices when a release dependency changes.
 | `pixi-live2d-display` | 0.4.0 | V1 Cubism 2/modern compatibility adapters | Staged Mapper browser asset; MIT notice required |
 
 The shared packages otherwise use Node.js built-ins and local package links.
+React, React DOM, HeroUI, and Lucide are Desktop build-time dependencies: Vite
+embeds their used code in `renderer-dist`, so their complete npm trees are not
+deployed as main-process dependencies. Their versions are unchanged by this
+classification. The packaged renderer includes `THIRD-PARTY-LICENSES.md` generated
+by Vite, plus the HeroUI styles and Tailwind CSS license texts in `licenses/`.
+The Desktop `files` allowlist excludes local icon drafts and development inputs;
+the system icon is supplied separately to Electron Packager. ZIP and Sharp stay
+in the production dependency graph because the main process uses them.
+
 The legacy `packages/live2d-exporter/export.cjs` script may use a locally
 installed Puppeteer for an opt-in smoke path; Puppeteer is not part of the
 public App or CI dependency contract.

@@ -5,6 +5,11 @@
   "version": "0.1.0",
   "description": "Local-first Live2Pet desktop shell",
   "main": "main.cjs",
+  "files": [
+    "*.cjs",
+    "runtime-help-links.json",
+    "THIRD-PARTY-NOTICES.md"
+  ],
   "scripts": {
     "build:renderer": "vite build --config vite.config.mts",
     "prepare:mapper": "node scripts/stage-mapper-assets.cjs",
@@ -18,8 +23,6 @@
     "typecheck:ui": "tsc -p tsconfig.ui.json --noEmit"
   },
   "dependencies": {
-    "@heroui/react": "^3.2.4",
-    "@heroui/styles": "^3.2.4",
     "@live2pet/app-host": "workspace:*",
     "@live2pet/clawd-target": "workspace:*",
     "@live2pet/codex-target": "workspace:*",
@@ -29,12 +32,14 @@
     "@live2pet/renderer": "workspace:*",
     "@live2pet/runtime": "workspace:*",
     "@live2pet/source-inspector": "workspace:*",
-    "@zip.js/zip.js": "2.7.57",
-    "lucide-react": "^1.38.0",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "@zip.js/zip.js": "2.7.57"
   },
   "devDependencies": {
+    "@heroui/react": "^3.2.4",
+    "@heroui/styles": "^3.2.4",
+    "lucide-react": "^1.38.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "@electron/packager": "20.3.0",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.1",

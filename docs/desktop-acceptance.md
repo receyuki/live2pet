@@ -221,3 +221,40 @@ An earlier long-motion Clawd run exceeded the harness's 180-second limit; this
 does not establish throughput for all models and remains part of #8 performance
 and long-build acceptance. No package was installed or activated in a target
 host. The broader #6, #7, #8, #10, #12, #13, and #14 gates remain open.
+
+### Lean macOS packaging — 2026-09-03
+
+The current x64 package removes duplicate frontend npm trees, not frontend
+features. React, React DOM, HeroUI, and Lucide are consumed at Vite build time;
+the main process keeps its actual production dependencies, including ZIP and
+Sharp/libvips. A Desktop `files` allowlist excludes local design drafts and
+development assets. The system ICNS icon is still supplied directly to Packager.
+Original icon drafts and all user models/runtimes remain untouched.
+
+| Measurement | Before | After |
+| --- | ---: | ---: |
+| App disk usage (`du -sk`, converted to MiB) | 434.2 MiB | 315.7 MiB |
+| `app.asar` file size | 122.4 MiB | 3.7 MiB |
+| Production deployment package count | 82 | 18 |
+| Files scanned inside ASAR | 30,372 | 246 |
+
+Disk usage fell by 118.5 MiB (27.3%). Electron, its locale resources, the
+compiled UI, and native image binaries were not trimmed. This is the installed
+bundle size, not a compressed-download measurement. No dependency version changed.
+
+The packaged renderer retains Vite's `THIRD-PARTY-LICENSES.md` and explicit
+HeroUI stylesheet/Tailwind license copies. Packaging fails if the renderer
+license report is absent or known duplicate frontend/design directories return.
+Main/preload/service files inside ASAR were byte-compared with source.
+
+Verification passed 258 Node tests (two opt-in skips), 102 UI tests, type checking,
+source scanning, and packaged startup/native-dependency checks. A complete
+disposable-profile run passed modern-folder and legacy-PCK preview, both target
+builds and generated previews, save/reopen/recovery/relinking, and runtime reuse
+after restart. No target-host package was installed or activated.
+
+Known stability observation: the first forced-renderer-crash run timed out
+waiting for Retry; a fresh full run passed crash/retry for both generations.
+The intermittent failure is not qualified as resolved by this packaging change
+and remains a renderer-stability follow-up under #12/#10. No renderer lifecycle
+code was changed during the size reduction.

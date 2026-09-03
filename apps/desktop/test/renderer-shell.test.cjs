@@ -10,8 +10,8 @@ test('HeroUI is the default development and packaged Electron renderer', () => {
   const main = fs.readFileSync(path.join(desktopRoot, 'main.cjs'), 'utf8');
   const vite = fs.readFileSync(path.join(desktopRoot, 'vite.config.mts'), 'utf8');
 
-  assert.equal(manifest.dependencies['@heroui/react'], '^3.2.4');
-  assert.equal(manifest.dependencies.react, '^19.2.8');
+  assert.equal(manifest.devDependencies['@heroui/react'], '^3.2.4');
+  assert.equal(manifest.devDependencies.react, '^19.2.8');
   assert.equal(manifest.dependencies['@live2pet/renderer'], 'workspace:*');
   const previewService = fs.readFileSync(path.join(desktopRoot, 'preview-session-service.cjs'), 'utf8');
   assert.match(previewService, /require\('@live2pet\/renderer'\)/);
@@ -25,6 +25,7 @@ test('HeroUI is the default development and packaged Electron renderer', () => {
   assert.match(main, /#root.*\.setup-view/);
   assert.match(vite, /base:\s*'\.\/'/);
   assert.match(vite, /renderer-dist/);
+  assert.match(vite, /license:\s*\{ fileName: 'THIRD-PARTY-LICENSES\.md' \}/);
 });
 
 test('HeroUI renderer uses a strict local CSP and contains no bundled model or runtime', () => {

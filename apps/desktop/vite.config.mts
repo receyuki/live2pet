@@ -11,6 +11,7 @@ export default defineConfig({
   base: './',
   plugins: [tailwindcss(), react()],
   build: {
+    license: { fileName: 'THIRD-PARTY-LICENSES.md' },
     outDir: path.join(desktopRoot, 'renderer-dist'),
     emptyOutDir: true,
   },

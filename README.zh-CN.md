@@ -101,6 +101,8 @@ pnpm --filter @live2pet/desktop smoke:mac
 
 启动和打包命令会自动构建 HeroUI 资源并准备内部渲染依赖。打包后的 App 不需要 Vite 服务或预览参数；`preview:shell` 保留为 `start` 的别名。
 
+macOS 包仅携带编译后的界面，不重复打包 React/HeroUI/图标库源码或本地图标草稿。Vite 生成依赖许可证报告，样式库许可证也随包保留；Electron 和原生图像依赖保持完整。当前 x64 App 占用约 316 MiB（原约 434 MiB），这是安装体积，不是压缩下载大小。
+
 真实模型的可选桌面验收步骤见[本地验收指南](docs/desktop-acceptance.md)。
 
 ```sh

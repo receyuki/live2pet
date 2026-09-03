@@ -144,6 +144,12 @@ pnpm --filter @live2pet/desktop smoke:mac
 
 Start and package commands build the HeroUI assets and stage the internal rendering vendors automatically. The packaged App does not require a Vite server or a preview flag. `preview:shell` is retained as an alias for `start`.
 
+The macOS package includes compiled UI assets, not duplicate React/HeroUI/icon
+library source trees or local icon drafts. Vite emits the bundled dependency
+license report; stylesheet licenses are copied alongside it. Electron and native
+image dependencies remain intact. The current x64 bundle measures about 316 MiB
+on disk (down from 434 MiB); this is installed size, not a compressed download.
+
 For opt-in real-model Desktop acceptance, see [the local acceptance guide](docs/desktop-acceptance.md).
 
 ```sh

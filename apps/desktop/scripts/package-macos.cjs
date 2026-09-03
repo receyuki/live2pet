@@ -11,6 +11,8 @@ const outputRoot = path.join(desktopRoot, 'out');
 const APP_ICON_PATH = path.join(desktopRoot, 'assets', 'icon.icns');
 const ELECTRON_VERSION = '44.0.0';
 const APP_NAME = 'Live2Pet';
+const RENDERER_LICENSE_FILE = 'THIRD-PARTY-LICENSES.md';
+const RENDERER_STYLE_LICENSES = ['@heroui/styles', 'tailwindcss'];
 const FORBIDDEN_BUNDLE_ENTRY = /(?:^|\/)(?:examples?|archive|artifacts?|models?)(?:\/|$)|\.(?:pck|lpk|moc|moc3|dat|webp|zip)$|(?:^|\/)(?:live2dcubismcore|minified-live2d(?:core)?|live2d\.min)\.(?:js|wasm)$/i;
 
 function fail(code, message, details = {}) {
@@ -49,7 +51,23 @@ function copyResources(tempRoot) {
   fs.mkdirSync(resourcesRoot, { recursive: true });
   fs.cpSync(mapperRoot, mapperTarget, { recursive: true, dereference: true });
   fs.cpSync(rendererRoot, rendererTarget, { recursive: true, dereference: true });
+  if (!fs.existsSync(path.join(rendererTarget, RENDERER_LICENSE_FILE))) fail('RENDERER_LICENSES_MISSING', 'Rebuild the renderer with its bundled dependency license report.');
+  const licensesRoot = path.join(rendererTarget, 'licenses');
+  fs.mkdirSync(licensesRoot, { recursive: true });
+  // Vite records JavaScript module licenses. Keep CSS-only dependency licenses too.
+  for (const name of RENDERER_STYLE_LICENSES) {
+    const dependencyRoot = path.join(desktopRoot, 'node_modules', name);
+    const license = fs.readdirSync(dependencyRoot).find(file => /^licen[cs]e(?:\.|$)/i.test(file));
+    if (!license) fail('RENDERER_LICENSES_MISSING', `Missing stylesheet license for ${name}.`);
+    fs.copyFileSync(path.join(dependencyRoot, license), path.join(licensesRoot, `${name.replace('/', '_')}.txt`));
+  }
   return [mapperTarget, rendererTarget];
+}
+
+function verifyProductionStage(stageRoot) {
+  const redundant = ['assets', 'ui', 'renderer-dist', 'mapper-dist', 'node_modules/react', 'node_modules/react-dom', 'node_modules/lucide-react', 'node_modules/@heroui'];
+  const found = redundant.filter(relative => fs.existsSync(path.join(stageRoot, relative)));
+  if (found.length) fail('REDUNDANT_PACKAGE_CONTENT', 'The production stage contains renderer-only dependencies or local design assets.', { entries: found });
 }
 
 function deployProductionStage(stageRoot, environment = process.env) {
@@ -77,6 +95,7 @@ function deployProductionStage(stageRoot, environment = process.env) {
   for (const relative of ['node_modules/.pnpm', 'node_modules/.modules.yaml', 'node_modules/.pnpm-workspace-state-v1.json', 'pnpm-lock.yaml']) {
     fs.rmSync(path.join(stageRoot, relative), { recursive: true, force: true });
   }
+  verifyProductionStage(stageRoot);
 }
 
 function createPackagerOptions({ stageRoot, extraResource, arch = currentMacArch() } = {}) {
@@ -133,6 +152,8 @@ function verifyBundleLayout(appPath) {
     path.join(resources, 'app.asar'),
     path.join(resources, 'mapper-dist', 'index.html'),
     path.join(resources, 'renderer-dist', 'index.html'),
+    path.join(resources, 'renderer-dist', RENDERER_LICENSE_FILE),
+    ...RENDERER_STYLE_LICENSES.map(name => path.join(resources, 'renderer-dist', 'licenses', `${name.replace('/', '_')}.txt`)),
   ];
   const missing = required.filter((entry) => !fs.existsSync(entry));
   if (missing.length) fail('PACKAGE_LAYOUT_INVALID', 'The packaged App is missing required resources.', { missing });
@@ -197,4 +218,5 @@ module.exports = {
   packageMacApp,
   pnpmInvocation,
   verifyBundleLayout,
+  verifyProductionStage,
 };
