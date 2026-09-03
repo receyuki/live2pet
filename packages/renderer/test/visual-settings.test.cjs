@@ -53,6 +53,22 @@ for (const cubismVersion of [2, 4]) test(`Cubism ${cubismVersion}: hides after p
     assert.deepEqual(runtime.visualBounds, { x: 2, y: 2, width: 4, height: 4 });
     model.update(10); runtime.render();
     assert.equal(rendered.BG, 0, 'motion/pose cannot unhide the Part');
+    const previousDocument = global.document, previousImageData = global.ImageData;
+    let failThumbnail = false;
+    global.ImageData = class { constructor(data, width, height) { Object.assign(this, { data, width, height }); } };
+    global.document = { createElement: () => ({ getContext: () => ({ putImageData() {}, drawImage() {} }), toDataURL() { if (failThumbnail) throw new Error('encode failed'); return 'data:image/png;base64,fixture'; } }) };
+    try {
+      const settings = { ...runtime.visualSettings };
+      const framing = runtime.visualBounds;
+      assert.deepEqual(runtime.getVisualElementThumbnail('BG'), { id: 'BG', dataUrl: 'data:image/png;base64,fixture' });
+      assert.equal(rendered.BG, 0, 'inspecting a hidden Part does not unhide it in preview');
+      assert.deepEqual(runtime.visualSettings, settings);
+      assert.deepEqual(runtime.visualBounds, framing);
+      failThumbnail = true;
+      assert.throws(() => runtime.getVisualElementThumbnail('BG'), /encode failed/);
+      assert.equal(rendered.BG, 0, 'thumbnail errors restore the project visibility');
+      assert.throws(() => runtime.getVisualElementThumbnail('missing'), /not available/);
+    } finally { global.document = previousDocument; global.ImageData = previousImageData; }
     await pageSetVisualSettings({ hiddenElementIds: [] });
     assert.equal(rendered.BG, 0.6, 'restore authored opacity, not a hard-coded 1');
     assert.equal(model.scale.x, 1);
@@ -64,7 +80,8 @@ for (const cubismVersion of [2, 4]) test(`Cubism ${cubismVersion}: hides after p
     runtime.source.motions = [{ id: 'idle', duration: 1 }, { id: 'reach', duration: 1 }];
     runtime.state = { motionId: 'idle', time: 0.25, playing: false };
     let current = 'idle', time = 0;
-    runtime.resetMotion = async motion => { current = motion.id; time = 0; model.update(0.001); runtime.render(); };
+    let resets = 0;
+    runtime.resetMotion = async motion => { resets++; current = motion.id; time = 0; model.update(0.001); runtime.render(); };
     const update = model.update;
     model.update = milliseconds => { time += milliseconds / 1000; update(); };
     const pixels = runtime.app.renderer.extract.pixels;
@@ -74,8 +91,13 @@ for (const cubismVersion of [2, 4]) test(`Cubism ${cubismVersion}: hides after p
       return result;
     };
     await pageSetVisualSettings({ hiddenElementIds: ['BG'] });
+    assert.equal(resets, 0, 'interactive toggles must not replay source motions');
+    await runtime.prepareVisualCapture();
     assert.deepEqual(runtime.visualBounds, { x: 2, y: 2, width: 6, height: 4 });
     assert.equal(current, 'idle', 'restore selected motion after measuring the source envelope');
     assert.deepEqual(runtime.state, { motionId: 'idle', time: 0.25, playing: false });
+    const preparedResets = resets;
+    await runtime.prepareVisualCapture();
+    assert.equal(resets, preparedResets, 'capture framing is prepared once per hidden set');
   } finally { global.window = previousWindow; }
 });

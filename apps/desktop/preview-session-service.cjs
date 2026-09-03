@@ -438,6 +438,13 @@ function createPreviewSessionService({
       const settings = normalizeVisualSettings(input);
       return enqueue(() => invokeNow('setVisualSettings', settings));
     },
+    getVisualElementThumbnail: (input = {}) => {
+      const id = normalizeVisualSettings({ hiddenElementIds: [input.id] }).hiddenElementIds[0];
+      return enqueue(async () => {
+        if (state !== SESSION_STATES.ready || !adapter) fail('PREVIEW_NOT_READY', 'Preview session is not ready.');
+        return adapter.getVisualElementThumbnail(id);
+      });
+    },
     close: () => enqueue(closeNow),
     getStatus,
     readStatus: () => enqueue(async () => {

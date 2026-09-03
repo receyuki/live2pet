@@ -329,6 +329,9 @@ function relinkProjectSource(project, nextSource, { previousManifest, nextManife
     return { project: validateProject(nextProject), status: 'relinked', reviewRequired: Boolean(current.sourceReview?.required), affectedRecipeIds: current.sourceReview?.affectedRecipeIds ?? [] };
   }
 
+  // Part identities belong to the old source, not another model with possibly
+  // unrelated IDs. A path-only move above retains the manual visibility set.
+  nextProject.visualSettings = { hiddenElementIds: [] };
   const previousMotions = new Set(Array.isArray(previousManifest?.motions) ? previousManifest.motions.map((motion) => String(motion.id)) : []);
   const nextMotions = new Set(Array.isArray(nextManifest?.motions) ? nextManifest.motions.map((motion) => String(motion.id)) : []);
   const previousExpressions = new Set(Array.isArray(previousManifest?.expressions) ? previousManifest.expressions.map((expression) => String(expression.id)) : []);

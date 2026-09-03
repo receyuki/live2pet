@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from './App';
-import type { Live2PetProject } from './app-host';
+import type { Live2PetProject, VisualElement } from './app-host';
 import { CLAWD_PROFILE, CODEX_PROFILE } from './target-profiles';
 import { PROJECT_DRAFT_KEY, writeProjectDraft } from './project-draft';
 
@@ -21,7 +21,7 @@ const savedProject = {
   },
 };
 
-function installDesktopApi({ runtimes = emptyRuntimes, preview = false, buildHost = false, recentProjects = [], openCancelled = false, saveCancelled = false, openedProject = savedProject }: { runtimes?: typeof emptyRuntimes | { schemaVersion: 2; configured: boolean; restartRequired: false; runtimes: Array<{ runtimeName: string; runtimeKind: 'legacy-cubism2'; cubismGenerations: number[]; fingerprint: string; available: boolean }> }; preview?: boolean; buildHost?: boolean; recentProjects?: Array<{ documentId: string; name: string; fileName: string; available: boolean }>; openCancelled?: boolean; saveCancelled?: boolean; openedProject?: Live2PetProject } = {}) {
+function installDesktopApi({ runtimes = emptyRuntimes, preview = false, previewVisualElements = [], previewThumbnail, buildHost = false, recentProjects = [], openCancelled = false, saveCancelled = false, openedProject = savedProject }: { runtimes?: typeof emptyRuntimes | { schemaVersion: 2; configured: boolean; restartRequired: false; runtimes: Array<{ runtimeName: string; runtimeKind: 'legacy-cubism2'; cubismGenerations: number[]; fingerprint: string; available: boolean }> }; preview?: boolean; previewVisualElements?: VisualElement[]; previewThumbnail?: (input: { id: string }) => Promise<{ id: string; dataUrl: string | null }> | { id: string; dataUrl: string | null }; buildHost?: boolean; recentProjects?: Array<{ documentId: string; name: string; fileName: string; available: boolean }>; openCancelled?: boolean; saveCancelled?: boolean; openedProject?: Live2PetProject } = {}) {
   const inspectSource = vi.fn(async () => ({
     protocolVersion: 1 as const,
     ok: true,
@@ -55,6 +55,8 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, buildHos
   }));
   const acknowledgeSourceReview = vi.fn(async ({ project }: { project: Live2PetProject }) => ({ protocolVersion: 1 as const, ok: true, result: { project: { ...project, sourceReview: { ...project.sourceReview!, required: false, reviewedFingerprint: project.source.fingerprint } } } }));
   const openPreview = vi.fn(async (input: { projectId: string; sourceFingerprint: string; bounds: { x: number; y: number; width: number; height: number } }) => ({ protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, state: 'ready' as const, projectId: input.projectId, sourceFingerprint: input.sourceFingerprint, visible: true, bounds: input.bounds, playback: { motionId: null, expressionId: null, playing: false, loop: true, speed: 1 } } }));
+  const getPreviewVisualElements = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: previewVisualElements }));
+  const getPreviewVisualElementThumbnail = vi.fn(async (input: { id: string }) => ({ protocolVersion: 1 as const, ok: true, result: await (previewThumbnail?.(input) ?? { id: input.id, dataUrl: `data:image/png;base64,${input.id}` }) }));
   const openProject = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: openCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-document', fileName: 'saved.live2pet', project: openedProject, recentProjects } }));
   const saveProject = vi.fn(async (input: { project: Live2PetProject }) => ({ protocolVersion: 1 as const, ok: true, result: saveCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-saved-document', fileName: `${input.project.name}.live2pet`, project: input.project, recentProjects } }));
   let appCommandListener: ((command: 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => void) | undefined;
@@ -96,10 +98,12 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, buildHos
         controlPreview: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { schemaVersion: 1, state: 'ready' } })),
         closePreview: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { schemaVersion: 1, state: 'idle' } })),
         onPreviewStatus: vi.fn(() => () => undefined),
+        getPreviewVisualElements,
+        getPreviewVisualElementThumbnail,
       } : {}),
     },
   });
-  return { configureRuntime, inspectSource, relinkSource, acknowledgeSourceReview, openPreview, openProject, saveProject, buildProject, emitAppCommand: (command: 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => appCommandListener?.(command) };
+  return { configureRuntime, inspectSource, relinkSource, acknowledgeSourceReview, openPreview, getPreviewVisualElements, getPreviewVisualElementThumbnail, openProject, saveProject, buildProject, emitAppCommand: (command: 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => appCommandListener?.(command) };
 }
 
 function setSystemDarkMode(matches: boolean) {
@@ -709,6 +713,50 @@ describe('Live2Pet desktop shell', () => {
     fireEvent.change(slider, { target: { value: '0.07' } });
     await vi.waitFor(() => expect(window.live2pet!.controlPreview).toHaveBeenCalledWith({ action: 'seek', time: 0.5 }));
     expect(window.live2pet!.controlPreview).not.toHaveBeenCalledWith({ action: 'seek', time: 0.07 });
+  });
+
+  it('requests one Part thumbnail at a time and ignores a late response for a previous selection', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const runtimes = { schemaVersion: 2 as const, configured: true, restartRequired: false as const, runtimes: [{ runtimeName: 'live2d.min.js', runtimeKind: 'legacy-cubism2' as const, cubismGenerations: [2], fingerprint: 'a'.repeat(64), available: true }] };
+    let resolveBackground!: (value: { id: string; dataUrl: string | null }) => void;
+    let resolveBody!: (value: { id: string; dataUrl: string | null }) => void;
+    const background = new Promise<{ id: string; dataUrl: string | null }>((resolve) => { resolveBackground = resolve; });
+    const body = new Promise<{ id: string; dataUrl: string | null }>((resolve) => { resolveBody = resolve; });
+    const api = installDesktopApi({
+      runtimes,
+      preview: true,
+      previewVisualElements: [
+        { id: 'BG', name: 'Background', kind: 'part' },
+        { id: 'BODY', name: 'Body', kind: 'part' },
+      ],
+      previewThumbnail: ({ id }) => id === 'BG' ? background : body,
+    });
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
+    const surface = container.querySelector('.preview-native-surface') as HTMLDivElement;
+    vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue({ x: 280, y: 90, width: 640, height: 520, top: 90, right: 920, bottom: 610, left: 280, toJSON: () => ({}) });
+    fireEvent(window, new Event('resize'));
+
+    await vi.waitFor(() => expect(api.openPreview).toHaveBeenCalled());
+    await vi.waitFor(() => expect(api.getPreviewVisualElements).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: 'Visibility' }));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Inspect · Background' })).toBeEnabled());
+
+    await user.click(screen.getByRole('button', { name: 'Inspect · Background' }));
+    expect(await screen.findByRole('progressbar', { name: 'Loading…' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Inspect · Body' }));
+    expect(api.getPreviewVisualElementThumbnail).toHaveBeenNthCalledWith(1, { id: 'BG' });
+    expect(api.getPreviewVisualElementThumbnail).toHaveBeenNthCalledWith(2, { id: 'BODY' });
+
+    resolveBackground({ id: 'BG', dataUrl: 'data:image/png;base64,background' });
+    await Promise.resolve();
+    expect(screen.queryByRole('img', { name: 'Background · BG' })).not.toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'Loading…' })).toBeVisible();
+
+    resolveBody({ id: 'BODY', dataUrl: 'data:image/png;base64,body' });
+    expect(await screen.findByRole('img', { name: 'Body · BODY' })).toHaveAttribute('src', 'data:image/png;base64,body');
   });
 
   it('imports a dropped Source Package without browser navigation', async () => {

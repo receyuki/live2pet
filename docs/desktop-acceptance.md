@@ -332,3 +332,36 @@ image reader also accepted V1 and V2 geometry. Pinned ASAR SHA-256 values:
 This establishes importer/parser compatibility, not visual host activation or
 playback acceptance. Those user-facing host checks, final accessibility review,
 remaining build/report/combined-install work, and Spine remain separately tracked.
+
+### Source replacement and Part inspection — 2026-09-03
+
+A fresh-profile reproduction hid a modern model's background, replaced the
+Source Package with a legacy PCK, and previously failed with an unavailable
+Part ID from the old source. Changed fingerprints now reset the hidden set;
+relocating identical source bytes retains it. Mapping review still applies,
+and the original saved project is not overwritten by relinking alone.
+
+Interactive visibility changes now measure only the current pose, without
+replaying source Motions. The sampled animation envelope described above is
+prepared once at the first actual capture for a hidden set, rather than during
+each toggle. Complete capture-cache hits skip that preparation. This moves
+framing work out of interaction; it does not remove export framing analysis.
+
+Inspect generates one transparent 192-by-192 Part thumbnail on demand, keeping
+its ancestors and descendants when the model exposes those relationships.
+The image reflects the current pose, not a raw atlas region: a Part can contain
+multiple drawables, and authored-invisible Parts can have no visible pixels.
+Inspection restores the prior hidden set, framing, and playback behavior even
+if PNG generation fails. Thumbnails are not saved into projects or packages.
+
+Local modern and legacy probes verified isolated thumbnails and restoration
+after inspection and subsequent playback. Model files, generated images,
+profiles, and detailed performance traces remain private test inputs/outputs.
+
+Verification passed: 275 Node tests (two opt-in skips), 110 UI tests, type
+checking, packaged startup/native dependency checks, and prohibited-asset scans.
+Packaged acceptance covered both thumbnail buttons, hidden-Part Clawd/Codex
+builds, downloads, scratch-folder installation, cancellation, warm-cache reuse,
+crash/retry, save/reopen, and runtime reuse after restart. A separate packaged
+reproduction also verified the visibility-reset notice and playable preview
+after replacing a modern source with a legacy PCK.

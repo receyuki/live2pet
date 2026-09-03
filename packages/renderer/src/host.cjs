@@ -16,6 +16,7 @@ const RENDERER_IPC_METHODS = Object.freeze([
   'getBounds',
   'captureRgba',
   'getVisualElements',
+  'getVisualElementThumbnail',
   'setVisualSettings',
 ]);
 

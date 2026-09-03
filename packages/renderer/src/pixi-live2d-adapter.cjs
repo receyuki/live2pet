@@ -1,5 +1,5 @@
 const { RendererContractError } = require('./errors.cjs');
-const { normalizeVisualSettings, pageInitializeVisualElements, pageSetVisualSettings } = require('./visual-settings.cjs');
+const { normalizeVisualSettings, pageInitializeVisualElements, pageSetVisualSettings, pageVisualElementThumbnail } = require('./visual-settings.cjs');
 
 const DEFAULT_OPTIONS = Object.freeze({
   canvasSelector: '#live2pet-stage',
@@ -390,6 +390,7 @@ function pageCapture(motionId, time, width, height, priority, binary = false) {
     if (!runtime) throw new Error('Renderer is not loaded.');
     const motion = runtime.source.motions.find((item) => item.id === motionId);
     if (!motion) throw new Error(`Motion is not available: ${motionId}`);
+    await runtime.prepareVisualCapture?.();
     runtime.app.stop();
     const captureTime = Math.min(Math.max(0, time), motion.duration);
     const restart = runtime.state.motionId !== motionId || captureTime <= runtime.state.time;
@@ -474,6 +475,12 @@ class PixiLive2dAdapter {
   getVisualElements() {
     this.requireLoaded();
     return (this.visualElements || []).map(element => ({ ...element }));
+  }
+
+  async getVisualElementThumbnail(id) {
+    this.requireLoaded();
+    if (typeof id !== 'string' || !this.visualElements.some(element => element.id === id)) fail('VISUAL_ELEMENT_NOT_FOUND', 'Visual Element is not available in this Source Package.');
+    return this.evaluate(pageVisualElementThumbnail, id);
   }
 
   async setVisualSettings(settings) {

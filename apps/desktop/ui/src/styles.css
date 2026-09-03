@@ -376,6 +376,11 @@
 .visibility-panel>.section-heading-row{padding:12px 14px 0}
 .visibility-panel>.mapping-requirement-hint,.visibility-panel>.visibility-actions{padding:0 14px 10px}
 .visibility-panel h2{font-size:14px}
+.visibility-inspector{display:grid;gap:8px;margin:0 12px 4px;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--muted-surface)}
+.visibility-inspector-heading{display:flex;align-items:flex-start;gap:8px;min-width:0}
+.visibility-thumbnail{display:grid;place-items:center;width:100%;min-height:112px;max-height:168px;object-fit:contain;border-radius:8px;background:var(--app-bg)}
+.visibility-thumbnail-loading{padding:0 16px}
+.visibility-thumbnail-empty{gap:8px;padding:16px;color:var(--muted);font-size:11px;line-height:1.45;text-align:center}
 .visibility-panel .motion-list{flex:1;align-content:start}
 .visibility-row{display:flex;flex-direction:column;gap:6px;padding:10px;border-bottom:1px solid var(--border)}
 .visibility-row strong,.visibility-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

@@ -191,6 +191,17 @@ test('marks changed sources for review and blocks builds until acknowledged', ()
   assert.equal(acknowledged.sourceReview.reviewedFingerprint, 'sha256:changed');
 });
 
+test('source replacement does not apply old-model hidden Parts to the new model', () => {
+  const project = { ...fixture(), visualSettings: { hiddenElementIds: ['BG'] } };
+  const moved = relinkProjectSource(project, { path: '/moved/same-source.pck' });
+  assert.deepEqual(moved.project.visualSettings, project.visualSettings, 'moving identical bytes retains manual choices');
+  const replaced = relinkProjectSource(project, { fingerprint: 'sha256:other-model', path: '/models/other.pck' });
+  assert.deepEqual(replaced.project.visualSettings, { hiddenElementIds: [] }, 'Part IDs belong to the previous source, not the replacement');
+  assert.equal(replaced.reviewRequired, true);
+  assert.deepEqual(replaced.project.targets, project.targets, 'mapping review is not replaced with destructive clearing');
+  assert.deepEqual(project.visualSettings.hiddenElementIds, ['BG'], 'the original saved project is untouched');
+});
+
 test('persists a required source review across save and reload', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-review-'));
   const filePath = path.join(directory, 'project.live2pet');

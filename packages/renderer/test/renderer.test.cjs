@@ -99,7 +99,7 @@ class FakePixiPage {
 test('synthetic renderer implements the shared playback contract', async () => {
   const renderer = new SyntheticRenderer();
   assertRenderer(renderer);
-  assert.equal(CONTRACT_METHODS.length, 15);
+  assert.equal(CONTRACT_METHODS.length, 16);
 
   const loaded = await renderer.load(source());
   assert.deepEqual(loaded, { contractVersion: 1, motionCount: 2, expressionCount: 1 });

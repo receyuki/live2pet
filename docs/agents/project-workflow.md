@@ -24,6 +24,7 @@ Opening a project does not imply that its Source Package is still available. The
 
 - A moved Source Package with the same fingerprint can be relinked after successful inspection without invalidating recipes.
 - A changed fingerprint preserves the project document but creates `sourceReview.required` and records the affected recipe ids. The Mapper must show this state and require an explicit review acknowledgement.
+- A changed fingerprint resets model-owned hidden Part IDs to an empty set: they cannot safely refer to the replacement model. A same-fingerprint move preserves visibility. The original saved project is not overwritten; mappings still follow their existing review rules.
 - A project with no recipes can remain buildable after a source change because there are no preserved dependencies to review; the normalized `sourceReview.required` value remains `false` for auditability.
 - A missing, unsupported, or uninspected replacement source must not be accepted as a relink.
 

@@ -54,6 +54,7 @@ function fixture({ source = null, runtime = { runtimePath: '/private/runtime/Liv
     async resize(width, height) { calls.push(['resize', width, height]); },
     getState() { return { ...playback }; },
     getVisualElements() { return [{ id: 'BG', name: 'Background', kind: 'part' }]; },
+    async getVisualElementThumbnail(id) { calls.push(['thumbnail', id]); return { id, dataUrl: null }; },
     async setVisualSettings(settings) { calls.push(['visualSettings', settings]); },
   };
   const server = {
@@ -89,6 +90,8 @@ test('opens with project visibility and serializes manual visibility edits', asy
   const { service, calls } = fixture();
   await service.open({ projectId: 'project-1', sourceFingerprint: FINGERPRINT, bounds: { x: 0, y: 0, width: 512, height: 512 }, visualSettings: { hiddenElementIds: ['BG'] } });
   assert.deepEqual(await service.getVisualElements(), [{ id: 'BG', name: 'Background', kind: 'part' }]);
+  assert.deepEqual(await service.getVisualElementThumbnail({ id: 'BG' }), { id: 'BG', dataUrl: null });
+  assert.throws(() => service.getVisualElementThumbnail({ id: '' }), { code: 'INVALID_VISUAL_SETTINGS' });
   assert.deepEqual(calls.find(([name]) => name === 'visualSettings')[1], { hiddenElementIds: ['BG'] });
   await service.setVisualSettings({ hiddenElementIds: [] });
   assert.deepEqual(calls.filter(([name]) => name === 'visualSettings').at(-1)[1], { hiddenElementIds: [] });

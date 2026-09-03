@@ -115,7 +115,7 @@ Work:
 2. Map Live2D Parts to stable Visual Element identities and reapply project-hidden Parts after animation and pose updates.
 3. Add a searchable Visibility panel opened beside the center preview, temporarily replacing the Motion library to retain the three-column layout, with manual show/hide, transient Solo, and Restore all actions. Never hide elements based on naming heuristics.
 4. Store hidden identities in the next `.live2pet` schema revision and migrate existing projects to an empty hidden set.
-5. Compute framing from sampled visible animated bounds (nine poses per source Motion), restore the selected playback state afterward, and explain when a background shares an inseparable ArtMesh with the character. Sampling does not prove containment for every possible physics pose.
+5. Keep hide/show responsive by reframing only the current pose during interaction. Prepare the sampled animated export bounds (nine poses per source Motion) once before actual capture, not on every toggle or cache hit. Provide on-demand isolated Part thumbnails for identification. Explain inseparable ArtMesh content; sampling does not prove containment for every physics pose.
 6. Include a canonical Visual Settings digest in capture-cache identity and pass the same settings through Clawd and Codex builds.
 
 Acceptance gate:

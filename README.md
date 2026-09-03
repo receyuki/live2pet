@@ -61,13 +61,19 @@ using the English or Chinese README according to the App's current language.
 
 In **Map → Visibility**, search the model's Parts and choose **Hide / Show**.
 Use **Solo** to identify a Part temporarily, or **Restore all** to undo hiding.
+Request a Part's thumbnail to inspect its isolated appearance in the current pose;
+previews are generated only on demand, not for the whole list at startup.
 Live2Pet never hides a Part automatically based on its name. Friendly names are
 used when the model supplies them; otherwise the original Part IDs are shown.
 
 The project saves your hidden Parts and applies them to preview and both target
-builds. Framing uses sampled visible animation bounds. Solo is not saved. Older
+builds. Toggling visibility updates the current pose immediately; full sampled
+animation framing runs only when capture is needed. Solo is not saved. Older
 projects open with every Part visible. A background painted into the same mesh
 as the character cannot be separated by this control.
+Replacing source contents resets model-specific hidden IDs, while moving the
+same unchanged source keeps them. The original source and saved project are not
+silently modified by relinking.
 
 ### Targets and installation
 

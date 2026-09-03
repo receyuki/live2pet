@@ -127,6 +127,7 @@ export type InstallResult = { protocolVersion?: number; target: BuildTarget; pac
 export type PreviewBounds = { x: number; y: number; width: number; height: number };
 export type VisualSettings = { hiddenElementIds: string[] };
 export type VisualElement = { id: string; name: string; kind: 'part' | 'slot'; parentId?: string };
+export type VisualElementThumbnail = { id: string; dataUrl: string | null };
 export type PreviewStatus = {
   schemaVersion: 1;
   state: 'idle' | 'opening' | 'ready' | 'failed';
@@ -176,6 +177,7 @@ type Live2PetApi = {
   getFilePath(file: File): string | null;
   openPreview?(input: { projectId: string; sourceFingerprint: string; bounds: PreviewBounds; visualSettings?: VisualSettings }): Promise<AppResponse<PreviewStatus>>;
   getPreviewVisualElements?(): Promise<AppResponse<VisualElement[]>>;
+  getPreviewVisualElementThumbnail?(input: { id: string }): Promise<AppResponse<VisualElementThumbnail>>;
   setPreviewVisualSettings?(input: VisualSettings): Promise<AppResponse<PreviewStatus>>;
   layoutPreview?(input: { visible: boolean; bounds?: PreviewBounds }): Promise<AppResponse<PreviewStatus>>;
   playPreview?(input: { motionId: string; loop?: boolean; speed?: number }): Promise<AppResponse<PreviewStatus>>;
@@ -404,6 +406,12 @@ export function setLive2DPreviewExpression(expressionId: string | null) {
 export async function getPreviewVisualElements(): Promise<VisualElement[]> {
   const api = previewApi();
   return api.getPreviewVisualElements ? unwrap(api.getPreviewVisualElements()) : [];
+}
+
+export function getPreviewVisualElementThumbnail(id: string): Promise<VisualElementThumbnail> {
+  const api = previewApi();
+  if (!api.getPreviewVisualElementThumbnail) throw new DesktopApiError('PREVIEW_UNAVAILABLE', 'Visual Element thumbnails require the current Desktop App.');
+  return unwrap(api.getPreviewVisualElementThumbnail({ id }));
 }
 
 export function setPreviewVisualSettings(settings: VisualSettings) {

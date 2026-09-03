@@ -56,7 +56,7 @@ const frame = await renderer.captureRgba({
 `createRendererWindowOptions` applies the required Electron isolation and
 web-security defaults. `createRendererCsp` produces the restrictive document
 policy. `createRendererIpcRouter` and `createRendererPreloadApi` expose only the
-15 renderer-contract methods, including `getVisualElements` and
+16 renderer-contract methods, including `getVisualElements`, `getVisualElementThumbnail`, and
 `setVisualSettings`, over the `live2pet:renderer` channel. Renderers with no
 separable elements return an empty list and reject non-empty hidden settings.
 
@@ -91,9 +91,11 @@ preserves the selected Part's ancestor/descendant chain. It is never saved.
 Hidden opacity is applied after animation/pose and before Core updates its
 drawables. The next frame restores authored opacity before animation runs;
 showing a Part therefore restores the model's authored value rather than
-forcing opacity to one. Transparent-pixel bounds sampled at nine poses per source
-Motion form a stable animation envelope; resize reuses those local bounds. This
-is sampled framing, not proof of containment at every possible physics pose.
+forcing opacity to one. Interactive visibility changes reframe the current pose
+without replaying source Motions. Only the first actual capture after a visibility
+change samples nine poses per source Motion for an export envelope; cache hits
+do not run this analysis. This is sampled framing, not proof of containment at
+every possible physics pose.
 Preview and both target captures receive the same project settings, including
 after renderer recovery.
 
@@ -102,6 +104,13 @@ objects in bounded model-context tables and validates them through the runtime's
 public Part lookup. No minifier-specific field names are assumed. Combined
 background/character Parts cannot be split by these controls. No model or
 runtime file is changed.
+
+Part thumbnails are requested individually. The renderer temporarily isolates
+the selected Part and its descendants, retains required ancestors, captures a
+192-by-192 transparent PNG, and restores visibility, framing, and playback even
+when thumbnail encoding fails. A Part with no visible pixels in the current
+authored pose returns an empty thumbnail. Thumbnails are preview-only, never
+stored in the project or embedded as model assets.
 
 ### Desktop pixel transfer
 

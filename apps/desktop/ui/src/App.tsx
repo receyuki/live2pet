@@ -65,6 +65,7 @@ import {
   controlLive2DPreview,
   setLive2DPreviewExpression,
   getPreviewVisualElements,
+  getPreviewVisualElementThumbnail,
   setPreviewVisualSettings,
   VisualElement,
   VisualSettings,
@@ -89,6 +90,7 @@ import { CLAWD_PROFILE, CODEX_PROFILE, MappingDestination } from "./target-profi
 import { BuildView } from "./BuildView";
 import { TargetSettings } from "./TargetSettings";
 import { VisibilityPanel, soloVisualSettings } from './VisibilityPanel';
+import type { VisualElementThumbnailState } from './VisibilityPanel';
 import { buildReducer, initialBuildState } from "./build-state";
 import {
   clearProjectDraft,
@@ -473,6 +475,9 @@ function PanelHeading({ icon, title, body }: { icon: ReactNode; title: string; b
 
 function MapView({ locale, projectId, projectDocument, inspection, runtimeReady, selectedMotionId, selectedExpressionId, onConfigureRuntime, onSelectMotion, onSelectExpression, onAssign, onClear, onVisualSettings }: { locale: Locale; projectId: string; projectDocument: Live2PetProject | null; inspection?: SourceInspection; runtimeReady: boolean; selectedMotionId: string | null; selectedExpressionId: string | null; onConfigureRuntime: () => void; onSelectMotion: (id: string) => void; onSelectExpression: (id: string | null) => void; onAssign: (destination: MappingDestination) => void; onClear: (destination: MappingDestination) => void; onVisualSettings: (settings: VisualSettings) => void }) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
+  const sourceKey = `${projectId}\u0000${inspection?.source.fingerprint ?? ''}`;
+  const sourceKeyRef = useRef(sourceKey);
+  sourceKeyRef.current = sourceKey;
   const previewSurface = useRef<HTMLDivElement>(null);
   const [previewStatus, setPreviewStatus] = useState<PreviewStatus | null>(null);
   const [previewRetry, setPreviewRetry] = useState(0);
@@ -482,8 +487,14 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   const [previewSpeed, setPreviewSpeed] = useState(1);
   const [visibilityOpen, setVisibilityOpen] = useState(false);
   const visibilityTrigger = useRef<HTMLButtonElement>(null);
-  const [visualElements, setVisualElements] = useState<VisualElement[]>([]);
-  const [soloId, setSoloId] = useState<string | null>(null);
+  const [visualElementState, setVisualElementState] = useState<{ sourceKey: string; elements: VisualElement[] }>({ sourceKey, elements: [] });
+  const visualElements = visualElementState.sourceKey === sourceKey ? visualElementState.elements : [];
+  const [soloSelection, setSoloSelection] = useState<{ sourceKey: string; id: string | null }>({ sourceKey, id: null });
+  const soloId = soloSelection.sourceKey === sourceKey ? soloSelection.id : null;
+  const setSoloId = (id: string | null) => setSoloSelection({ sourceKey, id });
+  const [visualThumbnailState, setVisualThumbnailState] = useState<(VisualElementThumbnailState & { sourceKey: string }) | null>(null);
+  const visualThumbnail = visualThumbnailState?.sourceKey === sourceKey ? visualThumbnailState : null;
+  const thumbnailRequest = useRef(0);
   const [visibilityBusy, setVisibilityBusy] = useState(false);
   const [motionQuery, setMotionQuery] = useState('');
   const visualSettings = projectDocument?.visualSettings ?? { hiddenElementIds: [] };
@@ -537,6 +548,13 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
     : [{ id: "rows", title: t("codexRows"), channel: "mappings", slots: CODEX_PROFILE.rows.map((row) => row.id) }];
 
   useEffect(() => {
+    thumbnailRequest.current += 1;
+    setVisualElementState({ sourceKey, elements: [] });
+    setVisualThumbnailState(null);
+    setSoloSelection({ sourceKey, id: null });
+  }, [sourceKey]);
+
+  useEffect(() => {
     if (!nativePreview || !inspection) return;
     let active = true;
     let opened = false;
@@ -576,11 +594,32 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   }, [inspection, nativePreview, previewRetry, projectId]);
 
   useEffect(() => {
-    if (previewStatus?.state !== 'ready') return;
+    const expectedSourceFingerprint = inspection?.source.fingerprint;
+    if (previewStatus?.state !== 'ready' || !expectedSourceFingerprint || previewStatus.projectId !== projectId || previewStatus.sourceFingerprint !== expectedSourceFingerprint) return;
+    const expectedSourceKey = sourceKey;
     let active = true;
-    void getPreviewVisualElements().then(elements => { if (active) setVisualElements(elements); }).catch(cause => { if (active) setPlaybackError(String(cause.message)); });
+    void getPreviewVisualElements().then(elements => {
+      if (active && sourceKeyRef.current === expectedSourceKey) setVisualElementState({ sourceKey: expectedSourceKey, elements });
+    }).catch(cause => {
+      if (active && sourceKeyRef.current === expectedSourceKey) setPlaybackError(String(cause instanceof Error ? cause.message : cause));
+    });
     return () => { active = false; };
-  }, [previewStatus?.state]);
+  }, [previewStatus?.state, previewStatus?.projectId, previewStatus?.sourceFingerprint, projectId, inspection?.source.fingerprint, sourceKey]);
+
+  function inspectVisualElement(id: string) {
+    const expectedSourceKey = sourceKey;
+    const expectedSourceFingerprint = inspection?.source.fingerprint;
+    if (previewStatus?.state !== 'ready' || !expectedSourceFingerprint) return;
+    const request = ++thumbnailRequest.current;
+    setVisualThumbnailState({ sourceKey: expectedSourceKey, id, dataUrl: null, loading: true });
+    void Promise.resolve().then(() => getPreviewVisualElementThumbnail(id)).then(result => {
+      if (request !== thumbnailRequest.current || sourceKeyRef.current !== expectedSourceKey || result.id !== id) return;
+      setVisualThumbnailState({ sourceKey: expectedSourceKey, id: result.id, dataUrl: result.dataUrl, loading: false });
+    }).catch(() => {
+      if (request !== thumbnailRequest.current || sourceKeyRef.current !== expectedSourceKey) return;
+      setVisualThumbnailState({ sourceKey: expectedSourceKey, id, dataUrl: null, loading: false, error: t('thumbnailUnavailable') });
+    });
+  }
 
   useEffect(() => {
     if (previewStatus?.state !== 'ready' || !visualElements.length) return;
@@ -631,7 +670,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   };
   return (
     <main className="map-workspace">
-      {visibilityOpen ? <VisibilityPanel locale={locale} elements={visualElements} settings={visualSettings} soloId={soloId} busy={visibilityBusy || previewStatus?.state !== 'ready'} onSettings={onVisualSettings} onSolo={setSoloId} onClose={() => { setSoloId(null); setVisibilityOpen(false); visibilityTrigger.current?.focus(); }} /> : <section className="workspace-panel">
+      {visibilityOpen ? <VisibilityPanel key={sourceKey} locale={locale} elements={visualElements} settings={visualSettings} soloId={soloId} thumbnail={visualThumbnail} busy={visibilityBusy || previewStatus?.state !== 'ready'} onSettings={onVisualSettings} onSolo={setSoloId} onInspect={inspectVisualElement} onClose={() => { setSoloId(null); setVisibilityOpen(false); visibilityTrigger.current?.focus(); }} /> : <section className="workspace-panel">
         <PanelHeading icon={<SlidersHorizontal size={16} />} title={t("motions")} body={t("motionsHint")} />
         <Input aria-label={t("searchMotions")} placeholder={t("search")} value={motionQuery} onChange={event => setMotionQuery(event.target.value)} />
         <div className="motion-list">
@@ -982,7 +1021,14 @@ export function App() {
       if (!inputPath) throw new Error(t("sourcePathUnavailable"));
       const result = await relinkSourcePath(project, inputPath);
       dispatch({ type: "SOURCE_RELINKED", document: result.project, inspection: result.inspection, sourcePath: inputPath });
-      if (result.reviewRequired) setActionFeedback(t("sourceReviewRequired"));
+      const previousHiddenCount = project.visualSettings?.hiddenElementIds.length ?? 0;
+      const nextHiddenCount = result.project.visualSettings?.hiddenElementIds.length ?? 0;
+      const sourceChanged = project.source.fingerprint !== result.project.source.fingerprint;
+      const feedback = [
+        result.reviewRequired ? t("sourceReviewRequired") : "",
+        sourceChanged && previousHiddenCount > 0 && nextHiddenCount === 0 ? t("visibilityResetForNewSource") : "",
+      ].filter(Boolean).join(" ");
+      if (feedback) setActionFeedback(feedback);
     } catch (cause) {
       setActionFeedback(cause instanceof Error ? cause.message : t("error"));
     } finally {

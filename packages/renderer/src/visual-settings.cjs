@@ -47,6 +47,7 @@ async function pageInitializeVisualElements() {
   const getOpacity = id => modern ? core.getPartOpacityById(id) : core.getPartsOpacity(id);
   const setOpacity = (id, opacity) => modern ? core.setPartOpacityById(id, opacity) : core.setPartsOpacity(id, opacity);
   let hidden = new Set();
+  let capturePrepared = false;
   const authored = new Map();
   const restoreAuthored = () => {
     for (const [id, opacity] of authored) setOpacity(id, opacity);
@@ -90,9 +91,7 @@ async function pageInitializeVisualElements() {
       union.x = Math.min(union.x, bounds.x); union.y = Math.min(union.y, bounds.y);
       union.width = right - union.x; union.height = bottom - union.y;
     };
-    // A shared source-motion envelope prevents selecting another recipe from
-    // changing the export crop. Sample poses, not encoded frames: this runs
-    // only when visibility changes, without capturing or transferring RGBA.
+    // Build-only framing. Never scan motions on an interactive toggle.
     for (const motion of runtime.source.motions) {
       await runtime.resetMotion(motion, runtime.options.motionPriority);
       include();
@@ -104,6 +103,22 @@ async function pageInitializeVisualElements() {
     if (!runtime.source.motions.length) { runtime.model.update(0.001); runtime.render(); include(); }
     return union;
   };
+  runtime.prepareVisualCapture = async () => {
+    if (capturePrepared || !hidden.size) return;
+    const previous = { ...runtime.state };
+    runtime.app.stop();
+    runtime.visualBounds = null;
+    runtime.fit();
+    runtime.visualBounds = await measureAnimated();
+    runtime.fit();
+    const motion = runtime.source.motions.find(item => item.id === previous.motionId);
+    if (motion) {
+      await runtime.resetMotion(motion, runtime.options.motionPriority);
+      runtime.model.update(Math.max(0.001, previous.time * 1000));
+    }
+    runtime.render();
+    capturePrepared = true;
+  };
   runtime.setVisualSettings = async settings => {
     const known = new Set(ids);
     const unknown = settings.hiddenElementIds.filter(id => !known.has(id));
@@ -111,24 +126,69 @@ async function pageInitializeVisualElements() {
     if (JSON.stringify(runtime.visualSettings) === JSON.stringify(settings)) return { elements, settings: runtime.visualSettings, empty: hidden.size > 0 && !runtime.visualBounds };
     restoreAuthored();
     hidden = new Set(settings.hiddenElementIds);
-    const previous = { ...runtime.state };
+    capturePrepared = false;
     runtime.app.stop();
     runtime.visualBounds = null;
     runtime.fit();
     // Measure in the full-source frame first, never in a previously cropped
     // frame: restoring a Part must not retain the prior zoom/crop.
-    if (hidden.size) runtime.visualBounds = await measureAnimated();
-    else { runtime.model.update(0.001); runtime.render(); }
+    runtime.model.update(0.001);
+    runtime.render();
+    if (hidden.size) runtime.visualBounds = measureVisible();
     runtime.fit();
-    const motion = runtime.source.motions.find(item => item.id === previous.motionId);
-    if (hidden.size && motion) {
-      await runtime.resetMotion(motion, runtime.options.motionPriority);
-      runtime.model.update(Math.max(0.001, previous.time * 1000));
-    }
     runtime.render();
     runtime.syncTicker();
     runtime.visualSettings = { hiddenElementIds: [...hidden].sort() };
     return { elements, settings: runtime.visualSettings, empty: hidden.size > 0 && !runtime.visualBounds };
+  };
+  runtime.getVisualElementThumbnail = id => {
+    if (!ids.includes(id)) throw new Error('Visual Element is not available in this Source Package.');
+    const byId = new Map(elements.map(element => [element.id, element]));
+    const keep = new Set([id]);
+    let parent = byId.get(id)?.parentId;
+    while (parent && !keep.has(parent)) { keep.add(parent); parent = byId.get(parent)?.parentId; }
+    for (const element of elements) {
+      let current = element.id;
+      const visited = new Set();
+      while (current && !visited.has(current)) {
+        if (current === id) { keep.add(element.id); break; }
+        visited.add(current); current = byId.get(current)?.parentId;
+      }
+    }
+    const previousHidden = hidden;
+    const previousBounds = runtime.visualBounds;
+    runtime.app.stop();
+    try {
+      restoreAuthored();
+      hidden = new Set(ids.filter(candidate => !keep.has(candidate)));
+      runtime.visualBounds = null;
+      runtime.fit();
+      runtime.model.update(0.001);
+      runtime.render();
+      const bounds = measureVisible();
+      if (!bounds) return { id, dataUrl: null };
+      const width = runtime.app.renderer.width, height = runtime.app.renderer.height;
+      const extract = runtime.app.renderer.extract || runtime.app.renderer.plugins.extract;
+      const pixels = extract.pixels(runtime.app.stage, new window.PIXI.Rectangle(0, 0, width, height));
+      const source = document.createElement('canvas');
+      source.width = width; source.height = height;
+      source.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(pixels), width, height), 0, 0);
+      const output = document.createElement('canvas');
+      output.width = output.height = 192;
+      const scale = runtime.model.scale.x;
+      const crop = { x: bounds.x * scale + runtime.model.x, y: bounds.y * scale + runtime.model.y, width: bounds.width * scale, height: bounds.height * scale };
+      const fit = Math.min(180 / crop.width, 180 / crop.height);
+      output.getContext('2d').drawImage(source, crop.x, crop.y, crop.width, crop.height, (192 - crop.width * fit) / 2, (192 - crop.height * fit) / 2, crop.width * fit, crop.height * fit);
+      return { id, dataUrl: output.toDataURL('image/png') };
+    } finally {
+      restoreAuthored();
+      hidden = previousHidden;
+      runtime.visualBounds = previousBounds;
+      runtime.fit();
+      runtime.model.update(0.001);
+      runtime.render();
+      runtime.syncTicker();
+    }
   };
   runtime.visualSettings = { hiddenElementIds: [] };
   return elements;
@@ -138,4 +198,8 @@ function pageSetVisualSettings(settings) {
   return window.__live2petPixiLive2D.setVisualSettings(settings);
 }
 
-module.exports = { normalizeVisualSettings, pageInitializeVisualElements, pageSetVisualSettings };
+function pageVisualElementThumbnail(id) {
+  return window.__live2petPixiLive2D.getVisualElementThumbnail(id);
+}
+
+module.exports = { normalizeVisualSettings, pageInitializeVisualElements, pageSetVisualSettings, pageVisualElementThumbnail };
