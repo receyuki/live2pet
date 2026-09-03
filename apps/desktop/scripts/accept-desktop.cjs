@@ -108,6 +108,13 @@ let app;
         const canvas = card?.querySelector('.generated-preview canvas');
         return canvas && canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data.some((value, index) => index % 4 === 3 && value > 0);
       }, targetName);
+      const previewBox = await card.locator('.generated-preview').boundingBox();
+      const stageBox = await card.locator('.generated-preview-stage').boundingBox();
+      const cardBox = await card.boundingBox();
+      assert.ok(previewBox.width <= 400.5, 'The generated result frame stays compact, not stretched across the card');
+      assert.ok(previewBox.x + previewBox.width <= cardBox.x + cardBox.width, 'Generated preview stays inside its card');
+      assert.ok(stageBox.width <= 360.5 && Math.abs(stageBox.width - stageBox.height) < 1, 'Generated stage stays square');
+      assert.ok((await card.locator('[data-slot="progress-bar-track"]').boundingBox()).height > 0, 'Build progress has a visible track');
       const choices = card.locator('.generated-preview-choices button');
       if (await choices.count() > 1) {
         await choices.nth(1).click();

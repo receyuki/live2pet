@@ -105,7 +105,7 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
                 <div className="preset-row"><strong>{t("renderPreset")}</strong><ButtonGroup aria-label={`${title} ${t("renderPreset")}`}>{presets.map((value) => <Button size="sm" key={value} variant={preset === value ? "primary" : "secondary"} onPress={() => onPreset(target, value)}>{t(value)}</Button>)}</ButtonGroup></div>
                 <div className={`build-result build-result-${current.status}`} role="status" aria-live="polite">
                   <div><strong>{t(`buildStatus_${current.status}` as MessageKey)}</strong><span>{current.progress}%</span></div>
-                  <ProgressBar aria-label={`${title} ${t("buildProgress")}`} value={current.progress} />
+                  <ProgressBar aria-label={`${title} ${t("buildProgress")}`} value={current.progress}><ProgressBar.Track><ProgressBar.Fill /></ProgressBar.Track></ProgressBar>
                   <small>{current.error ?? current.message ?? (current.stage ? t("buildStage", { value: current.stage }) : t("buildWaiting"))}</small>
                 </div>
                 <div className="build-actions">

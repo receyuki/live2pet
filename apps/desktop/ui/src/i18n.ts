@@ -2,6 +2,7 @@ export type Locale = 'en' | 'zh-CN';
 
 const messages = {
   en: {
+    mappingRequired: 'Required', mappingOptional: 'Optional', mappingRequiredHint: 'Map every state in this group before building.', mappingOptionalHint: 'May be left empty; does not block building.', mappingFullSleepRequired: 'Full sleep mode is enabled; all four states are required.', mappingFullSleepOptional: 'Only required for full sleep mode. Otherwise leave empty.',
     codexTimingHint: 'Codex uses short, fixed-frame loops. We sample the opening of each motion at the host’s timing instead of speeding up the entire animation. Use Clawd for full-length motions.',
     packageName: 'Pet / theme name', packageNameHint: 'Used in both packages and their filenames. Change it to create a different pet.',
     confirmRemoveRuntime: 'Remove this saved runtime from Live2Pet? The original file is not changed.', removeRuntime: 'Remove {name}',
@@ -38,6 +39,7 @@ const messages = {
     cacheRefresh: 'Refresh cache state',
   },
   'zh-CN': {
+    mappingRequired: '必选', mappingOptional: '可选', mappingRequiredHint: '构建前需要完成本组全部状态的映射。', mappingOptionalHint: '可以留空，不影响构建。', mappingFullSleepRequired: '已启用完整睡眠模式，四个状态均为必选。', mappingFullSleepOptional: '仅完整睡眠模式需要；其他情况可以留空。',
     codexTimingHint: 'Codex 使用固定少量帧的短循环。将按宿主节奏采样动作开头，而非把完整动作加速压缩。需要完整长动作请使用 Clawd。',
     packageName: '宠物 / 主题名称', packageNameHint: '用于两个主题包及其文件名。修改名称可生成不同的宠物。',
     confirmRemoveRuntime: '从 Live2Pet 删除这个已保存的运行时？不会改动原始文件。', removeRuntime: '删除 {name}',

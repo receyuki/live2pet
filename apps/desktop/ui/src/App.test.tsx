@@ -118,6 +118,44 @@ function setSystemDarkMode(matches: boolean) {
   });
 }
 
+it.each(['direct', 'full'])('labels mapping requirements for %s sleep mode', async (sleepMode) => {
+  localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+  installDesktopApi({ openedProject: { ...savedProject, targets: { ...savedProject.targets, clawd: { ...savedProject.targets.clawd, options: { sleepMode } } } } });
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: 'Open project' }));
+  await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
+  const group = (id: string) => within(document.querySelector(`#mapping-group-${id}`)!.closest('section')!);
+  expect(group('core').getByText('Required', { exact: true })).toBeVisible();
+  expect(group('optional').getByText('Optional', { exact: true })).toBeVisible();
+  expect(group('full-sleep').getByText(sleepMode === 'full' ? 'Required' : 'Optional', { exact: true })).toBeVisible();
+  expect(group('reactions').getByText('Optional', { exact: true })).toBeVisible();
+  await user.click(screen.getByRole('button', { name: /^Codex Pet$/ }));
+  expect(group('rows').getByText('Required', { exact: true })).toBeVisible();
+});
+
+it('keeps build progress in the footer while Settings is open', async () => {
+  localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+  const api = installDesktopApi({ buildHost: true, runtimes: { schemaVersion: 2, configured: true, restartRequired: false, runtimes: [{ runtimeKind: 'legacy-cubism2', runtimeName: 'core', cubismGenerations: [2], fingerprint: 'a', available: true }] }, openedProject: { ...savedProject, targets: { ...savedProject.targets, clawd: { ...savedProject.targets.clawd, mappings: Object.fromEntries(CLAWD_PROFILE.states.core.map(slot => [slot, 'motion:idle:0'])) } } } });
+  const finish = api.buildProject.getMockImplementation()!;
+  let resolveBuild!: (value: Awaited<ReturnType<typeof finish>>) => void;
+  api.buildProject.mockImplementation(() => new Promise(resolve => { resolveBuild = resolve; }));
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: 'Open project' }));
+  await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Build' }));
+  await user.click(screen.getAllByRole('button', { name: 'Build Pet Package' })[0]);
+  const footer = () => within(screen.getByRole('contentinfo'));
+  expect(footer().getByRole('progressbar', { name: 'Clawd build progress' })).toHaveAttribute('aria-valuenow', '0');
+  expect(footer().getByRole('progressbar').querySelector('[data-slot="progress-bar-fill"]')).not.toBeNull();
+  await user.click(screen.getByRole('button', { name: /^Settings$/ }));
+  expect(footer().getByRole('progressbar', { name: 'Clawd build progress' })).toBeVisible();
+  resolveBuild(await finish());
+  await vi.waitFor(() => expect(footer().getByText(/Succeeded/)).toBeVisible());
+  await user.click(footer().getByRole('button', { name: /Clawd/ }));
+  expect(await screen.findByRole('heading', { name: 'Package Build' })).toBeVisible();
+});
+
 beforeEach(() => {
   localStorage.clear();
   localStorage.setItem('live2pet.desktop.locale', 'en');

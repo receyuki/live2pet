@@ -643,9 +643,13 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
         <div className="selected-card"><span className="motion-icon"><Play size={15} /></span><span className="grow-copy"><small>{t("selectedMotionExpression")}</small><strong>{selectedName}</strong><small>{selectedExpression?.name ?? t("baseExpression")}</small></span></div>
         {!canEditMappings && <p className="mapping-preview-note" role="status">{t("mappingPreviewOnly")}</p>}
         <div className="assignment-list mapping-assignment-list">
-          {mappingGroups.map((group) => (
+          {mappingGroups.map((group) => {
+            const required = group.id === 'core' || group.id === 'rows' || (group.id === 'full-sleep' && targetDocument?.options.sleepMode === 'full');
+            const hint = group.id === 'full-sleep' ? (required ? 'mappingFullSleepRequired' : 'mappingFullSleepOptional') : required ? 'mappingRequiredHint' : 'mappingOptionalHint';
+            return (
             <section className="mapping-group" key={group.id} aria-labelledby={`mapping-group-${group.id}`}>
-              <h3 id={`mapping-group-${group.id}`}>{group.title}</h3>
+              <h3 id={`mapping-group-${group.id}`} className="mapping-group-heading"><span>{group.title}</span><Chip size="sm" variant="soft" className={required ? 'mapping-required' : ''}>{t(required ? 'mappingRequired' : 'mappingOptional')}</Chip></h3>
+              <p className="mapping-requirement-hint">{t(hint)}</p>
               {group.slots.map((slot) => {
                 const value = targetDocument?.[group.channel]?.[slot] ?? "";
                 return (
@@ -659,7 +663,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
                 );
               })}
             </section>
-          ))}
+          ); })}
         </div>
       </section>
     </main>
@@ -1016,9 +1020,23 @@ export function App() {
   const requiredCubism = state.project?.inspection?.model.cubism;
   const runtimeReady = !requiredCubism || Boolean(runtimeSettings?.runtimes.some((runtime) => runtime.available && runtime.cubismGenerations.includes(requiredCubism)));
   const openRuntimeSettings = () => dispatch({ type: "OPEN_SETTINGS", section: "runtimes" });
+  const statusBar = <footer className="status-bar">
+    <span className="save-status"><i className="status-dot" />{!hasDesktopApi() ? t("notConnected") : state.project?.dirty ? t("unsaved") : state.project?.documentId ? t("saved") : t("noSavedProject")}</span>
+    <div className="footer-builds">{(['clawd', 'codex-pet'] as const).filter(target => buildState[target].status !== 'idle').map(target => {
+      const current = buildState[target];
+      const name = target === 'clawd' ? 'Clawd' : 'Codex';
+      return <div className="footer-build" key={target} title={current.error ?? current.message ?? t('build')}>
+        <Button size="sm" variant="ghost" onPress={() => dispatch({ type: 'NAVIGATE', destination: 'build' })}>
+          {name} · {t(`buildStatus_${current.status}` as MessageKey)}{current.status === 'building' ? ` ${current.progress}%` : ''}
+        </Button>
+        {current.status === 'building' && <ProgressBar size="sm" aria-label={`${name} ${t('buildProgress')}`} value={current.progress}><ProgressBar.Track><ProgressBar.Fill /></ProgressBar.Track></ProgressBar>}
+      </div>;
+    })}</div>
+    <span className="status-file" title={state.project?.fileName}>{state.project?.fileName ?? `Live2Pet ${appVersion}`}</span>
+  </footer>;
 
   if (state.destination === "setup") return <SetupView locale={locale} returning={state.setupReturnDestination !== null} onComplete={completeSetup} onRuntimeSettingsChange={setRuntimeSettings} />;
-  if (state.destination === "settings") return <SettingsView locale={locale} section={state.settingsSection} appearance={appearance} onSection={(section) => dispatch({ type: "SELECT_SETTINGS_SECTION", section })} onLocale={(language) => dispatch({ type: "UPDATE_LANGUAGE", language })} onAppearance={(value) => dispatch({ type: "UPDATE_APPEARANCE", appearance: value })} onRuntimeSettingsChange={setRuntimeSettings} onClose={() => dispatch({ type: "CLOSE_SETTINGS" })} />;
+  if (state.destination === "settings") return <div className="app-shell settings-shell"><SettingsView locale={locale} section={state.settingsSection} appearance={appearance} onSection={(section) => dispatch({ type: "SELECT_SETTINGS_SECTION", section })} onLocale={(language) => dispatch({ type: "UPDATE_LANGUAGE", language })} onAppearance={(value) => dispatch({ type: "UPDATE_APPEARANCE", appearance: value })} onRuntimeSettingsChange={setRuntimeSettings} onClose={() => dispatch({ type: "CLOSE_SETTINGS" })} />{statusBar}</div>;
 
   const projectOpen = state.project !== null;
   const sourceReviewRequired = Boolean(state.project?.document?.sourceReview?.required);
@@ -1036,7 +1054,7 @@ export function App() {
         {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={openRuntimeSettings} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => dispatch({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => dispatch({ type: "CLEAR_ASSIGNMENT", destination })} />}
         {state.destination === "build" && <BuildView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} runtimeReady={runtimeReady} state={buildState} onName={(name) => dispatch({ type: "RENAME_PROJECT", name })} onPreset={(target, preset) => dispatch({ type: "SET_RENDER_PRESET", target, preset })} onBuild={(target) => void buildProjectTarget(target)} onCancel={(target) => void cancelProjectBuild(target)} />}
       </div>
-      <footer className="status-bar"><span><i className="status-dot" />{!hasDesktopApi() ? t("notConnected") : state.project?.dirty ? t("unsaved") : state.project?.documentId ? t("saved") : t("noSavedProject")}</span><span>{state.project?.fileName ?? `Live2Pet ${appVersion}`}</span></footer>
+      {statusBar}
     </div>
   );
 }
