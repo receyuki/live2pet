@@ -2,6 +2,7 @@ export type Locale = 'en' | 'zh-CN';
 
 const messages = {
   en: {
+    previewEmptyTitle: 'No model preview', previewImportHint: 'Import a Source Package to preview its motions here. The design preview does not contain a model.', previewDesktopRequired: 'Open this project in the Desktop App to preview its model.',
     runtimeHelp: 'Why a separate runtime? Download guide ↗',
     codexV2Hint: 'Codex V2 · 11-row atlas. The 16 look-direction cells use a neutral idle pose; directional mouse following is not generated yet. Keep your existing nine animation mappings.', codexNeutralLook: 'Neutral look (static)',
     projectDropDesktop: 'Drop a local .live2pet project file in the Desktop App.', buildStatus_queued: 'Queued', buildQueuedHint: 'Waiting for another build to release the shared renderer. This build will start automatically.', buildPreparing: 'Preparing the renderer and Source Package…',
@@ -42,6 +43,7 @@ const messages = {
     cacheRefresh: 'Refresh cache state',
   },
   'zh-CN': {
+    previewEmptyTitle: '暂无模型预览', previewImportHint: '导入资源包后，即可在这里预览模型动作。界面预览不包含真实模型。', previewDesktopRequired: '请在桌面 App 中打开此项目来预览模型。',
     runtimeHelp: '为什么要单独下载运行时？下载指南 ↗',
     codexV2Hint: 'Codex V2 · 11 行图集。16 个方向格使用 idle 的中立姿势，暂不生成方向跟随；沿用现有九个动作映射。', codexNeutralLook: '中立姿势（静态）',
     projectDropDesktop: '请在桌面 App 中拖入本地 .live2pet 项目文件。', buildStatus_queued: '排队中', buildQueuedHint: '正在等待其他构建释放共享渲染器，轮到后会自动开始。', buildPreparing: '正在准备渲染器和资源包…',

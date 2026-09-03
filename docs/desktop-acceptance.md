@@ -127,3 +127,25 @@ entry-point/language combinations and confirmed delivery to the real Electron
 system-browser boundary with no new App window. The probe replaced only the
 final browser-opening side effect, so it did not open the user's browser or
 claim network-page rendering acceptance.
+
+### Remove decorative branding and align Settings chrome
+
+The user approved removing BrandMark rather than replacing it with another
+logo. Setup now presents the shared runtime controls in one centered column;
+Welcome prioritizes import, project opening, and recent projects without a
+decorative mock window. The toolbar uses text and emphasizes the open project
+name. An unloaded design preview explains that it contains no real model,
+instead of displaying a fictional character. The system App icon is unchanged.
+
+Settings now shares the workspace's 56-pixel toolbar, native traffic-light
+clearance, and bottom status bar. Done sits at the top right; the sidebar only
+contains section navigation. The extra 40-pixel Settings drag strip and duplicate
+sidebar title were removed. No new component system was introduced.
+
+Verification passed 95 UI tests, type checking, source and packaged-asset scans.
+A separate-profile packaged App probe checked English and Simplified Chinese
+Setup, Welcome, preview empty states, and Settings at 1024-by-768 and 1440-by-900.
+Settings and workspace toolbar heights matched; Done remained inside the toolbar
+on the right, no horizontal page overflow occurred, and closing Settings returned
+to the previous destination. Model playback and Package Build services were not
+changed by this presentation-only update.

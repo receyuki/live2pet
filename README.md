@@ -6,6 +6,11 @@ Turn Live2D models into portable packages for agent-pet hosts.
 
 Live2Pet is an early-stage local desktop toolchain for loading Cubism models, previewing their original motions, mapping those motions to target-specific pet states, and building validated Clawd theme and Codex custom-pet packages. The current V1 milestone is deliberately limited to a personal-use macOS App.
 
+The interface focuses on your project: Setup and Welcome contain task controls
+rather than decorative mascots, and empty previews explain what is missing.
+Settings uses the same top toolbar as the workspace, with Done at the top right.
+The system App icon is unchanged.
+
 <a id="runtime-setup"></a>
 
 ## Runtime setup: why a separate download?

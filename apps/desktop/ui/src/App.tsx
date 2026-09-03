@@ -152,17 +152,6 @@ function preserveTextEditingHistory(command: "undo" | "redo"): boolean {
   return true;
 }
 
-function BrandMark({ large = false }: { large?: boolean }) {
-  return (
-    <span className={`brand-mark${large ? " brand-mark-large" : ""}`} aria-hidden="true">
-      <i />
-      <i />
-      <b><em /><em /></b>
-      <small />
-    </span>
-  );
-}
-
 function PageHeading({ eyebrow, title, body }: { eyebrow: string; title: string; body: string }) {
   return (
     <header className="page-heading">
@@ -313,12 +302,6 @@ function SetupView({ locale, returning, onComplete, onRuntimeSettingsChange }: {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   return (
     <main className="setup-view">
-      <section className="setup-art" aria-hidden="true">
-        <i className="orbit orbit-one" /><i className="orbit orbit-two" />
-        <BrandMark large />
-        <span className="floating-pill pill-top"><WandSparkles size={15} />Live2D</span>
-        <span className="floating-pill pill-bottom"><PackageCheck size={15} />{t("petPackage")}</span>
-      </section>
       <section className="setup-content">
         <p className="eyebrow"><Sparkles size={13} />{t("setupEyebrow")}</p>
         <h1>{t("setupTitle")}</h1>
@@ -379,10 +362,6 @@ function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onO
           {busy && <ProgressBar aria-label={t("loading")} isIndeterminate className="mt-4" />}
           {error && <p className="inline-error" role="alert">{error}</p>}
           <Button className="button--ghost" variant="ghost" onPress={onOpenPreview}>{t("sampleProject")}<ChevronRight size={15} /></Button>
-        </div>
-        <div className="welcome-visual" aria-hidden="true">
-          <i className="visual-glow" /><i className="fake-window fake-back" />
-          <span className="fake-window fake-front"><i className="fake-list" /><i className="fake-stage"><BrandMark large /></i><i className="fake-map" /></span>
         </div>
       </section>
       {draft && <section className="draft-recovery" aria-label={t("draftRecoveryTitle")}>
@@ -638,7 +617,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
       <section className="workspace-panel">
         <PanelHeading icon={<Sparkles size={16} />} title={t("preview")} body={t("previewHint")} />
         <div className="preview-caption"><Chip variant="soft">{selectedName} · {selectedExpression?.name ?? t("baseExpression")}</Chip></div>
-        <div className="preview-stage"><i className="stage-grid" /><i className="stage-glow" />{!runtimeReady ? <div className="preview-runtime-required"><Gauge size={28} /><strong>{t("runtimeRequired")}</strong><p>{t("runtimeRequiredBody")}</p><Button size="sm" variant="primary" onPress={onConfigureRuntime}>{t("configureRuntime")}</Button></div> : nativePreview ? <><div ref={previewSurface} className="preview-native-surface" />{previewStatus?.state === 'opening' && <div className="preview-message">{t('previewLoading')}</div>}{previewStatus?.state === 'failed' && <div className="preview-runtime-required"><strong>{t('previewFailed')}</strong><p>{previewStatus.error?.message}</p><Button size="sm" variant="primary" onPress={() => setPreviewRetry((value) => value + 1)}>{t('retry')}</Button></div>}</> : <div className="character"><BrandMark large /><i /></div>}</div>
+        <div className="preview-stage"><i className="stage-grid" />{!runtimeReady ? <div className="preview-runtime-required"><Gauge size={28} /><strong>{t("runtimeRequired")}</strong><p>{t("runtimeRequiredBody")}</p><Button size="sm" variant="primary" onPress={onConfigureRuntime}>{t("configureRuntime")}</Button></div> : nativePreview ? <><div ref={previewSurface} className="preview-native-surface" />{previewStatus?.state === 'opening' && <div className="preview-message">{t('previewLoading')}</div>}{previewStatus?.state === 'failed' && <div className="preview-runtime-required"><strong>{t('previewFailed')}</strong><p>{previewStatus.error?.message}</p><Button size="sm" variant="primary" onPress={() => setPreviewRetry((value) => value + 1)}>{t('retry')}</Button></div>}</> : <div className="preview-runtime-required"><Box size={28} aria-hidden="true" /><strong>{t('previewEmptyTitle')}</strong><p>{t(projectDocument ? 'previewDesktopRequired' : 'previewImportHint')}</p></div>}</div>
         <div className="playback"><Button isIconOnly aria-label={previewStatus?.playback?.playing ? t('pause') : t('play')} variant="primary" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={togglePlayback}>{previewStatus?.playback?.playing ? <Pause size={15} /> : <Play size={15} />}</Button><Button isIconOnly aria-label={t('restart')} variant="ghost" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={() => void runPlayback(() => controlLive2DPreview('restart'))}><RotateCcw size={15} /></Button><input className="timeline" type="range" aria-label={t('seekMotion')} min={0} max={selectedDuration} step={0.01} value={seekTime ?? previewStatus?.playback?.time ?? 0} disabled={previewStatus?.state !== 'ready' || !selectedDuration} onInput={(event) => setSeekTime(Number(event.currentTarget.value))} /><small>{(previewStatus?.playback?.time ?? 0).toFixed(1)} / {selected?.seconds ?? '—'} s</small></div>
         {playbackError && <p className="inline-error" role="alert">{playbackError}</p>}
       </section>
@@ -685,10 +664,13 @@ function SettingsView({ locale, section, appearance, onSection, onLocale, onAppe
   useEffect(() => { if (section === "storage") void getCacheStatus().then(setCache); }, [section]);
   async function clearBuildCache() { if (!window.confirm(t("confirmClearCache"))) return; await clearCache(); setCache(await getCacheStatus()); }
   return (
+    <>
+    <header className="app-toolbar settings-toolbar">
+      <div className="toolbar-brand"><span>Live2Pet</span><i /><h1 className="toolbar-title">{t("settingsTitle")}</h1></div>
+      <div className="toolbar-actions"><Button variant="secondary" size="sm" onPress={onClose}><X size={16} />{t("close")}</Button></div>
+    </header>
     <main className="settings-view">
       <aside className="settings-sidebar">
-        <Button variant="ghost" size="sm" onPress={onClose}><X size={16} />{t("close")}</Button>
-        <div className="settings-title"><p className="eyebrow"><SettingsIcon size={13} />Live2Pet</p><h1>{t("settingsTitle")}</h1><p>{t("settingsBody")}</p></div>
         <nav aria-label={t("settings")}>{nav.map(([id, key, icon]) => <Button key={id} className="settings-nav" variant={section === id ? "secondary" : "ghost"} onPress={() => onSection(id)}>{icon}{t(key)}<ChevronRight size={14} /></Button>)}</nav>
       </aside>
       <section className="settings-content">
@@ -698,6 +680,7 @@ function SettingsView({ locale, section, appearance, onSection, onLocale, onAppe
         {section === "storage" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("storage")} body={t("storageBody")} /><Card className="surface-card"><Card.Content><div className="section-heading-row"><div><p className="eyebrow"><Database size={13} />{t("storageTitle")}</p><h2>{cache.entryCount ? t("cacheEntries", { count: cache.entryCount, size: `${Math.round(cache.byteLength / 1024 / 1024)} MiB` }) : t("cacheEmpty")}</h2></div><Button variant="secondary" onPress={clearBuildCache} isDisabled={!cache.entryCount}><Trash2 size={15} />{t("clearCache")}</Button></div></Card.Content></Card></div>}
       </section>
     </main>
+    </>
   );
 }
 
@@ -1065,7 +1048,7 @@ export function App() {
   return (
     <div className="app-shell">
       <header className="app-toolbar">
-        <div className="toolbar-brand"><BrandMark /><strong>Live2Pet</strong>{projectOpen && <><i /><span>{state.project?.name}</span></>}</div>
+        <div className="toolbar-brand">{projectOpen ? <><span>Live2Pet</span><i /><strong title={state.project?.name}>{state.project?.name}</strong></> : <strong>Live2Pet</strong>}</div>
         {projectOpen ? <nav aria-label="Project"><ButtonGroup>{(["source", "map", "build"] as const).map((destination) => <Button key={destination} isDisabled={sourceReviewRequired && destination !== "source"} variant={state.destination === destination ? "primary" : "ghost"} onPress={() => dispatch({ type: "NAVIGATE", destination })}>{t(destination)}</Button>)}</ButtonGroup></nav> : <span />}
         <div className="toolbar-actions"><Chip className="chip" size="sm" variant="soft"><span className="status-dot" />{state.project?.inspection ? t("localProject") : t("designPreview")}</Chip>{projectOpen && <Button aria-label={t("saveProject")} variant="ghost" onPress={() => void saveProjectDocument()}><Save size={17} />{t("save")}</Button>}<Button isIconOnly aria-label={t("settings")} variant="ghost" onPress={() => dispatch({ type: "OPEN_SETTINGS" })}><SettingsIcon size={18} /></Button></div>
       </header>

@@ -166,6 +166,36 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('Live2Pet desktop shell', () => {
+  it('keeps setup, Welcome, and design preview free of decorative mascots', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    expect(container.querySelector('.setup-art, .brand-mark')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Add runtime' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Set up later' }));
+    expect(container.querySelector('.welcome-visual, .brand-mark')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Open project' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Recent projects' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Open design preview' }));
+    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
+    expect(container.querySelector('.character, .brand-mark')).toBeNull();
+    expect(screen.getByText('No model preview')).toBeVisible();
+    expect(screen.getByText(/The design preview does not contain a model/)).toBeVisible();
+    expect(container.querySelector('.toolbar-brand strong')).toHaveTextContent('Saint Louis');
+  });
+
+  it('places Settings Done in the shared top toolbar rather than the sidebar', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    const toolbar = container.querySelector('.app-toolbar') as HTMLElement;
+    expect(within(toolbar).getByRole('heading', { name: 'Settings' })).toBeVisible();
+    expect(within(toolbar).getByRole('button', { name: 'Done' })).toBeVisible();
+    expect(container.querySelector('.settings-sidebar .settings-title')).toBeNull();
+    expect(within(container.querySelector('.settings-sidebar') as HTMLElement).queryByRole('button', { name: 'Done' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    expect(screen.getByRole('button', { name: 'Open project' })).toBeVisible();
+  });
   it.each(['en', 'zh-CN'] as const)('opens localized runtime help from setup and Settings (%s)', async (locale) => {
     localStorage.setItem('live2pet.desktop.locale', locale);
     const open = vi.spyOn(window, 'open').mockReturnValue(null);
