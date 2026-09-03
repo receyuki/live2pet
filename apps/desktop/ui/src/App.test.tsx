@@ -715,7 +715,7 @@ describe('Live2Pet desktop shell', () => {
     expect(window.live2pet!.controlPreview).not.toHaveBeenCalledWith({ action: 'seek', time: 0.07 });
   });
 
-  it('requests one Part thumbnail at a time and ignores a late response for a previous selection', async () => {
+  it('loads inline thumbnails serially, keeps the selected large preview, and reuses them across tabs', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const runtimes = { schemaVersion: 2 as const, configured: true, restartRequired: false as const, runtimes: [{ runtimeName: 'live2d.min.js', runtimeKind: 'legacy-cubism2' as const, cubismGenerations: [2], fingerprint: 'a'.repeat(64), available: true }] };
     let resolveBackground!: (value: { id: string; dataUrl: string | null }) => void;
@@ -741,22 +741,29 @@ describe('Live2Pet desktop shell', () => {
 
     await vi.waitFor(() => expect(api.openPreview).toHaveBeenCalled());
     await vi.waitFor(() => expect(api.getPreviewVisualElements).toHaveBeenCalled());
-    await user.click(screen.getByRole('button', { name: 'Visibility' }));
+    await user.click(screen.getByRole('tab', { name: 'Visibility' }));
     await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Inspect · Background' })).toBeEnabled());
 
     await user.click(screen.getByRole('button', { name: 'Inspect · Background' }));
     expect(await screen.findByRole('progressbar', { name: 'Loading…' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Inspect · Body' }));
     expect(api.getPreviewVisualElementThumbnail).toHaveBeenNthCalledWith(1, { id: 'BG' });
-    expect(api.getPreviewVisualElementThumbnail).toHaveBeenNthCalledWith(2, { id: 'BODY' });
+    expect(api.getPreviewVisualElementThumbnail).toHaveBeenCalledTimes(1);
 
     resolveBackground({ id: 'BG', dataUrl: 'data:image/png;base64,background' });
     await Promise.resolve();
-    expect(screen.queryByRole('img', { name: 'Background · BG' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('img', { name: 'Background · BG' })).toBeVisible();
+    await vi.waitFor(() => expect(api.getPreviewVisualElementThumbnail).toHaveBeenNthCalledWith(2, { id: 'BODY' }));
     expect(screen.getByRole('progressbar', { name: 'Loading…' })).toBeVisible();
 
     resolveBody({ id: 'BODY', dataUrl: 'data:image/png;base64,body' });
-    expect(await screen.findByRole('img', { name: 'Body · BODY' })).toHaveAttribute('src', 'data:image/png;base64,body');
+    await vi.waitFor(() => expect(screen.getAllByRole('img', { name: 'Body · BODY' })).toHaveLength(2));
+    await user.click(screen.getByRole('tab', { name: 'Animations' }));
+    expect(screen.queryByRole('region', { name: 'Part preview' })).not.toBeInTheDocument();
+    await user.keyboard('{ArrowRight}');
+    await vi.waitFor(() => expect(screen.getByRole('tab', { name: 'Visibility' })).toHaveAttribute('aria-selected', 'true'));
+    expect(screen.getAllByRole('img', { name: 'Body · BODY' })).toHaveLength(2);
+    expect(api.getPreviewVisualElementThumbnail).toHaveBeenCalledTimes(2);
   });
 
   it('imports a dropped Source Package without browser navigation', async () => {

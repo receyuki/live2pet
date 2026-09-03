@@ -3,6 +3,7 @@ const { pathToFileURL } = require('node:url');
 const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, screen, shell, WebContentsView } = require('electron');
 const { createRuntimeHelpWindowHandler } = require('./runtime-help.cjs');
 const { createTargetInstallationService } = require('./target-installation-service.cjs');
+const { createPackageOutputService } = require('./package-output-service.cjs');
 
 const {
   APP_COMMAND_CHANNEL,
@@ -206,6 +207,22 @@ function getTargetInstallationService() {
   return targetInstallationService;
 }
 
+let packageOutputService;
+function getPackageOutputService() {
+  if (!packageOutputService) packageOutputService = createPackageOutputService({
+    settingsPath: path.join(app.getPath('userData'), 'output', 'settings.json'),
+    pickFolder: async ({ defaultPath }) => {
+      const result = await dialog.showOpenDialog(mainWindow, { title: 'Choose package output folder', defaultPath, properties: ['openDirectory', 'createDirectory'] });
+      return result.canceled ? null : result.filePaths?.[0];
+    },
+    pickSavePath: async ({ defaultPath }) => {
+      const result = await dialog.showSaveDialog(mainWindow, { title: 'Save Pet Package', defaultPath, filters: [{ name: 'Pet Package ZIP', extensions: ['zip'] }], properties: ['createDirectory', 'showOverwriteConfirmation'] });
+      return result.canceled ? null : result.filePath;
+    },
+  });
+  return packageOutputService;
+}
+
 async function chooseInstallRoot({ target } = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) throw new Error('The Live2Pet window is not available for folder selection.');
   const service = getTargetInstallationService();
@@ -290,6 +307,7 @@ function registerIpc() {
     installPackageService: installPackage,
     installRootPickerService: chooseInstallRoot,
     targetInstallationService: getTargetInstallationService(),
+    packageOutputService: getPackageOutputService(),
     onBuildProgress: (event) => {
       if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
       try { mainWindow.webContents.send(APP_BUILD_PROGRESS_CHANNEL, event); } catch {}

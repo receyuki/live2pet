@@ -5,6 +5,7 @@ import {
   Chip,
   Input,
   ProgressBar,
+  Tabs,
 } from "@heroui/react";
 import {
   Archive,
@@ -65,7 +66,6 @@ import {
   controlLive2DPreview,
   setLive2DPreviewExpression,
   getPreviewVisualElements,
-  getPreviewVisualElementThumbnail,
   setPreviewVisualSettings,
   VisualElement,
   VisualSettings,
@@ -90,7 +90,8 @@ import { CLAWD_PROFILE, CODEX_PROFILE, MappingDestination } from "./target-profi
 import { BuildView } from "./BuildView";
 import { TargetSettings } from "./TargetSettings";
 import { VisibilityPanel, soloVisualSettings } from './VisibilityPanel';
-import type { VisualElementThumbnailState } from './VisibilityPanel';
+import { useVisualThumbnails } from './useVisualThumbnails';
+import { OutputSettings } from './OutputSettings';
 import { buildReducer, initialBuildState } from "./build-state";
 import {
   clearProjectDraft,
@@ -486,16 +487,16 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   const [previewLoop, setPreviewLoop] = useState(true);
   const [previewSpeed, setPreviewSpeed] = useState(1);
   const [visibilityOpen, setVisibilityOpen] = useState(false);
-  const visibilityTrigger = useRef<HTMLButtonElement>(null);
   const [visualElementState, setVisualElementState] = useState<{ sourceKey: string; elements: VisualElement[] }>({ sourceKey, elements: [] });
   const visualElements = visualElementState.sourceKey === sourceKey ? visualElementState.elements : [];
   const [soloSelection, setSoloSelection] = useState<{ sourceKey: string; id: string | null }>({ sourceKey, id: null });
   const soloId = soloSelection.sourceKey === sourceKey ? soloSelection.id : null;
   const setSoloId = (id: string | null) => setSoloSelection({ sourceKey, id });
-  const [visualThumbnailState, setVisualThumbnailState] = useState<(VisualElementThumbnailState & { sourceKey: string }) | null>(null);
-  const visualThumbnail = visualThumbnailState?.sourceKey === sourceKey ? visualThumbnailState : null;
-  const thumbnailRequest = useRef(0);
   const [visibilityBusy, setVisibilityBusy] = useState(false);
+  const visualThumbnails = useVisualThumbnails(
+    JSON.stringify([sourceKey, selectedMotionId, selectedExpressionId, previewRetry]),
+    visibilityOpen && !visibilityBusy && previewStatus?.state === 'ready' && visualElements.length > 0,
+  );
   const [motionQuery, setMotionQuery] = useState('');
   const visualSettings = projectDocument?.visualSettings ?? { hiddenElementIds: [] };
   const visualKey = JSON.stringify(visualSettings);
@@ -548,9 +549,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
     : [{ id: "rows", title: t("codexRows"), channel: "mappings", slots: CODEX_PROFILE.rows.map((row) => row.id) }];
 
   useEffect(() => {
-    thumbnailRequest.current += 1;
     setVisualElementState({ sourceKey, elements: [] });
-    setVisualThumbnailState(null);
     setSoloSelection({ sourceKey, id: null });
   }, [sourceKey]);
 
@@ -606,21 +605,6 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
     return () => { active = false; };
   }, [previewStatus?.state, previewStatus?.projectId, previewStatus?.sourceFingerprint, projectId, inspection?.source.fingerprint, sourceKey]);
 
-  function inspectVisualElement(id: string) {
-    const expectedSourceKey = sourceKey;
-    const expectedSourceFingerprint = inspection?.source.fingerprint;
-    if (previewStatus?.state !== 'ready' || !expectedSourceFingerprint) return;
-    const request = ++thumbnailRequest.current;
-    setVisualThumbnailState({ sourceKey: expectedSourceKey, id, dataUrl: null, loading: true });
-    void Promise.resolve().then(() => getPreviewVisualElementThumbnail(id)).then(result => {
-      if (request !== thumbnailRequest.current || sourceKeyRef.current !== expectedSourceKey || result.id !== id) return;
-      setVisualThumbnailState({ sourceKey: expectedSourceKey, id: result.id, dataUrl: result.dataUrl, loading: false });
-    }).catch(() => {
-      if (request !== thumbnailRequest.current || sourceKeyRef.current !== expectedSourceKey) return;
-      setVisualThumbnailState({ sourceKey: expectedSourceKey, id, dataUrl: null, loading: false, error: t('thumbnailUnavailable') });
-    });
-  }
-
   useEffect(() => {
     if (previewStatus?.state !== 'ready' || !visualElements.length) return;
     let active = true;
@@ -670,7 +654,13 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   };
   return (
     <main className="map-workspace">
-      {visibilityOpen ? <VisibilityPanel key={sourceKey} locale={locale} elements={visualElements} settings={visualSettings} soloId={soloId} thumbnail={visualThumbnail} busy={visibilityBusy || previewStatus?.state !== 'ready'} onSettings={onVisualSettings} onSolo={setSoloId} onInspect={inspectVisualElement} onClose={() => { setSoloId(null); setVisibilityOpen(false); visibilityTrigger.current?.focus(); }} /> : <section className="workspace-panel">
+      <Tabs className="workspace-panel library-tabs" selectedKey={visibilityOpen ? 'visibility' : 'motions'} onSelectionChange={key => { if (key !== 'visibility') setSoloId(null); setVisibilityOpen(key === 'visibility'); }}>
+        <Tabs.ListContainer><Tabs.List aria-label={t('modelTools')}>
+          <Tabs.Tab id="motions"><SlidersHorizontal size={15} />{t('motionsAndExpressions')}<Tabs.Indicator /></Tabs.Tab>
+          <Tabs.Tab id="visibility" isDisabled={!projectDocument}><Eye size={15} />{t('visibility')}<Tabs.Indicator /></Tabs.Tab>
+        </Tabs.List></Tabs.ListContainer>
+        <Tabs.Panel id="visibility" className="library-tab-panel"><VisibilityPanel key={sourceKey} locale={locale} elements={visualElements} settings={visualSettings} soloId={soloId} thumbnail={visualThumbnails.thumbnail} thumbnails={visualThumbnails.thumbnails} busy={visibilityBusy || previewStatus?.state !== 'ready'} onSettings={onVisualSettings} onSolo={setSoloId} onInspect={visualThumbnails.inspect} onVisible={visualThumbnails.onVisible} /></Tabs.Panel>
+        <Tabs.Panel id="motions" className="library-tab-panel">
         <PanelHeading icon={<SlidersHorizontal size={16} />} title={t("motions")} body={t("motionsHint")} />
         <Input aria-label={t("searchMotions")} placeholder={t("search")} value={motionQuery} onChange={event => setMotionQuery(event.target.value)} />
         <div className="motion-list">
@@ -685,10 +675,11 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
             {displayedExpressions.map((expression) => <Button key={expression.id} size="sm" variant={expression.id === selectedExpression?.id ? "secondary" : "ghost"} onPress={() => onSelectExpression(expression.id)}>{expression.name}</Button>)}
           </div></> : <p className="empty-expression-note">{t('noExpressions')}</p>}
         </div>
-      </section>}
+        </Tabs.Panel>
+      </Tabs>
       <section className="workspace-panel">
         <PanelHeading icon={<Sparkles size={16} />} title={t("preview")} body={t("previewHint")} />
-        <div className="preview-caption"><Chip variant="soft">{selectedName} · {selectedExpression?.name ?? t("baseExpression")}</Chip><Button ref={visibilityTrigger} size="sm" variant={visibilityOpen ? 'secondary' : 'ghost'} aria-expanded={visibilityOpen} isDisabled={!projectDocument || previewStatus?.state !== 'ready'} onPress={() => { if (visibilityOpen) setSoloId(null); setVisibilityOpen(!visibilityOpen); }}><Eye size={15} />{t('visibility')}</Button></div>
+        <div className="preview-caption"><Chip variant="soft">{selectedName} · {selectedExpression?.name ?? t("baseExpression")}</Chip></div>
         <div className="preview-stage"><i className="stage-grid" />{!runtimeReady ? <div className="preview-runtime-required"><Gauge size={28} /><strong>{t("runtimeRequired")}</strong><p>{t("runtimeRequiredBody")}</p><Button size="sm" variant="primary" onPress={onConfigureRuntime}>{t("configureRuntime")}</Button></div> : nativePreview ? <><div ref={previewSurface} className="preview-native-surface" />{previewStatus?.state === 'opening' && <div className="preview-message">{t('previewLoading')}</div>}{previewStatus?.state === 'failed' && <div className="preview-runtime-required"><strong>{t('previewFailed')}</strong><p>{previewStatus.error?.message}</p><Button size="sm" variant="primary" onPress={() => setPreviewRetry((value) => value + 1)}>{t('retry')}</Button></div>}</> : <div className="preview-runtime-required"><Box size={28} aria-hidden="true" /><strong>{t('previewEmptyTitle')}</strong><p>{t(projectDocument ? 'previewDesktopRequired' : 'previewImportHint')}</p></div>}</div>
         <div className="playback"><Button isIconOnly aria-label={previewStatus?.playback?.playing ? t('pause') : t('play')} variant="primary" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={togglePlayback}>{previewStatus?.playback?.playing ? <Pause size={15} /> : <Play size={15} />}</Button><Button isIconOnly aria-label={t('restart')} variant="ghost" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={() => void runPlayback(() => controlLive2DPreview('restart'))}><RotateCcw size={15} /></Button><input className="timeline" type="range" aria-label={t('seekMotion')} min={0} max={selectedDuration} step={0.01} value={seekTime ?? previewStatus?.playback?.time ?? 0} disabled={previewStatus?.state !== 'ready' || !selectedDuration} onInput={(event) => setSeekTime(Number(event.currentTarget.value))} /><small>{(previewStatus?.playback?.time ?? 0).toFixed(1)} / {selected?.seconds ?? '—'} s</small></div>
         <div className="playback-options">
@@ -755,7 +746,7 @@ function SettingsView({ locale, section, appearance, onSection, onLocale, onAppe
         {section === "general" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("general")} body={t("settingsBody")} /><Card className="surface-card"><Card.Content><div className="setting-row"><span className="large-icon"><Languages size={19} /></span><span className="grow-copy"><strong>{t("language")}</strong></span><ButtonGroup><Button variant={locale === "en" ? "primary" : "secondary"} onPress={() => onLocale("en")}>English</Button><Button variant={locale === "zh-CN" ? "primary" : "secondary"} onPress={() => onLocale("zh-CN")}>简体中文</Button></ButtonGroup></div></Card.Content></Card><Card className="surface-card"><Card.Content><div className="setting-row"><span className="large-icon">{appearance === "dark" ? <Moon size={19} /> : <Sun size={19} />}</span><span className="grow-copy"><strong>{t("appearance")}</strong></span><ButtonGroup>{(["system", "light", "dark"] as const).map((item) => <Button key={item} variant={appearance === item ? "primary" : "secondary"} onPress={() => onAppearance(item)}>{t(item)}</Button>)}</ButtonGroup></div></Card.Content></Card></div>}
         {section === "runtimes" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("runtimes")} body={t("runtimeBody")} /><RuntimePanel locale={locale} compact onSettingsChange={onRuntimeSettingsChange} /></div>}
         {section === "targets" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("targets")} body={t("targetBody")} /><TargetSettings locale={locale} /></div>}
-        {section === "storage" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("storage")} body={t("storageBody")} /><Card className="surface-card"><Card.Content><div className="section-heading-row"><div><p className="eyebrow"><Database size={13} />{t("storageTitle")}</p><h2>{cache.entryCount ? t("cacheEntries", { count: cache.entryCount, size: `${Math.round(cache.byteLength / 1024 / 1024)} MiB` }) : t("cacheEmpty")}</h2></div><Button variant="secondary" onPress={clearBuildCache} isDisabled={!cache.entryCount}><Trash2 size={15} />{t("clearCache")}</Button></div></Card.Content></Card></div>}
+        {section === "storage" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("storage")} body={t("storageBody")} /><OutputSettings locale={locale} /><Card className="surface-card"><Card.Content><div className="section-heading-row"><div><p className="eyebrow"><Database size={13} />{t("storageTitle")}</p><h2>{cache.entryCount ? t("cacheEntries", { count: cache.entryCount, size: `${Math.round(cache.byteLength / 1024 / 1024)} MiB` }) : t("cacheEmpty")}</h2></div><Button variant="secondary" onPress={clearBuildCache} isDisabled={!cache.entryCount}><Trash2 size={15} />{t("clearCache")}</Button></div></Card.Content></Card></div>}
       </section>
     </main>
     </>

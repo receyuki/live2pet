@@ -84,6 +84,52 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.throws(() => normalizeCancelBuildRequest({ buildId: 'build_1234', extra: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_BUILD_CANCEL_REQUEST');
 });
 
+test('output settings and saving accept native actions and trusted artifact IDs without installing', async () => {
+  const saved = [];
+  const configured = [];
+  let cancelled = false;
+  const router = createAppIpcRouter({
+    packageOutputService: {
+      get: async () => ({ schemaVersion: 1, mode: 'ask' }),
+      configure: async input => { configured.push(input); return { cancelled: false }; },
+      save: async artifact => { saved.push(artifact); return cancelled ? { cancelled: true } : { cancelled: false, filename: artifact.filename, path: '/selected/pet.zip', byteLength: artifact.byteLength }; },
+    },
+    buildProjectService: async () => ({ projectId: 'output-test', targets: ['codex-pet'], builds: { 'codex-pet': { target: 'codex-pet', package: { artifactName: 'pet.zip', byteLength: 3, files: ['pet.json'], buffer: Uint8Array.from([1, 2, 3]) } } } }),
+    installPackageService: async () => { assert.fail('Saving must never install'); },
+  });
+  const request = (method, ...args) => router({ protocolVersion: 1, method, args });
+  assert.deepEqual((await request('getOutputSettings')).result, { schemaVersion: 1, mode: 'ask' });
+  assert.equal((await request('getOutputSettings', {})).ok, false);
+  for (const input of [{ action: 'choose-folder', path: '/tmp' }, { action: 'write' }, {}]) assert.equal((await request('configureOutputSettings', input)).ok, false);
+  assert.equal((await request('configureOutputSettings', { action: 'choose-folder' })).ok, true);
+  assert.deepEqual(configured, [{ action: 'choose-folder' }]);
+  const built = await request('buildProject', { project: { projectId: 'output-test' }, targets: ['codex-pet'] });
+  const artifactId = built.result.artifacts[0].artifactId;
+  for (const input of [{ artifactId, path: '/tmp/leak.zip' }, { artifactId, bytes: [9] }, { artifactId, filename: 'fake.zip' }, {}]) assert.equal((await request('saveBuildArtifact', input)).ok, false);
+  assert.equal((await request('saveBuildArtifact', { artifactId: 'missing' })).error.code, 'BUILD_ARTIFACT_NOT_FOUND');
+  const result = await request('saveBuildArtifact', { artifactId });
+  assert.equal(result.result.path, '/selected/pet.zip');
+  assert.equal(saved.length, 1);
+  assert.deepEqual(Array.from(saved[0].bytes), [1, 2, 3]);
+  cancelled = true;
+  assert.deepEqual((await request('saveBuildArtifact', { artifactId })).result, { cancelled: true });
+  await request('buildProject', { project: { projectId: 'output-test' }, targets: ['codex-pet'] });
+  assert.equal((await request('saveBuildArtifact', { artifactId })).error.code, 'BUILD_ARTIFACT_NOT_FOUND');
+});
+
+test('output preload wrappers expose only artifact IDs and native setting actions', async () => {
+  const calls = [];
+  const api = createAppPreloadApi({ ipcRenderer: { invoke: async (channel, request) => { calls.push({ channel, request }); return { ok: true }; } } });
+  await api.getOutputSettings();
+  await api.configureOutputSettings({ action: 'ask-every-time' });
+  await api.saveBuildArtifact('artifact');
+  assert.deepEqual(calls.map(value => value.request), [
+    { protocolVersion: 1, method: 'getOutputSettings', args: [] },
+    { protocolVersion: 1, method: 'configureOutputSettings', args: [{ action: 'ask-every-time' }] },
+    { protocolVersion: 1, method: 'saveBuildArtifact', args: [{ artifactId: 'artifact' }] },
+  ]);
+});
+
 test('target settings accept native actions only and installation consumes configured or snapshot destinations', async () => {
   const calls = [];
   const router = createAppIpcRouter({

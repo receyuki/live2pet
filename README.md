@@ -57,18 +57,33 @@ using the English or Chinese README according to the App's current language.
 
 ## Components
 
+### Save packages without installing
+
+After a successful build, choose **Save ZIP** to save the portable package
+separately from **Install**. **Settings → Storage → Package output** defaults to
+asking for a location each time using the native save dialog. You can instead
+choose a default output folder; same-name files receive numbered suffixes and
+existing files are preserved. The App shows the saved path. Output preferences
+stay on this device, not in projects or packages. Saving remains an explicit
+action after building and never installs a pet.
+
 ### Hide model backgrounds manually
 
-In **Map → Visibility**, search the model's Parts and choose **Hide / Show**.
+In **Map**, switch between the **Animations** and **Visibility** tabs.
+Under Visibility, search the model's Parts and choose **Hide / Show**.
 Use **Solo** to identify a Part temporarily, or **Restore all** to undo hiding.
-Request a Part's thumbnail to inspect its isolated appearance in the current pose;
-previews are generated only on demand, not for the whole list at startup.
+Small isolated Part images appear beside their names as rows enter the visible
+list. Select an image to enlarge it in the preview above. Images are generated
+one at a time and reused across tab switches; changing the source, Motion, or
+Expression resets them. Empty Parts and failed previews are labeled; select a
+failed image to retry. These are pose snapshots, not original atlas tiles.
 Live2Pet never hides a Part automatically based on its name. Friendly names are
 used when the model supplies them; otherwise the original Part IDs are shown.
 
 The project saves your hidden Parts and applies them to preview and both target
-builds. Toggling visibility updates the current pose immediately; full sampled
-animation framing runs only when capture is needed. Solo is not saved. Older
+builds. Toggling visibility updates the current pose immediately; sampled
+animation framing runs only when capture is needed, independently per Motion
+so a large effect in another Motion cannot shrink the whole package. Solo is not saved. Older
 projects open with every Part visible. A background painted into the same mesh
 as the character cannot be separated by this control.
 Visibility changes center the current visible content using the actual viewport.

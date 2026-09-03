@@ -402,3 +402,52 @@ project reopen, source relinking, and saved-runtime reuse after restart.
 Private consecutive-toggle/thumbnail probes also kept the paused model clocks
 unchanged. No model files, runtimes, screenshots, or generated packages are
 included in the source change.
+
+### Inline Part browsing and explicit package saving — 2026-09-03
+
+The Map library now uses HeroUI Animations/Visibility tabs. Visible Part rows
+request isolated thumbnail snapshots serially with a small scheduling gap;
+offscreen rows do not fill the renderer queue. Selecting a row image retains
+the larger preview above it. Thumbnail caches survive tab switches, are scoped
+to source/Motion/Expression/retry, and ignore results belonging to an old source.
+Empty and failed snapshots have explicit states; failed images can be retried.
+Tests cover lazy row observation, serialized requests, tab keyboard navigation,
+cache reuse, source replacement, and selecting the larger preview.
+
+Build results now offer Save ZIP independently of installation. Settings Storage
+includes native save-dialog mode (default) and a persistent native-picked output
+folder. Fixed-folder saves use exclusive copies and numbered collision names;
+dialog mode stages complete bytes before rename after native confirmation.
+Tests cover cancellation, concurrent same-name saves, unavailable folders,
+invalid settings, trusted artifact identities, and separation from installation.
+The packaged harness saves via the native dialog seam, not a browser download.
+
+### Per-Motion export framing — 2026-09-03
+
+A supplied package exposed excessive transparent margins in its actual WebP
+frames, independently of a Codex preview CSS sizing bug. The old visibility
+capture scan combined every source Motion into one envelope: large effects in
+other Motions shrank otherwise ordinary assets. Capture now samples only the
+requested Motion and caches its fixed envelope by Motion/Expression until
+visibility changes. This does not zoom each frame, crop out guessed background
+elements, or change source assets. Different Motions can have different framing.
+The previous all-source framing descriptions above are historical, superseded
+by this correction. Capture cache identity v5 skips the old undersized frames.
+
+Unit regressions require idle to retain its own bounds when another Motion
+reaches farther. A real-renderer reproduction compares preview and capture
+geometry. The opt-in packaged check `LIVE2PET_ACCEPT_MIN_FRAME_EXTENT` validates
+the maximum normalized width/height of the first encoded idle frame, so a
+successful ZIP or playable WebP alone cannot hide undersized content. Choose
+this threshold for the permitted local fixture; it is not a universal model
+validation rule. Generated Codex canvas previews also scale with their frame,
+without changing atlas resolution or aspect ratio.
+
+Final verification passed: 283 Node tests (two opt-in skips), 121 UI tests,
+type checking, source-release checks, and macOS packaging. Packaged acceptance
+passed for Cubism 2 and modern Cubism, including a 0.5 minimum visible extent
+in the first encoded Clawd idle frame for the local fixtures, native ZIP saving,
+scratch installation, cancellation, warm-cache builds, renderer crash recovery,
+project reopen/relink, and runtime reuse after restarting the App. The supplied
+old ZIP was inspected read-only; it must be rebuilt to receive corrected framing.
+No local model, runtime, diagnostic image, or generated package is published.

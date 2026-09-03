@@ -58,7 +58,8 @@ async function pageInitializeVisualElements() {
   const writeParameters = values => values.forEach((value, index) => setParameter(index, value));
   let posedParameters = readParameters();
   let hidden = new Set();
-  let capturePrepared = false;
+  const captureBounds = new Map();
+  let captureKey = null;
   const authored = new Map();
   const restoreAuthored = () => {
     for (const [id, opacity] of authored) setOpacity(id, opacity);
@@ -108,7 +109,7 @@ async function pageInitializeVisualElements() {
   };
   runtime.visualElements = elements;
   runtime.measureVisibleBounds = measureVisible;
-  const measureAnimated = async () => {
+  const measureAnimated = async motion => {
     let union = null;
     const include = () => {
       const bounds = measureVisible(true);
@@ -120,24 +121,34 @@ async function pageInitializeVisualElements() {
       union.width = right - union.x; union.height = bottom - union.y;
     };
     // Build-only framing. Never scan motions on an interactive toggle.
-    for (const motion of runtime.source.motions) {
-      await runtime.resetMotion(motion, runtime.options.motionPriority);
-      include();
-      for (let index = 1; index <= 8; index++) {
-        runtime.model.update(Math.max(0.001, motion.duration * 1000 / 8));
-        runtime.render(); include();
-      }
+    await runtime.resetMotion(motion, runtime.options.motionPriority);
+    include();
+    for (let index = 1; index <= 8; index++) {
+      runtime.model.update(Math.max(0.001, motion.duration * 1000 / 8));
+      runtime.render(); include();
     }
-    if (!runtime.source.motions.length) { runtime.model.update(0.001); runtime.render(); include(); }
     return union;
   };
-  runtime.prepareVisualCapture = async () => {
-    if (capturePrepared || !hidden.size) return;
+  runtime.prepareVisualCapture = async motionId => {
+    if (!hidden.size) return;
+    const key = JSON.stringify([motionId, runtime.state.expressionId ?? null]);
+    if (captureKey === key) return;
+    if (captureBounds.has(key)) {
+      runtime.visualBounds = captureBounds.get(key);
+      runtime.fit(); runtime.render();
+      captureKey = key;
+      return;
+    }
+    const captureMotion = runtime.source.motions.find(item => item.id === motionId);
+    if (!captureMotion) throw new Error('Capture Motion is not available.');
     const previous = { ...runtime.state };
     runtime.app.stop();
     runtime.visualBounds = null;
     runtime.fit();
-    runtime.visualBounds = await measureAnimated();
+    // A large effect or camera move in a different Motion must not shrink
+    // this asset. Keep one fixed envelope within this Motion, not across all.
+    runtime.visualBounds = await measureAnimated(captureMotion);
+    captureBounds.set(key, runtime.visualBounds);
     runtime.fit();
     const motion = runtime.source.motions.find(item => item.id === previous.motionId);
     if (motion) {
@@ -145,7 +156,7 @@ async function pageInitializeVisualElements() {
       runtime.model.update(Math.max(0.001, previous.time * 1000));
     }
     runtime.render();
-    capturePrepared = true;
+    captureKey = key;
   };
   runtime.setVisualSettings = async settings => {
     const known = new Set(ids);
@@ -154,7 +165,8 @@ async function pageInitializeVisualElements() {
     if (JSON.stringify(runtime.visualSettings) === JSON.stringify(settings)) return { elements, settings: runtime.visualSettings, empty: hidden.size > 0 && !runtime.visualBounds };
     restoreAuthored();
     hidden = new Set(settings.hiddenElementIds);
-    capturePrepared = false;
+    captureBounds.clear();
+    captureKey = null;
     runtime.app.stop();
     runtime.visualBounds = null;
     runtime.fit();

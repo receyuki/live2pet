@@ -92,9 +92,11 @@ Hidden opacity is applied after animation/pose and before Core updates its
 drawables. The next frame restores authored opacity before animation runs;
 showing a Part therefore restores the model's authored value rather than
 forcing opacity to one. Interactive visibility changes reframe the current pose
-without replaying source Motions. Only the first actual capture after a visibility
-change samples nine poses per source Motion for an export envelope; cache hits
-do not run this analysis. This is sampled framing, not proof of containment at
+without replaying source Motions. The first capture of each Motion/Expression
+after a visibility change samples nine poses of that Motion for its own fixed
+export envelope; unrelated source Motions cannot shrink it. Framing is reused
+within the Motion and cached for subsequent captures. Cache hits do not run this
+analysis. This is sampled framing, not proof of containment at
 every possible physics pose.
 Preview and both target captures receive the same project settings, including
 after renderer recovery.

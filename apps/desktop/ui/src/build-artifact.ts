@@ -1,4 +1,4 @@
-import { getBuildArtifact, type BuildArtifact } from "./app-host";
+import { getBuildArtifact, saveBuildArtifact, type BuildArtifact, type SaveArtifactResult } from "./app-host";
 
 export async function readCompleteBuildArtifact(artifactId: string): Promise<Uint8Array> {
   const chunks: Uint8Array[] = [];
@@ -21,13 +21,6 @@ export async function readCompleteBuildArtifact(artifactId: string): Promise<Uin
   return bytes;
 }
 
-export async function downloadBuildArtifact(artifact: BuildArtifact): Promise<void> {
-  const bytes = await readCompleteBuildArtifact(artifact.artifactId);
-  const blob = new Blob([Uint8Array.from(bytes).buffer], { type: "application/zip" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = artifact.filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
+export function downloadBuildArtifact(artifact: BuildArtifact): Promise<SaveArtifactResult> {
+  return saveBuildArtifact(artifact.artifactId);
 }

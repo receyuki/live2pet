@@ -1,5 +1,8 @@
 import '@testing-library/jest-dom/vitest';
 
+// jsdom has no Web Animations API; HeroUI's shared Tab indicator queries it.
+Object.defineProperty(Element.prototype, 'getAnimations', { configurable: true, value: () => [] });
+
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: (query: string) => ({

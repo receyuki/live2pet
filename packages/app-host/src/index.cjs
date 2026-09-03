@@ -68,6 +68,9 @@ const APP_IPC_METHODS = Object.freeze([
   'buildProject',
   'cancelBuild',
   'getBuildArtifact',
+  'getOutputSettings',
+  'configureOutputSettings',
+  'saveBuildArtifact',
   'chooseInstallRoot',
   'getTargetInstallations',
   'configureTargetInstallation',
@@ -570,7 +573,7 @@ function typedError(error) {
   };
 }
 
-function createAppIpcRouter({ projectWorkspaceService = null, projectSourceService = null, sourceInspectionService = null, runtimeSettingsService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, targetInstallationService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
+function createAppIpcRouter({ projectWorkspaceService = null, projectSourceService = null, sourceInspectionService = null, runtimeSettingsService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, targetInstallationService = null, packageOutputService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
   if (projectWorkspaceService !== null && (!isRecord(projectWorkspaceService) || typeof projectWorkspaceService.getRecentProjects !== 'function' || typeof projectWorkspaceService.openProject !== 'function' || typeof projectWorkspaceService.saveProject !== 'function')) fail('INVALID_APP_ROUTER', 'projectWorkspaceService must expose getRecentProjects, openProject, and saveProject functions when provided.');
   if (projectSourceService !== null && (!isRecord(projectSourceService) || typeof projectSourceService.relink !== 'function' || typeof projectSourceService.acknowledgeReview !== 'function')) fail('INVALID_APP_ROUTER', 'projectSourceService must expose relink and acknowledgeReview functions when provided.');
   if (sourceInspectionService !== null && typeof sourceInspectionService !== 'function') fail('INVALID_APP_ROUTER', 'sourceInspectionService must be a function when provided.');
@@ -581,6 +584,7 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
   if (installRootPickerService !== null && typeof installRootPickerService !== 'function') fail('INVALID_APP_ROUTER', 'installRootPickerService must be a function when provided.');
   if (targetInstallationService !== null && (!isRecord(targetInstallationService) || typeof targetInstallationService.get !== 'function' || typeof targetInstallationService.configure !== 'function')) fail('INVALID_APP_ROUTER', 'targetInstallationService must expose get and configure.');
   if (onBuildProgress !== null && typeof onBuildProgress !== 'function') fail('INVALID_APP_ROUTER', 'onBuildProgress must be a function when provided.');
+  if (packageOutputService !== null && (!isRecord(packageOutputService) || ['get', 'configure', 'save'].some(method => typeof packageOutputService[method] !== 'function'))) fail('INVALID_APP_ROUTER', 'packageOutputService must expose get, configure, and save.');
   if (typeof appVersion !== 'string' || !appVersion.trim()) fail('INVALID_APP_ROUTER', 'appVersion must be a non-empty string.');
   let buildArtifacts = new Map();
   let activeBuilds = new Map();
@@ -747,6 +751,25 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
           },
         };
       }
+      if (normalized.method === 'getOutputSettings') {
+        if (normalized.args.length) fail('INVALID_OUTPUT_SETTINGS_REQUEST', 'Output settings do not accept arguments.');
+        if (!packageOutputService) fail('APP_OUTPUT_UNAVAILABLE', 'Package output requires the Desktop App.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: await packageOutputService.get() };
+      }
+      if (normalized.method === 'configureOutputSettings') {
+        const input = normalized.args[0];
+        if (normalized.args.length !== 1 || !isRecord(input) || Object.keys(input).some(key => key !== 'action') || !['choose-folder', 'ask-every-time'].includes(input.action)) fail('INVALID_OUTPUT_SETTINGS_REQUEST', 'Choose a supported native output configuration action.');
+        if (!packageOutputService) fail('APP_OUTPUT_UNAVAILABLE', 'Package output requires the Desktop App.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: await packageOutputService.configure(input) };
+      }
+      if (normalized.method === 'saveBuildArtifact') {
+        const input = normalized.args[0];
+        if (normalized.args.length !== 1 || !isRecord(input) || Object.keys(input).some(key => key !== 'artifactId') || typeof input.artifactId !== 'string' || !input.artifactId.trim()) fail('INVALID_BUILD_ARTIFACT_REQUEST', 'Saving requires a completed artifact ID only.');
+        if (!packageOutputService) fail('APP_OUTPUT_UNAVAILABLE', 'Package output requires the Desktop App.');
+        const artifact = buildArtifacts.get(input.artifactId.trim());
+        if (!artifact) fail('BUILD_ARTIFACT_NOT_FOUND', 'The requested build artifact is no longer available. Build the project again.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: await packageOutputService.save(artifact) };
+      }
       if (normalized.method === 'getTargetInstallations') {
         if (normalized.args.length) fail('INVALID_INSTALL_SETTINGS_REQUEST', 'Target detection does not accept arguments.');
         if (!targetInstallationService) fail('APP_INSTALL_SETTINGS_UNAVAILABLE', 'Target installation settings require the Desktop App.');
@@ -869,6 +892,9 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
     cancelBuild: (buildId) => invoke('cancelBuild', { buildId }),
     onBuildProgress,
     getBuildArtifact: (artifactId, offset = 0) => invoke('getBuildArtifact', { artifactId, offset }),
+    getOutputSettings: () => invoke('getOutputSettings'),
+    configureOutputSettings: (input) => invoke('configureOutputSettings', input),
+    saveBuildArtifact: (artifactId) => invoke('saveBuildArtifact', { artifactId }),
     chooseInstallRoot: (target) => invoke('chooseInstallRoot', { target }),
     getTargetInstallations: () => invoke('getTargetInstallations'),
     configureTargetInstallation: (input) => invoke('configureTargetInstallation', input),

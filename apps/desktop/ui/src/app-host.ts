@@ -99,6 +99,9 @@ export type BuildProgressEvent = {
 };
 
 export type BuildArtifact = { artifactId: string; target: BuildTarget; filename: string; byteLength: number };
+export type OutputSettings = { schemaVersion: 1; mode: 'ask' | 'folder'; folder?: string; folderState?: 'ready' | 'will-create' | 'not-directory' | 'unavailable' };
+export type OutputSettingsAction = 'choose-folder' | 'ask-every-time';
+export type SaveArtifactResult = { cancelled: true } | { cancelled: false; path: string; filename: string; byteLength: number };
 export type BuildSummary = {
   target: BuildTarget;
   validation?: { ok?: boolean; errors?: unknown[]; warnings?: unknown[] } | null;
@@ -170,6 +173,9 @@ type Live2PetApi = {
   cancelBuild?(buildId: string): Promise<AppResponse<{ buildId: string; cancelled: boolean; active: boolean }>>;
   onBuildProgress?(listener: (event: BuildProgressEvent) => void): () => void;
   getBuildArtifact?(artifactId: string, offset?: number): Promise<AppResponse<BuildArtifactChunk>>;
+  getOutputSettings?(): Promise<AppResponse<OutputSettings>>;
+  configureOutputSettings?(input: { action: OutputSettingsAction }): Promise<AppResponse<{ cancelled: boolean }>>;
+  saveBuildArtifact?(artifactId: string): Promise<AppResponse<SaveArtifactResult>>;
   chooseInstallRoot?(target: BuildTarget): Promise<AppResponse<InstallRootResult>>;
   getTargetInstallations?(): Promise<AppResponse<TargetInstallations>>;
   configureTargetInstallation?(input: { target: BuildTarget; action: InstallationAction }): Promise<AppResponse<{ cancelled: boolean }>>;
@@ -340,6 +346,24 @@ export function onBuildProgress(listener: (event: BuildProgressEvent) => void): 
 
 export function getBuildArtifact(artifactId: string, offset = 0): Promise<BuildArtifactChunk> {
   return unwrap(buildApi().getBuildArtifact!(artifactId, offset));
+}
+
+export function getOutputSettings(): Promise<OutputSettings> {
+  const api = desktopApi();
+  if (!api?.getOutputSettings) return Promise.reject(new DesktopApiError('APP_OUTPUT_UNAVAILABLE', 'Package output settings require the Desktop App.'));
+  return unwrap(api.getOutputSettings());
+}
+
+export function configureOutputSettings(action: OutputSettingsAction): Promise<{ cancelled: boolean }> {
+  const api = desktopApi();
+  if (!api?.configureOutputSettings) return Promise.reject(new DesktopApiError('APP_OUTPUT_UNAVAILABLE', 'Package output settings require the Desktop App.'));
+  return unwrap(api.configureOutputSettings({ action }));
+}
+
+export function saveBuildArtifact(artifactId: string): Promise<SaveArtifactResult> {
+  const api = desktopApi();
+  if (!api?.saveBuildArtifact) return Promise.reject(new DesktopApiError('APP_OUTPUT_UNAVAILABLE', 'Saving Pet Packages requires the Desktop App.'));
+  return unwrap(api.saveBuildArtifact(artifactId));
 }
 
 export function chooseInstallRoot(target: BuildTarget): Promise<InstallRootResult> {

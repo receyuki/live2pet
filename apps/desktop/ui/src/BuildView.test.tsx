@@ -24,7 +24,7 @@ afterEach(cleanup);
 beforeEach(() => {
   vi.mocked(hasTargetInstallationApi).mockReturnValue(false);
   vi.mocked(getTargetInstallations).mockReset();
-  vi.mocked(downloadBuildArtifact).mockReset().mockResolvedValue();
+  vi.mocked(downloadBuildArtifact).mockReset().mockResolvedValue({ cancelled: false, path: '/output/pet.zip', filename: 'pet.zip', byteLength: 100 });
   vi.mocked(chooseInstallRoot).mockReset().mockResolvedValue({ target: "clawd", cancelled: false, locationId: "location-12345678", label: "selected-folder" });
   vi.mocked(installArtifact).mockReset().mockResolvedValue({ target: "clawd", files: [], path: "<selected-install-root>" });
   vi.spyOn(window, "confirm").mockReset().mockReturnValue(true);
@@ -93,7 +93,7 @@ describe("BuildView", () => {
     state.clawd = { ...state.clawd, status: "succeeded", progress: 100, artifact: { artifactId: "artifact-1", target: "clawd", filename: "clawd.zip", byteLength: 3 }, summary: { target: "clawd", validation: { ok: true }, preview: { ready: true } } };
     render(<BuildView locale="en" project={project} inspection={inspection} runtimeReady state={state} onPreset={vi.fn()} onBuild={vi.fn()} onCancel={vi.fn()} />);
 
-    await user.click(screen.getByRole("button", { name: "Download Clawd Theme Package" }));
+    await user.click(screen.getByRole("button", { name: "Save ZIP Clawd Theme Package" }));
     expect(downloadBuildArtifact).toHaveBeenCalledOnce();
     expect(installArtifact).not.toHaveBeenCalled();
 

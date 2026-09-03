@@ -93,8 +93,7 @@ for (const cubismVersion of [2, 4]) test(`Cubism ${cubismVersion}: hides after p
     await assert.rejects(pageSetVisualSettings({ hiddenElementIds: ['missing'] }), /no longer available/);
     await pageSetVisualSettings({ hiddenElementIds: ['BG', 'Body'] });
     assert.equal(runtime.visualBounds, null);
-    // The second motion reaches farther than the first. Framing must include
-    // it even while the UI is paused on the first motion.
+    // A wider Motion must not shrink idle just because it exists in the source.
     runtime.source.motions = [{ id: 'idle', duration: 1 }, { id: 'reach', duration: 1 }];
     runtime.state = { motionId: 'idle', time: 0.25, playing: false };
     let current = 'idle', time = 0;
@@ -109,12 +108,17 @@ for (const cubismVersion of [2, 4]) test(`Cubism ${cubismVersion}: hides after p
     };
     await pageSetVisualSettings({ hiddenElementIds: ['BG'] });
     assert.equal(resets, 0, 'interactive toggles must not replay source motions');
-    await runtime.prepareVisualCapture();
+    await runtime.prepareVisualCapture('idle');
+    assert.deepEqual(runtime.visualBounds, { x: 2, y: 2, width: 4, height: 4 }, 'unrelated Motion bounds do not shrink idle');
+    await runtime.prepareVisualCapture('reach');
     assert.deepEqual(runtime.visualBounds, { x: 2, y: 2, width: 6, height: 4 });
     assert.equal(current, 'idle', 'restore selected motion after measuring the source envelope');
     assert.deepEqual(runtime.state, { motionId: 'idle', time: 0.25, playing: false });
     const preparedResets = resets;
-    await runtime.prepareVisualCapture();
-    assert.equal(resets, preparedResets, 'capture framing is prepared once per hidden set');
+    await runtime.prepareVisualCapture('reach');
+    assert.equal(resets, preparedResets, 'capture framing is prepared once per Motion and hidden set');
+    await runtime.prepareVisualCapture('idle');
+    assert.equal(resets, preparedResets, 'switching back reuses this Motion framing');
+    assert.deepEqual(runtime.visualBounds, { x: 2, y: 2, width: 4, height: 4 });
   } finally { global.window = previousWindow; }
 });

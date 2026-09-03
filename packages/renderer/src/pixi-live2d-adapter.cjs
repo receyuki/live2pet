@@ -419,7 +419,7 @@ function pageCapture(motionId, time, width, height, priority, binary = false) {
     if (!runtime) throw new Error('Renderer is not loaded.');
     const motion = runtime.source.motions.find((item) => item.id === motionId);
     if (!motion) throw new Error(`Motion is not available: ${motionId}`);
-    await runtime.prepareVisualCapture?.();
+    await runtime.prepareVisualCapture?.(motionId);
     runtime.app.stop();
     const captureTime = Math.min(Math.max(0, time), motion.duration);
     const restart = runtime.state.motionId !== motionId || captureTime <= runtime.state.time;

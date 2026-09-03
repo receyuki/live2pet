@@ -45,7 +45,7 @@ let app;
     if (hiddenElementId) {
       await page.getByRole('button', { name: 'Pause motion', exact: true }).click();
       await page.waitForFunction(async () => (await window.live2pet.getPreviewStatus()).result.playback.playing === false);
-      await page.getByRole('button', { name: 'Visibility', exact: true }).click();
+      await page.getByRole('tab', { name: 'Visibility', exact: true }).click();
       await page.getByRole('textbox', { name: 'Search visual elements' }).fill(hiddenElementId);
       const rows = page.locator('.visibility-row').filter({ hasText: hiddenElementId });
       await rows.getByRole('button', { name: /^Hide ·/ }).first().click();
@@ -55,6 +55,7 @@ let app;
       assert.ok(thumbnail.result.dataUrl?.startsWith('data:image/png;base64,'), 'selected Part has an on-demand PNG thumbnail');
       const dimensions = await page.evaluate(async url => { const image = new Image(); image.src = url; await image.decode(); return [image.naturalWidth, image.naturalHeight]; }, thumbnail.result.dataUrl);
       assert.deepEqual(dimensions, [192, 192]);
+      await rows.locator('.visibility-row-thumbnail img').first().waitFor();
       await rows.getByRole('button', { name: /^Inspect ·/ }).first().click();
       await page.locator('.visibility-inspector img').waitFor();
       await page.screenshot({ path: path.join(profile, `${generation}-part-preview.png`) });
@@ -73,7 +74,7 @@ let app;
         return right < 0 ? null : [(left + right + 1 - width) / 2, (top + bottom + 1 - height) / 2];
       })()`));
       assert.ok(centerOffset && centerOffset.every(offset => Math.abs(offset) <= 3), `hidden Parts and thumbnail restoration keep actual viewport centered: ${centerOffset}`);
-      await page.getByRole('button', { name: 'Back to motions', exact: true }).click();
+      await page.getByRole('tab', { name: 'Animations', exact: true }).click();
       await page.getByRole('button', { name: 'Play motion', exact: true }).click();
       log(`${generation}: manually selected a hidden Visual Element`);
     }
@@ -196,6 +197,8 @@ let app;
       assert.ok(Math.abs(previewBox.width - contentBox.width) < 1, 'Generated result follows the card content width');
       assert.ok(previewBox.x + previewBox.width <= cardBox.x + cardBox.width, 'Generated preview stays inside its card');
       assert.ok(Math.abs(stageBox.width - (previewBox.width - 26)) < 1 && Math.abs(stageBox.width - stageBox.height) < 1, 'Generated stage adapts to its frame and stays square');
+      const mediaBox = await card.locator('.generated-preview-stage img, .generated-preview-stage canvas').boundingBox();
+      assert.ok(Math.abs(mediaBox.width - stageBox.width) <= 3 && Math.abs(mediaBox.height - stageBox.height) <= 3, 'Generated media scales with its preview stage, not its intrinsic pixel size');
       const trackBox = await card.locator('[data-slot="progress-bar-track"]').boundingBox();
       assert.ok(trackBox.width > 100 && trackBox.height > 0, 'Build progress has a visible width and height');
       const choices = card.locator('.generated-preview-choices button');
@@ -207,19 +210,26 @@ let app;
       log(`${generation}: ${targetName} build succeeded`);
       if (process.env.LIVE2PET_ACCEPT_BUILD_HARDENING === '1') {
         const downloadPath = path.join(profile, `${generation}-${targetName.startsWith('Clawd') ? 'clawd' : 'codex'}.zip`);
-        await app.evaluate(({ BrowserWindow }, destination) => {
-          globalThis.__acceptDownloadState = 'pending';
-          BrowserWindow.getAllWindows()[0].webContents.session.once('will-download', (_event, item) => {
-            item.setSavePath(destination);
-            item.once('done', (_event, state) => { globalThis.__acceptDownloadState = state; });
-          });
-        }, downloadPath);
-        await card.getByRole('button', { name: `Download ${targetName}`, exact: true }).click();
-        for (let attempt = 0; attempt < 100 && await app.evaluate(() => globalThis.__acceptDownloadState) === 'pending'; attempt++) await page.waitForTimeout(100);
-        assert.equal(await app.evaluate(() => globalThis.__acceptDownloadState), 'completed');
-        assert.ok(fs.statSync(downloadPath).size > 0, 'explicit Download writes a portable ZIP');
+        await app.evaluate(({ dialog }, destination) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: destination }); }, downloadPath);
+        await card.getByRole('button', { name: `Save ZIP ${targetName}`, exact: true }).click();
+        await card.getByText(`Saved to ${downloadPath}`, { exact: true }).waitFor();
+        assert.ok(fs.statSync(downloadPath).size > 0, 'explicit Save ZIP writes a portable package without installation');
         const entries = await require(path.join(root, 'packages/installation/src/index.cjs')).readArchive(fs.readFileSync(downloadPath));
         assert.ok(entries.some(entry => /(?:theme|pet)\.json$/.test(entry.name)));
+        const minExtent = Number(process.env.LIVE2PET_ACCEPT_MIN_FRAME_EXTENT || 0);
+        if (targetName.startsWith('Clawd') && minExtent > 0) {
+          const theme = JSON.parse(entries.find(entry => entry.name.endsWith('/theme.json')).bytes);
+          const idle = entries.find(entry => entry.name.endsWith(`/assets/${theme.states.idle[0]}`));
+          const sharp = require(path.join(root, 'packages/package-build/node_modules/sharp'));
+          const { data, info } = await sharp(idle.bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+          let left = info.width, top = info.height, right = -1, bottom = -1;
+          for (let y = 0; y < info.height; y++) for (let x = 0; x < info.width; x++) if (data[(y * info.width + x) * 4 + 3]) {
+            left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y);
+          }
+          const extent = Math.max((right - left + 1) / info.width, (bottom - top + 1) / info.height);
+          assert.ok(extent >= minExtent, `encoded idle content fills the expected portion of its canvas: ${extent}`);
+        }
+        await app.evaluate(({ dialog }, destination) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: destination }); }, file);
         const installRoot = path.join(profile, `install-${generation}-${targetName.startsWith('Clawd') ? 'clawd' : 'codex'}`);
         fs.mkdirSync(installRoot);
         await app.evaluate(({ dialog }, destination) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [destination] }); }, installRoot);
