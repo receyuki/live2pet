@@ -1,8 +1,54 @@
 # Live2Pet
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 Turn Live2D models into portable packages for agent-pet hosts.
 
 Live2Pet is an early-stage local desktop toolchain for loading Cubism models, previewing their original motions, mapping those motions to target-specific pet states, and building validated Clawd theme and Codex custom-pet packages. The current V1 milestone is deliberately limited to a personal-use macOS App.
+
+<a id="runtime-setup"></a>
+
+## Runtime setup: why a separate download?
+
+A model contains the character data; a runtime is the code that makes it move.
+Live2Pet includes its interface and rendering adapters, but deliberately does
+not bundle or download Live2D's proprietary runtime. Its license is separate
+from this repository's source code. Obtain it from the appropriate source and
+review its terms yourself; importing it does not grant rights to your models
+or to publish derived pets.
+
+| Your model | Runtime to import | Where to get it |
+| --- | --- | --- |
+| Cubism 3 and later (`.model3.json` / `.moc3`) | Cubism Core for Web, typically `Core/live2dcubismcore.min.js` | [Official Cubism SDK for Web download](https://www.live2d.com/en/sdk/download/web/) — download the SDK and extract it first. |
+| Cubism 2 (`.model.json` / `.moc`, including some PCK packages) | Legacy Web runtime `live2d.min.js` | Third-party legacy source: [dylanNew/live2d runtime directory](https://github.com/dylanNew/live2d/tree/master/webgl/Live2D/lib), or [open the raw JavaScript file](https://raw.githubusercontent.com/dylanNew/live2d/master/webgl/Live2D/lib/live2d.min.js) and save it as `live2d.min.js`. |
+
+For Cubism 2, save the JavaScript file itself, not the GitHub HTML page, then
+drag that file into Live2Pet. The linked repository is a **third-party copy**,
+not an official or maintained Live2D download channel. [Live2D's notice](https://help.live2d.com/en/other/other_20/)
+states that new Cubism 2.1 SDK downloads are no longer available. Check the
+source and applicable runtime license before using the copy; public GitHub
+availability is not a grant of rights. Live2Pet only links to it and does not
+bundle, automatically download, or redistribute it.
+
+The SDK download page asks you to review Live2D's software licenses. Use the
+**Web** SDK, not the Editor, Unity SDK, or Native SDK. A modern Core does not
+replace the Cubism 2 runtime. PCK is a container, not a runtime generation or a
+guarantee that its contents are supported.
+
+1. Extract the downloaded SDK locally.
+2. In first-time Setup or **Settings → Runtimes**, drag in the JavaScript runtime
+   file or extracted SDK folder, or use **Add runtime / Choose SDK folder**.
+3. Live2Pet detects the generation and saves its own local copy. You do not need
+   to rebuild the App or import the runtime every launch. Both generations can
+   be saved together and selected automatically for the model.
+
+Only import trusted runtime code. Removing a saved runtime from Settings does
+not delete your original file. You can skip this step to inspect resources,
+but model playback and capture require a matching saved runtime. This guide
+covers the current Live2D workflow; it does not imply Spine support is complete.
+
+The App's download-guide button opens this section in your system browser,
+using the English or Chinese README according to the App's current language.
 
 ## Components
 
@@ -18,7 +64,7 @@ Live2Pet is an early-stage local desktop toolchain for loading Cubism models, pr
 - `packages/app-host/` — typed IPC router, preload API, artifact download/install boundary, opaque native location handles, and hardened window defaults.
 - `apps/desktop/` — Electron App with the default React/TypeScript/HeroUI interface: first-run Setup, Welcome, full-page Settings, and Source/Map/Build destinations. It saves projects, previews models, builds ZIPs, and explicitly installs generated artifacts without bundling user runtimes or models. The center column is the only Source Package preview; `apps/mapper/` remains a development reference, not the App entrypoint.
 - `packages/clawd-target/` — guide-aligned Clawd Target Profile validation for states, sleep modes, fallbacks, and reactions.
-- `packages/codex-target/` — Codex Pet V1 atlas geometry, nine-row mapping, frame-reference layout planning, RGBA composition, and package-shape validation.
+- `packages/codex-target/` — versioned Codex Pet V1/V2 atlas geometry, nine-row mapping, frame-reference layout planning, RGBA composition, and package-shape validation. Desktop builds use [V2 with neutral look poses](docs/codex-sprite-v2.md).
 - `packages/live2d-exporter/` — deterministic transparent-frame exporter and Live2D PCK unpacker.
 - `docs/research/` — architecture, integration, and ecosystem research.
 - `docs/agents/` — repository conventions consumed by engineering skills.
@@ -39,7 +85,7 @@ Character models, rendered frames, theme examples, and release ZIP files are int
 
 Live2Pet does not grant rights to any imported model, texture, motion, or derived animation. Cubism Core is also kept local and is not redistributed by this repository.
 
-The official modern Cubism Core download is available from [Live2D's SDK for Web page](https://www.live2d.com/en/sdk/download/web/). Cubism 2 Web runtime distribution was discontinued by Live2D; use a copy you are separately licensed to run for local development. Live2Pet does not download or redistribute either runtime.
+For runtime sources and one-time import instructions, see [Runtime setup](#runtime-setup).
 
 ## Development status
 

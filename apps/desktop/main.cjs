@@ -1,6 +1,7 @@
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, screen, WebContentsView } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, screen, shell, WebContentsView } = require('electron');
+const { createRuntimeHelpWindowHandler } = require('./runtime-help.cjs');
 
 const {
   APP_COMMAND_CHANNEL,
@@ -338,7 +339,7 @@ async function createMainWindow() {
       try { mainWindow.webContents.send(PREVIEW_STATUS_CHANNEL, status); } catch {}
     },
   });
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  mainWindow.webContents.setWindowOpenHandler(createRuntimeHelpWindowHandler((url) => shell.openExternal(url)));
   const documentUrl = pathToFileURL(documentPath).href;
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (url !== documentUrl) event.preventDefault();

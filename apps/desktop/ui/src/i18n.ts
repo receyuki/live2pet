@@ -2,6 +2,7 @@ export type Locale = 'en' | 'zh-CN';
 
 const messages = {
   en: {
+    runtimeHelp: 'Why a separate runtime? Download guide ↗',
     codexV2Hint: 'Codex V2 · 11-row atlas. The 16 look-direction cells use a neutral idle pose; directional mouse following is not generated yet. Keep your existing nine animation mappings.', codexNeutralLook: 'Neutral look (static)',
     projectDropDesktop: 'Drop a local .live2pet project file in the Desktop App.', buildStatus_queued: 'Queued', buildQueuedHint: 'Waiting for another build to release the shared renderer. This build will start automatically.', buildPreparing: 'Preparing the renderer and Source Package…',
     mappingRequired: 'Required', mappingOptional: 'Optional', mappingRequiredHint: 'Map every state in this group before building.', mappingOptionalHint: 'May be left empty; does not block building.', mappingFullSleepRequired: 'Full sleep mode is enabled; all four states are required.', mappingFullSleepOptional: 'Only required for full sleep mode. Otherwise leave empty.',
@@ -41,6 +42,7 @@ const messages = {
     cacheRefresh: 'Refresh cache state',
   },
   'zh-CN': {
+    runtimeHelp: '为什么要单独下载运行时？下载指南 ↗',
     codexV2Hint: 'Codex V2 · 11 行图集。16 个方向格使用 idle 的中立姿势，暂不生成方向跟随；沿用现有九个动作映射。', codexNeutralLook: '中立姿势（静态）',
     projectDropDesktop: '请在桌面 App 中拖入本地 .live2pet 项目文件。', buildStatus_queued: '排队中', buildQueuedHint: '正在等待其他构建释放共享渲染器，轮到后会自动开始。', buildPreparing: '正在准备渲染器和资源包…',
     mappingRequired: '必选', mappingOptional: '可选', mappingRequiredHint: '构建前需要完成本组全部状态的映射。', mappingOptionalHint: '可以留空，不影响构建。', mappingFullSleepRequired: '已启用完整睡眠模式，四个状态均为必选。', mappingFullSleepOptional: '仅完整睡眠模式需要；其他情况可以留空。',

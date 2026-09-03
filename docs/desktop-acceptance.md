@@ -107,3 +107,23 @@ Both builds completed, including the V2 neutral-look preview choice. At window
 widths 1024, 1280, and 1600, the result frame matched its card content width,
 the stage remained square, and the page had no horizontal overflow. A declined
 project-replacement prompt preserved unsaved work in the UI regression.
+
+### Localized runtime download guidance
+
+The shared runtime panel in Setup and Settings now opens a language-specific
+README runtime section in the system browser. English and Simplified Chinese
+READMEs are maintained together, with a stable `runtime-setup` anchor. The
+guide explains one-time local import, separate runtime licensing, the official
+modern Web SDK source, and the user-supplied third-party Cubism 2 file source.
+The legacy link is explicitly identified as unofficial; no runtime is bundled
+or downloaded by the App.
+
+The main window permits only the two exact help URLs through `shell.openExternal`;
+all child windows and other external destinations remain denied. Regression
+checks cover both entry points in both languages, README anchors, and rejected
+URLs. All 93 UI tests, the two help-boundary tests, type checking, and the source
+asset scan passed. A separate-profile packaged App probe clicked all four
+entry-point/language combinations and confirmed delivery to the real Electron
+system-browser boundary with no new App window. The probe replaced only the
+final browser-opening side effect, so it did not open the user's browser or
+claim network-page rendering acceptance.

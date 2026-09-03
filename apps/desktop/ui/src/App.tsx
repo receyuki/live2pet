@@ -12,6 +12,7 @@ import {
   ChevronRight,
   CircleCheck,
   Database,
+  ExternalLink,
   FolderOpen,
   Gauge,
   HardDrive,
@@ -76,6 +77,7 @@ import {
   SettingsSection,
 } from "./app-state";
 import { Locale, MessageKey, translate } from "./i18n";
+import runtimeHelpLinks from "../../runtime-help-links.json";
 import { projectIdFromSourceName, sourcePathFromSelection } from "./source-selection";
 import { hasDraggedFiles, isProjectFile } from "./file-drop";
 import { CLAWD_PROFILE, CODEX_PROFILE, MappingDestination } from "./target-profiles";
@@ -277,6 +279,9 @@ function RuntimePanel({ locale, compact = false, onSettingsChange }: { locale: L
         </div>
         {busy && <ProgressBar aria-label={t("loading")} isIndeterminate className="mt-4" />}
         <p className="drop-hint">{t("dropRuntime")}</p>
+        <Button variant="ghost" size="sm" onPress={() => window.open(runtimeHelpLinks[locale], '_blank', 'noopener,noreferrer')}>
+          <ExternalLink size={14} />{t("runtimeHelp")}
+        </Button>
         {dragActive && <div className="drop-overlay" aria-hidden="true"><Upload size={20} />{t("dropRuntime")}</div>}
         <div className="runtime-list">
           {runtimes.length === 0 ? (

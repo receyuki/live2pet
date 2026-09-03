@@ -166,6 +166,25 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('Live2Pet desktop shell', () => {
+  it.each(['en', 'zh-CN'] as const)('opens localized runtime help from setup and Settings (%s)', async (locale) => {
+    localStorage.setItem('live2pet.desktop.locale', locale);
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    const user = userEvent.setup();
+    const view = render(<App />);
+    const help = locale === 'en' ? 'Why a separate runtime? Download guide ↗' : '为什么要单独下载运行时？下载指南 ↗';
+    const url = `https://github.com/receyuki/live2pet/blob/main/${locale === 'en' ? 'README.md' : 'README.zh-CN.md'}#runtime-setup`;
+    await user.click(screen.getByRole('button', { name: help }));
+    expect(open).toHaveBeenLastCalledWith(url, '_blank', 'noopener,noreferrer');
+    view.unmount();
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    render(<App />);
+    await user.click(screen.getByRole('button', { name: locale === 'en' ? 'Settings' : '设置' }));
+    await user.click(screen.getByRole('button', { name: locale === 'en' ? 'Runtimes' : '运行时' }));
+    await user.click(screen.getByRole('button', { name: help }));
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(open).toHaveBeenLastCalledWith(url, '_blank', 'noopener,noreferrer');
+    open.mockRestore();
+  });
   it('does not replace empty real motion and expression inventories with design fixtures', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const api = installDesktopApi();

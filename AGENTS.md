@@ -14,6 +14,12 @@ This is a single-context repository. See `docs/agents/domain.md`.
 
 ## Engineering behavior
 
+### Documentation languages
+
+- Maintain `README.md` in English and `README.zh-CN.md` in Simplified Chinese. Update both when changing product behavior, setup instructions, or development commands.
+- Preserve the `runtime-setup` anchor in both READMEs: the Desktop App links directly to it according to its current locale.
+- Keep issues and other engineering documentation in English unless explicitly requested otherwise.
+
 These principles are adapted for Live2Pet from the behavioral guidance in [`multica-ai/andrej-karpathy-skills`](https://github.com/multica-ai/andrej-karpathy-skills/blob/main/CLAUDE.md).
 
 ### Plan before editing
