@@ -105,10 +105,27 @@ function createElectronWebContentsPage({ webContents } = {}) {
       // expression executable across supported Electron versions.
       serialized = serialized.replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
       const source = `(${Function.prototype.toString.call(fn)})(...${serialized})`;
+      let processGone;
+      let destroyed;
       try {
-        return await webContents.executeJavaScript(source, true);
+        if (webContents.isDestroyed?.()) throw rendererRealmError('PREVIEW_VIEW_DESTROYED', 'Preview view was destroyed.');
+        if (webContents.isCrashed?.()) throw rendererRealmError('PREVIEW_PROCESS_GONE', 'Preview renderer process exited.');
+        // Electron can leave executeJavaScript pending when its renderer dies.
+        // Release callers (including the serialized preview/capture queue) at
+        // the host lifecycle boundary, without waiting for another page call.
+        const terminated = new Promise((_, reject) => {
+          processGone = () => reject(rendererRealmError('PREVIEW_PROCESS_GONE', 'Preview renderer process exited.'));
+          destroyed = () => reject(rendererRealmError('PREVIEW_VIEW_DESTROYED', 'Preview view was destroyed.'));
+          webContents.on?.('render-process-gone', processGone);
+          webContents.on?.('destroyed', destroyed);
+        });
+        return await Promise.race([webContents.executeJavaScript(source, true), terminated]);
       } catch (error) {
+        if (['PREVIEW_PROCESS_GONE', 'PREVIEW_VIEW_DESTROYED'].includes(error?.code)) throw error;
         throw rendererRealmError('RENDERER_PAGE_ERROR', error && error.message ? error.message : error);
+      } finally {
+        if (processGone) webContents.removeListener?.('render-process-gone', processGone);
+        if (destroyed) webContents.removeListener?.('destroyed', destroyed);
       }
     },
   });

@@ -584,3 +584,20 @@ test('Electron webContents page serializes only fixed function calls and JSON ar
     (error) => error instanceof RendererContractError && error.code === 'INVALID_RENDERER_HOST',
   );
 });
+
+test('Electron page rejects pending work on destruction and removes lifecycle listeners', async () => {
+  const webContents = new EventEmitter();
+  let finish;
+  webContents.executeJavaScript = () => new Promise(resolve => { finish = resolve; });
+  const page = createElectronWebContentsPage({ webContents });
+  const pending = page.evaluate(() => 1);
+  const rejected = assert.rejects(pending, { code: 'PREVIEW_VIEW_DESTROYED' });
+  webContents.emit('destroyed');
+  await rejected;
+  finish(1);
+  assert.equal(webContents.listenerCount('destroyed'), 0);
+  assert.equal(webContents.listenerCount('render-process-gone'), 0);
+  webContents.executeJavaScript = async () => 2;
+  assert.equal(await page.evaluate(() => 2), 2);
+  assert.equal(webContents.listenerCount('render-process-gone'), 0);
+});

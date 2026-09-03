@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const test = require('node:test');
+const { createElectronWebContentsPage } = require('@live2pet/renderer');
 
 const {
   PreviewSessionError,
@@ -215,6 +216,27 @@ test('a dead renderer does not block failure notification waiting for unload Jav
   assert.equal(unloadCalled, false);
   await service.close();
   assert.equal(service.getStatus().state, 'idle');
+});
+
+test('renderer crash settles an in-flight status poll so Retry is not queued forever', async () => {
+  const { adapter, service, statuses, webContents } = fixture();
+  await service.open({ projectId: 'project-1', sourceFingerprint: FINGERPRINT, bounds: { x: 0, y: 0, width: 512, height: 512 } });
+  webContents.executeJavaScript = () => new Promise(() => {});
+  const page = createElectronWebContentsPage({ webContents });
+  adapter.readState = () => page.evaluate(() => ({}));
+  adapter.unload = () => page.evaluate(() => null);
+  const polling = service.readStatus().catch((error) => error);
+  await new Promise((resolve) => setImmediate(resolve));
+  webContents.emit('render-process-gone', {}, { reason: 'crashed' });
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(statuses.at(-1).state, 'failed', 'failed status must reach the UI while executeJavaScript is unresolved');
+  assert.equal((await polling).code, 'PREVIEW_PROCESS_GONE');
+  delete adapter.readState;
+  delete adapter.unload;
+  webContents.closed = false;
+  const retry = await service.open({ projectId: 'project-1', sourceFingerprint: FINGERPRINT, bounds: { x: 0, y: 0, width: 512, height: 512 } });
+  assert.equal(retry.state, 'ready');
+  await service.close();
 });
 
 test('withRenderer reuses a matching session, hides it, and serializes preview commands', async () => {
