@@ -18,6 +18,8 @@ const {
   saveAutosaveFile,
   saveProjectFile,
   serializeProject,
+  digestVisualSettings,
+  normalizeVisualSettings,
 } = require('../src/index.cjs');
 
 function fixture() {
@@ -59,6 +61,39 @@ test('creates and round-trips a reference-only Live2Pet Project', () => {
   assert.equal(text.includes('modelData'), false);
 });
 
+test('migrates a schema v1 project to v2 with an empty Visual Settings set', () => {
+  const legacy = fixture();
+  legacy.schemaVersion = 1;
+  delete legacy.visualSettings;
+
+  const migrated = parseProject(JSON.stringify(legacy));
+
+  assert.equal(migrated.schemaVersion, 2);
+  assert.deepEqual(migrated.visualSettings, { hiddenElementIds: [] });
+  assert.deepEqual(parseProject(serializeProject(migrated)), migrated);
+});
+
+test('normalizes Visual Settings canonically and hashes the canonical form', () => {
+  const settings = normalizeVisualSettings({ hiddenElementIds: ['Background', 'Character', 'Background'] });
+
+  assert.deepEqual(settings, { hiddenElementIds: ['Background', 'Character'] });
+  assert.equal(digestVisualSettings(settings), digestVisualSettings({ hiddenElementIds: ['Character', 'Background'] }));
+  assert.equal(digestVisualSettings({ hiddenElementIds: [] }), '873a9b1be984c6c3d90f59640e5531908ed3d5426fa0f70faff1d2cae04df393');
+});
+
+test('rejects malformed Visual Element identities', () => {
+  for (const invalid of [
+    { hiddenElementIds: [''] },
+    { hiddenElementIds: ['a'.repeat(257)] },
+    { hiddenElementIds: ['bad\nidentity'] },
+    { hiddenElementIds: ['bad\u007fidentity'] },
+    { hiddenElementIds: Array.from({ length: 4097 }, (_, index) => `id-${index}`) },
+  ]) {
+    assert.throws(() => normalizeVisualSettings(invalid), (error) => error.code === 'INVALID_VISUAL_SETTINGS');
+  }
+  assert.throws(() => normalizeVisualSettings({}), (error) => error.code === 'INVALID_VISUAL_SETTINGS');
+});
+
 test('normalizes missing targets without embedding source assets', () => {
   const project = createProject({
     projectId: 'minimal',
@@ -72,7 +107,7 @@ test('normalizes missing targets without embedding source assets', () => {
 
 test('rejects future schema versions, duplicate recipes, and malformed mappings', () => {
   assert.throws(
-    () => parseProject(JSON.stringify({ schemaVersion: 2 })),
+    () => parseProject(JSON.stringify({ schemaVersion: 3 })),
     (error) => error instanceof ProjectValidationError && error.code === 'UNSUPPORTED_PROJECT_VERSION',
   );
 

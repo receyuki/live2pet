@@ -955,6 +955,81 @@ test('project target Render Presets flow into capture and provenance', async () 
   assert.equal(result.builds['codex-pet'].provenance.renderPreset, 'high');
 });
 
+test('buildProjectTargets applies project Visual Settings before renderer capture', async () => {
+  const renderer = new SyntheticRenderer();
+  await renderer.load({ motions: [{ id: 'idle', duration: 0.1 }, { id: 'thinking', duration: 0.1 }, { id: 'working', duration: 0.1 }] });
+  const applied = [];
+  renderer.setVisualSettings = async (settings) => { applied.push(settings); };
+  const project = createProject({
+    projectId: 'visual-settings-project',
+    name: 'Visual Settings project',
+    source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'sha256:visual-settings' },
+    visualSettings: { hiddenElementIds: ['Background', 'Background'] },
+    targets: {
+      clawd: {
+        profile: 'clawd',
+        mappings: { idle: 'motion:idle', thinking: 'motion:thinking', working: 'motion:working', sleeping: 'fallback:idle' },
+        reactions: {},
+        options: {},
+      },
+    },
+  });
+
+  await buildProjectTargets({
+    project,
+    targets: ['clawd'],
+    inputsByTarget: { clawd: { renderer, render: { width: 2, height: 2, samples: 2, fps: 10 } } },
+    optionsByTarget: { clawd: { sharpFactory: clawdSharpFactory() } },
+  });
+
+  assert.deepEqual(applied, [{ hiddenElementIds: ['Background'] }]);
+});
+
+test('buildProjectTargets reports a typed unsupported Visual Settings error for legacy renderers', async () => {
+  const renderer = new SyntheticRenderer();
+  await renderer.load({ motions: [{ id: 'idle', duration: 0.1 }, { id: 'thinking', duration: 0.1 }, { id: 'working', duration: 0.1 }] });
+  // Shadow the modern prototype method to model a renderer loaded from an
+  // older host without changing the shared SyntheticRenderer contract.
+  renderer.setVisualSettings = undefined;
+  const project = createProject({
+    projectId: 'visual-settings-unsupported',
+    name: 'Visual Settings unsupported',
+    source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'sha256:visual-settings' },
+    visualSettings: { hiddenElementIds: ['Background'] },
+    targets: {
+      clawd: {
+        profile: 'clawd',
+        mappings: { idle: 'motion:idle', thinking: 'motion:thinking', working: 'motion:working', sleeping: 'fallback:idle' },
+        reactions: {},
+        options: {},
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => buildProjectTargets({ project, targets: ['clawd'], inputsByTarget: { clawd: { renderer } } }),
+    (error) => error instanceof PackageBuildError && error.code === 'UNSUPPORTED_VISUAL_SETTINGS',
+  );
+});
+
+test('changing project Visual Settings invalidates encoded target assets while empty settings keep the old key', async () => {
+  const cache = new CacheStore({ rootDir: require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'live2pet-visual-settings-cache-')) });
+  const cacheContext = { projectId: 'visual-settings-cache', sourceFingerprint: 'source-sha256', runtimeVersion: 'core-5', rendererVersion: 'renderer-1', encoderVersion: 'sharp-0.34.5' };
+  let calls = 0;
+  const sharpFactory = () => ({ webp() { calls += 1; return { toBuffer: async () => ({ data: Buffer.from(`RIFF-visual-${calls}`), info: { width: 2, height: 2, pages: 2 } }) }; } });
+  const empty = await buildClawdTheme({ mapping: clawdMapping(), framesByMotion: clawdFrames() }, { cache, cacheContext, sharpFactory });
+  const emptyAgain = await buildClawdTheme({ mapping: clawdMapping(), framesByMotion: clawdFrames() }, { cache, cacheContext, sharpFactory: () => { throw new Error('empty Visual Settings should reuse the existing key'); } });
+  const hidden = await buildClawdTheme({ mapping: clawdMapping(), framesByMotion: clawdFrames(), visualSettings: { hiddenElementIds: ['Background'] } }, { cache, cacheContext, sharpFactory });
+
+  assert.equal(empty.cache.misses, 5);
+  assert.equal(emptyAgain.cache.hits, 5);
+  assert.equal(hidden.cache.misses, 5);
+  assert.equal(calls, 10);
+  const visualEntries = cache.status({ projectId: 'visual-settings-cache' }).entries.filter((entry) => entry.key.recipe.visualSettingsDigest);
+  assert.equal(visualEntries.length, 5);
+  assert.equal(visualEntries[0].key.recipe.visualSettingsDigest.length, 64);
+});
+
 test('buildProjectTargets refuses a project with an unreviewed source change', async () => {
   const project = createProject({
     projectId: 'needs-review',

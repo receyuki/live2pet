@@ -15,6 +15,8 @@ const RENDERER_IPC_METHODS = Object.freeze([
   'getState',
   'getBounds',
   'captureRgba',
+  'getVisualElements',
+  'setVisualSettings',
 ]);
 
 const RENDERER_REALM_STATES = Object.freeze({
@@ -91,6 +93,7 @@ function validateRendererContract(value) {
 function createElectronWebContentsPage({ webContents } = {}) {
   if (!webContents || typeof webContents.executeJavaScript !== 'function') rendererRealmFail('INVALID_RENDERER_HOST', 'Electron renderer page requires webContents.executeJavaScript.');
   return Object.freeze({
+    supportsBinaryResults: true,
     evaluate: async (fn, ...args) => {
       if (typeof fn !== 'function') rendererRealmFail('INVALID_RENDERER_EVALUATION', 'Renderer page evaluation requires a function.');
       let serialized;

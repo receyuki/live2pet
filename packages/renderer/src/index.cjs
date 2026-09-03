@@ -1,4 +1,5 @@
 const { RendererContractError } = require('./errors.cjs');
+const { normalizeVisualSettings } = require('./visual-settings.cjs');
 
 const CONTRACT_VERSION = 1;
 const CONTRACT_METHODS = [
@@ -15,6 +16,8 @@ const CONTRACT_METHODS = [
   'getState',
   'getBounds',
   'captureRgba',
+  'getVisualElements',
+  'setVisualSettings',
 ];
 
 function fail(code, message, details = {}) {
@@ -157,6 +160,13 @@ class SyntheticRenderer {
     this.activeExpressionId = null;
     this.time = 0;
     this.playing = false;
+  }
+
+  getVisualElements() { return []; }
+
+  setVisualSettings(settings) {
+    if (normalizeVisualSettings(settings).hiddenElementIds.length) fail('UNSUPPORTED_VISUAL_SETTINGS', 'Synthetic source has no separable Visual Elements.');
+    return { hiddenElementIds: [] };
   }
 
   motion(id) {
@@ -324,4 +334,5 @@ module.exports = {
   ...require('./renderer-selection.cjs'),
   ...require('./host.cjs'),
   ...require('./asset-server.cjs'),
+  ...require('./visual-settings.cjs'),
 };

@@ -5,6 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { CacheStore, createCacheKey } = require('../../../packages/package-build/src/index.cjs');
+const { digestVisualSettings } = require('../../../packages/project/src/index.cjs');
 const { createCaptureCacheBuildService, mappedMotionIds } = require('../capture-cache-build.cjs');
 
 function project() {
@@ -81,6 +82,59 @@ test('capture-cache build service replaces Clawd inputs with cache hits and stri
   assert.equal('captureCache' in clawdInput, false);
   assert.equal(clawdInput.framesByMotion.idle.frames[0].rgba[0], 7);
   assert.equal(clawdInput.framesByMotion.working.frames[0].rgba[0], 8);
+});
+
+test('capture-cache build service propagates project Visual Settings into cache identity', async () => {
+  const seen = [];
+  const visualProject = project();
+  visualProject.visualSettings = { hiddenElementIds: ['Background', 'Background'] };
+  const service = createCaptureCacheBuildService({
+    getCaptureCacheService: () => ({ readEncodedMany: async () => ({}), writeMany: async () => [] }),
+    getEncodedCache: () => new CacheStore({ rootDir: fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-visual-settings-build-cache-')), maxBytes: 1024 * 1024 }),
+    resolveEncodedCacheContext: async () => ({ runtimeVersion: 'd'.repeat(64), rendererVersion: 'renderer-v1', targetVersion: '1', encoderVersion: 'sharp-0.34.5' }),
+    buildProjectTargets: async (input) => { seen.push(input.optionsByTarget.clawd.cacheContext); return { builds: {} }; },
+  });
+
+  await service({
+    project: visualProject,
+    targets: ['clawd'],
+    inputsByTarget: { clawd: { framesByMotion: { idle: frameSet('idle', 1) }, captureCache: plan(['idle']) } },
+  });
+
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].visualSettingsDigest, digestVisualSettings({ hiddenElementIds: ['Background'] }));
+});
+
+test('capture-cache build service enables encoded caches for hosted renderer inputs without a capture plan', async () => {
+  const cache = new CacheStore({ rootDir: fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-hosted-build-cache-')), maxBytes: 1024 * 1024 });
+  const seen = [];
+  const plans = [];
+  const service = createCaptureCacheBuildService({
+    getCaptureCacheService: () => ({ readEncodedMany: async () => ({}), writeMany: async () => [] }),
+    getEncodedCache: () => cache,
+    resolveEncodedCacheContext: async ({ plan: inferred }) => { plans.push(inferred); return { runtimeVersion: 'd'.repeat(64), rendererVersion: 'renderer-v1', targetVersion: '1', encoderVersion: 'sharp-0.34.5' }; },
+    buildProjectTargets: async (input) => { seen.push(input); return { builds: {} }; },
+  });
+  const renderer = { source: { cubismVersion: 4 } };
+
+  await service({
+    project: project(),
+    targets: ['clawd'],
+    inputsByTarget: { clawd: { renderer, renderPreset: 'high' } },
+  });
+
+  assert.deepEqual(plans, [{ cubismVersion: 4, renderPreset: 'high', inferred: true }]);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].optionsByTarget.clawd.cache, cache);
+  assert.deepEqual(seen[0].optionsByTarget.clawd.cacheContext, {
+    projectId: 'capture-cache-build-test',
+    sourceFingerprint: 'a'.repeat(64),
+    runtimeVersion: 'd'.repeat(64),
+    rendererVersion: 'renderer-v1',
+    targetVersion: '1',
+    renderPreset: 'high',
+    encoderVersion: 'sharp-0.34.5',
+  });
 });
 
 test('capture-cache build service includes user-configured Clawd behavior Motions', () => {

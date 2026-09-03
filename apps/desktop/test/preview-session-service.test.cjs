@@ -53,6 +53,8 @@ function fixture({ source = null, runtime = { runtimePath: '/private/runtime/Liv
     async restart() { playback.playing = true; calls.push(['restart']); },
     async resize(width, height) { calls.push(['resize', width, height]); },
     getState() { return { ...playback }; },
+    getVisualElements() { return [{ id: 'BG', name: 'Background', kind: 'part' }]; },
+    async setVisualSettings(settings) { calls.push(['visualSettings', settings]); },
   };
   const server = {
     baseUrl: 'http://127.0.0.1:3210',
@@ -81,6 +83,18 @@ test('normalizes preview bounds to safe integer limits', () => {
   assert.deepEqual(normalizeBounds({ x: -10, y: 2.6, width: 12, height: 9000 }), { x: 0, y: 3, width: 64, height: 4096 });
   assert.deepEqual(normalizeBounds({ x: 'bad', y: Infinity, width: NaN, height: null }), { x: 0, y: 0, width: 64, height: 64 });
   assert.throws(() => normalizeBounds(null), (error) => error instanceof PreviewSessionError && error.code === 'INVALID_PREVIEW_BOUNDS');
+});
+
+test('opens with project visibility and serializes manual visibility edits', async () => {
+  const { service, calls } = fixture();
+  await service.open({ projectId: 'project-1', sourceFingerprint: FINGERPRINT, bounds: { x: 0, y: 0, width: 512, height: 512 }, visualSettings: { hiddenElementIds: ['BG'] } });
+  assert.deepEqual(await service.getVisualElements(), [{ id: 'BG', name: 'Background', kind: 'part' }]);
+  assert.deepEqual(calls.find(([name]) => name === 'visualSettings')[1], { hiddenElementIds: ['BG'] });
+  await service.setVisualSettings({ hiddenElementIds: [] });
+  assert.deepEqual(calls.filter(([name]) => name === 'visualSettings').at(-1)[1], { hiddenElementIds: [] });
+  assert.throws(() => service.setVisualSettings({ hiddenElementIds: [42] }), { code: 'INVALID_VISUAL_SETTINGS' });
+  assert.equal(service.getStatus().state, 'ready');
+  await service.close();
 });
 
 test('opens a directory Source in an attached view and exposes playback controls', async () => {

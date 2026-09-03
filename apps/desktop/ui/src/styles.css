@@ -371,3 +371,12 @@
 /* Settings shares the workspace toolbar and its native traffic-light clearance. */
 .settings-toolbar>.toolbar-actions{grid-column:3}.toolbar-title{font-size:15px;font-weight:700}.settings-sidebar{overflow-y:auto}
 .target-settings{display:grid;gap:16px}.target-settings h2{font-size:18px;font-weight:650}.target-settings-tools{display:flex;justify-content:flex-end}.target-detection-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:18px}.target-settings-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.target-path{overflow-wrap:anywhere;margin-top:8px;font-family:ui-monospace,monospace;font-size:12px;color:var(--muted)}.target-settings small,.target-settings>.muted{color:var(--muted);line-height:1.6}.install-destination{overflow-wrap:anywhere;font-size:12px}
+.preview-caption{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.workspace-panel>.input{margin:10px 12px;width:calc(100% - 24px)}
+.visibility-panel>.section-heading-row{padding:12px 14px 0}
+.visibility-panel>.mapping-requirement-hint,.visibility-panel>.visibility-actions{padding:0 14px 10px}
+.visibility-panel h2{font-size:14px}
+.visibility-panel .motion-list{flex:1;align-content:start}
+.visibility-row{display:flex;flex-direction:column;gap:6px;padding:10px;border-bottom:1px solid var(--border)}
+.visibility-row strong,.visibility-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.visibility-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}

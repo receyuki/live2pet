@@ -1,6 +1,6 @@
 # Live2Pet Personal-Use V1 Implementation Plan
 
-Status: Acceptance updated on 2026-09-03 — modern preview, legacy preview, and durable mapping complete
+Status: Updated on 2026-09-03 — manual Live2D visibility and faster Desktop capture implemented; pre-Spine closeout in progress
 
 ## Outcome and boundary
 
@@ -30,7 +30,7 @@ The repository already contains:
 
 The default development and packaged renderer now uses the HeroUI project shell. Setup, full-page Settings, native project operations, Source/Map/Build navigation, real embedded preview, durable mappings, history, recovery, and generated-package previews are connected to the existing App services. The legacy browser Mapper remains only a development reference. V1 adds two bounded renderer capabilities after this foundation: renderer-neutral Visual Settings for removable backgrounds and one isolated, optional Spine version line. Neither addition creates a second mapping UI or target build pipeline.
 
-The current follow-up order is target-host installation acceptance, shared Visibility (#13), optional Spine (#14), then final packaged-App accessibility and release qualification. Default-renderer promotion does not close #12 while its Visibility, optional renderer-pack Settings, and final UI review criteria remain outstanding. Local real-model verification is documented in [Desktop acceptance](../desktop-acceptance.md).
+The current follow-up order is pre-Spine closeout first: target-host UI activation/playback acceptance (#6/#7), remaining build/report and explicit Build & Install checks (#8), then the non-Spine desktop accessibility review (#12). Manual Live2D Visibility (#13), hosted capture/cache wiring, and binary pixel transfer are implemented. Optional Spine (#14) has not started; its renderer-pack Settings and final Spine-inclusive release qualification remain later work. Default-renderer promotion alone does not close #12. Local real-model and performance evidence is documented in [Desktop acceptance](../desktop-acceptance.md).
 
 The acceptance audit now completes #3, #4, and #5. The final packaged App passes
 both real-model paths, both target builds, renderer-process crash/retry, project
@@ -113,9 +113,9 @@ Work:
 
 1. Extend the renderer contract with capability discovery, Visual Element listing, and atomic Visual Settings application without exposing Cubism-specific APIs to project or build packages.
 2. Map Live2D Parts to stable Visual Element identities and reapply project-hidden Parts after animation and pose updates.
-3. Add a searchable Visibility drawer beside the center preview with show/hide, transient Solo, and Restore all actions.
+3. Add a searchable Visibility panel opened beside the center preview, temporarily replacing the Motion library to retain the three-column layout, with manual show/hide, transient Solo, and Restore all actions. Never hide elements based on naming heuristics.
 4. Store hidden identities in the next `.live2pet` schema revision and migrate existing projects to an empty hidden set.
-5. Compute framing from visible animated bounds and explain when a background shares an inseparable ArtMesh with the character.
+5. Compute framing from sampled visible animated bounds (nine poses per source Motion), restore the selected playback state afterward, and explain when a background shares an inseparable ArtMesh with the character. Sampling does not prove containment for every possible physics pose.
 6. Include a canonical Visual Settings digest in capture-cache identity and pass the same settings through Clawd and Codex builds.
 
 Acceptance gate:

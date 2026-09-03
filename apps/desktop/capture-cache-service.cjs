@@ -1,4 +1,5 @@
 const { createCacheKey, decodeCaptureSet, encodeCaptureSet } = require('@live2pet/package-build');
+const { digestVisualSettings, normalizeVisualSettings } = require('@live2pet/project');
 
 const CAPTURE_CACHE_ARTIFACT = 'captured-rgba';
 const CAPTURE_CACHE_TARGET_VERSION = '1';
@@ -41,7 +42,12 @@ function normalizeContext(input = {}) {
     if (seen.has(recipe.motionId)) fail('INVALID_CAPTURE_CACHE_REQUEST', `Capture cache contains duplicate Motion recipe: ${recipe.motionId}.`);
     seen.add(recipe.motionId);
   }
-  return { sourceFingerprint, cubismVersion, target, renderPreset, motions };
+  const visualSettings = normalizeVisualSettings(input.visualSettings);
+  const suppliedDigest = typeof input.visualSettingsDigest === 'string' && /^[a-f0-9]{64}$/i.test(input.visualSettingsDigest.trim()) ? input.visualSettingsDigest.trim().toLowerCase() : null;
+  const visualSettingsDigest = visualSettings.hiddenElementIds.length
+    ? digestVisualSettings(visualSettings)
+    : (input.visualSettings === undefined ? suppliedDigest : null);
+  return { sourceFingerprint, cubismVersion, target, renderPreset, motions, visualSettings, ...(visualSettingsDigest ? { visualSettingsDigest } : {}) };
 }
 
 function createCaptureCacheService({ cache, getRuntimeForGeneration, rendererVersion = DEFAULT_CAPTURE_RENDERER_VERSION } = {}) {
@@ -70,7 +76,7 @@ function createCaptureCacheService({ cache, getRuntimeForGeneration, rendererVer
       sourceFingerprint: normalized.sourceFingerprint,
       runtimeVersion,
       rendererVersion: rendererVersion.trim(),
-      recipe: { ...recipe, captureVersion: 1 },
+      recipe: { ...recipe, captureVersion: 1, ...(normalized.visualSettingsDigest ? { visualSettingsDigest: normalized.visualSettingsDigest } : {}) },
       targetProfile: normalized.target,
       targetVersion: CAPTURE_CACHE_TARGET_VERSION,
       renderPreset: normalized.renderPreset,

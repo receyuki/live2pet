@@ -82,6 +82,7 @@ class FakePixiPage {
       speed: 1,
     };
     if (fn.name === 'pageLoad') return { state, width: 512, height: 512 };
+    if (fn.name === 'pageInitializeVisualElements') return [];
     if (fn.name === 'pagePlayMotion') return { ...state, motionId: args[0], time: args[3], playing: true, loop: args[1], speed: args[2] };
     if (fn.name === 'pagePause') return { ...state, playing: false };
     if (fn.name === 'pageResume') return { ...state, playing: true };
@@ -98,7 +99,7 @@ class FakePixiPage {
 test('synthetic renderer implements the shared playback contract', async () => {
   const renderer = new SyntheticRenderer();
   assertRenderer(renderer);
-  assert.equal(CONTRACT_METHODS.length, 13);
+  assert.equal(CONTRACT_METHODS.length, 15);
 
   const loaded = await renderer.load(source());
   assert.deepEqual(loaded, { contractVersion: 1, motionCount: 2, expressionCount: 1 });
@@ -249,6 +250,23 @@ test('Pixi Live2D adapter bridges the shared contract without bundling a runtime
   assert.ok(page.calls.some((call) => call.name === 'pageCapture'));
 });
 
+test('Pixi binary capture preserves exact bytes, honors view offsets, and rejects truncated frames', async () => {
+  const page = new FakePixiPage();
+  page.supportsBinaryResults = true;
+  const evaluate = page.evaluate.bind(page);
+  const pixels = new Uint8Array(8 * 4 * 4 + 16).map((_, index) => index % 256).subarray(8, -8);
+  page.evaluate = async (fn, ...args) => {
+    const result = await evaluate(fn, ...args);
+    if (fn.name === 'pageCapture') { assert.equal(args[5], true); result.rgba = pixels; }
+    return result;
+  };
+  const renderer = new PixiLive2dAdapter({ page });
+  await renderer.load(pixiSource());
+  const capture = await renderer.captureRgba({ width: 8, height: 4, motionId: 'Base:wave', time: 0.5 });
+  assert.deepEqual(capture.rgba, pixels);
+  await assert.rejects(renderer.captureRgba({ width: 16, height: 4, motionId: 'Base:wave', time: 0.5 }), { code: 'INVALID_RENDER_CAPTURE' });
+});
+
 test('Pixi realtime playback owns the ticker while manual stepping and capture stay deterministic', async () => {
   const previousWindow = global.window;
   const previousDocument = global.document;
@@ -333,7 +351,8 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     assert.equal(updates.at(-1), 500);
     assert.equal(ticker.started, true);
 
-    const capture = await pageCapture('Base:wave', 0.5, 8, 4, 3);
+    const capture = await pageCapture('Base:wave', 0.5, 8, 4, 3, true);
+    assert.ok(ArrayBuffer.isView(capture.rgba), 'binary-capable hosts receive pixels without numeric-array expansion');
     assert.equal(capture.time, 0.5);
     assert.ok(updates.includes('reset'), 'seeking backwards resets the active motion');
     assert.equal(captureObservedTicker, false);
@@ -574,6 +593,7 @@ test('Electron webContents page serializes only fixed function calls and JSON ar
     },
   });
   const result = await page.evaluate(function fixedEvaluation(value) { return value; }, 'hello', 3);
+  assert.equal(page.supportsBinaryResults, true);
   assert.deepEqual(result, { ok: true });
   assert.equal(calls.length, 1);
   assert.equal(calls[0].userGesture, true);

@@ -10,7 +10,12 @@ const CODEX_PROFILE = require('@live2pet/codex-target/profile');
 const { createHash } = require('node:crypto');
 const { createClawdTarget, validateClawdThemePackage } = require('@live2pet/clawd-target');
 const CLAWD_PROFILE = require('@live2pet/clawd-target/profile');
-const { assertProjectBuildable, validateProject } = require('@live2pet/project');
+const {
+  assertProjectBuildable,
+  digestVisualSettings,
+  normalizeVisualSettings,
+  validateProject,
+} = require('@live2pet/project');
 const { sampleMotionCandidates } = require('@live2pet/renderer');
 const { CacheError, CacheStore, DEFAULT_CACHE_LIMIT, createCacheKey } = require('./cache.cjs');
 const { createClawdPreview, createCodexPreview, createTargetPreview, PREVIEW_CONTRACT_VERSION, TargetPreviewError } = require('./preview.cjs');
@@ -277,12 +282,55 @@ function encodedCacheIdentityAvailable(cache, cacheContext) {
   return Boolean(cacheIdentityAvailable(cache, cacheContext) && typeof cacheContext.encoderVersion === 'string' && cacheContext.encoderVersion.trim());
 }
 
-function encodedAssetCacheKey({ cacheContext, target, targetVersion, renderPreset, recipe }) {
+function normalizeBuildVisualSettings(value) {
+  try {
+    return normalizeVisualSettings(value);
+  } catch (error) {
+    if (error && error.code === 'INVALID_VISUAL_SETTINGS') fail(error.code, error.message, error.details);
+    throw error;
+  }
+}
+
+function resolveVisualSettings(value, cacheContext) {
+  const explicit = value !== undefined;
+  const candidate = explicit ? value : cacheContext?.visualSettings;
+  const settings = normalizeBuildVisualSettings(candidate);
+  let digest = settings.hiddenElementIds.length ? digestVisualSettings(settings) : null;
+  if (!explicit && candidate === undefined && typeof cacheContext?.visualSettingsDigest === 'string' && /^[a-f0-9]{64}$/i.test(cacheContext.visualSettingsDigest.trim())) {
+    digest = cacheContext.visualSettingsDigest.trim().toLowerCase();
+  }
+  return { settings, digest };
+}
+
+function withVisualSettingsCacheContext(cacheContext, settings, digestOverride = null) {
+  if (!cacheContext || typeof cacheContext !== 'object' || Array.isArray(cacheContext)) return cacheContext;
+  const normalized = normalizeBuildVisualSettings(settings);
+  const next = { ...cacheContext };
+  const digest = digestOverride || (normalized.hiddenElementIds.length ? digestVisualSettings(normalized) : null);
+  if (digest) next.visualSettingsDigest = digest;
+  else delete next.visualSettingsDigest;
+  return next;
+}
+
+function visualSettingsRecipe(recipe, digest) {
+  return digest ? { ...recipe, visualSettingsDigest: digest } : recipe;
+}
+
+async function applyRendererVisualSettings(renderer, settings, target) {
+  if (!renderer || typeof renderer.setVisualSettings !== 'function') {
+    if (settings.hiddenElementIds.length) fail('UNSUPPORTED_VISUAL_SETTINGS', `${target} capture requires a renderer with Visual Settings support.`, { target });
+    return;
+  }
+  await renderer.setVisualSettings(settings);
+}
+
+function encodedAssetCacheKey({ cacheContext, target, targetVersion, renderPreset, recipe, visualSettingsDigest: digestOverride }) {
+  const digest = digestOverride || cacheContext.visualSettingsDigest;
   return createCacheKey({
     sourceFingerprint: cacheContext.sourceFingerprint,
     runtimeVersion: cacheContext.runtimeVersion,
     rendererVersion: cacheContext.rendererVersion,
-    recipe,
+    recipe: visualSettingsRecipe(recipe, digest),
     targetProfile: target,
     targetVersion: String(targetVersion),
     renderPreset,
@@ -333,9 +381,10 @@ function rendererMotionDescriptor(renderer, motionId) {
   return null;
 }
 
-async function renderMappedMotions({ renderer, motionIds, render = {}, signal, onProgress, target, cache, cacheContext, expressionByMotion = {} } = {}) {
+async function renderMappedMotions({ renderer, motionIds, render = {}, signal, onProgress, target, cache, cacheContext, expressionByMotion = {}, visualSettings } = {}) {
   if (!renderer || typeof renderer.captureRgba !== 'function') fail('RENDERER_REQUIRED', 'A renderer implementing captureRgba is required when build inputs do not include captured frames.');
   if (!Array.isArray(motionIds) || !motionIds.length) fail('MOTION_MAPPING_REQUIRED', `No ${target || 'target'} Motion mappings are available for renderer capture.`);
+  const visualSettingsIdentity = resolveVisualSettings(visualSettings, cacheContext);
   const { name: presetName, settings: preset } = resolveTargetRenderPreset(target, render);
   const width = Number.isInteger(render.width) ? render.width : preset.width;
   const height = Number.isInteger(render.height) ? render.height : preset.height;
@@ -363,11 +412,11 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
       sourceFingerprint: cacheContext.sourceFingerprint,
       runtimeVersion: cacheContext.runtimeVersion,
       rendererVersion: cacheContext.rendererVersion,
-      recipe: {
+      recipe: visualSettingsRecipe({
         motionId,
         expressionId,
         render: { captureTimingVersion: 2, width, height, samples, duration, fps: Number.isFinite(render.fps) ? render.fps : null },
-      },
+      }, visualSettingsIdentity.digest),
       targetProfile: target,
       targetVersion: cacheContext.targetVersion,
       renderPreset: presetName,
@@ -769,7 +818,9 @@ async function buildClawdTheme(input = {}, options = {}) {
   const onProgress = options.onProgress || input.onProgress;
   const render = options.render || (options.renderPreset ? { preset: options.renderPreset } : {});
   const renderSelection = resolveTargetRenderPreset('clawd', render);
-  const cacheContext = options.cacheContext;
+  const rawCacheContext = options.cacheContext;
+  const visualSettingsIdentity = resolveVisualSettings(options.visualSettings !== undefined ? options.visualSettings : input.visualSettings, rawCacheContext);
+  const cacheContext = withVisualSettingsCacheContext(rawCacheContext, visualSettingsIdentity.settings, visualSettingsIdentity.digest);
   const expressionByMotion = input.expressionByMotion || options.expressionByMotion || {};
   const cache = options.cache;
   const cacheEnabled = encodedCacheIdentityAvailable(cache, cacheContext);
@@ -812,6 +863,7 @@ async function buildClawdTheme(input = {}, options = {}) {
         render: { width: firstFrame && firstFrame.width, height: firstFrame && firstFrame.height, delays, quality: frameSet.quality, alphaQuality: frameSet.alphaQuality, lossless: frameSet.lossless },
         encoderVersion: cacheContext.encoderVersion,
       },
+      visualSettingsDigest: visualSettingsIdentity.digest,
     }) : null;
     return { motionId, index, frameSet, firstFrame, delays, cacheKey };
   });
@@ -918,7 +970,9 @@ async function buildCodexPet(input = {}, options = {}) {
   const render = options.render || (options.renderPreset ? { preset: options.renderPreset } : {});
   const renderSelection = resolveTargetRenderPreset('codex-pet', render);
   const target = createCodexTarget(mapping);
-  const cacheContext = options.cacheContext;
+  const rawCacheContext = options.cacheContext;
+  const visualSettingsIdentity = resolveVisualSettings(options.visualSettings !== undefined ? options.visualSettings : input.visualSettings, rawCacheContext);
+  const cacheContext = withVisualSettingsCacheContext(rawCacheContext, visualSettingsIdentity.settings, visualSettingsIdentity.digest);
   const cache = options.cache;
   const cacheEnabled = encodedCacheIdentityAvailable(cache, cacheContext);
   const cacheStats = { enabled: cacheEnabled, hits: 0, misses: 0 };
@@ -975,6 +1029,7 @@ async function buildCodexPet(input = {}, options = {}) {
         encoding: { quality, alphaQuality, lossless },
         encoderVersion: cacheContext.encoderVersion,
       },
+      visualSettingsDigest: visualSettingsIdentity.digest,
     }) : null;
     if (cacheKey) {
       const cached = cache.get(cacheKey);
@@ -1068,6 +1123,8 @@ async function buildCodexPet(input = {}, options = {}) {
 
 async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['clawd', 'codex-pet'], metadataByTarget = {}, optionsByTarget = {}, signal, onProgress } = {}) {
   const normalizedProject = validateProject(project);
+  const projectVisualSettings = normalizeBuildVisualSettings(normalizedProject.visualSettings);
+  const projectVisualSettingsDigest = projectVisualSettings.hiddenElementIds.length ? digestVisualSettings(projectVisualSettings) : null;
   const nameSlug = normalizedProject.name.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
   const defaultMetadata = { name: normalizedProject.name, id: /[^\x00-\x7f]/.test(normalizedProject.name)
     ? `${nameSlug || 'pet'}-${createHash('sha256').update(normalizedProject.name).digest('hex').slice(0, 10)}`
@@ -1083,6 +1140,16 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
     const targetProject = normalizedProject.targets[targetId];
     if (!targetProject || !targetProject.mappings || !Object.keys(targetProject.mappings).length) fail('TARGET_MAPPING_REQUIRED', `${targetId} has no mappings in the Live2Pet Project.`);
     const targetOptions = { ...(optionsByTarget[targetId] || {}), signal, onProgress: (event) => onProgress?.({ target: targetId, ...event }) };
+    const defaultCacheContext = {
+      sourceFingerprint: normalizedProject.source.fingerprint,
+      runtimeVersion: targetOptions.runtimeVersion,
+      rendererVersion: targetOptions.rendererVersion,
+      targetVersion: targetOptions.targetVersion || '1',
+      encoderVersion: targetOptions.encoderVersion,
+      projectId: normalizedProject.projectId,
+    };
+    targetOptions.cacheContext = withVisualSettingsCacheContext(targetOptions.cacheContext || defaultCacheContext, projectVisualSettings, projectVisualSettingsDigest);
+    targetOptions.visualSettings = projectVisualSettings;
     const expressionByMotion = resolveProjectRecipeExpressions(normalizedProject, targetProject, targetId);
     const configuredRender = targetInput.render
       || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : null)
@@ -1094,13 +1161,15 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
     let renderedInput = targetInput;
     if (renderer) {
       if (targetId === 'clawd' && !targetInput.framesByMotion && !targetInput.frames) {
+        await applyRendererVisualSettings(renderer, projectVisualSettings, targetId);
         const ids = mappedMotionIds({ ...targetProject.mappings, ...targetProject.reactions });
-        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext || { sourceFingerprint: normalizedProject.source.fingerprint, runtimeVersion: targetOptions.runtimeVersion, rendererVersion: targetOptions.rendererVersion, targetVersion: targetOptions.targetVersion || '1', encoderVersion: targetOptions.encoderVersion, projectId: normalizedProject.projectId } });
+        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, visualSettings: projectVisualSettings, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext });
         renderedInput = { ...targetInput, framesByMotion };
       } else if (targetId === 'codex-pet' && !targetInput.candidatesByRow && !targetInput.candidates) {
+        await applyRendererVisualSettings(renderer, projectVisualSettings, targetId);
         targetOptions.selection = { ...targetOptions.selection, preserveTiming: true };
         const ids = mappedMotionIds(targetProject.mappings);
-        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext || { sourceFingerprint: normalizedProject.source.fingerprint, runtimeVersion: targetOptions.runtimeVersion, rendererVersion: targetOptions.rendererVersion, targetVersion: targetOptions.targetVersion || '1', encoderVersion: targetOptions.encoderVersion, projectId: normalizedProject.projectId } });
+        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, visualSettings: projectVisualSettings, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext });
         const candidatesByRow = Object.fromEntries(Object.entries(targetProject.mappings).map(([row, value]) => [row, framesByMotion[value.slice(7)]?.frames || []]));
         renderedInput = { ...targetInput, candidatesByRow };
       }

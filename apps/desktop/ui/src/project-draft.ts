@@ -18,7 +18,7 @@ function byteLength(value: string): number {
 function isProject(value: unknown): value is Live2PetProject {
   if (!value || typeof value !== "object") return false;
   const project = value as Partial<Live2PetProject>;
-  return project.schemaVersion === 1
+  return (project.schemaVersion === 1 || project.schemaVersion === 2)
     && typeof project.projectId === "string"
     && typeof project.appVersion === "string"
     && typeof project.name === "string"

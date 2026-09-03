@@ -1,4 +1,5 @@
 const { RendererContractError } = require('./errors.cjs');
+const { normalizeVisualSettings, pageInitializeVisualElements, pageSetVisualSettings } = require('./visual-settings.cjs');
 
 const DEFAULT_OPTIONS = Object.freeze({
   canvasSelector: '#live2pet-stage',
@@ -69,7 +70,7 @@ function normalizePixiSource(source) {
       return { id, name, runtimeId };
     })
     : [];
-  return { modelUrl, cubismVersion, motions, expressions };
+  return { modelUrl, cubismVersion, motions, expressions, ...(typeof source.displayInfoUrl === 'string' ? { displayInfoUrl: source.displayInfoUrl } : {}) };
 }
 
 function encodeRelativeUrl(relativePath) {
@@ -83,6 +84,8 @@ function pixiSourceFromManifest(manifest, { baseUrl = '' } = {}) {
   const prefix = typeof baseUrl === 'string' ? baseUrl.replace(/\/+$/, '') : '';
   return normalizePixiSource({
     modelUrl: `${prefix}/${encodeRelativeUrl(modelConfig)}`,
+    ...(manifest.resources?.find(resource => resource.kind === 'display-info' && resource.exists)
+      ? { displayInfoUrl: `${prefix}/${encodeRelativeUrl(manifest.resources.find(resource => resource.kind === 'display-info' && resource.exists).path)}` } : {}),
     cubismVersion: manifest.model && manifest.model.cubism,
     motions: Array.isArray(manifest.motions) ? manifest.motions.map((motion) => ({
       id: motion.id,
@@ -147,7 +150,7 @@ function pageLoad(source, options) {
     app.stage.addChild(model);
 
     const fit = () => {
-      const bounds = model.getLocalBounds();
+      const bounds = window.__live2petPixiLive2D?.visualBounds || model.getLocalBounds();
       if (!bounds || !Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) || bounds.width <= 0 || bounds.height <= 0) throw new Error('Loaded model has no measurable bounds.');
       const usableWidth = Math.max(1, app.renderer.width - options.padding * 2);
       const usableHeight = Math.max(1, app.renderer.height - options.padding * 2);
@@ -366,7 +369,8 @@ function pageBounds(motionId) {
   const runtime = window.__live2petPixiLive2D;
   if (!runtime) throw new Error('Renderer is not loaded.');
   if (!runtime.source.motions.some((item) => item.id === motionId)) throw new Error(`Motion is not available: ${motionId}`);
-  const bounds = runtime.model.getBounds();
+  const local = runtime.visualSettings?.hiddenElementIds.length ? runtime.measureVisibleBounds() : null;
+  const bounds = local ? { x: local.x * runtime.model.scale.x + runtime.model.x, y: local.y * runtime.model.scale.y + runtime.model.y, width: local.width * runtime.model.scale.x, height: local.height * runtime.model.scale.y } : runtime.model.getBounds();
   const width = runtime.app.renderer.width;
   const height = runtime.app.renderer.height;
   return {
@@ -380,7 +384,7 @@ function pageBounds(motionId) {
   };
 }
 
-function pageCapture(motionId, time, width, height, priority) {
+function pageCapture(motionId, time, width, height, priority, binary = false) {
   return (async () => {
     const runtime = window.__live2petPixiLive2D;
     if (!runtime) throw new Error('Renderer is not loaded.');
@@ -405,7 +409,11 @@ function pageCapture(motionId, time, width, height, priority) {
     if (!extractor || typeof extractor.pixels !== 'function') throw new Error('Pixi Extract plugin is unavailable; RGBA capture cannot proceed.');
     const frame = new window.PIXI.Rectangle(0, 0, width, height);
     const pixels = extractor.pixels(runtime.app.stage, frame);
-    return { width, height, motionId: motion.id, time: captureTime, rgba: Array.from(pixels) };
+    // Electron preserves typed arrays across executeJavaScript. Expanding
+    // millions of channels into JS numbers makes capture serialization far
+    // more expensive than the render itself. Browser-only hosts retain the
+    // serializable-array path unless they explicitly support binary results.
+    return { width, height, motionId: motion.id, time: captureTime, rgba: binary ? pixels : Array.from(pixels) };
   })();
 }
 
@@ -452,6 +460,7 @@ class PixiLive2dAdapter {
     this.source = normalized;
     this.state = cloneState(result && result.state);
     this.state.loaded = true;
+    this.visualElements = await this.evaluate(pageInitializeVisualElements);
     return { contractVersion: 1, motionCount: normalized.motions.length, expressionCount: normalized.expressions.length };
   }
 
@@ -459,6 +468,17 @@ class PixiLive2dAdapter {
     if (this.source) await this.evaluate(pageUnload);
     this.source = null;
     this.state = cloneState();
+    this.visualElements = [];
+  }
+
+  getVisualElements() {
+    this.requireLoaded();
+    return (this.visualElements || []).map(element => ({ ...element }));
+  }
+
+  async setVisualSettings(settings) {
+    this.requireLoaded();
+    return this.evaluate(pageSetVisualSettings, normalizeVisualSettings(settings));
   }
 
   async playMotion(id, { loop = this.state.loop, speed = this.state.speed, start = 0 } = {}) {
@@ -562,12 +582,15 @@ class PixiLive2dAdapter {
     const targetHeight = positiveInteger(height, 'Capture height');
     const motion = this.motion(motionId);
     const captureTime = finiteNumber(time, 'Capture time', { min: 0, max: Math.max(0, motion.duration) });
-    const capture = await this.evaluate(pageCapture, motionId, captureTime, targetWidth, targetHeight, this.options.motionPriority);
-    if (!capture || capture.width !== targetWidth || capture.height !== targetHeight || !Array.isArray(capture.rgba) || capture.rgba.length !== targetWidth * targetHeight * 4) fail('INVALID_RENDER_CAPTURE', `Pixi renderer returned an invalid RGBA capture for ${motionId}.`);
+    const capture = await this.evaluate(pageCapture, motionId, captureTime, targetWidth, targetHeight, this.options.motionPriority, this.page.supportsBinaryResults === true);
+    const rgba = ArrayBuffer.isView(capture?.rgba)
+      ? new Uint8Array(capture.rgba.buffer, capture.rgba.byteOffset, capture.rgba.byteLength)
+      : Array.isArray(capture?.rgba) ? Uint8Array.from(capture.rgba) : null;
+    if (!capture || capture.width !== targetWidth || capture.height !== targetHeight || !rgba || rgba.byteLength !== targetWidth * targetHeight * 4) fail('INVALID_RENDER_CAPTURE', `Pixi renderer returned an invalid RGBA capture for ${motionId}.`);
     this.state.motionId = motion.id;
     this.state.time = captureTime;
     this.state.playing = true;
-    return { contractVersion: 1, width: targetWidth, height: targetHeight, motionId: motion.id, time: captureTime, rgba: Uint8Array.from(capture.rgba) };
+    return { contractVersion: 1, width: targetWidth, height: targetHeight, motionId: motion.id, time: captureTime, rgba };
   }
 }
 

@@ -56,7 +56,9 @@ const frame = await renderer.captureRgba({
 `createRendererWindowOptions` applies the required Electron isolation and
 web-security defaults. `createRendererCsp` produces the restrictive document
 policy. `createRendererIpcRouter` and `createRendererPreloadApi` expose only the
-13 renderer-contract methods over the `live2pet:renderer` channel.
+15 renderer-contract methods, including `getVisualElements` and
+`setVisualSettings`, over the `live2pet:renderer` channel. Renderers with no
+separable elements return an empty list and reject non-empty hidden settings.
 
 `createRendererAssetServer` serves either the selected Source Package root or
 an inspected PCK resource map, plus one explicitly selected runtime file, over
@@ -77,6 +79,38 @@ window. `createElectronWebContentsPage` is the narrow fixed-function bridge
 used by the desktop host.
 
 ## Optional integration tests
+
+### Project visibility
+
+Both production Pixi adapters expose `getVisualElements()` with stable Part
+identities, optional parent identities and display-info names, and
+`setVisualSettings({ hiddenElementIds })`. The Desktop Map lets users select
+these manually; names never trigger automatic hiding. Solo is temporary and
+preserves the selected Part's ancestor/descendant chain. It is never saved.
+
+Hidden opacity is applied after animation/pose and before Core updates its
+drawables. The next frame restores authored opacity before animation runs;
+showing a Part therefore restores the model's authored value rather than
+forcing opacity to one. Transparent-pixel bounds sampled at nine poses per source
+Motion form a stable animation envelope; resize reuses those local bounds. This
+is sampled framing, not proof of containment at every possible physics pose.
+Preview and both target captures receive the same project settings, including
+after renderer recovery.
+
+Cubism 2 has no public Part enumeration method: its adapter finds stable ID
+objects in bounded model-context tables and validates them through the runtime's
+public Part lookup. No minifier-specific field names are assumed. Combined
+background/character Parts cannot be split by these controls. No model or
+runtime file is changed.
+
+### Desktop pixel transfer
+
+The Electron page explicitly advertises binary result support. Captures return
+the extracted `Uint8Array` through `executeJavaScript` instead of expanding RGBA
+into millions of JavaScript numbers. The adapter validates dimensions and byte
+length and preserves typed-array offsets. Browser-only test hosts retain their
+serializable-array path. No resolution, frame-count, timing, alpha, or encoding
+quality change is part of this optimization; cancellation still checks each frame.
 
 The integration tests exercise the real adapters only when separately licensed
 runtime and model paths are supplied. They are skipped in clean CI and never

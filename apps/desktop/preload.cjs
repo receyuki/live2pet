@@ -123,6 +123,8 @@ contextBridge.exposeInMainWorld('live2pet', Object.freeze({
   layoutPreview: (input) => invokePreview('layout', input),
   playPreview: (input) => invokePreview('play', input),
   setPreviewExpression: (input) => invokePreview('setExpression', input),
+  getPreviewVisualElements: () => invokePreview('getVisualElements'),
+  setPreviewVisualSettings: (input) => invokePreview('setVisualSettings', input),
   controlPreview: (input) => invokePreview('control', input),
   closePreview: () => invokePreview('close'),
   getPreviewStatus: () => invokePreview('getStatus'),

@@ -5,6 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { CacheStore } = require('../../../packages/package-build/src/cache.cjs');
+const { digestVisualSettings } = require('../../../packages/project/src/index.cjs');
 const { createCaptureCacheService } = require('../capture-cache-service.cjs');
 
 function recipe(overrides = {}) {
@@ -101,6 +102,22 @@ test('capture cache identities isolate Animation Recipe Expressions', async () =
   const baseMiss = await service.status({ ...base, motions: [baseRecipe] });
   assert.equal(smileHit.entries[0].hit, true);
   assert.equal(baseMiss.entries[0].hit, false);
+});
+
+test('capture cache identities include canonical Visual Settings and preserve the empty-set key', async () => {
+  const { service } = setup();
+  const base = { sourceFingerprint: 'a'.repeat(64), cubismVersion: 4, target: 'clawd', renderPreset: 'balanced' };
+  const hidden = { hiddenElementIds: ['Background', 'Background'] };
+  const hiddenRecipe = recipe();
+  await service.write({ ...base, visualSettings: hidden }, hiddenRecipe, { motionId: 'idle', ...frames() });
+
+  const sameSettings = await service.status({ ...base, visualSettings: { hiddenElementIds: ['Background'] }, motions: [hiddenRecipe] });
+  const emptySettings = await service.status({ ...base, visualSettings: { hiddenElementIds: [] }, motions: [hiddenRecipe] });
+  const contextOnlyDigest = await service.status({ ...base, visualSettingsDigest: digestVisualSettings(hidden), motions: [hiddenRecipe] });
+
+  assert.equal(sameSettings.entries[0].hit, true);
+  assert.equal(emptySettings.entries[0].hit, false);
+  assert.equal(contextOnlyDigest.entries[0].hit, true);
 });
 
 test('capture cache batches runtime resolution for a multi-motion build', async () => {

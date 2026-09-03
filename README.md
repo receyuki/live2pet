@@ -57,6 +57,18 @@ using the English or Chinese README according to the App's current language.
 
 ## Components
 
+### Hide model backgrounds manually
+
+In **Map → Visibility**, search the model's Parts and choose **Hide / Show**.
+Use **Solo** to identify a Part temporarily, or **Restore all** to undo hiding.
+Live2Pet never hides a Part automatically based on its name. Friendly names are
+used when the model supplies them; otherwise the original Part IDs are shown.
+
+The project saves your hidden Parts and applies them to preview and both target
+builds. Framing uses sampled visible animation bounds. Solo is not saved. Older
+projects open with every Part visible. A background painted into the same mesh
+as the character cannot be separated by this control.
+
 ### Targets and installation
 
 **Settings → Targets & Installation** detects the Clawd on Desk and Codex macOS
@@ -128,7 +140,7 @@ not change saved mappings or generated-package timing.
 Codex compatibility and timing notes are collapsed under Format details on
 the Build page; missing requirements and build errors remain visible.
 
-The core inspection, project, mapping, center-column source preview, target-build, progress, cache, validation, generated-preview, artifact-download, and explicit package-install seams are implemented in the default HeroUI App. Remaining V1 work includes actual target-host installation acceptance, shared model Visibility, optional versioned Spine support, and final macOS accessibility and release qualification.
+The core inspection, project, mapping, center-column source preview, manual model Visibility, target-build, progress, cache, validation, generated-preview, artifact-download, and explicit package-install seams are implemented in the default HeroUI App. Remaining V1 work includes target-host UI activation/playback acceptance, optional versioned Spine support, and final macOS accessibility and release qualification.
 
 Codex Skill integration, a hosted Mapper Session, a separate preview window, the official Cubism Web Framework bridge, Windows qualification, and public signed binaries are outside the V1 product. See the [implementation plan](docs/plans/live2pet-v1-implementation-plan.md) for the current order and close criteria.
 

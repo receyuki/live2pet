@@ -2,7 +2,11 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
+const PREVIOUS_SCHEMA_VERSION = 1;
+const MAX_VISUAL_ELEMENT_IDS = 4096;
+const MAX_VISUAL_ELEMENT_ID_LENGTH = 256;
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/;
 const MAX_PROJECT_BYTES = 2 * 1024 * 1024;
 const PROJECT_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,95}$/i;
 const MAPPING_PATTERN = /^(motion|fallback):[^\s:][^\s]{0,255}$/;
@@ -43,6 +47,29 @@ function normalizeProjectId(value) {
     fail('INVALID_PROJECT_ID', 'projectId must contain only letters, numbers, dots, underscores, or hyphens.');
   }
   return projectId;
+}
+
+function normalizeVisualSettings(value = { hiddenElementIds: [] }) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !Array.isArray(value.hiddenElementIds)) {
+    fail('INVALID_VISUAL_SETTINGS', 'visualSettings.hiddenElementIds must be an array.');
+  }
+  const ids = value.hiddenElementIds;
+  if (ids.length > MAX_VISUAL_ELEMENT_IDS) {
+    fail('INVALID_VISUAL_SETTINGS', `visualSettings.hiddenElementIds cannot contain more than ${MAX_VISUAL_ELEMENT_IDS} identities.`, { max: MAX_VISUAL_ELEMENT_IDS });
+  }
+  const seen = new Set();
+  for (const [index, id] of ids.entries()) {
+    if (typeof id !== 'string' || !id.length || id.length > MAX_VISUAL_ELEMENT_ID_LENGTH || CONTROL_CHARACTER_PATTERN.test(id)) {
+      fail('INVALID_VISUAL_SETTINGS', `visualSettings.hiddenElementIds[${index}] must be a non-empty identity of at most ${MAX_VISUAL_ELEMENT_ID_LENGTH} characters without control characters.`, { index, maxLength: MAX_VISUAL_ELEMENT_ID_LENGTH });
+    }
+    seen.add(id);
+  }
+  return { hiddenElementIds: [...seen].sort() };
+}
+
+function digestVisualSettings(value = { hiddenElementIds: [] }) {
+  const normalized = normalizeVisualSettings(value);
+  return crypto.createHash('sha256').update(JSON.stringify(normalized), 'utf8').digest('hex');
 }
 
 function normalizeSource(source) {
@@ -164,22 +191,29 @@ function normalizeSourceReview(review) {
 
 function validateProject(input) {
   assertRecord(input, 'project');
-  if (input.schemaVersion !== SCHEMA_VERSION) {
-    if (Number.isInteger(input.schemaVersion) && input.schemaVersion > SCHEMA_VERSION) {
-      fail('UNSUPPORTED_PROJECT_VERSION', `Project schema version ${input.schemaVersion} is newer than supported version ${SCHEMA_VERSION}.`);
+  const schemaVersion = input.schemaVersion;
+  if (schemaVersion !== SCHEMA_VERSION && schemaVersion !== PREVIOUS_SCHEMA_VERSION) {
+    if (Number.isInteger(schemaVersion) && schemaVersion > SCHEMA_VERSION) {
+      fail('UNSUPPORTED_PROJECT_VERSION', `Project schema version ${schemaVersion} is newer than supported version ${SCHEMA_VERSION}.`);
     }
     fail('INVALID_PROJECT_VERSION', `Project schemaVersion must be ${SCHEMA_VERSION}.`);
   }
+  // Schema v1 did not persist Visual Settings. Keep the migration explicit and
+  // deterministic so an old project never inherits a stale or untrusted field.
+  const source = schemaVersion === PREVIOUS_SCHEMA_VERSION
+    ? { ...input, schemaVersion: SCHEMA_VERSION, visualSettings: { hiddenElementIds: [] } }
+    : input;
   const project = {
     schemaVersion: SCHEMA_VERSION,
-    projectId: normalizeProjectId(input.projectId),
-    appVersion: text(input.appVersion, 'appVersion', { max: 64 }),
-    name: text(input.name, 'name', { max: 256 }),
-    source: normalizeSource(input.source),
-    recipes: normalizeRecipes(input.recipes),
+    projectId: normalizeProjectId(source.projectId),
+    appVersion: text(source.appVersion, 'appVersion', { max: 64 }),
+    name: text(source.name, 'name', { max: 256 }),
+    source: normalizeSource(source.source),
+    recipes: normalizeRecipes(source.recipes),
+    visualSettings: normalizeVisualSettings(source.visualSettings),
     targets: {},
   };
-  for (const targetId of TARGETS) project.targets[targetId] = normalizeTarget(input.targets?.[targetId], targetId);
+  for (const targetId of TARGETS) project.targets[targetId] = normalizeTarget(source.targets?.[targetId], targetId);
   const recipesById = new Map(project.recipes.map((recipe) => [recipe.id, recipe]));
   for (const [targetId, target] of Object.entries(project.targets)) {
     for (const [slot, recipeId] of Object.entries(target.recipeMappings || {})) {
@@ -192,9 +226,9 @@ function validateProject(input) {
       }
     }
   }
-  const rightsNote = text(input.rightsNote, 'rightsNote', { required: false, max: 4096 });
+  const rightsNote = text(source.rightsNote, 'rightsNote', { required: false, max: 4096 });
   if (rightsNote !== undefined) project.rightsNote = rightsNote;
-  const sourceReview = normalizeSourceReview(input.sourceReview);
+  const sourceReview = normalizeSourceReview(source.sourceReview);
   if (sourceReview !== undefined) project.sourceReview = sourceReview;
   return project;
 }
@@ -333,6 +367,8 @@ function assertProjectBuildable(project) {
 
 module.exports = {
   MAX_PROJECT_BYTES,
+  MAX_VISUAL_ELEMENT_IDS,
+  MAX_VISUAL_ELEMENT_ID_LENGTH,
   SCHEMA_VERSION,
   TARGETS,
   RENDER_PRESETS,
@@ -342,11 +378,13 @@ module.exports = {
   assertProjectBuildable,
   autosavePath,
   clearAutosaveFile,
+  digestVisualSettings,
   isProjectBuildable,
   loadProjectFile,
   parseProject,
   recoverAutosaveFile,
   relinkProjectSource,
+  normalizeVisualSettings,
   saveAutosaveFile,
   saveProjectFile,
   serializeProject,

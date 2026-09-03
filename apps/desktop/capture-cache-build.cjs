@@ -4,6 +4,8 @@ function fail(message) {
   throw error;
 }
 
+const { digestVisualSettings, normalizeVisualSettings } = require('@live2pet/project');
+
 function mappedMotionIds(target = {}) {
   const behavior = target.options && target.options.behavior && typeof target.options.behavior === 'object' ? target.options.behavior : {};
   const behaviorValues = ['idleAnimations', 'workingTiers', 'jugglingTiers']
@@ -19,12 +21,24 @@ function mappedMotionIds(target = {}) {
 function captureCacheContext(project, target, plan) {
   if (!project || !project.source || typeof project.source.fingerprint !== 'string' || !/^[a-f0-9]{64}$/i.test(project.source.fingerprint)) return null;
   if (!plan || ![2, 3, 4, 5].includes(Number(plan.cubismVersion)) || !['clawd', 'codex-pet'].includes(target)) return null;
+  const visualSettings = normalizeVisualSettings(project.visualSettings);
+  const visualSettingsDigest = visualSettings.hiddenElementIds.length ? digestVisualSettings(visualSettings) : null;
   return {
     sourceFingerprint: project.source.fingerprint,
     cubismVersion: Number(plan.cubismVersion),
     target,
     renderPreset: typeof plan.renderPreset === 'string' ? plan.renderPreset : 'balanced',
+    ...(visualSettingsDigest ? { visualSettings, visualSettingsDigest } : {}),
   };
+}
+
+function inferredRendererPlan(input, targetProject) {
+  const renderer = input && input.renderer;
+  const cubismVersion = Number(renderer && renderer.source && renderer.source.cubismVersion);
+  if (![2, 3, 4, 5].includes(cubismVersion)) return null;
+  const render = input && input.render && typeof input.render === 'object' ? input.render : {};
+  const renderPreset = render.preset || input.renderPreset || targetProject?.renderPreset || targetProject?.options?.renderPreset || 'balanced';
+  return { cubismVersion, renderPreset, inferred: true };
 }
 
 function encodedCacheContext(project, target, plan, resolved) {
@@ -43,6 +57,7 @@ function encodedCacheContext(project, target, plan, resolved) {
     targetVersion,
     renderPreset: captureContext.renderPreset,
     encoderVersion,
+    ...(captureContext.visualSettingsDigest ? { visualSettingsDigest: captureContext.visualSettingsDigest } : {}),
   };
 }
 
@@ -63,9 +78,9 @@ function createCaptureCacheBuildService({ buildProjectTargets, getCaptureCacheSe
     for (const target of input.targets || ['clawd', 'codex-pet']) {
       const original = targetInputs[target];
       const plan = original && original.captureCache;
+      const targetProject = input.project && input.project.targets && input.project.targets[target];
       if (!plan || typeof plan !== 'object') continue;
       const context = captureCacheContext(input.project, target, plan);
-      const targetProject = input.project && input.project.targets && input.project.targets[target];
       if (!context || !targetProject) continue;
       const recipes = plan.recipesByMotion && typeof plan.recipesByMotion === 'object' ? plan.recipesByMotion : {};
       const keys = plan.keysByMotion && typeof plan.keysByMotion === 'object' ? plan.keysByMotion : {};
@@ -128,8 +143,11 @@ function createCaptureCacheBuildService({ buildProjectTargets, getCaptureCacheSe
       const cache = getEncodedCache();
       if (cache && typeof cache.get === 'function' && typeof cache.put === 'function') {
         for (const target of input.targets || ['clawd', 'codex-pet']) {
-          const plan = input.inputsByTarget && input.inputsByTarget[target] && input.inputsByTarget[target].captureCache;
           const targetProject = input.project && input.project.targets && input.project.targets[target];
+          const targetInput = input.inputsByTarget && input.inputsByTarget[target];
+          const plan = targetInput && targetInput.captureCache
+            ? targetInput.captureCache
+            : inferredRendererPlan(targetInput, targetProject);
           if (!plan || !targetProject) continue;
           let resolved = null;
           try { resolved = await resolveEncodedCacheContext({ project: input.project, target, targetProject, plan }); } catch {}
@@ -143,7 +161,7 @@ function createCaptureCacheBuildService({ buildProjectTargets, getCaptureCacheSe
       if (typeof service.writeMany === 'function' && pendingWrites.length) {
         const groups = new Map();
         for (const pending of pendingWrites) {
-          const key = JSON.stringify([pending.context.sourceFingerprint, pending.context.cubismVersion, pending.context.target, pending.context.renderPreset]);
+          const key = JSON.stringify([pending.context.sourceFingerprint, pending.context.cubismVersion, pending.context.target, pending.context.renderPreset, pending.context.visualSettingsDigest || null]);
           if (!groups.has(key)) groups.set(key, { context: pending.context, entries: [] });
           groups.get(key).entries.push({ recipe: pending.recipe, frameSet: pending.frameSet });
         }

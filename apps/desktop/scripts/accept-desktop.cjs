@@ -41,6 +41,16 @@ let app;
     await page.getByRole('heading', { name: 'Source Package', exact: true }).waitFor();
     await nav('Map').click();
     await previewReady();
+    const hiddenElementId = process.env[generation === 'modern' ? 'LIVE2PET_MODERN_HIDDEN_ELEMENT' : 'LIVE2PET_LEGACY_HIDDEN_ELEMENT'];
+    if (hiddenElementId) {
+      await page.getByRole('button', { name: 'Visibility', exact: true }).click();
+      await page.getByRole('textbox', { name: 'Search visual elements' }).fill(hiddenElementId);
+      const rows = page.locator('.visibility-row').filter({ hasText: hiddenElementId });
+      await rows.getByRole('button', { name: /^Hide ·/ }).first().click();
+      await rows.getByRole('button', { name: /^Show ·/ }).first().waitFor();
+      await page.getByRole('button', { name: 'Back to motions', exact: true }).click();
+      log(`${generation}: manually selected a hidden Visual Element`);
+    }
     assert.ok((await page.locator('.preview-stage').boundingBox()).width <= 560);
     await page.getByRole('button', { name: 'Pause motion', exact: true }).click();
     const readPlayback = () => app.evaluate(async ({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children[0].webContents.executeJavaScript('({...window.__live2petPixiLive2D.state})'));
@@ -93,10 +103,13 @@ let app;
     assert.equal(Object.keys(saved.targets.clawd.mappings).length, 4);
     assert.equal(Object.keys(saved.targets['codex-pet'].mappings).length, 9);
     assert.equal(saved.recipes.length, hasSecondMotion ? 2 : 1);
+    if (hiddenElementId) assert.deepEqual(saved.visualSettings.hiddenElementIds, [hiddenElementId]);
     log(`${generation}: real preview/playback, explicit mappings, and atomic save passed`);
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children[0].webContents.forcefullyCrashRenderer());
-    await page.getByRole('button', { name: 'Try again', exact: true }).click();
-    await previewReady();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children[0].webContents.forcefullyCrashRenderer());
+      await page.getByRole('button', { name: 'Try again', exact: true }).click();
+      await previewReady();
+    }
     assert.deepEqual(JSON.parse(fs.readFileSync(file)), saved, 'Renderer crash preserves the saved project');
     log(`${generation}: renderer-process failure recovered without losing the project`);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -118,11 +131,28 @@ let app;
       const card = page.locator('.build-card').filter({ has: page.getByRole('heading', { name: targetName, exact: true }) });
       await card.getByRole('button', { name: 'Compact', exact: true }).click();
       log(`${generation}: building ${targetName}`);
-      await page.evaluate(() => { window.__acceptProgress = []; window.__acceptUnsubscribe = window.live2pet.onBuildProgress((event) => window.__acceptProgress.push(event)); });
+      await page.evaluate(() => { window.__acceptProgress = []; window.__acceptUnsubscribe = window.live2pet.onBuildProgress((event) => window.__acceptProgress.push({ ...event, timestamp: Date.now() })); });
+      if (process.env.LIVE2PET_ACCEPT_BUILD_HARDENING === '1' && targetName.startsWith('Clawd')) {
+        await card.getByRole('button', { name: 'Build Pet Package', exact: true }).click();
+        await page.waitForFunction(() => window.__acceptProgress.some(event => event.stage === 'render' && event.status === 'frame-completed'), null, { timeout: 60000 });
+        await card.getByRole('button', { name: 'Cancel build', exact: true }).click();
+        await card.locator('.build-result-cancelled').waitFor();
+        assert.equal(await card.locator('.artifact-panel').count(), 0, 'cancelled first build must not publish a partial artifact');
+        await page.evaluate(() => { window.__acceptProgress = []; });
+        log(`${generation}: mid-capture cancellation settled without a partial artifact`);
+      }
       await card.getByRole('button', { name: 'Build Pet Package', exact: true }).click();
-      await card.locator('.build-result-succeeded, .build-result-failed').waitFor({ timeout: 180000 }).catch(async (error) => { throw new Error(`${error.message}\n${await card.innerText()}`); });
+      const coldStart = Date.now();
+      await card.locator('.build-result-succeeded, .build-result-failed').waitFor({ timeout: Number(process.env.LIVE2PET_BUILD_TIMEOUT_MS) || 180000 }).catch(async (error) => { throw new Error(`${error.message}\n${await card.innerText()}`); });
+      const coldMs = Date.now() - coldStart;
       assert.equal(await card.locator('.build-result-failed').count(), 0, await card.locator('.build-result').innerText());
       const progress = await page.evaluate(() => { window.__acceptUnsubscribe(); return window.__acceptProgress; });
+      const stageMs = Object.fromEntries([...new Set(progress.map(event => event.stage))].map(stage => {
+        const times = progress.filter(event => event.stage === stage).map(event => event.timestamp);
+        return [stage, Math.max(...times) - Math.min(...times)];
+      }));
+      log(`${generation}: ${targetName} timings ${JSON.stringify({ totalMs: coldMs, stageMs })}`);
+      fs.writeFileSync(path.join(profile, `${generation}-${targetName.startsWith('Clawd') ? 'clawd' : 'codex'}-progress.json`), JSON.stringify(progress));
       assert.ok(progress.some((event) => event.stage === 'render' && event.fraction > 0 && event.fraction < 1), 'capture reports intermediate progress');
       assert.ok((await card.locator('.artifact-panel strong').innerText()).includes(`acceptance-${generation}`));
       await card.locator('.generated-preview').waitFor({ timeout: 60000 }).catch(async (error) => { throw new Error(`${error.message}\n${await card.innerText()}`); });
@@ -149,7 +179,41 @@ let app;
         assert.ok((await choices.nth(1).getAttribute('class')).includes('primary'));
       }
       log(`${generation}: ${targetName} build succeeded`);
+      if (process.env.LIVE2PET_ACCEPT_BUILD_HARDENING === '1') {
+        const downloadPath = path.join(profile, `${generation}-${targetName.startsWith('Clawd') ? 'clawd' : 'codex'}.zip`);
+        await app.evaluate(({ BrowserWindow }, destination) => {
+          globalThis.__acceptDownloadState = 'pending';
+          BrowserWindow.getAllWindows()[0].webContents.session.once('will-download', (_event, item) => {
+            item.setSavePath(destination);
+            item.once('done', (_event, state) => { globalThis.__acceptDownloadState = state; });
+          });
+        }, downloadPath);
+        await card.getByRole('button', { name: `Download ${targetName}`, exact: true }).click();
+        for (let attempt = 0; attempt < 100 && await app.evaluate(() => globalThis.__acceptDownloadState) === 'pending'; attempt++) await page.waitForTimeout(100);
+        assert.equal(await app.evaluate(() => globalThis.__acceptDownloadState), 'completed');
+        assert.ok(fs.statSync(downloadPath).size > 0, 'explicit Download writes a portable ZIP');
+        const entries = await require(path.join(root, 'packages/installation/src/index.cjs')).readArchive(fs.readFileSync(downloadPath));
+        assert.ok(entries.some(entry => /(?:theme|pet)\.json$/.test(entry.name)));
+        const installRoot = path.join(profile, `install-${generation}-${targetName.startsWith('Clawd') ? 'clawd' : 'codex'}`);
+        fs.mkdirSync(installRoot);
+        await app.evaluate(({ dialog }, destination) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [destination] }); }, installRoot);
+        await card.getByRole('button', { name: `Choose folder ${targetName}`, exact: true }).click();
+        await card.getByRole('button', { name: `Install ${targetName}`, exact: true }).click();
+        await card.getByText('Package installed', { exact: true }).waitFor();
+        assert.equal(fs.readdirSync(installRoot).length, 1);
+        await page.evaluate(() => { window.__acceptProgress = []; window.__acceptUnsubscribe = window.live2pet.onBuildProgress(event => window.__acceptProgress.push(event)); });
+        const warmStart = Date.now();
+        await card.getByRole('button', { name: 'Build Pet Package', exact: true }).click();
+        await card.locator('.build-result-succeeded, .build-result-failed').waitFor({ timeout: 180000 });
+        assert.equal(await card.locator('.build-result-failed').count(), 0);
+        const warmMs = Date.now() - warmStart;
+        const warm = await page.evaluate(() => { window.__acceptUnsubscribe(); return window.__acceptProgress; });
+        assert.ok(warm.some(event => event.cache === 'hit' || event.cacheHits > 0), 'unchanged Desktop rebuild uses the real cache');
+        assert.ok(!warm.some(event => event.stage === 'render' && event.status === 'frame-completed'), 'cache avoids equivalent renderer frames');
+        log(`${generation}: ${targetName} download/scratch install/cache rebuild passed; cold=${coldMs}ms warm=${warmMs}ms`);
+      }
     }
+    await app.evaluate(({ dialog }, selected) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] }); }, file);
     await page.getByRole('button', { name: 'Save project', exact: true }).click();
     await page.getByText('Saved', { exact: true }).waitFor();
     const changed = JSON.parse(fs.readFileSync(file));

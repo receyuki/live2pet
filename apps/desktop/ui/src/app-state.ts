@@ -65,6 +65,7 @@ export type AppAction =
   | { type: "ASSIGN_SELECTED_RECIPE"; destination: MappingDestination }
   | { type: "CLEAR_ASSIGNMENT"; destination: MappingDestination }
   | { type: "RENAME_PROJECT"; name: string }
+  | { type: "SET_VISUAL_SETTINGS"; settings: import('./app-host').VisualSettings }
   | { type: "SET_RENDER_PRESET"; target: "clawd" | "codex-pet"; preset: "compact" | "balanced" | "high" }
   | { type: "SOURCE_RELINKED"; document: import('./app-host').Live2PetProject; inspection: import('./app-host').SourceInspection; sourcePath: string }
   | { type: "SOURCE_REVIEW_ACKNOWLEDGED"; document: import('./app-host').Live2PetProject }
@@ -124,6 +125,12 @@ function safeDestination(destination: ReturnDestination, project: ProjectSession
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
+    case "SET_VISUAL_SETTINGS": {
+      if (!state.project?.document) return state;
+      const settings = { hiddenElementIds: [...new Set(action.settings.hiddenElementIds)].sort() };
+      if (JSON.stringify(settings) === JSON.stringify(state.project.document.visualSettings)) return state;
+      return applyDocumentEdit(state, { ...state.project.document, schemaVersion: 2, visualSettings: settings });
+    }
     case "RENAME_PROJECT":
       return state.project?.document ? applyDocumentEdit(state, { ...state.project.document, name: action.name }) : state;
     case "OPEN_PROJECT":

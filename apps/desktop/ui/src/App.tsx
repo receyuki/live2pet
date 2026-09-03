@@ -3,6 +3,7 @@ import {
   ButtonGroup,
   Card,
   Chip,
+  Input,
   ProgressBar,
 } from "@heroui/react";
 import {
@@ -13,6 +14,7 @@ import {
   CircleCheck,
   Database,
   ExternalLink,
+  Eye,
   FolderOpen,
   Gauge,
   HardDrive,
@@ -24,7 +26,6 @@ import {
   Plus,
   RotateCcw,
   Save,
-  Search,
   Settings as SettingsIcon,
   SlidersHorizontal,
   Sparkles,
@@ -63,6 +64,10 @@ import {
   playLive2DPreview,
   controlLive2DPreview,
   setLive2DPreviewExpression,
+  getPreviewVisualElements,
+  setPreviewVisualSettings,
+  VisualElement,
+  VisualSettings,
   PreviewStatus,
   RuntimeSettings,
   RecentProject,
@@ -83,6 +88,7 @@ import { hasDraggedFiles, isProjectFile } from "./file-drop";
 import { CLAWD_PROFILE, CODEX_PROFILE, MappingDestination } from "./target-profiles";
 import { BuildView } from "./BuildView";
 import { TargetSettings } from "./TargetSettings";
+import { VisibilityPanel, soloVisualSettings } from './VisibilityPanel';
 import { buildReducer, initialBuildState } from "./build-state";
 import {
   clearProjectDraft,
@@ -465,7 +471,7 @@ function PanelHeading({ icon, title, body }: { icon: ReactNode; title: string; b
   return <header className="panel-heading"><span className="square-icon">{icon}</span><div><h2>{title}</h2><p>{body}</p></div></header>;
 }
 
-function MapView({ locale, projectId, projectDocument, inspection, runtimeReady, selectedMotionId, selectedExpressionId, onConfigureRuntime, onSelectMotion, onSelectExpression, onAssign, onClear }: { locale: Locale; projectId: string; projectDocument: Live2PetProject | null; inspection?: SourceInspection; runtimeReady: boolean; selectedMotionId: string | null; selectedExpressionId: string | null; onConfigureRuntime: () => void; onSelectMotion: (id: string) => void; onSelectExpression: (id: string | null) => void; onAssign: (destination: MappingDestination) => void; onClear: (destination: MappingDestination) => void }) {
+function MapView({ locale, projectId, projectDocument, inspection, runtimeReady, selectedMotionId, selectedExpressionId, onConfigureRuntime, onSelectMotion, onSelectExpression, onAssign, onClear, onVisualSettings }: { locale: Locale; projectId: string; projectDocument: Live2PetProject | null; inspection?: SourceInspection; runtimeReady: boolean; selectedMotionId: string | null; selectedExpressionId: string | null; onConfigureRuntime: () => void; onSelectMotion: (id: string) => void; onSelectExpression: (id: string | null) => void; onAssign: (destination: MappingDestination) => void; onClear: (destination: MappingDestination) => void; onVisualSettings: (settings: VisualSettings) => void }) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   const previewSurface = useRef<HTMLDivElement>(null);
   const [previewStatus, setPreviewStatus] = useState<PreviewStatus | null>(null);
@@ -474,6 +480,14 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   const [seekTime, setSeekTime] = useState<number | null>(null);
   const [previewLoop, setPreviewLoop] = useState(true);
   const [previewSpeed, setPreviewSpeed] = useState(1);
+  const [visibilityOpen, setVisibilityOpen] = useState(false);
+  const visibilityTrigger = useRef<HTMLButtonElement>(null);
+  const [visualElements, setVisualElements] = useState<VisualElement[]>([]);
+  const [soloId, setSoloId] = useState<string | null>(null);
+  const [visibilityBusy, setVisibilityBusy] = useState(false);
+  const [motionQuery, setMotionQuery] = useState('');
+  const visualSettings = projectDocument?.visualSettings ?? { hiddenElementIds: [] };
+  const visualKey = JSON.stringify(visualSettings);
   const commandSequence = useRef(0);
   const runPlayback = async (operation: () => Promise<PreviewStatus>) => {
     const sequence = ++commandSequence.current;
@@ -537,7 +551,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
       try {
         const status = opened
           ? await layoutLive2DPreview({ visible: true, bounds })
-          : await openLive2DPreview({ projectId, sourceFingerprint: inspection.source.fingerprint, bounds });
+          : await openLive2DPreview({ projectId, sourceFingerprint: inspection.source.fingerprint, bounds, visualSettings });
         opened = true;
         if (active) setPreviewStatus(status);
         else await layoutLive2DPreview({ visible: false }).catch(() => undefined);
@@ -560,6 +574,22 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
       void layoutLive2DPreview({ visible: false }).catch(() => undefined);
     };
   }, [inspection, nativePreview, previewRetry, projectId]);
+
+  useEffect(() => {
+    if (previewStatus?.state !== 'ready') return;
+    let active = true;
+    void getPreviewVisualElements().then(elements => { if (active) setVisualElements(elements); }).catch(cause => { if (active) setPlaybackError(String(cause.message)); });
+    return () => { active = false; };
+  }, [previewStatus?.state]);
+
+  useEffect(() => {
+    if (previewStatus?.state !== 'ready' || !visualElements.length) return;
+    let active = true;
+    setVisibilityBusy(true);
+    const effective = soloId ? soloVisualSettings(visualElements, soloId) : visualSettings;
+    void runPlayback(() => setPreviewVisualSettings(effective)).finally(() => { if (active) setVisibilityBusy(false); });
+    return () => { active = false; };
+  }, [visualKey, soloId, visualElements, previewStatus?.state]);
 
   useEffect(() => {
     setSeekTime(null);
@@ -601,11 +631,11 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   };
   return (
     <main className="map-workspace">
-      <section className="workspace-panel">
+      {visibilityOpen ? <VisibilityPanel locale={locale} elements={visualElements} settings={visualSettings} soloId={soloId} busy={visibilityBusy || previewStatus?.state !== 'ready'} onSettings={onVisualSettings} onSolo={setSoloId} onClose={() => { setSoloId(null); setVisibilityOpen(false); visibilityTrigger.current?.focus(); }} /> : <section className="workspace-panel">
         <PanelHeading icon={<SlidersHorizontal size={16} />} title={t("motions")} body={t("motionsHint")} />
-        <label className="search-field"><Search size={14} /><input aria-label={t("searchMotions")} placeholder={t("search")} /></label>
+        <Input aria-label={t("searchMotions")} placeholder={t("search")} value={motionQuery} onChange={event => setMotionQuery(event.target.value)} />
         <div className="motion-list">
-          {displayedMotions.map((motion) => (
+          {displayedMotions.filter(motion => motion.name.toLocaleLowerCase().includes(motionQuery.toLocaleLowerCase())).map((motion) => (
             <Button key={motion.id} variant={motion.id === selected?.id ? "secondary" : "ghost"} className={`motion-item ${motion.tint}`} onPress={() => onSelectMotion(motion.id)}>
               <span className="motion-icon"><Play size={15} /></span><span className="grow-copy"><strong>{motion.name}</strong><small>{t("motionDuration", { value: motion.seconds })}</small></span>{motion.id === selected?.id && <small>{t("selected")}</small>}
             </Button>
@@ -616,10 +646,10 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
             {displayedExpressions.map((expression) => <Button key={expression.id} size="sm" variant={expression.id === selectedExpression?.id ? "secondary" : "ghost"} onPress={() => onSelectExpression(expression.id)}>{expression.name}</Button>)}
           </div></> : <p className="empty-expression-note">{t('noExpressions')}</p>}
         </div>
-      </section>
+      </section>}
       <section className="workspace-panel">
         <PanelHeading icon={<Sparkles size={16} />} title={t("preview")} body={t("previewHint")} />
-        <div className="preview-caption"><Chip variant="soft">{selectedName} · {selectedExpression?.name ?? t("baseExpression")}</Chip></div>
+        <div className="preview-caption"><Chip variant="soft">{selectedName} · {selectedExpression?.name ?? t("baseExpression")}</Chip><Button ref={visibilityTrigger} size="sm" variant={visibilityOpen ? 'secondary' : 'ghost'} aria-expanded={visibilityOpen} isDisabled={!projectDocument || previewStatus?.state !== 'ready'} onPress={() => { if (visibilityOpen) setSoloId(null); setVisibilityOpen(!visibilityOpen); }}><Eye size={15} />{t('visibility')}</Button></div>
         <div className="preview-stage"><i className="stage-grid" />{!runtimeReady ? <div className="preview-runtime-required"><Gauge size={28} /><strong>{t("runtimeRequired")}</strong><p>{t("runtimeRequiredBody")}</p><Button size="sm" variant="primary" onPress={onConfigureRuntime}>{t("configureRuntime")}</Button></div> : nativePreview ? <><div ref={previewSurface} className="preview-native-surface" />{previewStatus?.state === 'opening' && <div className="preview-message">{t('previewLoading')}</div>}{previewStatus?.state === 'failed' && <div className="preview-runtime-required"><strong>{t('previewFailed')}</strong><p>{previewStatus.error?.message}</p><Button size="sm" variant="primary" onPress={() => setPreviewRetry((value) => value + 1)}>{t('retry')}</Button></div>}</> : <div className="preview-runtime-required"><Box size={28} aria-hidden="true" /><strong>{t('previewEmptyTitle')}</strong><p>{t(projectDocument ? 'previewDesktopRequired' : 'previewImportHint')}</p></div>}</div>
         <div className="playback"><Button isIconOnly aria-label={previewStatus?.playback?.playing ? t('pause') : t('play')} variant="primary" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={togglePlayback}>{previewStatus?.playback?.playing ? <Pause size={15} /> : <Play size={15} />}</Button><Button isIconOnly aria-label={t('restart')} variant="ghost" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={() => void runPlayback(() => controlLive2DPreview('restart'))}><RotateCcw size={15} /></Button><input className="timeline" type="range" aria-label={t('seekMotion')} min={0} max={selectedDuration} step={0.01} value={seekTime ?? previewStatus?.playback?.time ?? 0} disabled={previewStatus?.state !== 'ready' || !selectedDuration} onInput={(event) => setSeekTime(Number(event.currentTarget.value))} /><small>{(previewStatus?.playback?.time ?? 0).toFixed(1)} / {selected?.seconds ?? '—'} s</small></div>
         <div className="playback-options">
@@ -628,6 +658,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
           <small id="preview-options-hint">{t('previewOptionsHint')}</small>
         </div>
         {playbackError && <p className="inline-error" role="alert">{playbackError}</p>}
+        {previewStatus?.state === 'failed' && visualSettings.hiddenElementIds.length > 0 && <Button size="sm" variant="secondary" onPress={() => { onVisualSettings({ hiddenElementIds: [] }); setSoloId(null); setPreviewRetry(value => value + 1); }}>{t('restoreVisibility')}</Button>}
       </section>
       <section className="workspace-panel assignment-panel">
         <PanelHeading icon={<WandSparkles size={16} />} title={t("assignment")} body={t("assignmentHint")} />
@@ -902,7 +933,8 @@ export function App() {
       const projectId = projectIdFromSourceName(sourceName);
       const inspection = await inspectSource(inputPath, projectId);
       const document: Live2PetProject = {
-        schemaVersion: 1,
+        schemaVersion: 2,
+        visualSettings: { hiddenElementIds: [] },
         projectId,
         appVersion,
         name: inspection.source.name,
@@ -1064,7 +1096,7 @@ export function App() {
         {actionFeedback && <div className="action-feedback" role="alert">{actionFeedback}</div>}
         {state.destination === "welcome" && <WelcomeView locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} draft={projectDraft} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onOpenPreview={openPreview} onRecoverDraft={() => void recoverProjectDraft()} onDiscardDraft={discardProjectDraft} />}
         {state.destination === "source" && <SourceView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} inspectionRequired={Boolean(state.project?.document)} runtimeReady={runtimeReady} busy={importBusy} onConfigureRuntime={openRuntimeSettings} onRelink={relinkCurrentSource} onAcknowledgeReview={acknowledgeCurrentSourceReview} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
-        {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={openRuntimeSettings} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => dispatch({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => dispatch({ type: "CLEAR_ASSIGNMENT", destination })} />}
+        {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={openRuntimeSettings} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => dispatch({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => dispatch({ type: "CLEAR_ASSIGNMENT", destination })} onVisualSettings={(settings) => dispatch({ type: "SET_VISUAL_SETTINGS", settings })} />}
         {state.destination === "build" && <BuildView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} runtimeReady={runtimeReady} state={buildState} onName={(name) => dispatch({ type: "RENAME_PROJECT", name })} onPreset={(target, preset) => dispatch({ type: "SET_RENDER_PRESET", target, preset })} onBuild={(target) => void buildProjectTarget(target)} onCancel={(target) => void cancelProjectBuild(target)} />}
       </div>
       {statusBar}

@@ -6,6 +6,14 @@ An Animation Recipe is a reusable `{ id, motionId, expressionId }` reference; `e
 
 ## Save and recovery
 
+Schema revision 2 adds project-scoped `visualSettings.hiddenElementIds`: a sorted,
+deduplicated list of stable Visual Element IDs. Revision 1 migrates to an empty
+hidden set without changing its mappings. Only manual hide/show decisions are
+persisted; temporary Solo preview state is excluded. Undo/redo includes visibility.
+Preview and both Package Builds apply the same settings, and their canonical
+digest separates dependent capture and encoded-asset cache entries. Restoring
+visibility does not delete source files or unrelated cached assets.
+
 The Mapper provides an explicit Save action. A dirty browser session also writes a bounded, reference-only autosave draft to the browser profile. Recovery is offered when a valid draft is present; an invalid or oversized draft is discarded and never presented as recoverable. Accepting a recovery loads the validated project document and marks it dirty so the user can save it explicitly. Opening another project or saving the current project clears the superseded browser draft.
 
 The project service writes the primary document atomically with restrictive local-file permissions. Browser-profile recovery is advisory: it never silently overwrites the primary project, installs a package, or copies Source Package and runtime bytes into the project directory. A future Electron host may move the same draft envelope to its project service, but the current Mapper keeps it local to the browser profile.

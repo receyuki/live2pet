@@ -230,7 +230,7 @@ describe('Live2Pet desktop shell', () => {
     expect(screen.getByText(/This model has no Expressions/)).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Smile' })).not.toBeInTheDocument();
   });
-  it('creates an unsaved schema-1 project on import and saves it through the opaque document API', async () => {
+  it('creates an unsaved schema-2 project on import and saves it through the opaque document API', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const { saveProject } = installDesktopApi();
     const user = userEvent.setup();
@@ -241,7 +241,7 @@ describe('Live2Pet desktop shell', () => {
     await user.click(screen.getByRole('button', { name: 'Save project' }));
 
     await vi.waitFor(() => expect(saveProject).toHaveBeenCalledOnce());
-    expect(saveProject.mock.calls[0][0]).toMatchObject({ project: { schemaVersion: 1, projectId: 'vicious-khepri', source: { path: '/Users/test/Vicious Khepri.pck' }, recipes: [] } });
+    expect(saveProject.mock.calls[0][0]).toMatchObject({ project: { schemaVersion: 2, visualSettings: { hiddenElementIds: [] }, projectId: 'vicious-khepri', source: { path: '/Users/test/Vicious Khepri.pck' }, recipes: [] } });
     expect(await screen.findByText('Saved')).toBeVisible();
     expect(screen.getByText('Vicious Khepri.live2pet')).toBeVisible();
   });
@@ -701,7 +701,7 @@ describe('Live2Pet desktop shell', () => {
     vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue({ x: 280, y: 90, width: 640, height: 520, top: 90, right: 920, bottom: 610, left: 280, toJSON: () => ({}) });
     fireEvent(window, new Event('resize'));
 
-    await vi.waitFor(() => expect(openPreview).toHaveBeenCalledWith({ projectId: 'vicious-khepri', sourceFingerprint: 'fixture', bounds: { x: 280, y: 90, width: 640, height: 520 } }));
+    await vi.waitFor(() => expect(openPreview).toHaveBeenCalledWith({ projectId: 'vicious-khepri', sourceFingerprint: 'fixture', bounds: { x: 280, y: 90, width: 640, height: 520 }, visualSettings: { hiddenElementIds: [] } }));
     const slider = screen.getByRole('slider', { name: 'Motion position' });
     await vi.waitFor(() => expect(slider).toBeEnabled());
     await vi.waitFor(() => expect(window.live2pet!.playPreview).toHaveBeenCalled());

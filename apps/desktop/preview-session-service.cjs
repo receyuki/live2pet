@@ -5,6 +5,7 @@ const {
   createPixiLive2dAdapter,
   createRendererAssetServer,
   pixiSourceFromManifest,
+  normalizeVisualSettings,
 } = require('@live2pet/renderer');
 const { parsePck: defaultParsePck } = require('@live2pet/source-inspector');
 
@@ -335,6 +336,7 @@ function createPreviewSessionService({
       if (!adapter || typeof adapter.load !== 'function') fail('INVALID_PREVIEW_ADAPTER', 'Preview adapter factory returned an invalid adapter.');
       const rendererSource = await createRendererSource(record.manifest, { baseUrl: `${assetServer.baseUrl}/model` });
       await adapter.load(rendererSource);
+      if (input.visualSettings) await adapter.setVisualSettings(normalizeVisualSettings(input.visualSettings));
       if (token !== generation) return getStatus();
       state = SESSION_STATES.ready;
       error = null;
@@ -428,6 +430,14 @@ function createPreviewSessionService({
     play,
     setExpression,
     control,
+    getVisualElements: () => enqueue(() => {
+      if (state !== SESSION_STATES.ready || !adapter) fail('PREVIEW_NOT_READY', 'Preview session is not ready.');
+      return adapter.getVisualElements();
+    }),
+    setVisualSettings: (input) => {
+      const settings = normalizeVisualSettings(input);
+      return enqueue(() => invokeNow('setVisualSettings', settings));
+    },
     close: () => enqueue(closeNow),
     getStatus,
     readStatus: () => enqueue(async () => {

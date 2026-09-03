@@ -40,7 +40,7 @@ export type SourceInspection = {
 };
 
 export type Live2PetProject = {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   projectId: string;
   appVersion: string;
   name: string;
@@ -57,6 +57,7 @@ export type Live2PetProject = {
     'codex-pet': ProjectTarget;
   };
   rightsNote?: string;
+  visualSettings?: VisualSettings;
   sourceReview?: { required: boolean; reason?: string; reviewedFingerprint?: string; affectedRecipeIds: string[] };
 };
 
@@ -124,6 +125,8 @@ export type TargetInstallations = { platform: string; targets: TargetInstallatio
 export type InstallResult = { protocolVersion?: number; target: BuildTarget; packageId?: string; conflict?: string; files: string[]; byteLength?: number; path: '<selected-install-root>' | '<platform-default-target-root>' };
 
 export type PreviewBounds = { x: number; y: number; width: number; height: number };
+export type VisualSettings = { hiddenElementIds: string[] };
+export type VisualElement = { id: string; name: string; kind: 'part' | 'slot'; parentId?: string };
 export type PreviewStatus = {
   schemaVersion: 1;
   state: 'idle' | 'opening' | 'ready' | 'failed';
@@ -171,7 +174,9 @@ type Live2PetApi = {
   configureTargetInstallation?(input: { target: BuildTarget; action: InstallationAction }): Promise<AppResponse<{ cancelled: boolean }>>;
   installArtifact?(input: { artifactId: string; target: BuildTarget; conflict?: 'cancel' | 'upgrade' | 'side-by-side'; confirmInstall: true; locationId?: string }): Promise<AppResponse<InstallResult>>;
   getFilePath(file: File): string | null;
-  openPreview?(input: { projectId: string; sourceFingerprint: string; bounds: PreviewBounds }): Promise<AppResponse<PreviewStatus>>;
+  openPreview?(input: { projectId: string; sourceFingerprint: string; bounds: PreviewBounds; visualSettings?: VisualSettings }): Promise<AppResponse<PreviewStatus>>;
+  getPreviewVisualElements?(): Promise<AppResponse<VisualElement[]>>;
+  setPreviewVisualSettings?(input: VisualSettings): Promise<AppResponse<PreviewStatus>>;
   layoutPreview?(input: { visible: boolean; bounds?: PreviewBounds }): Promise<AppResponse<PreviewStatus>>;
   playPreview?(input: { motionId: string; loop?: boolean; speed?: number }): Promise<AppResponse<PreviewStatus>>;
   setPreviewExpression?(input: { expressionId: string | null }): Promise<AppResponse<PreviewStatus>>;
@@ -376,7 +381,7 @@ export function hasPreviewApi(): boolean {
   return Boolean(api?.openPreview && api.layoutPreview && api.playPreview && api.setPreviewExpression && api.controlPreview && api.closePreview);
 }
 
-export function openLive2DPreview(input: { projectId: string; sourceFingerprint: string; bounds: PreviewBounds }) {
+export function openLive2DPreview(input: { projectId: string; sourceFingerprint: string; bounds: PreviewBounds; visualSettings?: VisualSettings }) {
   const api = previewApi();
   return unwrap(api.openPreview!(input));
 }
@@ -394,6 +399,17 @@ export function playLive2DPreview(input: { motionId: string; loop?: boolean; spe
 export function setLive2DPreviewExpression(expressionId: string | null) {
   const api = previewApi();
   return unwrap(api.setPreviewExpression!({ expressionId }));
+}
+
+export async function getPreviewVisualElements(): Promise<VisualElement[]> {
+  const api = previewApi();
+  return api.getPreviewVisualElements ? unwrap(api.getPreviewVisualElements()) : [];
+}
+
+export function setPreviewVisualSettings(settings: VisualSettings) {
+  const api = previewApi();
+  if (!api.setPreviewVisualSettings) throw new DesktopApiError('PREVIEW_UNAVAILABLE', 'Visual Settings require the current Desktop App.');
+  return unwrap(api.setPreviewVisualSettings(settings));
 }
 
 export function controlLive2DPreview(action: 'pause' | 'resume' | 'restart' | 'seek', time?: number) {

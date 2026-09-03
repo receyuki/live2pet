@@ -258,3 +258,77 @@ waiting for Retry; a fresh full run passed crash/retry for both generations.
 The intermittent failure is not qualified as resolved by this packaging change
 and remains a renderer-stability follow-up under #12/#10. No renderer lifecycle
 code was changed during the size reduction.
+
+### Manual visibility and build-speed closeout — 2026-09-03
+
+The crash follow-up above is now fixed separately from packaging: a renderer
+exit rejects an in-flight `executeJavaScript` call so status polling cannot
+block Retry behind the dead process. Both Cubism generations passed three
+consecutive deliberate crashes/retries in each new acceptance run.
+
+Map now lists model Parts with manual Hide/Show, search, transient Solo, and
+Restore all. No name-based hiding occurs. Modern metadata names and parent
+relationships are used when available; legacy IDs are validated through Part
+lookup. Hidden opacity is reapplied after animation/pose. Schema 2 persists the
+canonical hidden set and migrates schema 1 to an empty set. Nine poses per source
+Motion contribute to visible framing; this is a sampled envelope, not an
+all-physics containment guarantee. Undo/redo, save/reopen, failure recovery,
+both target builders, and dependent cache identities carry the same settings.
+
+The HeroUI hosted-build route previously omitted the old Mapper's precomputed
+capture plan, which also bypassed persistent candidate/encoded cache injection.
+It now derives the required context from the inspected renderer and reuses the
+same integrity-checked CacheStore. Unchanged rebuilds report cache hits and emit
+no equivalent frame-capture events; unrelated visibility identities remain intact.
+
+Electron capture now returns a typed RGBA array instead of converting every
+channel into a JavaScript number. A local 20-frame, 768-by-768 transport probe
+took 5,828 ms with numeric arrays and 190 ms with typed arrays. This is transport
+only, not a claim of 30-times-faster complete builds. Browser-only hosts retain
+their serializable-array path. Frame timing, sample counts, dimensions, alpha,
+and encoder settings are unchanged by the transport optimization.
+
+Packaged x64 acceptance used the same two permitted models, first two Motion
+assignments, Compact presets, hidden Part IDs, and fresh disposable profiles:
+
+| Clawd build | Before binary transfer | After binary transfer |
+| --- | ---: | ---: |
+| Modern folder, cold | 96.7 s | 32.9 s |
+| Legacy PCK, cold | 52.6 s | 19.5 s |
+
+The new modern run spent approximately 18.9 s in capture/candidate-cache work,
+12.3 s in encoding, and 1.6 s in ZIP assembly. The legacy run spent 6.8 s, 10.8 s,
+and 1.6 s respectively. These are local measurements, not all-model guarantees.
+The new visibility framing envelope is also included in the updated build.
+
+Before/after WebP metadata confirms unchanged 512-by-512 pages, alpha, nominal
+56-ms timing, and total durations (modern: 15,176/6,776 ms; legacy: 3,080/7,000 ms).
+Modern encoded page counts match exactly. The legacy encoder coalesces different
+numbers of repeated frames after reframing, but preserves the same total delays;
+encoded page count alone is not an animation-speed measurement.
+
+Final regression: 274 Node tests passed with two opt-in real-runtime skips;
+106 UI tests, type checking, packaged startup, native Sharp/libvips loading, and
+prohibited-asset checks passed. The complete packaged acceptance also passed
+after the binary transport and sampled visibility envelope were enabled.
+
+The harness now checks mid-capture cancellation followed by successful rebuilding,
+complete ZIP downloads that parse successfully, generated previews, explicit
+installation into disposable folders, and warm-cache rebuilds. It also verifies
+runtime-copy reuse after restart, source review/recovery/relinking, and manual
+visibility save/reopen. Run with `LIVE2PET_ACCEPT_BUILD_HARDENING=1` and optional
+`LIVE2PET_MODERN_HIDDEN_ELEMENT` / `LIVE2PET_LEGACY_HIDDEN_ELEMENT`; progress
+timestamps are saved only under the disposable profile. User source files,
+production host profiles, and active pets are never changed by this harness.
+
+Separate bounded host checks accepted modern and legacy ZIPs using Clawd on Desk
+0.16.0's installed importer/schema modules in temporary roots. The installed Codex
+26.901.20858 discovery/reader path accepted the generated V2 atlas; its actual
+image reader also accepted V1 and V2 geometry. Pinned ASAR SHA-256 values:
+
+- Clawd: `21b837c363577ca9567aed2442dc9343458f6d6eb21b4843fe5f9acdb1b465c4`
+- Codex: `19b28d38d27fdeff49793263d539d57583f31806536a15ebb667f415a402b39b`
+
+This establishes importer/parser compatibility, not visual host activation or
+playback acceptance. Those user-facing host checks, final accessibility review,
+remaining build/report/combined-install work, and Spine remain separately tracked.

@@ -2,6 +2,7 @@ export type Locale = 'en' | 'zh-CN';
 
 const messages = {
   en: {
+    visibility: 'Visibility', closeVisibility: 'Back to motions', visibilityHint: 'Hide model Parts in both preview and generated packages. Source files stay unchanged.', searchVisualElements: 'Search visual elements', restoreVisibility: 'Restore all', showElement: 'Show', hideElement: 'Hide', soloElement: 'Solo', endSolo: 'End solo', soloHint: 'Temporary inspection only · not saved or exported', noVisualMatches: 'No matching elements.', noVisualElements: 'This model exposes no separable Parts.', inseparableElements: 'A background and character in the same Part cannot be separated here.',
     targetRefresh: 'Detect again', targetApp: 'Host application', targetApp_found: 'App found', 'targetApp_not-found': 'Not found in checked locations', targetApp_unavailable: 'Could not inspect App', targetApp_unsupported: 'Detection unavailable on this platform',
     targetRoot: 'Pet package folder', targetRoot_ready: 'Folder writable', 'targetRoot_will-create': 'Created on confirmed installation', 'targetRoot_not-directory': 'Path is not a folder', targetRoot_unavailable: 'Not accessible or writable',
     targetChooseApp: 'Locate App', targetAutoApp: 'Use automatic detection', targetChooseRoot: 'Choose package folder', targetDefaultRoot: 'Use default folder', targetSource_manual: 'Custom location · saved on this device', targetSource_default: 'Default host location', targetSource_environment: 'Configured by environment',
@@ -50,6 +51,7 @@ const messages = {
     cacheRefresh: 'Refresh cache state',
   },
   'zh-CN': {
+    visibility: '显示与隐藏', closeVisibility: '返回动作列表', visibilityHint: '隐藏模型部件，同时用于预览和生成包，不修改源文件。', searchVisualElements: '搜索模型部件', restoreVisibility: '全部恢复', showElement: '显示', hideElement: '隐藏', soloElement: '单独查看', endSolo: '结束单独查看', soloHint: '仅临时查看 · 不保存、不用于导出', noVisualMatches: '没有匹配的部件。', noVisualElements: '此模型未提供可分离的部件。', inseparableElements: '若背景和角色属于同一个部件，无法在这里分离。',
     targetRefresh: '重新检测', targetApp: '宿主应用', targetApp_found: '已找到 App', 'targetApp_not-found': '未在检查位置找到', targetApp_unavailable: '无法检查 App', targetApp_unsupported: '此平台暂不支持检测',
     targetRoot: '宠物包安装目录', targetRoot_ready: '目录可写', 'targetRoot_will-create': '确认安装时创建', 'targetRoot_not-directory': '路径不是文件夹', targetRoot_unavailable: '无法访问或写入',
     targetChooseApp: '手动定位 App', targetAutoApp: '恢复自动检测', targetChooseRoot: '选择安装目录', targetDefaultRoot: '恢复默认目录', targetSource_manual: '自定义位置 · 已在本机保存', targetSource_default: '宿主默认位置', targetSource_environment: '由环境变量指定',
