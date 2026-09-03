@@ -271,6 +271,7 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
   const previousWindow = global.window;
   const previousDocument = global.document;
   const updates = [];
+  const legacyTimes = [];
   let captureObservedTicker = null;
   const ticker = {
     callbacks: [],
@@ -285,11 +286,12 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     },
   };
   const model = {
+    elapsedTime: 100,
     scale: { set() {} },
     x: 0,
     y: 0,
     getLocalBounds: () => ({ x: 0, y: 0, width: 100, height: 200 }),
-    internalModel: { motionManager: { stopAllMotions() { updates.push('reset'); } } },
+    internalModel: Object.assign(new EventEmitter(), { motionManager: { stopAllMotions() { updates.push('reset'); } } }),
     motion: async () => undefined,
     update: (deltaMilliseconds) => updates.push(deltaMilliseconds),
   };
@@ -306,9 +308,12 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
           this.renderer.height = height;
         },
         extract: {
-          pixels: () => {
+          pixels: (target) => {
+            assert.equal(target, undefined, 'capture must read the viewport, not a bounds-shifted stage texture');
             captureObservedTicker = ticker.started;
-            return new Uint8Array(this.renderer.width * this.renderer.height * 4);
+            const pixels = new Uint8Array(this.renderer.width * this.renderer.height * 4);
+            for (let y = 0; y < this.renderer.height; y++) pixels.fill(y + 1, y * this.renderer.width * 4, (y + 1) * this.renderer.width * 4);
+            return pixels;
           },
         },
       };
@@ -319,6 +324,7 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
   }
   const canvas = { style: {}, parentNode: null };
   global.window = {
+    UtSystem: { setUserTimeMSec: time => legacyTimes.push(time) },
     PIXI: {
       Application,
       Rectangle: class Rectangle {},
@@ -353,6 +359,8 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
 
     const capture = await pageCapture('Base:wave', 0.5, 8, 4, 3, true);
     assert.ok(ArrayBuffer.isView(capture.rgba), 'binary-capable hosts receive pixels without numeric-array expansion');
+    assert.equal(capture.rgba[0], 4, 'WebGL screen rows are flipped to top-down image coordinates');
+    assert.equal(capture.rgba.at(-1), 1);
     assert.equal(capture.time, 0.5);
     assert.ok(updates.includes('reset'), 'seeking backwards resets the active motion');
     assert.equal(captureObservedTicker, false);
@@ -374,6 +382,13 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     await pagePlayMotion('Base:wave', true, 1, 0, 3);
     assert.equal(ticker.started, false);
     assert.equal(pageStep(0.25).time, 0.25);
+    await pageUnload();
+    await pageLoad({ ...pixiSource(), cubismVersion: 2 }, { ...DEFAULT_OPTIONS, width: 8, height: 4 });
+    assert.equal(legacyTimes[0], 0, 'legacy model loading starts with a controlled clock');
+    assert.equal(model.elapsedTime, 0);
+    model.elapsedTime = 1250;
+    model.internalModel.emit('beforeMotionUpdate');
+    assert.equal(legacyTimes.at(-1), 1250, 'legacy motion clock follows explicit model time, not wall time');
     await pageUnload();
   } finally {
     global.window = previousWindow;

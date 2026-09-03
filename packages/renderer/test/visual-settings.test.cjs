@@ -13,6 +13,8 @@ test('Visual Settings normalize order/duplicates and reject malformed identities
 for (const cubismVersion of [2, 4]) test(`Cubism ${cubismVersion}: hides after pose, reframes, and restores authored opacity`, async () => {
   const previousWindow = global.window;
   const opacity = { BG: 0.6, Body: 1 };
+  const parameters = [0.5];
+  let renderedParameter = parameters[0];
   const internal = new EventEmitter();
   internal.coreModel = {
     _model: { parts: { ids: ['BG', 'Body'] } },
@@ -20,17 +22,25 @@ for (const cubismVersion of [2, 4]) test(`Cubism ${cubismVersion}: hides after p
     getPartsOpacity: id => opacity[id], setPartsOpacity: (id, value) => { opacity[id] = value; },
     getPartsDataIndex: id => ['BG', 'Body'].indexOf(id),
     getModelContext: () => ({ arbitraryRuntimeTableName: [{ opaqueField: { id: 'BG' } }, { opaqueField: { id: 'Body' } }, { unrelated: { id: 'Parameter' } }] }),
+    getParameterCount: () => parameters.length,
+    getParameterValueByIndex: index => parameters[index], setParameterValueByIndex: (index, value) => { parameters[index] = value; },
+    getParamFloat: index => parameters[index], setParamFloat: (index, value) => { parameters[index] = value; },
+    update() { rendered = { ...opacity }; renderedParameter = parameters[0]; },
   };
   let pending = false;
+  let advances = 0;
+  let bodyRight = 6;
   let rendered = { ...opacity };
-  const model = { internalModel: internal, scale: { x: 1 }, x: 0, y: 0, update: () => { pending = true; } };
+  const model = { internalModel: internal, scale: { x: 1, set(x) { this.x = x; } }, x: 0, y: 0, update: () => { pending = true; advances++; } };
   const runtime = {
     source: { cubismVersion, motions: [] }, options: {}, state: { time: 0, motionId: null },
-    model, fit() { model.scale.x = this.visualBounds ? 2 : 1; }, syncTicker() {},
+    model, fit() { model.scale.x = this.visualBounds ? 2 : 1; model.x = model.y = 0; }, syncTicker() {},
+    readPixels() { return this.app.renderer.extract.pixels(); },
     app: { stage: {}, stop() {}, renderer: { width: 8, height: 8, extract: { pixels() {
       const pixels = new Uint8Array(8 * 8 * 4);
       for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
-        if (rendered.BG > 0 || (rendered.Body > 0 && x >= 2 && x <= 5 && y >= 2 && y <= 5)) pixels[(y * 8 + x) * 4 + 3] = 255;
+        const localX = (x + 0.5 - model.x) / model.scale.x, localY = (y + 0.5 - model.y) / model.scale.x;
+        if ((rendered.BG > 0 && localX >= 0 && localX < 8 && localY >= 0 && localY < 8) || (rendered.Body > 0 && localX >= 2 && localX < bodyRight && localY >= 2 && localY < 6)) pixels[(y * 8 + x) * 4 + 3] = 255;
       }
       return pixels;
     } } } },
@@ -38,8 +48,11 @@ for (const cubismVersion of [2, 4]) test(`Cubism ${cubismVersion}: hides after p
       if (pending) {
         internal.emit('beforeMotionUpdate');
         opacity.BG = 0.6; // authored pose/animation tries to restore the background
+        const baseParameter = parameters[0];
+        parameters[0] += 0.2; // pose differs from the saved animation baseline
         internal.emit('beforeModelUpdate');
-        rendered = { ...opacity };
+        internal.coreModel.update();
+        parameters[0] = baseParameter;
         pending = false;
       }
     },
@@ -48,6 +61,7 @@ for (const cubismVersion of [2, 4]) test(`Cubism ${cubismVersion}: hides after p
   try {
     assert.deepEqual((await pageInitializeVisualElements()).map(element => element.id), ['BG', 'Body']);
     await pageSetVisualSettings({ hiddenElementIds: ['BG'] });
+    assert.equal(advances, 0, 'hiding only recalculates drawables, without advancing the pose');
     assert.equal(rendered.BG, 0);
     assert.equal(model.scale.x, 2);
     assert.deepEqual(runtime.visualBounds, { x: 2, y: 2, width: 4, height: 4 });
@@ -60,10 +74,14 @@ for (const cubismVersion of [2, 4]) test(`Cubism ${cubismVersion}: hides after p
     try {
       const settings = { ...runtime.visualSettings };
       const framing = runtime.visualBounds;
+      const previousAdvances = advances;
       assert.deepEqual(runtime.getVisualElementThumbnail('BG'), { id: 'BG', dataUrl: 'data:image/png;base64,fixture' });
       assert.equal(rendered.BG, 0, 'inspecting a hidden Part does not unhide it in preview');
       assert.deepEqual(runtime.visualSettings, settings);
       assert.deepEqual(runtime.visualBounds, framing);
+      assert.equal(advances, previousAdvances, 'thumbnail inspection must not rerun motion or physics');
+      assert.equal(renderedParameter, 0.7, 'inspection restores the rendered pose, not its unposed baseline');
+      assert.equal(parameters[0], 0.5, 'inspection preserves base parameters for the next animation tick');
       failThumbnail = true;
       assert.throws(() => runtime.getVisualElementThumbnail('BG'), /encode failed/);
       assert.equal(rendered.BG, 0, 'thumbnail errors restore the project visibility');
@@ -86,9 +104,8 @@ for (const cubismVersion of [2, 4]) test(`Cubism ${cubismVersion}: hides after p
     model.update = milliseconds => { time += milliseconds / 1000; update(); };
     const pixels = runtime.app.renderer.extract.pixels;
     runtime.app.renderer.extract.pixels = () => {
-      const result = pixels();
-      if (current === 'reach' && time > 0.5 && rendered.Body > 0) result[(4 * 8 + 7) * 4 + 3] = 255;
-      return result;
+      bodyRight = current === 'reach' && time > 0.5 ? 8 : 6;
+      return pixels();
     };
     await pageSetVisualSettings({ hiddenElementIds: ['BG'] });
     assert.equal(resets, 0, 'interactive toggles must not replay source motions');

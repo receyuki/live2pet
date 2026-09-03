@@ -79,6 +79,17 @@ test('capture cache exposes aggregate storage and clears all entries without lea
   assert.equal(cache.status().entryCount, 0);
 });
 
+test('viewport capture does not reuse old bounds-shifted pixels', async () => {
+  const { cache, service } = setup();
+  const old = createCaptureCacheService({ cache, rendererVersion: 'pixi-live2d-capture-v3', getRuntimeForGeneration: async () => ({ descriptor: { fingerprint: 'a'.repeat(64) } }) });
+  for (const hiddenElementIds of [[], ['BG']]) {
+    const context = { sourceFingerprint: 'b'.repeat(64), cubismVersion: 4, target: 'clawd', renderPreset: 'balanced', visualSettings: { hiddenElementIds } };
+    await old.write(context, recipe(), { motionId: 'idle', ...frames() });
+    assert.equal((await old.status({ ...context, motions: [recipe()] })).entries[0].hit, true);
+    assert.equal((await service.status({ ...context, motions: [recipe()] })).entries[0].hit, false);
+  }
+});
+
 test('capture cache identities isolate source, target, preset, and motion recipes', async () => {
   const { service } = setup();
   const base = { sourceFingerprint: 'c'.repeat(64), cubismVersion: 4, target: 'clawd', renderPreset: 'balanced' };

@@ -365,3 +365,40 @@ builds, downloads, scratch-folder installation, cancellation, warm-cache reuse,
 crash/retry, save/reopen, and runtime reuse after restart. A separate packaged
 reproduction also verified the visibility-reset notice and playable preview
 after replacing a modern source with a legacy PCK.
+
+### Viewport-coordinate framing correction — 2026-09-03
+
+A pixel-level reproduction caught a missing assertion in the earlier acceptance:
+successful thumbnails and package parsing did not establish centered geometry.
+Pixi 6 `extract.pixels(stage, frame)` creates a texture whose origin follows the
+stage bounds. Treating those pixels as viewport coordinates applied translation
+twice, moving hidden-Part previews toward canvas edges and contaminating export
+framing. Bounds analysis, thumbnails, and captures now share a screen-pixel
+reader with explicit bottom-up to top-down row conversion. It reads the existing
+framebuffer rather than generating another stage texture.
+
+The packaged harness now pauses the Motion and independently measures the actual
+canvas alpha after hiding and thumbnail restoration. It requires a nonempty
+image centered within three pixels on each axis. A separate private reproduction
+covers consecutive hides, restores, and differently located Parts in both
+generations. Unit coverage checks the extraction target, asymmetric row order,
+and misses for old capture-cache entries. Capture identity v4 also invalidates
+downstream encoded caches without deleting user projects or generated packages;
+previously exported packages require an explicit rebuild.
+
+The same loop exposed two additional legacy cases: poses may extend beyond the
+authored canvas, and even tiny visibility-update ticks may rerun motion/physics.
+Framing now makes at most four zoom-out retries when alpha touches a viewport
+edge. Visibility and thumbnails recalculate Core drawables from a captured pose,
+then restore base parameters, without advancing animation or physics. Cubism 2's
+public UtSystem clock follows the renderer's model time rather than wall time.
+
+Verification passed: 276 Node tests (two opt-in skips), 110 UI tests, type
+checking, source-release checks, and the packaged prohibited-asset scan.
+Packaged acceptance passed for both generations, including the independent
+canvas-centering assertion, hidden-Part Clawd/Codex builds, downloads,
+scratch-folder installation, cancellation, cache reuse, crash recovery,
+project reopen, source relinking, and saved-runtime reuse after restart.
+Private consecutive-toggle/thumbnail probes also kept the paused model clocks
+unchanged. No model files, runtimes, screenshots, or generated packages are
+included in the source change.

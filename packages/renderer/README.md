@@ -99,6 +99,13 @@ every possible physics pose.
 Preview and both target captures receive the same project settings, including
 after renderer recovery.
 
+Interactive hiding and thumbnail inspection reuse the last posed parameter
+snapshot and update Core drawables without another animation/physics tick.
+Legacy snapshots use bounded indexed parameter reads. A clipped framing sample
+can zoom out at most four times before fitting; normal in-bounds poses need no
+retry. Cubism 2's public `UtSystem.setUserTimeMSec` follows explicit model time,
+including realtime playback, so pauses and capture are independent of wall time.
+
 Cubism 2 has no public Part enumeration method: its adapter finds stable ID
 objects in bounded model-context tables and validates them through the runtime's
 public Part lookup. No minifier-specific field names are assumed. Combined
@@ -113,6 +120,13 @@ authored pose returns an empty thumbnail. Thumbnails are preview-only, never
 stored in the project or embedded as model assets.
 
 ### Desktop pixel transfer
+
+All bounds scans, thumbnails and captures use the already-rendered viewport,
+not `extract.pixels(stage)`: Pixi 6 generates a bounds-shifted RenderTexture for
+a DisplayObject target. The shared reader converts screen pixels from WebGL's
+bottom-up rows into top-down RGBA without changing the model transform or
+rendering a second time. Desktop capture identity is versioned to prevent reuse
+of older offset frames and downstream encoded assets.
 
 The Electron page explicitly advertises binary result support. Captures return
 the extracted `Uint8Array` through `executeJavaScript` instead of expanding RGBA

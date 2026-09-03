@@ -71,6 +71,9 @@ builds. Toggling visibility updates the current pose immediately; full sampled
 animation framing runs only when capture is needed. Solo is not saved. Older
 projects open with every Part visible. A background painted into the same mesh
 as the character cannot be separated by this control.
+Visibility changes center the current visible content using the actual viewport.
+After upgrading from the earlier shifted-framing build, rebuild affected packages;
+Desktop skips the incompatible old capture cache automatically.
 Replacing source contents resets model-specific hidden IDs, while moving the
 same unchanged source keeps them. The original source and saved project are not
 silently modified by relinking.

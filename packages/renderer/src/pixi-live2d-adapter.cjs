@@ -143,10 +143,19 @@ function pageLoad(source, options) {
       resolution: 1,
     });
     app.stop();
+    // Cubism 2's queue ignores Pixi's `now` and reads UtSystem instead.
+    // Each renderer realm owns one model, so use its public controlled clock.
+    const legacyClock = source.cubismVersion === 2 ? window.UtSystem : null;
+    if (source.cubismVersion === 2 && typeof legacyClock?.setUserTimeMSec !== 'function') throw new Error('The Cubism 2 runtime does not expose controlled motion timing.');
+    legacyClock?.setUserTimeMSec(0);
     const model = await window.PIXI.live2d.Live2DModel.from(source.modelUrl, {
       autoUpdate: false,
       autoHitTest: false,
     });
+    if (legacyClock) {
+      model.elapsedTime = 0;
+      model.internalModel.on('beforeMotionUpdate', () => legacyClock.setUserTimeMSec(model.elapsedTime));
+    }
     app.stage.addChild(model);
 
     const fit = () => {
@@ -160,7 +169,26 @@ function pageLoad(source, options) {
       model.y = (app.renderer.height - bounds.height * scale) / 2 - bounds.y * scale;
     };
     const render = () => app.renderer.render(app.stage);
+    const readPixels = () => {
+      const extractor = app.renderer.extract || app.renderer.plugins?.extract;
+      if (!extractor || typeof extractor.pixels !== 'function') throw new Error('Pixi Extract plugin is unavailable; RGBA capture cannot proceed.');
+      // A DisplayObject target generates a bounds-shifted texture in Pixi 6.
+      // Read the already-rendered viewport so fit, inspection and export share
+      // one origin. Screen pixels are bottom-up; image coordinates are top-down.
+      const { width, height } = app.renderer;
+      const pixels = extractor.pixels(undefined, new window.PIXI.Rectangle(0, 0, width, height));
+      const stride = width * 4;
+      const row = new Uint8Array(stride);
+      for (let y = 0; y < Math.floor(height / 2); y++) {
+        const top = y * stride, bottom = (height - y - 1) * stride;
+        row.set(pixels.subarray(top, top + stride));
+        pixels.copyWithin(top, bottom, bottom + stride);
+        pixels.set(row, bottom);
+      }
+      return pixels;
+    };
     const resetMotion = async (motion, priority) => {
+      legacyClock?.setUserTimeMSec(model.elapsedTime);
       model.internalModel.motionManager.stopAllMotions();
       await model.motion(motion.group, motion.index, priority);
       // Prime the queue entry at t=0 before advancing its clock.
@@ -214,6 +242,7 @@ function pageLoad(source, options) {
 
     const runtime = {
       resetMotion,
+      readPixels,
       app,
       canvas,
       createdCanvas,
@@ -406,10 +435,7 @@ function pageCapture(motionId, time, width, height, priority, binary = false) {
     // Capture uses source time, independent of preview speed and wall time.
     runtime.model.update(Math.max(0.001, (captureTime - previousTime) * 1000));
     runtime.render();
-    const extractor = runtime.app.renderer.extract || (runtime.app.renderer.plugins && runtime.app.renderer.plugins.extract);
-    if (!extractor || typeof extractor.pixels !== 'function') throw new Error('Pixi Extract plugin is unavailable; RGBA capture cannot proceed.');
-    const frame = new window.PIXI.Rectangle(0, 0, width, height);
-    const pixels = extractor.pixels(runtime.app.stage, frame);
+    const pixels = runtime.readPixels();
     // Electron preserves typed arrays across executeJavaScript. Expanding
     // millions of channels into JS numbers makes capture serialization far
     // more expensive than the render itself. Browser-only hosts retain the

@@ -46,6 +46,17 @@ async function pageInitializeVisualElements() {
   });
   const getOpacity = id => modern ? core.getPartOpacityById(id) : core.getPartsOpacity(id);
   const setOpacity = (id, opacity) => modern ? core.setPartOpacityById(id, opacity) : core.setPartsOpacity(id, opacity);
+  const getParameter = index => modern ? core.getParameterValueByIndex(index) : core.getParamFloat(index);
+  const setParameter = (index, value) => modern ? core.setParameterValueByIndex(index, value) : core.setParamFloat(index, value);
+  let parameterCount = modern ? core.getParameterCount() : 0;
+  if (!modern) {
+    // Legacy indexed reads return undefined beyond the parameter table.
+    while (parameterCount < 8192 && getParameter(parameterCount) !== undefined) parameterCount++;
+    if (parameterCount === 8192) throw new Error('The model exceeds the supported parameter snapshot size.');
+  }
+  const readParameters = () => Array.from({ length: parameterCount }, (_, index) => getParameter(index));
+  const writeParameters = values => values.forEach((value, index) => setParameter(index, value));
+  let posedParameters = readParameters();
   let hidden = new Set();
   let capturePrepared = false;
   const authored = new Map();
@@ -62,12 +73,20 @@ async function pageInitializeVisualElements() {
   // Restore the previous authored values before animation/pose; suppress only
   // after those updates and before Core calculates drawable opacity.
   internal.on('beforeMotionUpdate', restoreAuthored);
-  internal.on('beforeModelUpdate', applyHidden);
-  const measureVisible = () => {
+  internal.on('beforeModelUpdate', () => { posedParameters = readParameters(); applyHidden(); });
+  const updateVisibility = () => {
+    // Recalculate drawables using the last rendered pose, not another motion /
+    // physics tick. Cubism restores base parameters after drawing its pose.
+    const baseParameters = readParameters();
+    restoreAuthored();
+    writeParameters(posedParameters);
+    try { applyHidden(); core.update(); }
+    finally { writeParameters(baseParameters); }
+  };
+  const measureVisible = (expand = false, attempt = 0) => {
     const width = runtime.app.renderer.width;
     const height = runtime.app.renderer.height;
-    const extract = runtime.app.renderer.extract || runtime.app.renderer.plugins.extract;
-    const pixels = extract.pixels(runtime.app.stage, new window.PIXI.Rectangle(0, 0, width, height));
+    const pixels = runtime.readPixels();
     let left = width, top = height, right = -1, bottom = -1;
     for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
       if (pixels[(y * width + x) * 4 + 3] === 0) continue;
@@ -75,6 +94,15 @@ async function pageInitializeVisualElements() {
       right = Math.max(right, x); bottom = Math.max(bottom, y);
     }
     if (right < left) return null;
+    // Some poses extend beyond the authored canvas. A clipped alpha rectangle
+    // is not the model's full bounds: zoom out before measuring it for fitting.
+    if (expand && attempt < 4 && (left === 0 || top === 0 || right === width - 1 || bottom === height - 1)) {
+      runtime.model.scale.set(runtime.model.scale.x / 2);
+      runtime.model.x = width / 2 + (runtime.model.x - width / 2) / 2;
+      runtime.model.y = height / 2 + (runtime.model.y - height / 2) / 2;
+      runtime.render();
+      return measureVisible(true, attempt + 1);
+    }
     const scale = runtime.model.scale.x;
     return { x: (left - runtime.model.x) / scale, y: (top - runtime.model.y) / scale, width: (right - left + 1) / scale, height: (bottom - top + 1) / scale };
   };
@@ -83,7 +111,7 @@ async function pageInitializeVisualElements() {
   const measureAnimated = async () => {
     let union = null;
     const include = () => {
-      const bounds = measureVisible();
+      const bounds = measureVisible(true);
       if (!bounds) return;
       if (!union) { union = bounds; return; }
       const right = Math.max(union.x + union.width, bounds.x + bounds.width);
@@ -132,9 +160,9 @@ async function pageInitializeVisualElements() {
     runtime.fit();
     // Measure in the full-source frame first, never in a previously cropped
     // frame: restoring a Part must not retain the prior zoom/crop.
-    runtime.model.update(0.001);
+    updateVisibility();
     runtime.render();
-    if (hidden.size) runtime.visualBounds = measureVisible();
+    if (hidden.size) runtime.visualBounds = measureVisible(true);
     runtime.fit();
     runtime.render();
     runtime.syncTicker();
@@ -163,13 +191,12 @@ async function pageInitializeVisualElements() {
       hidden = new Set(ids.filter(candidate => !keep.has(candidate)));
       runtime.visualBounds = null;
       runtime.fit();
-      runtime.model.update(0.001);
+      updateVisibility();
       runtime.render();
-      const bounds = measureVisible();
+      const bounds = measureVisible(true);
       if (!bounds) return { id, dataUrl: null };
       const width = runtime.app.renderer.width, height = runtime.app.renderer.height;
-      const extract = runtime.app.renderer.extract || runtime.app.renderer.plugins.extract;
-      const pixels = extract.pixels(runtime.app.stage, new window.PIXI.Rectangle(0, 0, width, height));
+      const pixels = runtime.readPixels();
       const source = document.createElement('canvas');
       source.width = width; source.height = height;
       source.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(pixels), width, height), 0, 0);
@@ -185,7 +212,7 @@ async function pageInitializeVisualElements() {
       hidden = previousHidden;
       runtime.visualBounds = previousBounds;
       runtime.fit();
-      runtime.model.update(0.001);
+      updateVisibility();
       runtime.render();
       runtime.syncTicker();
     }

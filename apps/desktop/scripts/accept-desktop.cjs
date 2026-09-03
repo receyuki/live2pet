@@ -43,6 +43,8 @@ let app;
     await previewReady();
     const hiddenElementId = process.env[generation === 'modern' ? 'LIVE2PET_MODERN_HIDDEN_ELEMENT' : 'LIVE2PET_LEGACY_HIDDEN_ELEMENT'];
     if (hiddenElementId) {
+      await page.getByRole('button', { name: 'Pause motion', exact: true }).click();
+      await page.waitForFunction(async () => (await window.live2pet.getPreviewStatus()).result.playback.playing === false);
       await page.getByRole('button', { name: 'Visibility', exact: true }).click();
       await page.getByRole('textbox', { name: 'Search visual elements' }).fill(hiddenElementId);
       const rows = page.locator('.visibility-row').filter({ hasText: hiddenElementId });
@@ -56,7 +58,23 @@ let app;
       await rows.getByRole('button', { name: /^Inspect ·/ }).first().click();
       await page.locator('.visibility-inspector img').waitFor();
       await page.screenshot({ path: path.join(profile, `${generation}-part-preview.png`) });
+      const centerOffset = await app.evaluate(async ({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children[0].webContents.executeJavaScript(`(() => {
+        const r = window.__live2petPixiLive2D;
+        r.render();
+        const canvas = document.createElement('canvas');
+        const width = canvas.width = r.canvas.width, height = canvas.height = r.canvas.height;
+        const context = canvas.getContext('2d');
+        context.drawImage(r.canvas, 0, 0);
+        const pixels = context.getImageData(0, 0, width, height).data;
+        let left = width, top = height, right = -1, bottom = -1;
+        for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) if (pixels[(y * width + x) * 4 + 3]) {
+          left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y);
+        }
+        return right < 0 ? null : [(left + right + 1 - width) / 2, (top + bottom + 1 - height) / 2];
+      })()`));
+      assert.ok(centerOffset && centerOffset.every(offset => Math.abs(offset) <= 3), `hidden Parts and thumbnail restoration keep actual viewport centered: ${centerOffset}`);
       await page.getByRole('button', { name: 'Back to motions', exact: true }).click();
+      await page.getByRole('button', { name: 'Play motion', exact: true }).click();
       log(`${generation}: manually selected a hidden Visual Element`);
     }
     assert.ok((await page.locator('.preview-stage').boundingBox()).width <= 560);
