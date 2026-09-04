@@ -242,6 +242,7 @@ describe('Live2Pet desktop shell', () => {
 
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
     expect(await screen.findByText('Unsaved changes')).toBeVisible();
+    expect(screen.queryByText('Local project')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Save project' }));
 
     await vi.waitFor(() => expect(saveProject).toHaveBeenCalledOnce());
