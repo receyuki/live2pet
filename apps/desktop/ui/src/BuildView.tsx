@@ -132,12 +132,12 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
                 {target === 'clawd' && readiness.ready && <p>{t('targetReadyBody')}</p>}
                 <div className="preset-row"><strong>{t("renderPreset")}</strong><ButtonGroup aria-label={`${title} ${t("renderPreset")}`}>{presets.map((value) => <Button size="sm" key={value} isDisabled={current.status === 'building'} variant={!custom && preset === value ? "primary" : "secondary"} onPress={() => onPreset(target, value)}>{t(value)}</Button>)}{target === 'clawd' && onCustomRender && <Button size="sm" variant={custom ? 'primary' : 'secondary'} isDisabled={!project || current.status === 'building'} onPress={() => onCustomRender(settings)}>{t('customRender')}</Button>}</ButtonGroup></div>
                 {target === 'clawd' && <small>{settings.width} × {settings.height} px · {settings.fps} FPS · {t('webpQuality')} {settings.quality}</small>}
-                {custom && onCustomRender && <fieldset className="custom-render-settings" disabled={current.status === 'building'}><legend>{t('customRender')}</legend>
+                {custom && onCustomRender && <details className="custom-render-disclosure"><summary>{t('customRender')}</summary><fieldset className="custom-render-settings" disabled={current.status === 'building'}><legend>{t('customRender')}</legend>
                   <label>{t('renderResolution')} <output>{settings.width} × {settings.height} px</output><input type="range" aria-label={t('renderResolution')} min={128} max={2048} step={64} value={settings.width} onChange={event => { const size = Number(event.target.value); onCustomRender({ ...settings, width: size, height: size }); }} /></label>
                   <label>{t('renderFps')} <output>{settings.fps} FPS</output><input type="range" aria-label={t('renderFps')} min={1} max={60} step={1} value={settings.fps} onChange={event => onCustomRender({ ...settings, fps: Number(event.target.value) })} /></label>
                   <label>{t('webpQuality')} <output>{settings.quality}</output><input type="range" aria-label={t('webpQuality')} min={1} max={100} step={1} value={settings.quality} onChange={event => onCustomRender({ ...settings, quality: Number(event.target.value) })} /></label>
                   <small>{t('customRenderHint')}</small>
-                </fieldset>}
+                </fieldset></details>}
                 <div className={`build-result build-result-${current.status}`} role="status" aria-live="polite">
                   <div><strong>{t(`buildStatus_${current.status === 'building' && current.stage === 'queue' ? 'queued' : current.status}` as MessageKey)}</strong><span>{current.progress}%</span></div>
                   <ProgressBar aria-label={`${title} ${t("buildProgress")}`} value={current.progress}><ProgressBar.Track><ProgressBar.Fill /></ProgressBar.Track></ProgressBar>

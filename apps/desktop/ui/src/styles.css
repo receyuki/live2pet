@@ -201,6 +201,7 @@
   gap: 12px;
   padding-top: 6px;
 }
+.custom-render-disclosure summary{cursor:pointer;color:var(--brand-text);font-size:13px;padding:8px 0}
 .custom-render-settings{display:grid;gap:12px;border:1px solid var(--border);border-radius:12px;padding:12px;min-width:0}
 .custom-render-settings label{display:grid;grid-template-columns:1fr auto;gap:6px;font-size:13px}
 .custom-render-settings input{grid-column:1 / -1;width:100%;accent-color:var(--brand-text)}
