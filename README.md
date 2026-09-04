@@ -89,6 +89,11 @@ as the character cannot be separated by this control.
 Visibility changes center the current visible content using the actual viewport.
 After upgrading from the earlier shifted-framing build, rebuild affected packages;
 Desktop skips the incompatible old capture cache automatically.
+Modern Cubism capture settles physics at the opening pose before recording,
+without dropping opening frames. Rebuild older packages to remove captured
+startup jolts. If only some Motions look tiny, preview those Motions under
+Visibility: a large overlay may appear only during playback and still control
+framing until you explicitly hide its Part.
 
 The bounded disk cache automatically evicts the least recently used entries
 when space is needed. An individual entry larger than the entire cache budget

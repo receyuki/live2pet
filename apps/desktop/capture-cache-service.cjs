@@ -3,7 +3,7 @@ const { digestVisualSettings, normalizeVisualSettings } = require('@live2pet/pro
 
 const CAPTURE_CACHE_ARTIFACT = 'captured-rgba';
 const CAPTURE_CACHE_TARGET_VERSION = '1';
-const DEFAULT_CAPTURE_RENDERER_VERSION = 'pixi-live2d-capture-v5';
+const DEFAULT_CAPTURE_RENDERER_VERSION = 'pixi-live2d-capture-v6';
 
 function fail(code, message, details = {}) {
   const error = new Error(message);

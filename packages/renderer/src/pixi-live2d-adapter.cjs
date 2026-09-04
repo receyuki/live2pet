@@ -187,13 +187,27 @@ function pageLoad(source, options) {
       }
       return pixels;
     };
-    const resetMotion = async (motion, priority) => {
+    const resetMotion = async (motion, priority, settlePhysics = false) => {
       legacyClock?.setUserTimeMSec(model.elapsedTime);
       model.internalModel.motionManager.stopAllMotions();
       await model.motion(motion.group, motion.index, priority);
       // Prime the queue entry at t=0 before advancing its clock.
       model.update(0.001);
       render();
+      if (settlePhysics && source.cubismVersion !== 2 && model.internalModel.physics) {
+        // Bounds sampling leaves particles moving at its final pose. Settle
+        // them at the first Motion pose without skipping animation time or
+        // carrying that velocity into the exported opening frames.
+        const { physics, coreModel } = model.internalModel;
+        physics.initialize();
+        for (let step = 0; step < 120; step++) {
+          coreModel.loadParameters();
+          physics.evaluate(coreModel, 1 / 60);
+        }
+        coreModel.loadParameters();
+        model.update(0.001);
+        render();
+      }
     };
     const state = {
       contractVersion: 1,
@@ -424,7 +438,7 @@ function pageCapture(motionId, time, width, height, priority, binary = false) {
     const captureTime = Math.min(Math.max(0, time), motion.duration);
     const restart = runtime.state.motionId !== motionId || captureTime <= runtime.state.time;
     const previousTime = restart ? 0 : runtime.state.time;
-    if (restart) await runtime.resetMotion(motion, priority);
+    if (restart) await runtime.resetMotion(motion, priority, true);
     runtime.state.motionId = motion.id;
     runtime.state.time = captureTime;
     runtime.state.playing = true;

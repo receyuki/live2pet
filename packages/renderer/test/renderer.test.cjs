@@ -273,6 +273,9 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
   const updates = [];
   const legacyTimes = [];
   let captureObservedTicker = null;
+  let captureObservedPhysicsVelocity = null;
+  let physicsVelocity = 1000;
+  let physicsSteps = 0;
   const ticker = {
     callbacks: [],
     deltaMS: 0,
@@ -291,7 +294,14 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     x: 0,
     y: 0,
     getLocalBounds: () => ({ x: 0, y: 0, width: 100, height: 200 }),
-    internalModel: Object.assign(new EventEmitter(), { motionManager: { stopAllMotions() { updates.push('reset'); } } }),
+    internalModel: Object.assign(new EventEmitter(), {
+      motionManager: { stopAllMotions() { updates.push('reset'); } },
+      coreModel: { loadParameters() {} },
+      physics: {
+        initialize() { physicsVelocity = 1000; },
+        evaluate(_core, dt) { assert.equal(dt, 1 / 60); physicsVelocity *= 0.5; physicsSteps++; },
+      },
+    }),
     motion: async () => undefined,
     update: (deltaMilliseconds) => updates.push(deltaMilliseconds),
   };
@@ -311,6 +321,7 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
           pixels: (target) => {
             assert.equal(target, undefined, 'capture must read the viewport, not a bounds-shifted stage texture');
             captureObservedTicker = ticker.started;
+            captureObservedPhysicsVelocity = physicsVelocity;
             const pixels = new Uint8Array(this.renderer.width * this.renderer.height * 4);
             for (let y = 0; y < this.renderer.height; y++) pixels.fill(y + 1, y * this.renderer.width * 4, (y + 1) * this.renderer.width * 4);
             return pixels;
@@ -364,9 +375,12 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     assert.equal(capture.time, 0.5);
     assert.ok(updates.includes('reset'), 'seeking backwards resets the active motion');
     assert.equal(captureObservedTicker, false);
+    assert.ok(captureObservedPhysicsVelocity < 0.001, 'capture restart must settle physics left by bounds sampling before extracting its first frame');
+    assert.equal(physicsSteps, 120, 'settling is bounded and does not advance the Motion clock');
     assert.equal(ticker.started, false, 'capture must not resume the realtime clock between frames');
     updates.length = 0;
     await pageCapture('Base:wave', 0.6, 8, 4, 3);
+    assert.equal(physicsSteps, 120, 'sequential capture frames must not restart physics');
     assert.ok(Math.abs(updates.filter(Number.isFinite).reduce((a, b) => a + b, 0) - 100) < 0.001, 'capture advances by the frame delta, not the absolute timestamp or preview speed');
     pagePause();
     const sought = await pageSeek(0.25, 3);
@@ -389,6 +403,8 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     model.elapsedTime = 1250;
     model.internalModel.emit('beforeMotionUpdate');
     assert.equal(legacyTimes.at(-1), 1250, 'legacy motion clock follows explicit model time, not wall time');
+    await pageCapture('Base:wave', 0, 8, 4, 3);
+    assert.equal(physicsSteps, 120, 'Cubism 2 must not call modern physics APIs');
     await pageUnload();
   } finally {
     global.window = previousWindow;
