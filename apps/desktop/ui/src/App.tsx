@@ -7,7 +7,7 @@ import {
   ProgressBar,
   Tabs,
 } from "@heroui/react";
-import { buttonVariants } from '@heroui/styles';
+import { buttonGroupVariants, buttonVariants } from '@heroui/styles';
 import type { ComponentPropsWithRef } from 'react';
 import {
   Archive,
@@ -656,7 +656,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   return (
     <main className="map-workspace">
       <Tabs className="workspace-panel library-tabs" selectedKey={visibilityOpen ? 'visibility' : 'motions'} onSelectionChange={key => { if (key !== 'visibility') setSoloId(null); setVisibilityOpen(key === 'visibility'); }}>
-        <Tabs.List className="target-switch library-switch" aria-label={t('modelTools')}>
+        <Tabs.List className={buttonGroupVariants().base({ className: 'target-switch library-switch' })} aria-label={t('modelTools')}>
           <Tabs.Tab id="motions" render={props => <div {...props as ComponentPropsWithRef<'div'>} className={buttonVariants({ size: 'sm', variant: !visibilityOpen ? 'primary' : 'secondary' })} />}>{t('motionsAndExpressions')}</Tabs.Tab>
           <Tabs.Tab id="visibility" isDisabled={!projectDocument} render={props => <div {...props as ComponentPropsWithRef<'div'>} className={buttonVariants({ size: 'sm', variant: visibilityOpen ? 'primary' : 'secondary' })} />}>{t('visibility')}</Tabs.Tab>
         </Tabs.List>
