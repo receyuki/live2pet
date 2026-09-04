@@ -74,8 +74,8 @@ the selected preset and exposes square resolution (128–2048 px), frame rate
 (1–60 FPS), and WebP quality (1–100). Overrides are saved in the project; choosing
 any preset clears them. Lower settings usually reduce size, but trade detail or
 smoothness. Frame sampling and playback timing change together. Codex retains
-its target-defined atlas geometry and presets. Custom controls are collapsed by
-default; the current resolution, frame rate, and quality remain visible above them.
+its target-defined atlas geometry and presets. Custom controls appear immediately
+when Custom is selected and are hidden when a default preset is selected.
 
 Clawd's **80 MiB** ZIP import limit is a compatibility warning, not a build
 failure. Oversized ZIPs remain available to save, with their size and the limit

@@ -58,26 +58,24 @@ describe("BuildView", () => {
     const onCustomRender = vi.fn(), onPreset = vi.fn();
     const document = { ...project, targets: { ...project.targets, clawd: { ...project.targets.clawd, renderPreset: 'compact' as const } } };
     const props = { locale: 'en' as const, project: document, inspection, runtimeReady: true, state: initialBuildState(), onPreset, onCustomRender, onBuild: vi.fn(), onCancel: vi.fn() };
-    const { rerender, container } = render(<BuildView {...props} />);
+    const { rerender } = render(<BuildView {...props} />);
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument();
     const group = screen.getByRole('group', { name: 'Clawd Theme Package Render preset' });
     for (const name of ['Compact', 'Balanced', 'High', 'Custom']) expect(within(group).getByRole('button', { name })).toBeEnabled();
     await userEvent.click(within(group).getByRole('button', { name: 'Custom' }));
     expect(onCustomRender).toHaveBeenCalledWith(expect.objectContaining({ width: 512, height: 512, fps: 18, quality: 76 }));
     const settings = { width: 512, height: 512, fps: 18, quality: 76 };
     rerender(<BuildView {...props} project={{ ...document, targets: { ...document.targets, clawd: { ...document.targets.clawd, options: { renderOverrides: settings } } } }} />);
-    const disclosure = container.querySelector('details')!;
-    expect(disclosure).not.toHaveAttribute('open');
     expect(screen.getByText('512 × 512 px · 18 FPS · WebP quality 76')).toBeVisible();
-    await userEvent.click(disclosure.querySelector('summary')!);
-    expect(disclosure).toHaveAttribute('open');
+    expect(screen.getByRole('slider', { name: 'Resolution' })).toBeVisible();
     fireEvent.change(screen.getByRole('slider', { name: 'Resolution' }), { target: { value: '384' } });
     expect(onCustomRender).toHaveBeenLastCalledWith({ ...settings, width: 384, height: 384 });
     fireEvent.change(screen.getByRole('slider', { name: 'Frame rate' }), { target: { value: '12' } });
     expect(onCustomRender).toHaveBeenLastCalledWith({ ...settings, fps: 12 });
     await userEvent.click(within(group).getByRole('button', { name: 'Balanced' }));
     expect(onPreset).toHaveBeenCalledWith('clawd', 'balanced');
-    await userEvent.click(disclosure.querySelector('summary')!);
-    expect(disclosure).not.toHaveAttribute('open');
+    rerender(<BuildView {...props} />);
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument();
   });
 
   it('warns in readable units while keeping oversized artifacts saveable', async () => {
