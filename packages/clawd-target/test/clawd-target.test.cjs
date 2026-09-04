@@ -142,11 +142,20 @@ test('enforces full sleep assets, package size limits, and typed assertion failu
     result.errors.filter((error) => error.code === 'FULL_SLEEP_STATE_UNMAPPED').map((error) => error.slot),
     ['yawning', 'dozing', 'collapsing', 'waking'],
   );
-  assert.ok(result.errors.some((error) => error.code === 'CLAWD_PACKAGE_TOO_LARGE' && error.maxBytes === CLAWD_PACKAGE_LIMIT));
+  assert.ok(result.warnings.some((error) => error.code === 'CLAWD_PACKAGE_TOO_LARGE' && error.maxBytes === CLAWD_PACKAGE_LIMIT));
   assert.throws(
     () => assertValidClawdThemePackage(input),
     (error) => error instanceof ClawdValidationError && error.code === 'INVALID_CLAWD_THEME_PACKAGE' && Array.isArray(error.details.errors),
   );
+});
+
+test('oversized valid packages remain valid with a human-readable host compatibility warning', () => {
+  const result = validateClawdThemePackage({ ...validThemePackage(), byteLength: 89207688 });
+  assert.equal(result.ok, true);
+  const warning = result.warnings.find(w => w.code === 'CLAWD_PACKAGE_TOO_LARGE');
+  assert.match(warning.message, /85.1 MiB/);
+  assert.match(warning.message, /80 MiB/);
+  assert.equal(warning.maxBytes, 83886080);
 });
 
 test('warns when packaged assets are not referenced by theme.json', () => {

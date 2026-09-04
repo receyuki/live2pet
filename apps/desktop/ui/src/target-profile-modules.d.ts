@@ -1,6 +1,8 @@
 declare module "@live2pet/clawd-target/profile" {
   const profile: Readonly<{
     id: "clawd";
+    renderPresets: Readonly<Record<'compact' | 'balanced' | 'high', Readonly<{ width: number; height: number; fps: number; quality: number; alphaQuality: number }>>>;
+    package: Readonly<{ maxBytes: number }>;
     states: Readonly<{ core: readonly string[]; requiredDirect: readonly string[]; fullSleep: readonly string[]; optional: readonly string[]; all: readonly string[]; fallbackAllowed: readonly string[] }>;
     reactions: readonly string[];
   }>;

@@ -2,6 +2,7 @@ export type Locale = 'en' | 'zh-CN';
 
 const messages = {
   en: {
+    customRender: 'Custom', renderResolution: 'Resolution', renderFps: 'Frame rate', webpQuality: 'WebP quality', customRenderHint: 'Lower values usually reduce ZIP size. Frame rate changes smoothness, not playback speed. Selecting a preset restores its defaults.', clawdSizeWarning: '{size} ZIP exceeds Clawd’s {limit} import limit. You can save it, but Clawd may refuse to import it. Lower resolution, frame rate or quality and rebuild.',
     scanVisualElements: 'Detect large Parts', scanVisualElementsBusy: 'Scanning Motion…', scanVisualElementsHint: 'Sample this Motion for large visible geometry, not necessarily background. Brief effects may be missed. Detection ends paused at the start.', scanVisualElementsFound: 'Candidates first · inspect before hiding.', scanVisualElementsEmpty: 'No large Parts found in sampled poses.', largeVisualElement: 'Large Part',
     outputSettingsTitle: 'Package output', outputSettingsHint: 'Save ZIP packages without installing them. Choose a default folder or ask each time. Existing files in the default folder are kept; new copies get numbered names.', outputAskEveryTime: 'Ask where to save every time', outputUseFolder: 'Use default output folder', outputChooseFolder: 'Choose output folder', outputFolderUnavailable: 'The output folder is unavailable. Choose another folder or ask where to save every time.', packageSaved: 'Saved to {path}', savePackage: 'Save ZIP',
     modelTools: 'Model tools', motionsAndExpressions: 'Animations', thumbnailEmptyShort: 'No pixels', thumbnailRetry: 'Retry',
@@ -54,6 +55,7 @@ const messages = {
     cacheRefresh: 'Refresh cache state',
   },
   'zh-CN': {
+    customRender: '自定义', renderResolution: '分辨率', renderFps: '帧率', webpQuality: 'WebP 质量', customRenderHint: '调低参数通常能减小体积。帧率影响流畅度，不改变播放速度。点击任一默认档位可恢复该档位参数。', clawdSizeWarning: 'ZIP 为 {size}，超过 Clawd 的 {limit} 导入限制。仍可保存，但 Clawd 可能拒绝导入。可降低分辨率、帧率或质量后重新构建。',
     scanVisualElements: '检测大范围部件', scanVisualElementsBusy: '正在检测动作…', scanVisualElementsHint: '采样当前动作的大范围可见部件，不代表一定是背景，也可能漏掉短暂特效。结束后回到开头并暂停。', scanVisualElementsFound: '可疑部件已置顶，请查看后再隐藏。', scanVisualElementsEmpty: '采样姿势中未发现大范围部件。', largeVisualElement: '大范围部件',
     outputSettingsTitle: '打包输出', outputSettingsHint: '保存 ZIP 包，不会安装到目标 App。可设置默认输出目录，或每次选择保存位置；默认目录中的同名文件会保留，新文件自动编号。', outputAskEveryTime: '每次询问保存位置', outputUseFolder: '使用默认输出目录', outputChooseFolder: '选择输出目录', outputFolderUnavailable: '输出目录不可用，请重新选择目录或改为每次询问保存位置。', packageSaved: '已保存到 {path}', savePackage: '保存 ZIP',
     modelTools: '模型工具', motionsAndExpressions: '动作与表情', thumbnailEmptyShort: '暂无内容', thumbnailRetry: '重试',

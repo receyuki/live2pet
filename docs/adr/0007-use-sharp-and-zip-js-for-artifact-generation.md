@@ -27,7 +27,16 @@ FFmpeg is not a required V1 runtime dependency. It may be evaluated later only f
 - Electron packaging must keep the `sharp` native module and its platform binaries out of the application bundle where required and unpack them correctly from ASAR.
 - Release CI must build and smoke-test each supported architecture independently.
 - Encoder versions become part of build provenance so the same project can explain artifact differences after dependency upgrades.
-- ZIP output and extraction must enforce path-safety and package-size limits.
+- ZIP output and extraction must enforce path safety; extraction retains bounded resource limits.
+
+### Clawd output update (2026-09-04)
+
+The host's 80 MiB import limit is a compatibility warning, not a ZIP-generation
+gate. Live2Pet preserves the generated artifact and reports the warning in the
+build report and UI. This does not change Clawd's own import policy. Explicit
+project-owned Clawd resolution, FPS, and WebP quality overrides may augment a
+default preset; selecting a preset removes overrides. Other target geometry
+constraints and archive extraction safety checks remain unchanged.
 
 ## Alternatives considered
 

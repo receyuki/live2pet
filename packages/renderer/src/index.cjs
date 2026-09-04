@@ -97,7 +97,7 @@ async function sampleMotionCandidates(renderer, options = {}) {
   try {
     for (let index = 0; index < samples; index += 1) {
       if (options.signal?.aborted) fail('BUILD_CANCELLED', 'Package Build was cancelled.');
-      const time = duration * (samples === 1 ? 0 : index / (samples - 1));
+      const time = duration * (samples === 1 ? 0 : index / (options.includeEndpoint === false ? samples : samples - 1));
       const capture = await renderer.captureRgba({ width, height, motionId, time });
       if (!capture || capture.width !== width || capture.height !== height || !ArrayBuffer.isView(capture.rgba) || capture.rgba.byteLength !== width * height * 4) fail('INVALID_RENDER_CAPTURE', `Renderer returned an invalid RGBA capture for ${motionId} at sample ${index}.`);
       const rgba = new Uint8Array(capture.rgba.buffer, capture.rgba.byteOffset, capture.rgba.byteLength);

@@ -67,6 +67,20 @@ existing files are preserved. The App shows the saved path. Output preferences
 stay on this device, not in projects or packages. Saving remains an explicit
 action after building and never installs a pet.
 
+### Custom Clawd output
+
+Build retains **Compact / Balanced / High** as defaults. **Custom** starts from
+the selected preset and exposes square resolution (128–2048 px), frame rate
+(1–60 FPS), and WebP quality (1–100). Overrides are saved in the project; choosing
+any preset clears them. Lower settings usually reduce size, but trade detail or
+smoothness. Frame sampling and playback timing change together. Codex retains
+its target-defined atlas geometry and presets.
+
+Clawd's **80 MiB** ZIP import limit is a compatibility warning, not a build
+failure. Oversized ZIPs remain available to save, with their size and the limit
+shown in readable units. Clawd itself may still reject them; lower settings and
+rebuild for compatibility. Archive extraction safety limits remain enforced.
+
 ### Hide model backgrounds manually
 
 In **Map**, switch between the **Animations** and **Visibility** tabs.

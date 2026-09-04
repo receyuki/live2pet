@@ -8,12 +8,13 @@ const {
 } = require('@live2pet/codex-target');
 const CODEX_PROFILE = require('@live2pet/codex-target/profile');
 const { createHash } = require('node:crypto');
-const { createClawdTarget, validateClawdThemePackage } = require('@live2pet/clawd-target');
+const { createClawdTarget, validateClawdThemePackage, clawdPackageSizeWarning } = require('@live2pet/clawd-target');
 const CLAWD_PROFILE = require('@live2pet/clawd-target/profile');
 const {
   assertProjectBuildable,
   digestVisualSettings,
   normalizeVisualSettings,
+  normalizeClawdRenderOverrides,
   validateProject,
 } = require('@live2pet/project');
 const { sampleMotionCandidates } = require('@live2pet/renderer');
@@ -71,7 +72,8 @@ function resolveTargetRenderPreset(target, render = {}) {
     : (profile ? profile.defaultRenderPreset : 'balanced');
   const preset = profile && profile.renderPresets[presetName];
   if (!preset) fail('INVALID_RENDER_PRESET', `Unknown ${target || 'target'} Render Preset: ${presetName}.`, { target, preset: presetName, available: Object.keys(TARGET_RENDER_PRESETS[target] || {}) });
-  return { name: presetName, settings: { ...preset } };
+  const overrides = target === 'clawd' ? normalizeClawdRenderOverrides(Object.fromEntries(['width', 'height', 'fps', 'quality'].filter(key => render[key] !== undefined).map(key => [key, render[key]]))) : {};
+  return { name: presetName, settings: { ...preset, ...overrides } };
 }
 
 function buildProvenance(target, targetContractVersion, render = {}, encoderVersion) {
@@ -415,7 +417,7 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
       recipe: visualSettingsRecipe({
         motionId,
         expressionId,
-        render: { captureTimingVersion: 2, width, height, samples, duration, fps: Number.isFinite(render.fps) ? render.fps : null },
+        render: { captureTimingVersion: 3, width, height, samples, duration, fps: Number.isFinite(render.fps) ? render.fps : null },
       }, visualSettingsIdentity.digest),
       targetProfile: target,
       targetVersion: cacheContext.targetVersion,
@@ -439,11 +441,11 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
     }
     const motionIndex = motionIds.indexOf(motionId);
     progress(onProgress, 'render', 'started', { target, motionId, width, height, samples, duration, fraction: motionIndex / motionIds.length });
-    const result = await sampleMotionCandidates(renderer, { motionId, duration, samples, width, height, expressionId, signal, onFrame: ({ completed, total }) => progress(onProgress, 'render', 'frame-completed', { target, motionId, completed, total, fraction: (motionIndex + completed / total) / motionIds.length }) });
+    const result = await sampleMotionCandidates(renderer, { motionId, duration, samples, width, height, includeEndpoint: target !== 'clawd', expressionId, signal, onFrame: ({ completed, total }) => progress(onProgress, 'render', 'frame-completed', { target, motionId, completed, total, fraction: (motionIndex + completed / total) / motionIds.length }) });
     checkCancelled(signal);
     framesByMotion[motionId] = {
       frames: result.candidates,
-      fps: Number.isFinite(render.fps) ? render.fps : (render.preset ? (preset.fps || (duration > 0 ? samples / duration : 10)) : (duration > 0 ? samples / duration : 10)),
+      fps: target === 'clawd' && !configuredSamples && duration > 0 ? samples / duration : Number.isFinite(render.fps) ? render.fps : (render.preset ? (preset.fps || (duration > 0 ? samples / duration : 10)) : (duration > 0 ? samples / duration : 10)),
       expressionId,
     };
     if (cacheKey) cache.put(cacheKey, encodeFrameSet({ motionId, ...framesByMotion[motionId] }), { projectId: cacheContext.projectId, sourceFingerprint: cacheContext.sourceFingerprint, artifact: 'render-candidates' });
@@ -805,11 +807,12 @@ async function createClawdThemeZip({ themeId, manifest, assets, readme, zipModul
     const data = await writer.close();
     const buffer = normalizeZipBytes(data, 'ZIP output');
     if (!buffer.length) fail('ZIP_BUILDER_INVALID_OUTPUT', 'The ZIP builder returned an empty archive.');
+    const warnings = [];
     if (buffer.byteLength > maxBytes) {
       const largestAssets = entries.slice().sort((left, right) => right.bytes.byteLength - left.bytes.byteLength).slice(0, 5).map(entry => ({ name: entry.name, byteLength: entry.bytes.byteLength }));
-      fail('CLAWD_PACKAGE_TOO_LARGE', `Clawd theme ZIP is ${buffer.byteLength} bytes; the maximum is ${maxBytes}.`, { byteLength: buffer.byteLength, maxBytes, largestAssets });
+      warnings.push(clawdPackageSizeWarning(buffer.byteLength, maxBytes, largestAssets));
     }
-    return { format: 'zip', buffer, files, themeId: root, byteLength: buffer.byteLength };
+    return { format: 'zip', buffer, files, themeId: root, byteLength: buffer.byteLength, warnings };
   } catch (error) {
     if (error instanceof PackageBuildError) throw error;
     fail('ZIP_BUILDER_FAILED', `The zip.js package builder failed: ${error && error.message ? error.message : error}`);
@@ -939,6 +942,7 @@ async function buildClawdTheme(input = {}, options = {}) {
     progress(onProgress, CLAWD_STAGES[4], 'started');
     packaged = await createClawdThemeZip({ themeId, manifest, assets, readme: input.readme, zipModule: options.zipModule, maxBytes: options.maxBytes ?? CLAWD_PACKAGE_LIMIT });
     packaged.artifactName = artifactName;
+    validation.warnings.push(...packaged.warnings);
     checkCancelled(signal);
     progress(onProgress, CLAWD_STAGES[4], 'completed', { byteLength: packaged.byteLength });
   }
@@ -950,7 +954,7 @@ async function buildClawdTheme(input = {}, options = {}) {
     artifactName,
     manifest,
     assets: assetReports,
-    warnings: target.warnings || [],
+    warnings: [...(target.warnings || []), ...validation.warnings],
     validation,
     encoding: { required: 'webp', status: 'completed', assetCount: assetReports.length },
     provenance: buildProvenance('clawd', target.contractVersion, render, cacheContext && cacheContext.encoderVersion),
@@ -1159,8 +1163,7 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
     const configuredRender = targetInput.render
       || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : null)
       || targetOptions.render
-      || (targetProject.renderPreset ? { preset: targetProject.renderPreset } : null)
-      || (targetProject.options && targetProject.options.renderPreset ? { preset: targetProject.options.renderPreset } : {});
+      || { preset: targetProject.renderPreset || 'balanced', ...targetProject.options?.renderOverrides };
     targetOptions.render = configuredRender;
     const renderer = targetInput.renderer || targetOptions.renderer;
     let renderedInput = targetInput;

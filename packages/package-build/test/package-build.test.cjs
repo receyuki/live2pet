@@ -390,7 +390,7 @@ test('rejects malformed or oversized deflate RGBA frames before WebP encoding', 
   );
 });
 
-test('rejects missing Clawd captures and oversized theme archives', async () => {
+test('rejects missing Clawd captures but returns oversized theme archives with warnings', async () => {
   const frames = clawdFrames();
   delete frames.error;
   await assert.rejects(
@@ -405,10 +405,10 @@ test('rejects missing Clawd captures and oversized theme archives', async () => 
     Uint8ArrayWriter: class {},
     Uint8ArrayReader: class { constructor(value) { this.value = value; } },
   };
-  await assert.rejects(
-    () => createClawdThemeZip({ themeId: 'demo-theme', manifest: { name: 'Demo Theme' }, assets: { 'demo.webp': Uint8Array.from([1]) }, zipModule: oversizedZip, maxBytes: 10 }),
-    (error) => error instanceof PackageBuildError && error.code === 'CLAWD_PACKAGE_TOO_LARGE' && error.details.maxBytes === 10,
-  );
+  const large = await createClawdThemeZip({ themeId: 'demo-theme', manifest: { name: 'Demo Theme' }, assets: { 'demo.webp': Uint8Array.from([1]) }, zipModule: oversizedZip, maxBytes: 10 });
+  assert.equal(large.buffer.byteLength, 11);
+  assert.equal(large.warnings[0].code, 'CLAWD_PACKAGE_TOO_LARGE');
+  assert.equal(large.warnings[0].maxBytes, 10);
   assert.equal(CLAWD_PACKAGE_LIMIT, 83886080);
 });
 
@@ -975,6 +975,30 @@ test('project target Render Presets flow into capture and provenance', async () 
   assert.equal(project.targets['codex-pet'].renderPreset, 'high');
   assert.equal(result.builds.clawd.provenance.renderPreset, 'compact');
   assert.equal(result.builds['codex-pet'].provenance.renderPreset, 'high');
+});
+
+test('project Clawd overrides control resolution, sampling, timing and encoding without blocking an oversized ZIP', async () => {
+  const renderer = new SyntheticRenderer();
+  await renderer.load({ motions: [{ id: 'idle', duration: 6 }] });
+  const captured = [], capture = renderer.captureRgba.bind(renderer);
+  renderer.captureRgba = input => { captured.push(input); return capture(input); };
+  const project = createProject({ projectId: 'custom-render', name: 'Custom', source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'fixture' }, targets: {
+    clawd: { renderPreset: 'compact', mappings: { idle: 'motion:idle', thinking: 'motion:idle', working: 'motion:idle', sleeping: 'fallback:idle' }, options: { renderOverrides: { width: 16, height: 16, fps: 12, quality: 57 } } },
+  } });
+  const result = await buildProjectTargets({ project, targets: ['clawd'], inputsByTarget: { clawd: { renderer } }, optionsByTarget: { clawd: { package: true, maxBytes: 1 } } });
+  const build = result.builds.clawd;
+  assert.equal(build.validation.ok, true);
+  assert.ok(build.package.buffer.byteLength > 1);
+  assert.equal(build.validation.warnings[0].code, 'CLAWD_PACKAGE_TOO_LARGE');
+  assert.ok(build.report.warnings.some(w => w.code === 'CLAWD_PACKAGE_TOO_LARGE'));
+  assert.deepEqual(build.provenance.render, { width: 16, height: 16, fps: 12, quality: 57, alphaQuality: 100 });
+  assert.equal(captured.length, 72);
+  assert.equal(captured[1].time, 1 / 12);
+  assert.equal(captured.at(-1).time, 71 / 12);
+  assert.ok(captured.every(frame => frame.width === 16 && frame.height === 16));
+  assert.equal(build.assets[0].frameCount, 72);
+  assert.ok(Math.abs(build.assets[0].delays.reduce((a, b) => a + b, 0) - 6000) < 40);
+  assert.throws(() => createProject({ ...project, targets: { clawd: { ...project.targets.clawd, options: { renderOverrides: { fps: 0 } } } } }), { code: 'INVALID_RENDER_SETTINGS' });
 });
 
 test('buildProjectTargets applies project Visual Settings before renderer capture', async () => {

@@ -1,13 +1,14 @@
 import { Button, ButtonGroup, Card, Chip, ProgressBar, Input, Label, TextField } from "@heroui/react";
 import { CircleCheck, Download, FolderOpen, PackageCheck, Square, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { BuildArtifact, BuildTarget, InstallRootResult, Live2PetProject, RenderPreset, SourceInspection, TargetInstallations } from "./app-host";
+import type { BuildArtifact, BuildTarget, InstallRootResult, Live2PetProject, RenderPreset, SourceInspection, TargetInstallations, ClawdRenderSettings } from "./app-host";
 import { chooseInstallRoot, hasBuildApi, installArtifact, getTargetInstallations, hasTargetInstallationApi } from "./app-host";
 import { downloadBuildArtifact } from "./build-artifact";
 import type { BuildState } from "./build-state";
 import { GeneratedPreview } from "./generated-preview";
 import { Locale, MessageKey, translate } from "./i18n";
 import { CLAWD_PROFILE, CODEX_PROFILE } from "./target-profiles";
+import { formatBytes } from './format-bytes';
 
 export type TargetReadiness = { ready: boolean; missing: string[] };
 
@@ -41,12 +42,13 @@ type Props = {
   onBuild: (target: BuildTarget) => void;
   onCancel: (target: BuildTarget) => void;
   onName?: (name: string) => void;
+  onCustomRender?: (settings: ClawdRenderSettings | null) => void;
 };
 
 const targets: BuildTarget[] = ["clawd", "codex-pet"];
 const presets: RenderPreset[] = ["compact", "balanced", "high"];
 
-export function BuildView({ locale, project, inspection, runtimeReady, state, onPreset, onBuild, onCancel, onName }: Props) {
+export function BuildView({ locale, project, inspection, runtimeReady, state, onPreset, onBuild, onCancel, onName, onCustomRender }: Props) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   const [locations, setLocations] = useState<Partial<Record<BuildTarget, Extract<InstallRootResult, { cancelled: false }>>>>({});
   const [feedback, setFeedback] = useState<Partial<Record<BuildTarget, string>>>({});
@@ -94,7 +96,8 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
       const installPath = destination?.root.path ?? selected?.displayPath;
       if (destination && !['ready', 'will-create'].includes(destination.root.state)) throw new Error(t(`targetRoot_${destination.root.state}`));
       const warning = destination && destination.application.status !== 'found' ? `\n\n${t('installAppMissing')}` : '';
-      if (!window.confirm((installPath ? t('confirmInstallAt', { filename: artifact.filename, path: installPath }) : t("confirmInstallArtifact", { filename: artifact.filename })) + warning)) return;
+      const sizeWarning = target === 'clawd' && artifact.byteLength > CLAWD_PROFILE.package.maxBytes ? `\n\n${t('clawdSizeWarning', { size: formatBytes(artifact.byteLength), limit: formatBytes(CLAWD_PROFILE.package.maxBytes) })}` : '';
+      if (!window.confirm((installPath ? t('confirmInstallAt', { filename: artifact.filename, path: installPath }) : t("confirmInstallArtifact", { filename: artifact.filename })) + warning + sizeWarning)) return;
       await installArtifact({ artifactId: artifact.artifactId, target, conflict: "cancel", confirmInstall: true, ...(locationId ? { locationId } : {}) });
       setFeedback((value) => ({ ...value, [target]: t("installSucceeded") }));
     } catch (cause) {
@@ -113,6 +116,11 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
           const readiness = targetReadiness(project, inspection, runtimeReady, target);
           const artifact = current.artifact;
           const preset = project?.targets[target].renderPreset ?? "balanced";
+          const custom = target === 'clawd' ? project?.targets.clawd.options.renderOverrides : undefined;
+          const defaults = CLAWD_PROFILE.renderPresets[preset];
+          const settings: ClawdRenderSettings = { width: custom?.width ?? defaults.width, height: custom?.height ?? defaults.height, fps: custom?.fps ?? defaults.fps, quality: custom?.quality ?? defaults.quality };
+          const sizeWarning = artifact && target === 'clawd' && artifact.byteLength > CLAWD_PROFILE.package.maxBytes
+            ? t('clawdSizeWarning', { size: formatBytes(artifact.byteLength), limit: formatBytes(CLAWD_PROFILE.package.maxBytes) }) : null;
           const title = target === "clawd" ? t("clawdPackage") : t("codexPackage");
           return (
             <Card className="surface-card build-card" key={target}>
@@ -122,7 +130,14 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
                 {(locations[target]?.displayPath || installations?.targets.find(record => record.target === target)) && <p className="install-destination">{t('targetRoot')} · {locations[target]?.displayPath ?? installations?.targets.find(record => record.target === target)?.root.path}</p>}
                 {!readiness.ready && <p>{t("targetMissing", { value: readiness.missing.join(", ") })}</p>}
                 {target === 'clawd' && readiness.ready && <p>{t('targetReadyBody')}</p>}
-                <div className="preset-row"><strong>{t("renderPreset")}</strong><ButtonGroup aria-label={`${title} ${t("renderPreset")}`}>{presets.map((value) => <Button size="sm" key={value} variant={preset === value ? "primary" : "secondary"} onPress={() => onPreset(target, value)}>{t(value)}</Button>)}</ButtonGroup></div>
+                <div className="preset-row"><strong>{t("renderPreset")}</strong><ButtonGroup aria-label={`${title} ${t("renderPreset")}`}>{presets.map((value) => <Button size="sm" key={value} isDisabled={current.status === 'building'} variant={!custom && preset === value ? "primary" : "secondary"} onPress={() => onPreset(target, value)}>{t(value)}</Button>)}{target === 'clawd' && onCustomRender && <Button size="sm" variant={custom ? 'primary' : 'secondary'} isDisabled={!project || current.status === 'building'} onPress={() => onCustomRender(settings)}>{t('customRender')}</Button>}</ButtonGroup></div>
+                {target === 'clawd' && <small>{settings.width} × {settings.height} px · {settings.fps} FPS · {t('webpQuality')} {settings.quality}</small>}
+                {custom && onCustomRender && <fieldset className="custom-render-settings" disabled={current.status === 'building'}><legend>{t('customRender')}</legend>
+                  <label>{t('renderResolution')} <output>{settings.width} × {settings.height} px</output><input type="range" aria-label={t('renderResolution')} min={128} max={2048} step={64} value={settings.width} onChange={event => { const size = Number(event.target.value); onCustomRender({ ...settings, width: size, height: size }); }} /></label>
+                  <label>{t('renderFps')} <output>{settings.fps} FPS</output><input type="range" aria-label={t('renderFps')} min={1} max={60} step={1} value={settings.fps} onChange={event => onCustomRender({ ...settings, fps: Number(event.target.value) })} /></label>
+                  <label>{t('webpQuality')} <output>{settings.quality}</output><input type="range" aria-label={t('webpQuality')} min={1} max={100} step={1} value={settings.quality} onChange={event => onCustomRender({ ...settings, quality: Number(event.target.value) })} /></label>
+                  <small>{t('customRenderHint')}</small>
+                </fieldset>}
                 <div className={`build-result build-result-${current.status}`} role="status" aria-live="polite">
                   <div><strong>{t(`buildStatus_${current.status === 'building' && current.stage === 'queue' ? 'queued' : current.status}` as MessageKey)}</strong><span>{current.progress}%</span></div>
                   <ProgressBar aria-label={`${title} ${t("buildProgress")}`} value={current.progress}><ProgressBar.Track><ProgressBar.Fill /></ProgressBar.Track></ProgressBar>
@@ -133,8 +148,9 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
                   {target === 'codex-pet' && <Button size="sm" variant="ghost" aria-expanded={showCodexDetails} aria-controls="codex-format-details" onPress={() => setShowCodexDetails(value => !value)}>{t('codexFormatDetails')}</Button>}
                 </div>
                 {target === 'codex-pet' && <div id="codex-format-details" hidden={!showCodexDetails}><p>{t('codexV2Hint')}</p><p>{t('codexTimingHint')}</p></div>}
-                {artifact && <div className="artifact-panel"><div><CircleCheck size={17} /><span><strong>{artifact.filename}</strong><small>{t("artifactSize", { value: Math.ceil(artifact.byteLength / 1024) })}</small></span></div><div className="artifact-actions"><Button size="sm" variant="secondary" aria-label={`${t("savePackage")} ${title}`} onPress={() => void download(artifact)}><Download size={14} />{t("savePackage")}</Button><Button size="sm" variant="secondary" aria-label={`${t("chooseFolder")} ${title}`} onPress={() => void chooseFolder(target)}><FolderOpen size={14} />{t("chooseFolder")}</Button><Button size="sm" variant="primary" aria-label={`${t("install")} ${title}`} onPress={() => void install(target, artifact)}>{t("install")}</Button></div></div>}
+                {artifact && <div className="artifact-panel"><div><CircleCheck size={17} /><span><strong>{artifact.filename}</strong><small>{formatBytes(artifact.byteLength)} ZIP</small></span></div><div className="artifact-actions"><Button size="sm" variant="secondary" aria-label={`${t("savePackage")} ${title}`} onPress={() => void download(artifact)}><Download size={14} />{t("savePackage")}</Button><Button size="sm" variant="secondary" aria-label={`${t("chooseFolder")} ${title}`} onPress={() => void chooseFolder(target)}><FolderOpen size={14} />{t("chooseFolder")}</Button><Button size="sm" variant="primary" aria-label={`${t("install")} ${title}`} onPress={() => void install(target, artifact)}>{t("install")}</Button></div></div>}
                 {artifact && <GeneratedPreview artifact={artifact} locale={locale} />}
+                {sizeWarning && <p role="alert" className="build-size-warning">{sizeWarning}</p>}
                 {current.summary && <div className="validation-summary">{current.summary.preview?.ready ? <CircleCheck size={15} /> : <XCircle size={15} />}<span>{t("previewSummary", { value: current.summary.preview?.ready ? t("ready") : t("unavailable") })} · {t("validationSummary", { value: current.summary.validation?.ok ? t("passed") : t("failed") })}</span></div>}
                 {feedback[target] && <p className="build-feedback">{feedback[target]}</p>}
               </Card.Content>

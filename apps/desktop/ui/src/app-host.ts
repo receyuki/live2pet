@@ -61,13 +61,15 @@ export type Live2PetProject = {
   sourceReview?: { required: boolean; reason?: string; reviewedFingerprint?: string; affectedRecipeIds: string[] };
 };
 
+export type ClawdRenderSettings = { width: number; height: number; fps: number; quality: number };
+
 export type ProjectTarget = {
   profile: string;
   mappings: Record<string, string>;
   reactions: Record<string, string>;
   recipeMappings?: Record<string, string>;
   renderPreset?: 'compact' | 'balanced' | 'high';
-  options: Record<string, unknown>;
+  options: Record<string, unknown> & { renderOverrides?: Partial<ClawdRenderSettings> };
 };
 
 export type RecentProject = { documentId: string; name: string; fileName: string; available: boolean };

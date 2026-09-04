@@ -1,5 +1,6 @@
 import { assignSelectedRecipe, clearAssignment } from "./project-mapping";
 import type { MappingDestination } from "./target-profiles";
+import type { ClawdRenderSettings } from './app-host';
 
 export type Destination =
   | "setup"
@@ -67,6 +68,7 @@ export type AppAction =
   | { type: "RENAME_PROJECT"; name: string }
   | { type: "SET_VISUAL_SETTINGS"; settings: import('./app-host').VisualSettings }
   | { type: "SET_RENDER_PRESET"; target: "clawd" | "codex-pet"; preset: "compact" | "balanced" | "high" }
+  | { type: 'SET_CLAWD_RENDER'; settings: ClawdRenderSettings | null }
   | { type: "SOURCE_RELINKED"; document: import('./app-host').Live2PetProject; inspection: import('./app-host').SourceInspection; sourcePath: string }
   | { type: "SOURCE_REVIEW_ACKNOWLEDGED"; document: import('./app-host').Live2PetProject }
   | { type: "UNDO_PROJECT_EDIT" }
@@ -212,10 +214,22 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case "SET_RENDER_PRESET": {
-      if (!state.project?.document || state.project.document.targets[action.target].renderPreset === action.preset) return state;
-      const target = { ...state.project.document.targets[action.target], renderPreset: action.preset };
+      if (!state.project?.document) return state;
+      const previous = state.project.document.targets[action.target];
+      if (previous.renderPreset === action.preset && !previous.options.renderOverrides) return state;
+      const options = { ...previous.options };
+      delete options.renderOverrides;
+      const target = { ...previous, renderPreset: action.preset, options };
       const document = { ...state.project.document, targets: { ...state.project.document.targets, [action.target]: target } };
       return applyDocumentEdit(state, document);
+    }
+
+    case 'SET_CLAWD_RENDER': {
+      if (!state.project?.document) return state;
+      const project = state.project.document;
+      const options = { ...project.targets.clawd.options };
+      if (action.settings) options.renderOverrides = { ...action.settings }; else delete options.renderOverrides;
+      return applyDocumentEdit(state, { ...project, targets: { ...project.targets, clawd: { ...project.targets.clawd, options } } });
     }
 
     case "SOURCE_RELINKED": {

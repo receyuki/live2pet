@@ -143,6 +143,11 @@ describe("appReducer", () => {
     expect(changed.project?.document?.targets["codex-pet"].renderPreset).toBeUndefined();
     expect(changed.project?.dirty).toBe(true);
     expect(appReducer(changed, { type: "SET_RENDER_PRESET", target: "clawd", preset: "high" })).toBe(changed);
+    const custom = appReducer(changed, { type: 'SET_CLAWD_RENDER', settings: { width: 384, height: 384, fps: 12, quality: 65 } });
+    expect(custom.project?.document?.targets.clawd.renderPreset).toBe('high');
+    expect(custom.project?.document?.targets.clawd.options.renderOverrides?.fps).toBe(12);
+    const restored = appReducer(custom, { type: 'SET_RENDER_PRESET', target: 'clawd', preset: 'high' });
+    expect(restored.project?.document?.targets.clawd.options.renderOverrides).toBeUndefined();
   });
 
   it("undoes and redoes document edits without recording ephemeral selections or no-ops", () => {

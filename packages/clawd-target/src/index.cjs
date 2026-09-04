@@ -12,6 +12,12 @@ const MAPPING_PATTERN = /^(motion|fallback):[^\s:][^\s]{0,255}$/;
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const SAFE_THEME_ID_PATTERN = /^[a-z0-9._-]{1,96}$/;
 
+function clawdPackageSizeWarning(byteLength, maxBytes = CLAWD_PACKAGE_LIMIT, largestAssets = []) {
+  if (byteLength <= maxBytes) return null;
+  const size = bytes => bytes >= 1024 * 1024 ? `${Number((bytes / 1024 / 1024).toFixed(1))} MiB` : bytes >= 1024 ? `${Number((bytes / 1024).toFixed(1))} KiB` : `${bytes} B`;
+  return { code: 'CLAWD_PACKAGE_TOO_LARGE', byteLength, maxBytes, largestAssets, message: `Clawd theme ZIP is ${size(byteLength)}, above the ${size(maxBytes)} host import limit. The ZIP can be saved, but Clawd may reject it. Reduce resolution, frame rate, or WebP quality and rebuild.` };
+}
+
 class ClawdValidationError extends Error {
   constructor(code, message, details = {}) {
     super(message);
@@ -380,7 +386,7 @@ function validateClawdThemePackage(input = {}) {
     if (!Number.isInteger(byteLength) || byteLength < 1) errors.push({ code: 'INVALID_CLAWD_PACKAGE_SIZE', byteLength, message: 'byteLength must be a positive integer when provided.' });
     else if (byteLength > maxBytes) {
       const largestAssets = assets.slice().sort((left, right) => right.byteLength - left.byteLength).slice(0, 5).map((asset) => ({ name: asset.name, byteLength: asset.byteLength }));
-      errors.push({ code: 'CLAWD_PACKAGE_TOO_LARGE', byteLength, maxBytes, largestAssets, message: `Clawd theme ZIP is ${byteLength} bytes; the maximum is ${maxBytes}.` });
+      warnings.push(clawdPackageSizeWarning(byteLength, maxBytes, largestAssets));
     }
   }
 
@@ -433,6 +439,7 @@ module.exports = {
   assertValidClawdMapping,
   assertValidClawdThemePackage,
   createClawdTarget,
+  clawdPackageSizeWarning,
   validateClawdMapping,
   validateClawdThemePackage,
 };

@@ -50,6 +50,19 @@ function fixture() {
   });
 }
 
+test('custom Clawd render settings survive project serialization and reject invalid values', () => {
+  const project = fixture();
+  project.targets.clawd.renderPreset = 'compact';
+  project.targets.clawd.options.renderOverrides = { width: 384, height: 384, fps: 12, quality: 65 };
+  const restored = parseProject(serializeProject(project));
+  assert.deepEqual(restored.targets.clawd.options.renderOverrides, project.targets.clawd.options.renderOverrides);
+  assert.equal(restored.targets.clawd.renderPreset, 'compact');
+  for (const overrides of [{ fps: 0 }, { quality: 101 }, { width: 4096 }, { fps: 12.5 }, { unknown: 1 }]) {
+    project.targets.clawd.options.renderOverrides = overrides;
+    assert.throws(() => serializeProject(project), { code: 'INVALID_RENDER_SETTINGS' });
+  }
+});
+
 test('creates and round-trips a reference-only Live2Pet Project', () => {
   const project = fixture();
   const text = serializeProject(project);

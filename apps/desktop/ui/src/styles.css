@@ -195,11 +195,17 @@
 
 .preset-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding-top: 6px;
 }
+.custom-render-settings{display:grid;gap:12px;border:1px solid var(--border);border-radius:12px;padding:12px;min-width:0}
+.custom-render-settings label{display:grid;grid-template-columns:1fr auto;gap:6px;font-size:13px}
+.custom-render-settings input{grid-column:1 / -1;width:100%;accent-color:var(--brand-text)}
+.custom-render-settings small{color:var(--muted)}
+.build-size-warning{padding:12px;border:1px solid #c58b24;border-radius:10px;background:color-mix(in srgb,#eab308 10%,var(--surface));font-size:13px}
 
 .build-result {
   display: grid;

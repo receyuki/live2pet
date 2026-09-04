@@ -168,8 +168,24 @@ function normalizeTarget(target, targetId) {
     assertRecord(target.options, `targets.${targetId}.options`);
     normalized.options = JSON.parse(JSON.stringify(target.options));
     delete normalized.options.renderPreset;
+    if (normalized.options.renderOverrides !== undefined) {
+      if (targetId !== 'clawd') fail('INVALID_RENDER_SETTINGS', 'Custom render settings are currently supported for Clawd only.');
+      normalized.options.renderOverrides = normalizeClawdRenderOverrides(normalized.options.renderOverrides);
+    }
   }
   return normalized;
+}
+
+function normalizeClawdRenderOverrides(value) {
+  assertRecord(value, 'Clawd render overrides');
+  const ranges = { width: [1, 2048], height: [1, 2048], fps: [1, 60], quality: [1, 100] };
+  const result = {};
+  for (const [key, number] of Object.entries(value)) {
+    const range = ranges[key];
+    if (!range || !Number.isInteger(number) || number < range[0] || number > range[1]) fail('INVALID_RENDER_SETTINGS', `Clawd ${key} must be an integer ${range ? `between ${range[0]} and ${range[1]}` : 'in a supported render field'}.`);
+    result[key] = number;
+  }
+  return result;
 }
 
 function normalizeSourceReview(review) {
@@ -388,6 +404,7 @@ module.exports = {
   recoverAutosaveFile,
   relinkProjectSource,
   normalizeVisualSettings,
+  normalizeClawdRenderOverrides,
   saveAutosaveFile,
   saveProjectFile,
   serializeProject,

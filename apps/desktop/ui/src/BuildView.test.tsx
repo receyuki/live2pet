@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BuildView, targetReadiness } from "./BuildView";
@@ -54,6 +54,36 @@ it('confirms the detected saved destination and installs through its opaque hand
 });
 
 describe("BuildView", () => {
+  it('retains all three presets and starts custom controls from the selected preset', async () => {
+    const onCustomRender = vi.fn(), onPreset = vi.fn();
+    const document = { ...project, targets: { ...project.targets, clawd: { ...project.targets.clawd, renderPreset: 'compact' as const } } };
+    const props = { locale: 'en' as const, project: document, inspection, runtimeReady: true, state: initialBuildState(), onPreset, onCustomRender, onBuild: vi.fn(), onCancel: vi.fn() };
+    const { rerender } = render(<BuildView {...props} />);
+    const group = screen.getByRole('group', { name: 'Clawd Theme Package Render preset' });
+    for (const name of ['Compact', 'Balanced', 'High', 'Custom']) expect(within(group).getByRole('button', { name })).toBeEnabled();
+    await userEvent.click(within(group).getByRole('button', { name: 'Custom' }));
+    expect(onCustomRender).toHaveBeenCalledWith(expect.objectContaining({ width: 512, height: 512, fps: 18, quality: 76 }));
+    const settings = { width: 512, height: 512, fps: 18, quality: 76 };
+    rerender(<BuildView {...props} project={{ ...document, targets: { ...document.targets, clawd: { ...document.targets.clawd, options: { renderOverrides: settings } } } }} />);
+    fireEvent.change(screen.getByRole('slider', { name: 'Resolution' }), { target: { value: '384' } });
+    expect(onCustomRender).toHaveBeenLastCalledWith({ ...settings, width: 384, height: 384 });
+    fireEvent.change(screen.getByRole('slider', { name: 'Frame rate' }), { target: { value: '12' } });
+    expect(onCustomRender).toHaveBeenLastCalledWith({ ...settings, fps: 12 });
+    await userEvent.click(within(group).getByRole('button', { name: 'Balanced' }));
+    expect(onPreset).toHaveBeenCalledWith('clawd', 'balanced');
+  });
+
+  it('warns in readable units while keeping oversized artifacts saveable', async () => {
+    const state = initialBuildState();
+    state.clawd = { ...state.clawd, status: 'succeeded', progress: 100, artifact: { artifactId: 'large', target: 'clawd', filename: 'large.zip', byteLength: 89207688 } };
+    render(<BuildView locale="zh-CN" project={project} inspection={inspection} runtimeReady state={state} onPreset={vi.fn()} onBuild={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('85.1 MiB');
+    expect(screen.getByRole('alert')).toHaveTextContent('80 MiB');
+    const save = screen.getByRole('button', { name: '保存 ZIP Clawd 主题包' });
+    expect(save).toBeEnabled();
+    await userEvent.click(save);
+    expect(downloadBuildArtifact).toHaveBeenCalledWith(state.clawd.artifact);
+  });
   it.each(['en', 'zh-CN'] as const)('keeps Codex format explanations collapsed and keyboard accessible (%s)', async (locale) => {
     const user = userEvent.setup();
     render(<BuildView locale={locale} project={project} inspection={inspection} runtimeReady state={initialBuildState()} onPreset={vi.fn()} onBuild={vi.fn()} onCancel={vi.fn()} />);
