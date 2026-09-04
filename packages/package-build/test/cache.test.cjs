@@ -5,7 +5,6 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
-  CacheError,
   CacheStore,
   DEFAULT_CACHE_LIMIT,
   createCacheKey,
@@ -83,15 +82,27 @@ test('treats tampered bytes as a cache miss and removes the invalid entry', () =
   assert.equal(cache.status().entryCount, 0);
 });
 
-test('clears entries by project or source and rejects oversized entries', () => {
+test('skips oversized entries without deleting useful cached entries', () => {
   const cache = store(8);
   cache.put(key({ artifact: 'one' }), Buffer.from('1234'), { projectId: 'demo-project' });
   cache.put(key({ artifact: 'two' }), Buffer.from('5678'), { projectId: 'other-project' });
   const cleared = cache.clear({ projectId: 'demo-project' });
   assert.equal(cleared.removedEntries, 1);
   assert.equal(cache.status().entryCount, 1);
-  assert.throws(
-    () => cache.put(key({ artifact: 'oversized' }), Buffer.from('123456789'), { projectId: 'other-project' }),
-    (error) => error instanceof CacheError && error.code === 'CACHE_ENTRY_TOO_LARGE',
-  );
+  const skipped = cache.put(key({ artifact: 'oversized' }), Buffer.from('123456789'), { projectId: 'other-project' });
+  assert.equal(skipped.stored, false);
+  assert.equal(skipped.reason, 'entry-too-large');
+  assert.equal(cache.status().entryCount, 1);
+  assert.equal(cache.get(key({ artifact: 'two' })).data.toString(), '5678');
+});
+
+test('keeps a long sequence of cache writes within the fixed budget', () => {
+  const cache = store(12);
+  for (let index = 0; index < 40; index++) {
+    const identity = key({ artifact: `motion-${index}` });
+    assert.equal(cache.put(identity, Buffer.alloc(4, index)).stored, true);
+    assert.ok(cache.status().byteLength <= 12);
+    assert.deepEqual(cache.get(identity).data, Buffer.alloc(4, index));
+  }
+  assert.equal(cache.status().entryCount, 3);
 });

@@ -773,6 +773,15 @@ test('reuses verified render candidates only with a complete cache identity', as
   assert.equal(decoded.frames[0].rgba.byteLength, first.idle.frames[0].rgba.byteLength);
 });
 
+test('builds a Clawd package even when its assets exceed the cache budget', async () => {
+  const cache = new CacheStore({ rootDir: require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'live2pet-small-clawd-cache-')), maxBytes: 1 });
+  const cacheContext = { projectId: 'small-clawd-cache', sourceFingerprint: 'source-sha256', runtimeVersion: 'core-5', rendererVersion: 'renderer-1', encoderVersion: 'sharp-0.34.5' };
+  const result = await buildClawdTheme({ mapping: clawdMapping(), framesByMotion: clawdFrames() }, { cache, cacheContext, package: true });
+  assert.ok(result.package.byteLength > 0);
+  assert.equal(result.cache.misses, 5);
+  assert.equal(cache.status().entryCount, 0);
+});
+
 test('reuses encoded Clawd assets only with a complete cache identity', async () => {
   const cache = new CacheStore({ rootDir: require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'live2pet-encoded-clawd-cache-')) });
   const cacheContext = { projectId: 'encoded-clawd', sourceFingerprint: 'source-sha256', runtimeVersion: 'core-5', rendererVersion: 'renderer-1', encoderVersion: 'sharp-0.34.5' };

@@ -89,6 +89,11 @@ as the character cannot be separated by this control.
 Visibility changes center the current visible content using the actual viewport.
 After upgrading from the earlier shifted-framing build, rebuild affected packages;
 Desktop skips the incompatible old capture cache automatically.
+
+The bounded disk cache automatically evicts the least recently used entries
+when space is needed. An individual entry larger than the entire cache budget
+is skipped without failing the build or discarding other useful entries;
+rebuilding that uncached content may take longer.
 Replacing source contents resets model-specific hidden IDs, while moving the
 same unchanged source keeps them. The original source and saved project are not
 silently modified by relinking.

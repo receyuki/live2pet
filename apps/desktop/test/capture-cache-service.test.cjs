@@ -32,6 +32,18 @@ function setup() {
   return { cache, service };
 }
 
+test('oversized capture entries are optional and do not prevent later writes', async () => {
+  const { cache, service } = setup();
+  const context = { sourceFingerprint: 'b'.repeat(64), cubismVersion: 3, target: 'clawd', renderPreset: 'balanced' };
+  cache.maxBytes = 1;
+  const skipped = await service.write(context, recipe(), { motionId: 'idle', ...frames() });
+  assert.equal(skipped.stored, false);
+  assert.equal(skipped.reason, 'entry-too-large');
+  assert.equal(await service.read(context, recipe()), null);
+  cache.maxBytes = 1024 * 1024;
+  assert.equal((await service.write(context, recipe(), { motionId: 'idle', ...frames() })).stored, true);
+});
+
 test('capture cache reports misses, stores validated frames, and returns hits', async () => {
   const { service } = setup();
   const context = { sourceFingerprint: 'b'.repeat(64), cubismVersion: 3, target: 'clawd', renderPreset: 'balanced' };

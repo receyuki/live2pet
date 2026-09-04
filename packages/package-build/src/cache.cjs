@@ -218,12 +218,14 @@ class CacheStore {
   put(keyInput, value, metadata = {}) {
     const key = keyInput && keyInput.digest && keyInput.identity ? keyInput : normalizeCacheKey(keyInput);
     const bytes = normalizeBytes(value);
-    if (bytes.byteLength > this.maxBytes) fail('CACHE_ENTRY_TOO_LARGE', `Cache entry is ${bytes.byteLength} bytes; the maximum cache size is ${this.maxBytes} bytes.`, { byteLength: bytes.byteLength, maxBytes: this.maxBytes });
     if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) fail('INVALID_CACHE_METADATA', 'Cache metadata must be an object.');
     const projectId = metadata.projectId == null ? undefined : safeText(metadata.projectId, 'Cache metadata projectId', { max: 96 });
     if (projectId && !PROJECT_ID_PATTERN.test(projectId)) fail('INVALID_CACHE_METADATA', 'Cache metadata projectId contains unsafe characters.');
     if (metadata.sourceFingerprint !== undefined && metadata.sourceFingerprint !== key.identity.sourceFingerprint) fail('INVALID_CACHE_METADATA', 'Cache metadata sourceFingerprint must match the cache identity.');
     if (metadata.artifact !== undefined && metadata.artifact !== key.identity.artifact) fail('INVALID_CACHE_METADATA', 'Cache metadata artifact must match the cache identity.');
+    // An optional acceleration entry must not abort a build. Evicting older
+    // entries cannot help when this entry alone exceeds the entire budget.
+    if (bytes.byteLength > this.maxBytes) return { stored: false, reason: 'entry-too-large', byteLength: bytes.byteLength, maxBytes: this.maxBytes };
     const now = timestamp();
     const entry = {
       schemaVersion: CACHE_SCHEMA_VERSION,
@@ -252,7 +254,7 @@ class CacheStore {
       this.removeFiles(key.digest);
       throw error;
     }
-    return { ...summaryFromMetadata(entry), evicted };
+    return { stored: true, ...summaryFromMetadata(entry), evicted };
   }
 
   get(keyInput) {

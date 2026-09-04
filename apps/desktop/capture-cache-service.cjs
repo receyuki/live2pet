@@ -159,6 +159,7 @@ function createCaptureCacheService({ cache, getRuntimeForGeneration, rendererVer
     const identity = identityFor(normalized, recipe, normalized.runtimeVersion);
     const bytes = encodeCaptureSet(frameSet);
     const result = cache.put(identity, bytes, { sourceFingerprint: normalized.sourceFingerprint, artifact: CAPTURE_CACHE_ARTIFACT });
+    if (result.stored === false) return result;
     return { stored: true, key: identity.digest, byteLength: result.byteLength };
   }
 
