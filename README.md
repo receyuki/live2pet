@@ -94,6 +94,13 @@ The bounded disk cache automatically evicts the least recently used entries
 when space is needed. An individual entry larger than the entire cache budget
 is skipped without failing the build or discarding other useful entries;
 rebuilding that uncached content may take longer.
+
+Generated Clawd themes include a default clickable rectangle covering their
+logical canvas. Transparent margins inside it also receive pointer input.
+Rebuild and reinstall older packages that lack this rectangle; custom hit boxes
+provided through build metadata are preserved.
+They also declare neutral `objectScale` values so Clawd does not apply its
+built-in overscan and upward offset to the exported canvas.
 Replacing source contents resets model-specific hidden IDs, while moving the
 same unchanged source keeps them. The original source and saved project are not
 silently modified by relinking.

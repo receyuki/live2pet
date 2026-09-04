@@ -130,6 +130,8 @@ test('builds a guide-shaped Clawd theme package from captured Motion frames', as
   assert.equal(result.target, 'clawd');
   assert.equal(result.themeId, 'demo-theme');
   assert.equal(result.manifest.version, '1.0.0');
+  assert.deepEqual(result.manifest.hitBoxes.default, { x: 0, y: 0, w: 384, h: 384 });
+  assert.deepEqual(result.manifest.objectScale, { widthRatio: 1, heightRatio: 1, offsetX: 0, offsetY: 0 });
   assert.deepEqual(result.manifest.states.idle, ['demo-theme-idle.webp']);
   assert.deepEqual(result.manifest.states.sleeping, { fallbackTo: 'idle' });
   assert.deepEqual(result.manifest.reactions.drag, { file: 'demo-theme-error.webp' });
@@ -172,6 +174,17 @@ test('builds a guide-shaped Clawd theme package from captured Motion frames', as
     'demo-theme/assets/demo-theme-working.webp',
   ]);
   await reader.close();
+});
+
+test('derives the default click box from custom canvas geometry and preserves explicit host geometry', async () => {
+  const metadata = { viewBox: { x: -10, y: 20, width: 200, height: 300 } };
+  const build = extra => buildClawdTheme({ mapping: clawdMapping(), framesByMotion: clawdFrames(), metadata: { ...metadata, ...extra } }, { sharpFactory: clawdSharpFactory() });
+  assert.deepEqual((await build({})).manifest.hitBoxes.default, { x: -10, y: 20, w: 200, h: 300 });
+  const explicit = { hitBoxes: { default: { x: 20, y: 40, w: 100, h: 200 } }, objectScale: { widthRatio: 0.9, heightRatio: 0.9, offsetX: 0.05, offsetY: 0.05 } };
+  const result = await build(explicit);
+  assert.deepEqual(result.manifest.hitBoxes, explicit.hitBoxes);
+  assert.deepEqual(result.manifest.objectScale, explicit.objectScale);
+  await assert.rejects(build({ hitBoxes: { default: { x: 0, y: 0, w: 0, h: 1 } } }), error => error.code === 'TARGET_VALIDATION_FAILED');
 });
 
 test('derives guide tier metadata and a dedicated roam behavior from mapped Motions', async () => {

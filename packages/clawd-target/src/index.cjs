@@ -307,6 +307,10 @@ function validateClawdThemePackage(input = {}) {
     if (!isRecord(manifest.viewBox) || !['x', 'y', 'width', 'height'].every((key) => Number.isFinite(manifest.viewBox[key])) || manifest.viewBox.width <= 0 || manifest.viewBox.height <= 0) {
       errors.push({ code: 'INVALID_CLAWD_METADATA', field: 'viewBox', message: 'theme.json viewBox must provide finite x, y, width, and height values with positive width and height.' });
     }
+    const defaultHitBox = manifest.hitBoxes?.default;
+    if (!isRecord(defaultHitBox) || !['x', 'y', 'w', 'h'].every(key => Number.isFinite(defaultHitBox[key])) || defaultHitBox.w <= 0 || defaultHitBox.h <= 0) {
+      errors.push({ code: 'INVALID_CLAWD_METADATA', field: 'hitBoxes.default', message: 'theme.json requires a finite default hit box with positive width and height for pointer interaction.' });
+    }
     if (!isRecord(manifest.eyeTracking) || manifest.eyeTracking.enabled !== false || (Array.isArray(manifest.eyeTracking.states) && manifest.eyeTracking.states.length > 0)) {
       errors.push({ code: 'EYE_TRACKING_UNSUPPORTED', field: 'eyeTracking', message: 'Clawd WebP output must disable eyeTracking and provide no eye-tracking states.' });
     }

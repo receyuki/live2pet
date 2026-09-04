@@ -255,6 +255,7 @@ test('package-validate inspects a generated Clawd ZIP and preserves validator wa
       version: '1.0.0',
       description: 'A synthetic Clawd theme.',
       viewBox: { x: 0, y: 0, width: 384, height: 384 },
+      hitBoxes: { default: { x: 0, y: 0, w: 384, h: 384 } },
       eyeTracking: { enabled: false, states: [] },
       miniMode: { supported: false },
       states: { idle: ['idle.webp'], thinking: ['idle.webp'], working: ['idle.webp'], sleeping: { fallbackTo: 'idle' } },

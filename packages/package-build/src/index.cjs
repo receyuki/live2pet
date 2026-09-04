@@ -626,12 +626,17 @@ function normalizeClawdMetadata(input = {}) {
     description: typeof input.description === 'string' && input.description.trim() ? input.description.trim() : `A Live2Pet theme generated from ${name}.`,
     customization: { petTint: false },
     viewBox: { x: 0, y: 0, width: 384, height: 384 },
+    objectScale: { widthRatio: 1, heightRatio: 1, offsetX: 0, offsetY: 0 },
     eyeTracking: { enabled: false, states: [] },
     miniMode: { supported: false },
   };
   if (typeof input.license === 'string' && input.license.trim()) metadata.license = input.license.trim();
-  for (const key of ['customization', 'viewBox', 'layout', 'updateBubbleAnchorBox', 'eyeTracking', 'miniMode', 'timings', 'hitBoxes', 'roamFlipAssets', 'idleAnimations', 'idleEasterEggs', 'workingTiers', 'jugglingTiers']) {
+  for (const key of ['customization', 'viewBox', 'objectScale', 'layout', 'updateBubbleAnchorBox', 'eyeTracking', 'miniMode', 'timings', 'hitBoxes', 'roamFlipAssets', 'idleAnimations', 'idleEasterEggs', 'workingTiers', 'jugglingTiers']) {
     if (input[key] !== undefined) metadata[key] = cloneJsonValue(input[key], `metadata.${key}`);
+  }
+  if (metadata.hitBoxes === undefined) {
+    const { x, y, width, height } = metadata.viewBox;
+    metadata.hitBoxes = { default: { x, y, w: width, h: height } };
   }
   return { themeId, metadata };
 }

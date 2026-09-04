@@ -35,6 +35,7 @@ function validThemePackage() {
       version: '1.2.3',
       description: 'Synthetic Clawd theme fixture.',
       viewBox: { x: 0, y: 0, width: 384, height: 384 },
+      hitBoxes: { default: { x: 0, y: 0, w: 384, h: 384 } },
       eyeTracking: { enabled: false, states: [] },
       miniMode: { supported: false },
       sleepSequence: { mode: 'direct' },

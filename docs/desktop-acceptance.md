@@ -451,3 +451,16 @@ scratch installation, cancellation, warm-cache builds, renderer crash recovery,
 project reopen/relink, and runtime reuse after restarting the App. The supplied
 old ZIP was inspected read-only; it must be rebuilt to receive corrected framing.
 No local model, runtime, diagnostic image, or generated package is published.
+
+### Clawd pointer and display geometry — 2026-09-04
+
+Generated themes now declare a canvas-sized `hitBoxes.default` and neutral
+`objectScale` values. Previously omitted metadata inherited Clawd's small
+17-by-12 default click rectangle and an image top offset of -25 percent.
+A private probe using the installed Clawd schema and hitbox resolver confirms
+that the exported canvas center is clickable and its top is at zero with the
+new metadata. This is a host-geometry check, not a native mouse-event acceptance
+or verification of every user animation's captured pixels. Transparent canvas
+margins remain clickable. Explicit build metadata is preserved, and package
+validation rejects missing or invalid default rectangles. Existing ZIPs require
+rebuild/reinstallation; no installed theme is modified automatically.
