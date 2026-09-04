@@ -1,5 +1,5 @@
 const { RendererContractError } = require('./errors.cjs');
-const { normalizeVisualSettings, pageInitializeVisualElements, pageSetVisualSettings, pageVisualElementThumbnail } = require('./visual-settings.cjs');
+const { normalizeVisualSettings, pageInitializeVisualElements, pageSetVisualSettings, pageVisualElementThumbnail, pageScanVisualElements } = require('./visual-settings.cjs');
 
 const DEFAULT_OPTIONS = Object.freeze({
   canvasSelector: '#live2pet-stage',
@@ -526,6 +526,12 @@ class PixiLive2dAdapter {
   async setVisualSettings(settings) {
     this.requireLoaded();
     return this.evaluate(pageSetVisualSettings, normalizeVisualSettings(settings));
+  }
+
+  async scanVisualElements(motionId) {
+    this.requireLoaded();
+    this.motion(motionId);
+    return this.evaluate(pageScanVisualElements, motionId);
   }
 
   async playMotion(id, { loop = this.state.loop, speed = this.state.speed, start = 0 } = {}) {

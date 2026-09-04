@@ -120,5 +120,31 @@ for (const cubismVersion of [2, 4]) test(`Cubism ${cubismVersion}: hides after p
     await runtime.prepareVisualCapture('idle');
     assert.equal(resets, preparedResets, 'switching back reuses this Motion framing');
     assert.deepEqual(runtime.visualBounds, { x: 2, y: 2, width: 4, height: 4 });
+    if (cubismVersion === 4) {
+      model.getLocalBounds = () => ({ width: 8, height: 8 });
+      internal.getDrawableVertices = index => index === 0 ? [0, 0, 20, 0, 20, 20, 0, 20] : [2, 2, 6, 6];
+      internal.coreModel._model.drawables = {
+        ids: ['overlay', 'body'], parentPartIndices: [0, 1],
+        get opacities() { return [time > 0.5 ? rendered.BG : 0, rendered.Body]; },
+      };
+      const physics = internal.physics = { marker: 'unchanged' };
+      runtime.getVisualElementThumbnail = id => ({ id, dataUrl: rendered[id] > 0 ? 'data:image/png;base64,late-pose' : null });
+      await pageSetVisualSettings({ hiddenElementIds: [] });
+      const scan = await runtime.scanVisualElements('reach');
+      assert.equal(scan.candidates[0].id, 'BG', 'finds a large overlay absent from the first frame');
+      assert.ok(scan.candidates[0].time >= 0.5);
+      assert.equal(scan.candidates[0].dataUrl, 'data:image/png;base64,late-pose');
+      assert.equal(internal.physics, physics);
+      assert.equal(runtime.state.playing, false);
+      assert.equal(runtime.state.time, 0);
+      assert.deepEqual(runtime.visualSettings, { hiddenElementIds: [] });
+      await pageSetVisualSettings({ hiddenElementIds: ['BG'] });
+      assert.deepEqual((await runtime.scanVisualElements('reach')).candidates, [], 'already hidden Parts do not appear as visible suspects');
+      await pageSetVisualSettings({ hiddenElementIds: [] });
+      runtime.getVisualElementThumbnail = () => { throw new Error('thumbnail failed'); };
+      await assert.rejects(runtime.scanVisualElements('reach'), /thumbnail failed/);
+      assert.equal(internal.physics, physics, 'failed scans restore the live physics object');
+      assert.deepEqual(runtime.visualSettings, { hiddenElementIds: [] });
+    }
   } finally { global.window = previousWindow; }
 });

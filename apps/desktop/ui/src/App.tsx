@@ -67,6 +67,7 @@ import {
   controlLive2DPreview,
   setLive2DPreviewExpression,
   getPreviewVisualElements,
+  scanPreviewVisualElements,
   setPreviewVisualSettings,
   VisualElement,
   VisualSettings,
@@ -493,10 +494,16 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   const [soloSelection, setSoloSelection] = useState<{ sourceKey: string; id: string | null }>({ sourceKey, id: null });
   const soloId = soloSelection.sourceKey === sourceKey ? soloSelection.id : null;
   const setSoloId = (id: string | null) => setSoloSelection({ sourceKey, id });
+  const inspectSolo = (id: string | null, time?: number) => {
+    setSoloId(id);
+    if (time !== undefined) void runPlayback(() => controlLive2DPreview('seek', time));
+  };
   const [visibilityBusy, setVisibilityBusy] = useState(false);
+  const [scanningParts, setScanningParts] = useState(false);
+  const thumbnailScope = JSON.stringify([sourceKey, selectedMotionId, selectedExpressionId, previewRetry]);
   const visualThumbnails = useVisualThumbnails(
-    JSON.stringify([sourceKey, selectedMotionId, selectedExpressionId, previewRetry]),
-    visibilityOpen && !visibilityBusy && previewStatus?.state === 'ready' && visualElements.length > 0,
+    thumbnailScope,
+    visibilityOpen && !visibilityBusy && !scanningParts && previewStatus?.state === 'ready' && visualElements.length > 0,
   );
   const [motionQuery, setMotionQuery] = useState('');
   const visualSettings = projectDocument?.visualSettings ?? { hiddenElementIds: [] };
@@ -660,7 +667,15 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
           <Tabs.Tab id="motions" render={props => <div {...props as ComponentPropsWithRef<'div'>} className={buttonVariants({ size: 'sm', variant: !visibilityOpen ? 'primary' : 'secondary' })} />}>{t('motionsAndExpressions')}</Tabs.Tab>
           <Tabs.Tab id="visibility" isDisabled={!projectDocument} render={props => <div {...props as ComponentPropsWithRef<'div'>} className={buttonVariants({ size: 'sm', variant: visibilityOpen ? 'primary' : 'secondary' })} />}>{t('visibility')}</Tabs.Tab>
         </Tabs.List>
-        <Tabs.Panel id="visibility" className="library-tab-panel"><VisibilityPanel key={sourceKey} locale={locale} elements={visualElements} settings={visualSettings} soloId={soloId} thumbnail={visualThumbnails.thumbnail} thumbnails={visualThumbnails.thumbnails} busy={visibilityBusy || previewStatus?.state !== 'ready'} onSettings={onVisualSettings} onSolo={setSoloId} onInspect={visualThumbnails.inspect} onVisible={visualThumbnails.onVisible} /></Tabs.Panel>
+        <Tabs.Panel id="visibility" className="library-tab-panel"><VisibilityPanel key={sourceKey} locale={locale} elements={visualElements} settings={visualSettings} soloId={soloId} thumbnail={visualThumbnails.thumbnail} thumbnails={visualThumbnails.thumbnails} busy={visibilityBusy || scanningParts || previewStatus?.state !== 'ready'} onSettings={onVisualSettings} onSolo={inspectSolo} onInspect={visualThumbnails.inspect} onVisible={visualThumbnails.onVisible} scanScope={thumbnailScope} onScan={inspection && inspection.model.cubism !== 2 && selectedMotionId ? async () => {
+          setScanningParts(true); setSoloId(null); setSeekTime(null);
+          try {
+            await setPreviewVisualSettings(visualSettings);
+            const result = await scanPreviewVisualElements(selectedMotionId);
+            if (sourceKeyRef.current === sourceKey) setPreviewStatus(await readLive2DPreviewStatus());
+            return result;
+          } finally { setScanningParts(false); }
+        } : undefined} /></Tabs.Panel>
         <Tabs.Panel id="motions" className="library-tab-panel">
         <PanelHeading icon={<SlidersHorizontal size={16} />} title={t("motions")} body={t("motionsHint")} />
         <Input aria-label={t("searchMotions")} placeholder={t("search")} value={motionQuery} onChange={event => setMotionQuery(event.target.value)} />

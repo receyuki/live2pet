@@ -18,6 +18,7 @@ const CONTRACT_METHODS = [
   'captureRgba',
   'getVisualElements',
   'getVisualElementThumbnail',
+  'scanVisualElements',
   'setVisualSettings',
 ];
 
@@ -166,6 +167,7 @@ class SyntheticRenderer {
   getVisualElements() { return []; }
 
   getVisualElementThumbnail() { fail('VISUAL_ELEMENT_NOT_FOUND', 'Synthetic source has no separable Visual Elements.'); }
+  scanVisualElements() { fail('UNSUPPORTED_VISUAL_SCAN', 'Synthetic source has no separable Visual Elements.'); }
 
   setVisualSettings(settings) {
     if (normalizeVisualSettings(settings).hiddenElementIds.length) fail('UNSUPPORTED_VISUAL_SETTINGS', 'Synthetic source has no separable Visual Elements.');

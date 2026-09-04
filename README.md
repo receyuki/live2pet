@@ -80,6 +80,15 @@ failed image to retry. These are pose snapshots, not original atlas tiles.
 Live2Pet never hides a Part automatically based on its name. Friendly names are
 used when the model supplies them; otherwise the original Part IDs are shown.
 
+For modern Cubism models, **Detect large Parts** samples nine poses in the
+selected Motion and puts up to eight large visible Parts first. Their images
+come from the sampled pose, so overlays absent at the start can be identified.
+**Solo** on a detected Part jumps to that sampled time. Detection does not hide
+anything; inspect each candidate before choosing **Hide**. It pauses at the
+Motion's start when finished. This geometry-based aid can miss brief effects
+and cannot classify a Part as background or foreground. Cubism 2 retains manual
+inspection. Thumbnail checkerboards make translucent overlays easier to see.
+
 The project saves your hidden Parts and applies them to preview and both target
 builds. Toggling visibility updates the current pose immediately; sampled
 animation framing runs only when capture is needed, independently per Motion

@@ -229,6 +229,68 @@ async function pageInitializeVisualElements() {
       runtime.syncTicker();
     }
   };
+  runtime.scanVisualElements = async motionId => {
+    if (!modern) throw new Error('Large Part detection requires a modern Cubism model.');
+    const motion = runtime.source.motions.find(item => item.id === motionId);
+    if (!motion) throw new Error('Scan Motion is not available.');
+    const bounds = runtime.model.getLocalBounds();
+    const canvasArea = bounds.width * bounds.height;
+    const physics = internal.physics;
+    const previousBounds = runtime.visualBounds;
+    const candidates = new Map();
+    runtime.app.stop();
+    runtime.state.playing = false;
+    // Inspect authored geometry, not physics transients from coarse sampling.
+    // The live simulation is left untouched until the final restart.
+    internal.physics = null;
+    try {
+      await runtime.resetMotion(motion, runtime.options.motionPriority);
+      for (let sample = 0; sample <= 8; sample++) {
+        if (sample) { runtime.model.update(Math.max(0.001, motion.duration * 1000 / 8)); runtime.render(); }
+        const drawables = core._model.drawables;
+        const areas = new Map();
+        for (let index = 0; index < drawables.ids.length; index++) {
+          const id = ids[drawables.parentPartIndices[index]];
+          if (!id || hidden.has(id) || drawables.opacities[index] <= 0) continue;
+          const vertices = internal.getDrawableVertices(index);
+          let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+          for (let v = 0; v < vertices.length; v += 2) {
+            left = Math.min(left, vertices[v]); right = Math.max(right, vertices[v]);
+            top = Math.min(top, vertices[v + 1]); bottom = Math.max(bottom, vertices[v + 1]);
+          }
+          const areaRatio = (right - left) * (bottom - top) / canvasArea;
+          if (areaRatio >= 0.5) areas.set(id, Math.max(areas.get(id) || 0, areaRatio));
+        }
+        // At most nine pose snapshots, shared across candidates. Only the
+        // eight largest candidates need expensive isolated image extraction.
+        let pose;
+        for (const [id, areaRatio] of areas) {
+          if (areaRatio <= (candidates.get(id)?.areaRatio || 0)) continue;
+          pose ||= { parameters: [...posedParameters], opacity: ids.map(getOpacity) };
+          candidates.set(id, { id, time: motion.duration * sample / 8, areaRatio, pose });
+        }
+      }
+      const result = [];
+      for (const candidate of [...candidates.values()].sort((a, b) => b.areaRatio - a.areaRatio).slice(0, 8)) {
+        restoreAuthored();
+        posedParameters = candidate.pose.parameters;
+        ids.forEach((id, index) => setOpacity(id, candidate.pose.opacity[index]));
+        updateVisibility(); runtime.render();
+        const thumbnail = runtime.getVisualElementThumbnail(candidate.id);
+        if (thumbnail.dataUrl) result.push({ ...thumbnail, time: candidate.time, areaRatio: candidate.areaRatio });
+      }
+      return { motionId, candidates: result };
+    } finally {
+      restoreAuthored();
+      internal.physics = physics;
+      runtime.visualBounds = previousBounds;
+      runtime.state.motionId = motionId;
+      runtime.state.time = 0;
+      runtime.fit();
+      await runtime.resetMotion(motion, runtime.options.motionPriority, true);
+      runtime.app.stop();
+    }
+  };
   runtime.visualSettings = { hiddenElementIds: [] };
   return elements;
 }
@@ -241,4 +303,8 @@ function pageVisualElementThumbnail(id) {
   return window.__live2petPixiLive2D.getVisualElementThumbnail(id);
 }
 
-module.exports = { normalizeVisualSettings, pageInitializeVisualElements, pageSetVisualSettings, pageVisualElementThumbnail };
+function pageScanVisualElements(motionId) {
+  return window.__live2petPixiLive2D.scanVisualElements(motionId);
+}
+
+module.exports = { normalizeVisualSettings, pageInitializeVisualElements, pageSetVisualSettings, pageVisualElementThumbnail, pageScanVisualElements };

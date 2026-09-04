@@ -131,6 +131,7 @@ export type PreviewBounds = { x: number; y: number; width: number; height: numbe
 export type VisualSettings = { hiddenElementIds: string[] };
 export type VisualElement = { id: string; name: string; kind: 'part' | 'slot'; parentId?: string };
 export type VisualElementThumbnail = { id: string; dataUrl: string | null };
+export type VisualElementScan = { motionId: string; candidates: (VisualElementThumbnail & { time: number; areaRatio: number })[] };
 export type PreviewStatus = {
   schemaVersion: 1;
   state: 'idle' | 'opening' | 'ready' | 'failed';
@@ -184,6 +185,7 @@ type Live2PetApi = {
   openPreview?(input: { projectId: string; sourceFingerprint: string; bounds: PreviewBounds; visualSettings?: VisualSettings }): Promise<AppResponse<PreviewStatus>>;
   getPreviewVisualElements?(): Promise<AppResponse<VisualElement[]>>;
   getPreviewVisualElementThumbnail?(input: { id: string }): Promise<AppResponse<VisualElementThumbnail>>;
+  scanPreviewVisualElements?(input: { motionId: string }): Promise<AppResponse<VisualElementScan>>;
   setPreviewVisualSettings?(input: VisualSettings): Promise<AppResponse<PreviewStatus>>;
   layoutPreview?(input: { visible: boolean; bounds?: PreviewBounds }): Promise<AppResponse<PreviewStatus>>;
   playPreview?(input: { motionId: string; loop?: boolean; speed?: number }): Promise<AppResponse<PreviewStatus>>;
@@ -436,6 +438,12 @@ export function getPreviewVisualElementThumbnail(id: string): Promise<VisualElem
   const api = previewApi();
   if (!api.getPreviewVisualElementThumbnail) throw new DesktopApiError('PREVIEW_UNAVAILABLE', 'Visual Element thumbnails require the current Desktop App.');
   return unwrap(api.getPreviewVisualElementThumbnail({ id }));
+}
+
+export function scanPreviewVisualElements(motionId: string): Promise<VisualElementScan> {
+  const api = previewApi();
+  if (!api.scanPreviewVisualElements) throw new DesktopApiError('PREVIEW_UNAVAILABLE', 'Large Part detection requires the current Desktop App.');
+  return unwrap(api.scanPreviewVisualElements({ motionId }));
 }
 
 export function setPreviewVisualSettings(settings: VisualSettings) {

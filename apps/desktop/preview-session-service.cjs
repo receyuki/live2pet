@@ -446,6 +446,12 @@ function createPreviewSessionService({
       });
     },
     close: () => enqueue(closeNow),
+    scanVisualElements: (input = {}) => enqueue(async () => {
+      if (state !== SESSION_STATES.ready || !adapter) fail('PREVIEW_NOT_READY', 'Preview session is not ready.');
+      const result = await adapter.scanVisualElements(input.motionId);
+      await adapter.readState();
+      return result;
+    }),
     getStatus,
     readStatus: () => enqueue(async () => {
       if (state === SESSION_STATES.ready && adapter?.readState) await adapter.readState();

@@ -85,3 +85,31 @@ it('requests only intersecting rows and releases them when leaving the panel', (
   unmount();
   expect(disconnect).toHaveBeenCalled();
 });
+
+it('ranks detected Parts, uses their sampled images, and still requires an explicit hide', async () => {
+  const onSettings = vi.fn();
+  const props = { locale: 'en' as const, elements: [...elements].reverse(), settings: { hiddenElementIds: [] }, soloId: null, thumbnail: null, thumbnails: {}, busy: false, onSettings, onSolo: vi.fn(), onInspect: vi.fn(), onVisible: vi.fn(), scanScope: 'motion-one', onScan: vi.fn().mockResolvedValue({ motionId: 'one', candidates: [{ id: 'BG', dataUrl: 'data:image/png;base64,sampled', time: 2.5, areaRatio: 4 }] }) };
+  const { container, rerender } = render(<VisibilityPanel {...props} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Detect large Parts' }));
+  expect(await screen.findByText('Large Part · 2.5s')).toBeVisible();
+  expect(container.querySelector('[data-part-id]')).toHaveAttribute('data-part-id', 'BG');
+  expect(onSettings).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole('button', { name: 'Solo · Background' }));
+  expect(props.onSolo).toHaveBeenLastCalledWith('BG', 2.5);
+  await userEvent.click(screen.getByRole('button', { name: 'Inspect · Background' }));
+  expect(within(screen.getByRole('region', { name: 'Part preview' })).getByRole('img')).toHaveAttribute('src', 'data:image/png;base64,sampled');
+  await userEvent.click(screen.getByRole('button', { name: 'Hide · Background' }));
+  expect(onSettings).toHaveBeenCalledWith({ hiddenElementIds: ['BG'] });
+  rerender(<VisibilityPanel {...props} scanScope="motion-two" />);
+  expect(screen.queryByText('Large Part · 2.5s')).toBeNull();
+  expect(container.querySelector('[data-part-id]')).toHaveAttribute('data-part-id', 'BODY');
+});
+
+it('shows a recoverable scan error without changing visibility', async () => {
+  const onSettings = vi.fn();
+  render(<VisibilityPanel locale="en" elements={elements} settings={{ hiddenElementIds: [] }} soloId={null} thumbnail={null} thumbnails={{}} busy={false} onSettings={onSettings} onSolo={vi.fn()} onInspect={vi.fn()} onVisible={vi.fn()} onScan={vi.fn().mockRejectedValue(new Error('scan failed'))} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Detect large Parts' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('scan failed');
+  expect(screen.getByRole('button', { name: 'Detect large Parts' })).toBeEnabled();
+  expect(onSettings).not.toHaveBeenCalled();
+});
