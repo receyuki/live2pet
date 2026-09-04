@@ -99,12 +99,13 @@
 .target-switch {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  gap: 0;
   margin: 12px 12px 0;
 }
 
-.target-switch button {
+.target-switch .button {
   width: 100%;
+  min-width: 0;
 }
 
 .mapping-preview-note {
