@@ -741,7 +741,11 @@ describe('Live2Pet desktop shell', () => {
 
     await vi.waitFor(() => expect(api.openPreview).toHaveBeenCalled());
     await vi.waitFor(() => expect(api.getPreviewVisualElements).toHaveBeenCalled());
+    expect(screen.getByRole('tab', { name: 'Animations' })).toHaveClass('button--primary');
+    expect(screen.getByRole('tab', { name: 'Visibility' })).toHaveClass('button--secondary');
     await user.click(screen.getByRole('tab', { name: 'Visibility' }));
+    expect(screen.getByRole('tab', { name: 'Visibility' })).toHaveClass('button--primary');
+    expect(screen.getByRole('tab', { name: 'Animations' })).toHaveClass('button--secondary');
     await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Inspect · Background' })).toBeEnabled());
 
     await user.click(screen.getByRole('button', { name: 'Inspect · Background' }));

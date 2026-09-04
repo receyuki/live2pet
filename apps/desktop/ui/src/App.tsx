@@ -7,6 +7,8 @@ import {
   ProgressBar,
   Tabs,
 } from "@heroui/react";
+import { buttonVariants } from '@heroui/styles';
+import type { ComponentPropsWithRef } from 'react';
 import {
   Archive,
   AlertTriangle,
@@ -15,7 +17,6 @@ import {
   CircleCheck,
   Database,
   ExternalLink,
-  Eye,
   FolderOpen,
   Gauge,
   HardDrive,
@@ -655,10 +656,10 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   return (
     <main className="map-workspace">
       <Tabs className="workspace-panel library-tabs" selectedKey={visibilityOpen ? 'visibility' : 'motions'} onSelectionChange={key => { if (key !== 'visibility') setSoloId(null); setVisibilityOpen(key === 'visibility'); }}>
-        <Tabs.ListContainer><Tabs.List aria-label={t('modelTools')}>
-          <Tabs.Tab id="motions"><SlidersHorizontal size={15} />{t('motionsAndExpressions')}<Tabs.Indicator /></Tabs.Tab>
-          <Tabs.Tab id="visibility" isDisabled={!projectDocument}><Eye size={15} />{t('visibility')}<Tabs.Indicator /></Tabs.Tab>
-        </Tabs.List></Tabs.ListContainer>
+        <Tabs.List className="target-switch library-switch" aria-label={t('modelTools')}>
+          <Tabs.Tab id="motions" render={props => <div {...props as ComponentPropsWithRef<'div'>} className={buttonVariants({ size: 'sm', variant: !visibilityOpen ? 'primary' : 'secondary' })} />}>{t('motionsAndExpressions')}</Tabs.Tab>
+          <Tabs.Tab id="visibility" isDisabled={!projectDocument} render={props => <div {...props as ComponentPropsWithRef<'div'>} className={buttonVariants({ size: 'sm', variant: visibilityOpen ? 'primary' : 'secondary' })} />}>{t('visibility')}</Tabs.Tab>
+        </Tabs.List>
         <Tabs.Panel id="visibility" className="library-tab-panel"><VisibilityPanel key={sourceKey} locale={locale} elements={visualElements} settings={visualSettings} soloId={soloId} thumbnail={visualThumbnails.thumbnail} thumbnails={visualThumbnails.thumbnails} busy={visibilityBusy || previewStatus?.state !== 'ready'} onSettings={onVisualSettings} onSolo={setSoloId} onInspect={visualThumbnails.inspect} onVisible={visualThumbnails.onVisible} /></Tabs.Panel>
         <Tabs.Panel id="motions" className="library-tab-panel">
         <PanelHeading icon={<SlidersHorizontal size={16} />} title={t("motions")} body={t("motionsHint")} />
