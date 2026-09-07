@@ -53,6 +53,27 @@ test('serializes and reuses local thumbnails without registering a project sourc
   assert.equal(results[0].dataUrl, results[1].dataUrl);
 });
 
+test('times out a stuck thumbnail and continues rendering the remaining library', async () => {
+  const root = temporaryDirectory();
+  const service = createSourceLibraryService({
+    githubCacheRoot: path.join(root, 'cache'),
+    showOpenDialog: async () => ({ filePaths: [root] }),
+    discoverSources: () => ({ name: 'models', candidates: [
+      { id: 'stuck', name: 'Stuck', relativePath: 'stuck.model3.json', format: 'live2d', inputPath: root },
+      { id: 'ready', name: 'Ready', relativePath: 'ready.model3.json', format: 'live2d', inputPath: root },
+    ] }),
+    inspectSource: () => assert.fail('thumbnail must not register a project source'),
+    thumbnailTimeoutMs: 10,
+    renderThumbnail: async candidate => candidate.id === 'stuck'
+      ? new Promise(() => {})
+      : { dataUrl: 'data:image/png;base64,YQ==' },
+  });
+  const { library } = await service.openLocal();
+  await assert.rejects(service.thumbnail({ libraryId: library.libraryId, sourceId: 'stuck' }), { code: 'THUMBNAIL_TIMEOUT' });
+  const result = await service.thumbnail({ libraryId: library.libraryId, sourceId: 'ready' });
+  assert.equal(result.dataUrl, 'data:image/png;base64,YQ==');
+});
+
 test('browses GitHub tree metadata then downloads only the selected model folder', async () => {
   const root = temporaryDirectory();
   const requests = [];

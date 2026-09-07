@@ -10,6 +10,7 @@ const DEFAULT_GITHUB_CACHE_BYTES = 1024 * 1024 * 1024;
 const MIN_GITHUB_CACHE_BYTES = 256 * 1024 * 1024;
 const MAX_GITHUB_CACHE_BYTES = 20 * 1024 * 1024 * 1024;
 const MAX_REMOTE_MODEL_BYTES = 4 * 1024 * 1024 * 1024;
+const DEFAULT_THUMBNAIL_TIMEOUT_MS = 15000;
 
 class SourceLibraryError extends Error {
   constructor(code, message, details = {}) {
@@ -188,7 +189,7 @@ async function fetchJson(fetchImpl, url) {
   return response.json();
 }
 
-function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSource, githubCacheRoot, cacheSettingsFile = path.join(githubCacheRoot || '', 'cache-settings.json'), fetchImpl = globalThis.fetch, maxDepth = 2, getProtectedSourcePaths = () => [], renderThumbnail } = {}) {
+function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSource, githubCacheRoot, cacheSettingsFile = path.join(githubCacheRoot || '', 'cache-settings.json'), fetchImpl = globalThis.fetch, maxDepth = 2, getProtectedSourcePaths = () => [], renderThumbnail, thumbnailTimeoutMs = DEFAULT_THUMBNAIL_TIMEOUT_MS } = {}) {
   if (typeof showOpenDialog !== 'function' || typeof discoverSources !== 'function' || typeof inspectSource !== 'function') throw new TypeError('Source library service requires dialog, discovery, and inspection dependencies.');
   if (typeof githubCacheRoot !== 'string' || !path.isAbsolute(githubCacheRoot)) throw new TypeError('Source library GitHub cache root must be absolute.');
   if (typeof cacheSettingsFile !== 'string' || !path.isAbsolute(cacheSettingsFile)) throw new TypeError('Source library cache settings path must be absolute.');
@@ -206,6 +207,10 @@ function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSo
     const snapshot = githubCacheEntries(githubCacheRoot);
     return { schemaVersion: CACHE_SETTINGS_SCHEMA_VERSION, maxBytes: maxCacheBytes, byteLength: snapshot.byteLength, entryCount: snapshot.entries.length };
   };
+  const renderThumbnailWithTimeout = (candidate) => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new SourceLibraryError('THUMBNAIL_TIMEOUT', 'Model thumbnail rendering timed out.')), thumbnailTimeoutMs);
+    Promise.resolve().then(() => renderThumbnail(candidate)).then(resolve, reject).finally(() => clearTimeout(timer));
+  });
   const register = (record) => {
     libraries.set(record.id, record);
     while (libraries.size > MAX_LIBRARIES) libraries.delete(libraries.keys().next().value);
@@ -302,7 +307,7 @@ function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSo
       const key = `${libraryId}:${sourceId}`;
       if (thumbnails.has(key)) return thumbnails.get(key);
       if (!renderThumbnail) return { dataUrl: null };
-      const result = await renderThumbnail(candidate);
+      const result = await renderThumbnailWithTimeout(candidate);
       if (result.dataUrl) {
         const size = Buffer.byteLength(result.dataUrl);
         if (size > 1024 * 1024) return { dataUrl: null };

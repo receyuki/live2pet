@@ -98,7 +98,7 @@ Live2Pet recognizes Spine export versions before installing a renderer. For Spin
 
 ### Model libraries and GitHub cache
 
-The **Models** page combines project opening, source import, and library browsing. Local cards show a supplied `preview`/`cover` image when available, otherwise a 256 px rendered thumbnail using your installed runtime. Visible cards are processed one at a time; the in-memory thumbnail cache is capped at 16 MiB and resets when the App quits. Missing runtimes are reported rather than downloaded automatically. Selecting a card opens one live preview with a Motion selector; only **Use this model** replaces the current project. The library stays available when switching to Map or Build.
+The **Models** page combines project opening, source import, and library browsing. You can drag in either one model folder or one PCK file; folder drops work whether Electron exposes the folder itself or its nested files. Local cards show a supplied `preview`/`cover` image when available, otherwise a 256 px rendered thumbnail using your installed runtime. Visible cards are processed one at a time; a stuck render times out after 15 seconds so it cannot block the rest of the library. The in-memory thumbnail cache is capped at 16 MiB and resets when the App quits. Missing runtimes are reported rather than downloaded automatically. Selecting a card opens one live preview with a Motion selector; only **Use this model** replaces the current project. The library stays available when switching to Map or Build.
 
 GitHub cards do not automatically download models to generate thumbnails. Click a card to download only its selected model and open the live preview. Source diagnostics are part of Models, not a separate navigation tab.
 

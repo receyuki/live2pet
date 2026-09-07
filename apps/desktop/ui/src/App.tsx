@@ -102,8 +102,8 @@ import {
 } from "./app-state";
 import { Locale, MessageKey, translate, translateBehavior } from "./i18n";
 import runtimeHelpLinks from "../../runtime-help-links.json";
-import { projectIdFromSourceName, sourcePathFromSelection } from "./source-selection";
-import { hasDraggedFiles, isProjectFile } from "./file-drop";
+import { isSingleSourceSelection, projectIdFromSourceName, sourcePathFromSelection } from "./source-selection";
+import { hasDraggedFiles, isProjectFile, sourceFilesFromDrop } from "./file-drop";
 import { CLAWD_PROFILE, CODEX_PROFILE, MappingDestination } from "./target-profiles";
 import { BuildView } from "./BuildView";
 import { TargetSettings } from "./TargetSettings";
@@ -369,7 +369,7 @@ function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onL
     event.preventDefault();
     dragDepth.current = 0;
     setDragActive(false);
-    const files = Array.from(event.dataTransfer.files);
+    const files = sourceFilesFromDrop(event.dataTransfer);
     if (files.some(isProjectFile)) return;
     if (files.length) onImport(files, true);
   }
@@ -483,8 +483,9 @@ function SourceView({ locale, project, inspection, inspectionRequired, runtimeRe
     event.preventDefault();
     dragDepth.current = 0;
     setDragActive(false);
-    if (Array.from(event.dataTransfer.files).some(isProjectFile)) return;
-    void onRelink(Array.from(event.dataTransfer.files), true);
+    const files = sourceFilesFromDrop(event.dataTransfer);
+    if (files.some(isProjectFile)) return;
+    void onRelink(files, true);
   }
   const facts = inspection
     ? [["sourceModel", inspection.model.modelFile ?? "—"], ["sourceTextures", String(inspection.model.textures.length)], ["sourceMotions", String(inspection.motions.length)], ["sourceExpressions", String(inspection.expressions.length)]]
@@ -1067,7 +1068,7 @@ export function App() {
     setImportBusy(true);
     setImportError("");
     try {
-      if (directDrop && files.length !== 1) throw new Error(t("dropOne"));
+      if (!isSingleSourceSelection(files, directDrop)) throw new Error(t("dropOne"));
       const inputPath = sourcePathFromSelection(files, getDesktopFilePath, directDrop);
       if (!inputPath) throw new Error(t("sourcePathUnavailable"));
       const sourceName = files[0]?.webkitRelativePath?.split('/')[0] || files[0]?.name.replace(/\.pck$/i, '') || 'Live2Pet';
@@ -1146,7 +1147,7 @@ export function App() {
     setImportBusy(true);
     setActionFeedback("");
     try {
-      if (directDrop && files.length !== 1) throw new Error(t("dropOne"));
+      if (!isSingleSourceSelection(files, directDrop)) throw new Error(t("dropOne"));
       const inputPath = sourcePathFromSelection(files, getDesktopFilePath, directDrop);
       if (!inputPath) throw new Error(t("sourcePathUnavailable"));
       const result = await relinkSourcePath(project, inputPath);

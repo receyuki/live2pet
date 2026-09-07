@@ -100,7 +100,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, previewV
       clearSourceLibraryCache,
       getBuildCacheStatus: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { byteLength: 0, entryCount: 0, maxBytes: 1024 } })),
       clearBuildCache: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { removedEntries: 0, removedBytes: 0 } })),
-      getFilePath: vi.fn((file: File) => `/Users/test/${file.name}`),
+      getFilePath: vi.fn((file: File) => `/Users/test/${file.webkitRelativePath || file.name}`),
       ...(buildHost ? {
         buildProject,
         cancelBuild: vi.fn(async (buildId: string) => ({ protocolVersion: 1, ok: true, result: { buildId, cancelled: true, active: true } })),
@@ -888,6 +888,27 @@ describe('Live2Pet desktop shell', () => {
 
     expect(await screen.findByText(/Cubism 2/)).toBeVisible();
     expect(inspectSource).toHaveBeenCalledOnce();
+  });
+
+  it('imports a dropped folder when Electron exposes its nested files', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const { inspectSource } = installDesktopApi();
+    render(<App />);
+    const model = new File(['{}'], 'model3.json');
+    const texture = new File(['png'], 'texture.png');
+    const directory = new File([''], 'live2d');
+    Object.defineProperty(model, 'webkitRelativePath', { value: 'live2d/character/model3.json' });
+    Object.defineProperty(texture, 'webkitRelativePath', { value: 'live2d/character/textures/texture.png' });
+
+    fireEvent.drop(screen.getByLabelText('Import model source'), {
+      dataTransfer: {
+        types: ['Files'],
+        files: [model, texture],
+        items: [{ kind: 'file', webkitGetAsEntry: () => ({ isDirectory: true }), getAsFile: () => directory }],
+      },
+    });
+
+    await vi.waitFor(() => expect(inspectSource).toHaveBeenCalledWith({ inputPath: '/Users/test/live2d', projectId: 'live2d' }));
   });
 
   it.each(['welcome', 'settings'])('opens a dropped project from %s without inspecting it as a model', async (destination) => {
