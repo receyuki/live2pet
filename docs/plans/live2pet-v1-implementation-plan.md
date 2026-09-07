@@ -1,6 +1,6 @@
 # Live2Pet Personal-Use V1 Implementation Plan
 
-Status: Updated on 2026-09-03 — manual Live2D visibility and faster Desktop capture implemented; pre-Spine closeout in progress
+Status: Updated on 2026-09-07 — Live2D implementation complete; target-host and Desktop acceptance are the final pre-Spine gates
 
 ## Outcome and boundary
 
@@ -30,7 +30,7 @@ The repository already contains:
 
 The default development and packaged renderer now uses the HeroUI project shell. Setup, full-page Settings, native project operations, Source/Map/Build navigation, real embedded preview, durable mappings, history, recovery, and generated-package previews are connected to the existing App services. The legacy browser Mapper remains only a development reference. V1 adds two bounded renderer capabilities after this foundation: renderer-neutral Visual Settings for removable backgrounds and one isolated, optional Spine version line. Neither addition creates a second mapping UI or target build pipeline.
 
-The current follow-up order is pre-Spine closeout first: target-host UI activation/playback acceptance (#6/#7), remaining build/report and explicit Build & Install checks (#8), then the non-Spine desktop accessibility review (#12). Manual Live2D Visibility (#13), hosted capture/cache wiring, and binary pixel transfer are implemented. Optional Spine (#14) has not started; its renderer-pack Settings and final Spine-inclusive release qualification remain later work. Default-renderer promotion alone does not close #12. Local real-model and performance evidence is documented in [Desktop acceptance](../desktop-acceptance.md).
+The current follow-up order is pre-Spine acceptance first: target-host UI activation/playback (#6/#7), the final build/report and Build & Install review (#8), then the non-Spine desktop accessibility and visual review (#12). Manual Live2D Visibility (#13), hosted capture/cache wiring, binary pixel transfer, combined Build & Install, conflict-safe replacement, and stage timing reports are implemented. Optional Spine (#14) starts only after the user accepts #12. Local real-model and performance evidence is documented in [Desktop acceptance](../desktop-acceptance.md).
 
 The acceptance audit now completes #3, #4, and #5. The final packaged App passes
 both real-model paths, both target builds, renderer-process crash/retry, project
@@ -135,7 +135,7 @@ Outcome: both generated ZIP types pass internal validation, can be previewed fro
 Clawd work:
 
 1. Treat `idle`, `thinking`, `working`, and `sleeping` as the required V1 path.
-2. Verify transparent WebP generation, `theme.json`, package-root shape, display size, and the 80-MiB rejection behavior.
+2. Verify transparent WebP generation, `theme.json`, package-root shape, display size, and the human-readable warning shown for ZIPs above Clawd's 80-MiB import limit. Oversized output remains saveable.
 3. Use the App's explicit post-build Install action for one locally generated ZIP and verify it in the pinned Clawd version.
 4. Keep advanced sleep, fallbacks, reactions, tiers, idle pools, and roam available but non-blocking.
 
@@ -189,7 +189,7 @@ Work:
 3. Verify unchanged rebuilds use integrity-checked capture and WebP cache entries.
 4. Verify cancellation and failure clean staging data and never expose a partial artifact.
 5. Verify reports, path redaction, safe artifact naming, generated preview, and explicit ZIP download.
-6. Verify a separate post-build Install action and explicit Build & Install command for each target, including success, actionable failure, and safe handling of an existing installed package.
+6. Verify the separate post-build Install action and explicit Build & Install command for each target, including success, actionable failure, and the separately confirmed rollback-safe replacement of an existing package.
 7. Keep a 5-GiB cache policy outside V1 acceptance.
 
 Acceptance gate:

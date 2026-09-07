@@ -120,6 +120,10 @@ function createBuildReport({ build, projectId, source } = {}) {
     },
     cache: build.cache ? { enabled: build.cache.enabled === true, hits: Number.isInteger(build.cache.hits) ? build.cache.hits : 0, misses: Number.isInteger(build.cache.misses) ? build.cache.misses : 0 } : null,
     preview: build.preview ? { target: build.preview.target, source: build.preview.source, ready: build.preview.ready === true } : null,
+    timings: build.timings ? {
+      totalMs: Number.isInteger(build.timings.totalMs) && build.timings.totalMs >= 0 ? build.timings.totalMs : 0,
+      stages: Object.fromEntries(Object.entries(build.timings.stages || {}).filter(([, value]) => Number.isInteger(value) && value >= 0)),
+    } : null,
     warnings: Array.isArray(build.warnings) ? build.warnings.map((warning) => ({ ...warning })) : [],
   };
   if (typeof projectId === 'string' && projectId.trim()) report.projectId = projectId.trim();
@@ -1144,11 +1148,22 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
   const builds = {};
   const warnings = [];
   for (const targetId of uniqueTargets) {
+    const targetStartedAt = Date.now();
+    const stageStartedAt = new Map();
+    const stageDurations = {};
     checkCancelled(signal);
     const targetInput = inputsByTarget[targetId] || {};
     const targetProject = normalizedProject.targets[targetId];
     if (!targetProject || !targetProject.mappings || !Object.keys(targetProject.mappings).length) fail('TARGET_MAPPING_REQUIRED', `${targetId} has no mappings in the Live2Pet Project.`);
-    const targetOptions = { ...(optionsByTarget[targetId] || {}), signal, onProgress: (event) => onProgress?.({ target: targetId, ...event }) };
+    const targetOptions = { ...(optionsByTarget[targetId] || {}), signal, onProgress: (event) => {
+      const now = Date.now();
+      if (event.status === 'started') stageStartedAt.set(event.stage, now);
+      if (event.status === 'completed' && stageStartedAt.has(event.stage)) {
+        stageDurations[event.stage] = (stageDurations[event.stage] || 0) + Math.max(0, now - stageStartedAt.get(event.stage));
+        stageStartedAt.delete(event.stage);
+      }
+      onProgress?.({ target: targetId, ...event });
+    } };
     const defaultCacheContext = {
       sourceFingerprint: normalizedProject.source.fingerprint,
       runtimeVersion: targetOptions.runtimeVersion,
@@ -1199,6 +1214,7 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
         metadata: metadataByTarget[targetId] || renderedInput.metadata || defaultMetadata,
       }, targetOptions);
     }
+    result.timings = { totalMs: Math.max(0, Date.now() - targetStartedAt), stages: stageDurations };
     result.report = createBuildReport({ build: result, projectId: normalizedProject.projectId, source: normalizedProject.source });
     builds[targetId] = result;
     warnings.push(...(result.warnings || []).map((warning) => ({ target: targetId, ...warning })));

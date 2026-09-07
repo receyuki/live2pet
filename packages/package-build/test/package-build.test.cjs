@@ -627,6 +627,9 @@ test('buildProjectTargets drives both target builders from one validated project
   assert.equal(result.builds['codex-pet'].provenance.renderPreset, 'balanced');
   assert.equal(result.builds.clawd.report.projectId, 'multi-target');
   assert.equal(result.builds.clawd.report.sourceKind, 'standard-directory');
+  assert.ok(Number.isInteger(result.builds.clawd.report.timings.totalMs));
+  assert.ok(Number.isInteger(result.builds.clawd.report.timings.stages.validate));
+  assert.ok(Number.isInteger(result.builds['codex-pet'].report.timings.stages.compose));
   assert.equal(JSON.stringify(result.builds.clawd.report).includes('/private/'), false);
   assert.ok(events.includes('clawd:validate:completed'));
   assert.ok(events.includes('codex-pet:compose:completed'));

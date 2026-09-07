@@ -403,6 +403,43 @@ Private consecutive-toggle/thumbnail probes also kept the paused model clocks
 unchanged. No model files, runtimes, screenshots, or generated packages are
 included in the source change.
 
+### Pre-Spine build and Desktop closeout — 2026-09-07
+
+The Build destination now offers **Build & Install** without weakening the
+existing separation between building, saving, and installation. The combined
+command waits for a successful validated artifact, then presents the normal
+installation confirmation. A conflicting package is never overwritten by the
+first confirmation: replacing it requires another explicit confirmation and
+uses the installation service's atomic backup/rollback path. A failed or
+cancelled build never starts installation.
+
+Project-level build reports now include total and per-stage elapsed milliseconds
+in addition to contract versions, render settings, cache hits/misses, validation,
+warnings, and artifact sizes. The report remains path-redacted and excludes
+captured pixels. UI coverage includes successful combined installation,
+build failure/cancellation, and conflicting-package replacement.
+
+The remaining pre-Spine manual gate is the user-visible host check: activate and
+play current packages in Clawd and Codex, then review the packaged Desktop App's
+final visual and accessibility behavior. Parser/importer checks do not substitute
+for that host UI acceptance.
+
+The packaged x64 App then passed the isolated full workflow with the local
+`shengluyisi_4` modern folder and `c311_02.pck` legacy source: one-time runtime
+copy/reuse, playback and mappings, three renderer crashes/retries per source,
+mid-capture cancellation, successful rebuilding, generated previews, native ZIP
+saving, scratch-folder installation, warm-cache rebuilding, project recovery and
+legacy PCK relinking. Modern Compact builds took about 10.4 s for Clawd and 1.8 s
+for Codex; legacy took about 13.4 s and 1.8 s respectively on this machine. Warm
+rebuilds took about 1.4 s/0.2 s and 2.6 s/0.2 s. These measurements are evidence
+for the tested fixtures, not universal performance promises.
+
+Regression at this checkpoint: 290 Node tests passed with two opt-in renderer
+tests skipped, 133 UI tests passed, type checking and source-release checks
+passed, and the packaged App passed native Sharp/libvips loading, HeroUI mount,
+and prohibited-asset scans. Local sources, runtimes, generated packages,
+screenshots, progress traces, and disposable profiles remain uncommitted.
+
 ### Inline Part browsing and explicit package saving — 2026-09-03
 
 The Map library now uses HeroUI Animations/Visibility tabs. Visible Part rows

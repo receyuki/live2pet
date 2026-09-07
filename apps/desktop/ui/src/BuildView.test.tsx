@@ -2,7 +2,7 @@ import { cleanup, render, screen, within, fireEvent } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BuildView, targetReadiness } from "./BuildView";
-import { chooseInstallRoot, installArtifact, getTargetInstallations, hasTargetInstallationApi } from "./app-host";
+import { chooseInstallRoot, DesktopApiError, installArtifact, getTargetInstallations, hasTargetInstallationApi } from "./app-host";
 import { downloadBuildArtifact } from "./build-artifact";
 import { initialBuildState } from "./build-state";
 import type { Live2PetProject, SourceInspection } from "./app-host";
@@ -136,5 +136,43 @@ describe("BuildView", () => {
     await user.click(screen.getByRole("button", { name: "Install Clawd Theme Package" }));
     expect(window.confirm).toHaveBeenCalledOnce();
     expect(installArtifact).toHaveBeenCalledWith({ artifactId: "artifact-1", target: "clawd", conflict: "cancel", confirmInstall: true, locationId: "location-12345678" });
+  });
+
+  it('builds and then explicitly confirms installation from one user action', async () => {
+    const user = userEvent.setup();
+    const artifact = { artifactId: 'artifact-new', target: 'clawd' as const, filename: 'pet-clawd-1.0.0.zip', byteLength: 42 };
+    const onBuild = vi.fn().mockResolvedValue(artifact);
+    render(<BuildView locale="en" project={project} inspection={inspection} runtimeReady state={initialBuildState()} onPreset={vi.fn()} onBuild={onBuild} onCancel={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Build & Install Clawd Theme Package' }));
+
+    expect(onBuild).toHaveBeenCalledWith('clawd');
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining(artifact.filename));
+    expect(installArtifact).toHaveBeenCalledWith({ artifactId: artifact.artifactId, target: 'clawd', conflict: 'cancel', confirmInstall: true });
+  });
+
+  it('does not install when a combined build fails or is cancelled', async () => {
+    const user = userEvent.setup();
+    render(<BuildView locale="en" project={project} inspection={inspection} runtimeReady state={initialBuildState()} onPreset={vi.fn()} onBuild={vi.fn().mockResolvedValue(null)} onCancel={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Build & Install Clawd Theme Package' }));
+
+    expect(window.confirm).not.toHaveBeenCalled();
+    expect(installArtifact).not.toHaveBeenCalled();
+  });
+
+  it('offers an explicit atomic replacement when the package already exists', async () => {
+    const user = userEvent.setup();
+    const state = initialBuildState();
+    state.clawd = { ...state.clawd, status: 'succeeded', progress: 100, artifact: { artifactId: 'artifact-1', target: 'clawd', filename: 'clawd.zip', byteLength: 3 } };
+    vi.mocked(installArtifact).mockRejectedValueOnce(new DesktopApiError('INSTALL_CONFLICT', 'already exists')).mockResolvedValueOnce({ target: 'clawd', files: [], path: '<selected-install-root>' });
+    render(<BuildView locale="en" project={project} inspection={inspection} runtimeReady state={state} onPreset={vi.fn()} onBuild={vi.fn()} onCancel={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Install Clawd Theme Package' }));
+
+    expect(window.confirm).toHaveBeenCalledTimes(2);
+    expect(window.confirm).toHaveBeenLastCalledWith(expect.stringContaining('Replace it safely'));
+    expect(installArtifact).toHaveBeenNthCalledWith(1, { artifactId: 'artifact-1', target: 'clawd', conflict: 'cancel', confirmInstall: true });
+    expect(installArtifact).toHaveBeenNthCalledWith(2, { artifactId: 'artifact-1', target: 'clawd', conflict: 'upgrade', confirmInstall: true });
   });
 });

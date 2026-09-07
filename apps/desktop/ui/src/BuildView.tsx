@@ -2,7 +2,7 @@ import { Button, ButtonGroup, Card, Chip, ProgressBar, Input, Label, TextField }
 import { CircleCheck, Download, FolderOpen, PackageCheck, Square, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { BuildArtifact, BuildTarget, InstallRootResult, Live2PetProject, RenderPreset, SourceInspection, TargetInstallations, ClawdRenderSettings } from "./app-host";
-import { chooseInstallRoot, hasBuildApi, installArtifact, getTargetInstallations, hasTargetInstallationApi } from "./app-host";
+import { chooseInstallRoot, DesktopApiError, hasBuildApi, installArtifact, getTargetInstallations, hasTargetInstallationApi } from "./app-host";
 import { downloadBuildArtifact } from "./build-artifact";
 import type { BuildState } from "./build-state";
 import { GeneratedPreview } from "./generated-preview";
@@ -39,7 +39,7 @@ type Props = {
   runtimeReady: boolean;
   state: BuildState;
   onPreset: (target: BuildTarget, preset: RenderPreset) => void;
-  onBuild: (target: BuildTarget) => void;
+  onBuild: (target: BuildTarget) => Promise<BuildArtifact | null> | BuildArtifact | null | void;
   onCancel: (target: BuildTarget) => void;
   onName?: (name: string) => void;
   onCustomRender?: (settings: ClawdRenderSettings | null) => void;
@@ -98,11 +98,23 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
       const warning = destination && destination.application.status !== 'found' ? `\n\n${t('installAppMissing')}` : '';
       const sizeWarning = target === 'clawd' && artifact.byteLength > CLAWD_PROFILE.package.maxBytes ? `\n\n${t('clawdSizeWarning', { size: formatBytes(artifact.byteLength), limit: formatBytes(CLAWD_PROFILE.package.maxBytes) })}` : '';
       if (!window.confirm((installPath ? t('confirmInstallAt', { filename: artifact.filename, path: installPath }) : t("confirmInstallArtifact", { filename: artifact.filename })) + warning + sizeWarning)) return;
-      await installArtifact({ artifactId: artifact.artifactId, target, conflict: "cancel", confirmInstall: true, ...(locationId ? { locationId } : {}) });
+      const request = { artifactId: artifact.artifactId, target, confirmInstall: true as const, ...(locationId ? { locationId } : {}) };
+      try {
+        await installArtifact({ ...request, conflict: 'cancel' });
+      } catch (cause) {
+        if (!(cause instanceof DesktopApiError) || cause.code !== 'INSTALL_CONFLICT') throw cause;
+        if (!window.confirm(t('confirmReplaceInstall', { filename: artifact.filename }))) return;
+        await installArtifact({ ...request, conflict: 'upgrade' });
+      }
       setFeedback((value) => ({ ...value, [target]: t("installSucceeded") }));
     } catch (cause) {
       setFeedback((value) => ({ ...value, [target]: cause instanceof Error ? cause.message : t("buildFailed") }));
     }
+  }
+
+  async function buildAndInstall(target: BuildTarget) {
+    const artifact = await onBuild(target);
+    if (artifact) await install(target, artifact);
   }
 
   return (
@@ -144,7 +156,7 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
                   <small>{current.error ?? (current.status === 'building' && current.stage === 'queue' ? t('buildQueuedHint') : current.message ?? (current.status === 'building' && (!current.stage || current.stage === 'prepare') ? t('buildPreparing') : current.stage ? t("buildStage", { value: current.stage }) : current.status === 'idle' ? t('buildWaiting') : t(`buildStatus_${current.status}` as MessageKey)))}</small>
                 </div>
                 <div className="build-actions">
-                  {current.status === "building" ? <Button variant="secondary" onPress={() => onCancel(target)} isDisabled={!current.buildId}><Square size={14} />{t("cancelBuild")}</Button> : <Button variant="primary" onPress={() => onBuild(target)} isDisabled={!hostReady || !readiness.ready}><PackageCheck size={16} />{t("buildPackage")}</Button>}
+                  {current.status === "building" ? <Button variant="secondary" onPress={() => onCancel(target)} isDisabled={!current.buildId}><Square size={14} />{t("cancelBuild")}</Button> : <><Button variant="primary" onPress={() => void onBuild(target)} isDisabled={!hostReady || !readiness.ready}><PackageCheck size={16} />{t("buildPackage")}</Button><Button variant="secondary" aria-label={`${t('buildAndInstall')} ${title}`} onPress={() => void buildAndInstall(target)} isDisabled={!hostReady || !readiness.ready}>{t('buildAndInstall')}</Button></>}
                   {target === 'codex-pet' && <Button size="sm" variant="ghost" aria-expanded={showCodexDetails} aria-controls="codex-format-details" onPress={() => setShowCodexDetails(value => !value)}>{t('codexFormatDetails')}</Button>}
                 </div>
                 {target === 'codex-pet' && <div id="codex-format-details" hidden={!showCodexDetails}><p>{t('codexV2Hint')}</p><p>{t('codexTimingHint')}</p></div>}

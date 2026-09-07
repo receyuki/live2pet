@@ -67,6 +67,13 @@ existing files are preserved. The App shows the saved path. Output preferences
 stay on this device, not in projects or packages. Saving remains an explicit
 action after building and never installs a pet.
 
+Choose **Build & Install** when you want one continuous operation. The build must
+still finish and validate before the App asks for installation confirmation. If
+the same package already exists, replacement requires a second explicit
+confirmation and uses the installer's rollback-safe upgrade path. Build reports
+include total and per-stage timing alongside cache, validation, warning, and
+artifact-size information.
+
 ### Custom Clawd output
 
 Build retains **Compact / Balanced / High** as defaults. **Custom** starts from

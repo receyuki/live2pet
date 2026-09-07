@@ -963,7 +963,7 @@ export function App() {
 
   async function buildProjectTarget(target: BuildTarget) {
     const document = state.project?.document;
-    if (!document) { setActionFeedback(t("buildRequiresProject")); return; }
+    if (!document) { setActionFeedback(t("buildRequiresProject")); return null; }
     setActionFeedback("");
     dispatchBuild({ type: "START", target });
     try {
@@ -972,10 +972,12 @@ export function App() {
       const summary = result.builds[target];
       if (!artifact || !summary) throw new Error(t("artifactMissing"));
       dispatchBuild({ type: "SUCCEED", target, artifact, summary });
+      return artifact;
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : t("buildFailed");
       if (cause instanceof Error && "code" in cause && String(cause.code) === "BUILD_CANCELLED") dispatchBuild({ type: "CANCEL", target, message });
       else dispatchBuild({ type: "FAIL", target, error: message });
+      return null;
     }
   }
 
@@ -1173,7 +1175,7 @@ export function App() {
         {state.destination === "welcome" && <WelcomeView locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} draft={projectDraft} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onOpenPreview={openPreview} onRecoverDraft={() => void recoverProjectDraft()} onDiscardDraft={discardProjectDraft} />}
         {state.destination === "source" && <SourceView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} inspectionRequired={Boolean(state.project?.document)} runtimeReady={runtimeReady} busy={importBusy} onConfigureRuntime={openRuntimeSettings} onRelink={relinkCurrentSource} onAcknowledgeReview={acknowledgeCurrentSourceReview} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
         {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={openRuntimeSettings} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => dispatch({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => dispatch({ type: "CLEAR_ASSIGNMENT", destination })} onVisualSettings={(settings) => dispatch({ type: "SET_VISUAL_SETTINGS", settings })} />}
-        {state.destination === "build" && <BuildView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} runtimeReady={runtimeReady} state={buildState} onName={(name) => dispatch({ type: "RENAME_PROJECT", name })} onPreset={(target, preset) => dispatch({ type: "SET_RENDER_PRESET", target, preset })} onCustomRender={(settings) => dispatch({ type: 'SET_CLAWD_RENDER', settings })} onBuild={(target) => void buildProjectTarget(target)} onCancel={(target) => void cancelProjectBuild(target)} />}
+        {state.destination === "build" && <BuildView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} runtimeReady={runtimeReady} state={buildState} onName={(name) => dispatch({ type: "RENAME_PROJECT", name })} onPreset={(target, preset) => dispatch({ type: "SET_RENDER_PRESET", target, preset })} onCustomRender={(settings) => dispatch({ type: 'SET_CLAWD_RENDER', settings })} onBuild={buildProjectTarget} onCancel={(target) => void cancelProjectBuild(target)} />}
       </div>
       {statusBar}
     </div>
