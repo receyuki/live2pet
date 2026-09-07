@@ -67,7 +67,7 @@ The local App is unsigned. macOS may require you to approve it in **System Setti
 1. On first launch, add the Live2D runtime files you already own, or skip setup and inspect a model first.
 2. Browse a local model folder, paste a public GitHub repository/folder URL, or import a supported Live2D PCK file. Local drag and drop remains available.
 3. In **Models**, select a card or import a model directly. Review its version, resource inventory, warnings, and animations in the preview panel. Resolve missing runtimes there, then choose **Use and start mapping** to enter Map with the selected Motion. Existing projects open in Map when their source is available; missing or changed sources require review first.
-4. In **Map**, choose an animation, preview it, and assign it separately to Clawd or Codex states.
+4. In **Map**, choose a Motion, optionally apply a model-provided Expression, preview it, and assign it separately to Clawd or Codex states. Drag either divider to resize the Animations, Model Preview, and Assignment panels.
 5. Use **Visibility** when you need to inspect and hide a background, overlay, or other separable model element.
 6. Enter a package name in **Build**, choose a render preset, and build either target.
 7. Preview the generated result, then choose **Save ZIP**, **Install**, or **Build & Install**.
@@ -118,7 +118,7 @@ Spine runtimes are governed by the [Spine Runtime License](https://github.com/Es
 
 Clawd and Codex mappings are independent. The App clearly labels required states; optional states may remain empty. Live2Pet never guesses directional Codex rows or automatically maps animations on your behalf.
 
-The **Animations** and **Visibility** tabs share the Map library. Visibility provides:
+The Map workspace uses three resizable panels: **Animations**, **Model Preview**, and **Assignment**. The left panel treats **Motions** as its primary tab and **Visibility** as its second tab; Expressions appear inside Motions only when the model supplies them. Visibility provides:
 
 - a collapsible parent/child hierarchy when the model exposes one;
 - an **Unattached meshes** group for root ArtMeshes outside the Part hierarchy;

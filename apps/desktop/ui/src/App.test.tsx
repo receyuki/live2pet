@@ -233,7 +233,7 @@ describe('Live2Pet desktop shell', () => {
     expect(api.configureSourceLibraryCache).toHaveBeenCalledWith(2 * 1024 ** 3);
   });
 
-  it('keeps setup, Welcome, and design preview free of decorative mascots', async () => {
+  it('keeps setup and Welcome free of decorative mascots and internal preview controls', async () => {
     const user = userEvent.setup();
     const { container } = render(<App />);
     expect(container.querySelector('.setup-art, .brand-mark')).toBeNull();
@@ -242,12 +242,8 @@ describe('Live2Pet desktop shell', () => {
     expect(container.querySelector('.welcome-visual, .brand-mark')).toBeNull();
     expect(screen.getByRole('button', { name: 'Open project' })).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Recent projects' })).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Open design preview' }));
-    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
-    expect(container.querySelector('.character, .brand-mark')).toBeNull();
-    expect(screen.getByText('No model preview')).toBeVisible();
-    expect(screen.getByText(/The design preview does not contain a model/)).toBeVisible();
-    expect(container.querySelector('.toolbar-brand strong')).toHaveTextContent('Saint Louis');
+    expect(screen.queryByRole('button', { name: 'Open design preview' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Interface preview')).not.toBeInTheDocument();
   });
 
   it('places Settings Done in the shared top toolbar rather than the sidebar', async () => {
@@ -895,12 +891,12 @@ describe('Live2Pet desktop shell', () => {
 
     await vi.waitFor(() => expect(api.openPreview).toHaveBeenCalled());
     await vi.waitFor(() => expect(api.getPreviewVisualElements).toHaveBeenCalled());
-    expect(screen.getByRole('tab', { name: 'Animations' })).toHaveClass('button--primary');
-    expect(screen.getByRole('tab', { name: 'Animations' }).closest('[role="tablist"]')).toHaveClass('button-group', 'button-group--horizontal', 'target-switch');
+    expect(screen.getByRole('tab', { name: 'Motions' })).toHaveClass('button--primary');
+    expect(screen.getByRole('tab', { name: 'Motions' }).closest('[role="tablist"]')).toHaveClass('button-group', 'button-group--horizontal', 'target-switch');
     expect(screen.getByRole('tab', { name: 'Visibility' })).toHaveClass('button--secondary');
     await user.click(screen.getByRole('tab', { name: 'Visibility' }));
     expect(screen.getByRole('tab', { name: 'Visibility' })).toHaveClass('button--primary');
-    expect(screen.getByRole('tab', { name: 'Animations' })).toHaveClass('button--secondary');
+    expect(screen.getByRole('tab', { name: 'Motions' })).toHaveClass('button--secondary');
     await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Inspect · Background' })).toBeEnabled());
 
     await user.click(screen.getByRole('button', { name: 'Inspect · Background' }));
@@ -918,7 +914,7 @@ describe('Live2Pet desktop shell', () => {
 
     resolveBody({ id: 'BODY', dataUrl: 'data:image/png;base64,body' });
     await vi.waitFor(() => expect(screen.getAllByRole('img', { name: 'Body · BODY' })).toHaveLength(2));
-    await user.click(screen.getByRole('tab', { name: 'Animations' }));
+    await user.click(screen.getByRole('tab', { name: 'Motions' }));
     expect(screen.queryByRole('region', { name: 'Element preview' })).not.toBeInTheDocument();
     await user.keyboard('{ArrowRight}');
     await vi.waitFor(() => expect(screen.getByRole('tab', { name: 'Visibility' })).toHaveAttribute('aria-selected', 'true'));
@@ -1057,21 +1053,21 @@ describe('Live2Pet desktop shell', () => {
     expect(screen.getByRole('button', { name: 'Add runtime' })).toHaveFocus();
   });
 
-  it('preserves the selected motion after visiting full-page Settings', async () => {
+  it('keeps the mapping workspace and its adjustable panels after visiting Settings', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: 'Open design preview' }));
-    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
-    expect(screen.getByRole('heading', { name: 'Motion & Expression' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Browse model folder' }));
+    await user.click(await screen.findByRole('button', { name: /Spine Hero/ }));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Use and start mapping' }));
+    expect(screen.getByRole('heading', { name: 'Animations' })).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Model Preview' })).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Assignment' })).toBeVisible();
-    expect(screen.getByText(/design preview is read-only/i)).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Use selected · Idle' })).toBeDisabled();
-
-    await user.click(screen.getByRole('button', { name: /Touch Head/ }));
-    expect(screen.getAllByText('Touch Head').length).toBeGreaterThan(1);
+    expect(screen.getByRole('separator', { name: 'Resize Animations panel' })).toBeVisible();
+    expect(screen.getByRole('separator', { name: 'Resize Assignment panel' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Smile' }));
     await user.click(screen.getByRole('button', { name: 'Settings' }));
 
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeVisible();
@@ -1082,7 +1078,7 @@ describe('Live2Pet desktop shell', () => {
     await user.click(screen.getByRole('button', { name: 'Done' }));
 
     expect(screen.getByRole('heading', { name: 'Model Preview' })).toBeVisible();
-    expect(screen.getAllByText('Touch Head').length).toBeGreaterThan(1);
+    expect(screen.getAllByText('Smile').length).toBeGreaterThan(1);
   });
 
   it('switches to Simplified Chinese without losing the Settings destination', async () => {
@@ -1109,16 +1105,20 @@ describe('Live2Pet desktop shell', () => {
     expect(document.documentElement.dataset.theme).toBe('light');
   });
 
-  it('localizes synthetic motions, expressions, and assignments', async () => {
+  it('localizes model tools, expressions, and assignments', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     localStorage.setItem('live2pet.desktop.locale', 'zh-CN');
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: '打开设计预览' }));
-    await user.click(within(screen.getByRole('navigation', { name: '项目' })).getByRole('button', { name: '映射' }));
-    expect(screen.getByRole('button', { name: /触摸头部/ })).toBeVisible();
-    expect(screen.getByRole('button', { name: '微笑' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '浏览模型文件夹' }));
+    await user.click(await screen.findByRole('button', { name: /Spine Hero/ }));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: '使用并开始映射' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: '使用并开始映射' }));
+    expect(screen.getByRole('heading', { name: '动画' })).toBeVisible();
+    expect(screen.getByRole('tab', { name: '动作' })).toBeVisible();
+    expect(screen.getByRole('tab', { name: '显示与隐藏' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Smile' })).toBeVisible();
     expect(screen.getByText('思考中')).toBeVisible();
   });
 });

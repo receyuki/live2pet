@@ -45,6 +45,19 @@ describe('ModelLibrary thumbnails', () => {
     expect(getLibraryThumbnail).toHaveBeenCalledTimes(3);
   });
 
+  it('keeps generated thumbnails when the model library is mounted again', async () => {
+    const retained = { ...library, libraryId: 'retained-library' };
+    const first = render(<ModelLibrary library={retained} locale="en" onUse={async () => {}} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(getLibraryThumbnail).toHaveBeenCalledTimes(3);
+    first.unmount();
+
+    const second = render(<ModelLibrary library={retained} locale="en" onUse={async () => {}} />);
+    expect(second.container.querySelectorAll('.model-library-cover img')).toHaveLength(3);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(getLibraryThumbnail).toHaveBeenCalledTimes(3);
+  });
+
   it('labels unsupported Spine versions without trying to render them', async () => {
     const unsupported: SourceLibrary = { ...library, candidates: [{ id: 'legacy', name: 'legacy', relativePath: 'legacy/legacy.skel', format: 'spine', version: '3.8.95', runtimeLine: '3.8', binary: true }] };
     render(<ModelLibrary library={unsupported} locale="zh-CN" onUse={async () => {}} />);

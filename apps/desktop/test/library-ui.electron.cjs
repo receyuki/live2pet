@@ -68,6 +68,10 @@ app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`new Promise((resolve,reject)=>{const end=Date.now()+30000;const check=()=>{if(document.querySelector('.map-workspace'))resolve(true);else if(Date.now()>end)reject(new Error('Confirmation did not enter Map'));else setTimeout(check,100)};check()})`);
     await window.webContents.executeJavaScript(`if(document.querySelector('.draft-recovery, .model-current-details'))throw new Error('Duplicate source or draft card after confirmation')`);
     fs.writeFileSync(process.env.LIVE2PET_LIBRARY_SCREENSHOT.replace('.png', '-mapping.png'), (await window.capturePage()).toPNG());
+    await window.webContents.executeJavaScript(`(()=>{const navButton=[...document.querySelectorAll('nav button')].find(item=>item.textContent.trim()==='Models');if(!navButton)throw new Error('Missing Models navigation');navButton.click()})()`);
+    await window.webContents.executeJavaScript(`new Promise((resolve,reject)=>{const end=Date.now()+10000;const check=()=>{if(document.querySelectorAll('.model-library-cover img').length===${thumbnailLimit})resolve(true);else if(Date.now()>end)reject(new Error('Model thumbnails disappeared after returning from Map'));else setTimeout(check,100)};check()})`);
+    await window.webContents.executeJavaScript(`new Promise((resolve,reject)=>requestAnimationFrame(()=>requestAnimationFrame(()=>{const buttons=[...document.querySelectorAll('nav button')];const models=buttons.find(item=>item.textContent.trim()==='Models');const map=buttons.find(item=>item.textContent.trim()==='Map');if(models?.classList.contains('button--primary')&&!map?.classList.contains('button--primary'))resolve(true);else reject(new Error('Models navigation did not become active'))})))`);
+    fs.writeFileSync(process.env.LIVE2PET_LIBRARY_SCREENSHOT.replace('.png', '-returned.png'), (await window.capturePage()).toPNG());
     console.log('LIBRARY_UI_PASS');
   } finally { await preview.close(); window.destroy(); fs.rmSync(root, { recursive: true, force: true }); }
   app.quit();
