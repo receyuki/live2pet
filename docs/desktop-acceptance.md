@@ -584,3 +584,16 @@ generated package was added to the repository.
 Issue #14 now requires only the packaged interactive confirmation of local and
 GitHub library selection, playback and mapping, restart reuse, and cache-limit
 behavior before closure. Any failure found there remains a scoped product fix.
+
+### Spine packaged-App user acceptance — 2026-09-08
+
+The user confirmed the remaining Issue #14 packaged-App acceptance. The accepted
+workflow covers local and GitHub model-library selection, version-matched Spine
+support, playback and mapping, restart reuse, Slot visibility, bounded cache
+behavior, and both target builds. Together with the preceding automated,
+packaged-smoke, and permitted real-model evidence, this closes the personal-use
+Spine and Source Library scope in #14.
+
+Public redistribution of Spine renderer packs remains a separate installer
+release gate. No model, runtime, thumbnail, or generated package is added to the
+repository by this acceptance.

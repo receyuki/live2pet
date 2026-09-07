@@ -1,6 +1,6 @@
 # Live2Pet Personal-Use V1 Implementation Plan
 
-Status: Updated on 2026-09-07 — Live2D implementation accepted; Spine 4.x packs and Source Library browsing are awaiting packaged-App user acceptance
+Status: Updated on 2026-09-08 — Live2D and Spine implementation accepted; final macOS V1 packaging acceptance remains
 
 ## Outcome and boundary
 
@@ -30,7 +30,11 @@ The repository already contains:
 
 The default development and packaged renderer now uses the HeroUI project shell. Setup, full-page Settings, native project operations, Source/Map/Build navigation, real embedded preview, durable mappings, history, recovery, and generated-package previews are connected to the existing App services. The legacy browser Mapper remains only a development reference. V1 adds two bounded renderer capabilities after this foundation: renderer-neutral Visual Settings for removable backgrounds and one isolated, optional Spine version line. Neither addition creates a second mapping UI or target build pipeline.
 
-The current follow-up order is pre-Spine acceptance first: target-host UI activation/playback (#6/#7), the final build/report and Build & Install review (#8), then the non-Spine desktop accessibility and visual review (#12). Manual Live2D Visibility (#13), hosted capture/cache wiring, binary pixel transfer, combined Build & Install, conflict-safe replacement, and stage timing reports are implemented. Optional Spine (#14) starts only after the user accepts #12. Local real-model and performance evidence is documented in [Desktop acceptance](../desktop-acceptance.md).
+The implemented target, build, desktop-shell, visibility, Spine, and Source
+Library slices are accepted through #14. The remaining V1 sequence is the final
+clean-profile macOS acceptance in #10, followed by parent closeout in #1. Local
+real-model and performance evidence is documented in
+[Desktop acceptance](../desktop-acceptance.md).
 
 The acceptance audit now completes #3, #4, and #5. The final packaged App passes
 both real-model paths, both target builds, renderer-process crash/retry, project
@@ -183,8 +187,9 @@ preview/capture, Slot visibility, binary catalog hydration, both existing target
 builders, and two-level local/public GitHub Source Library browsing are implemented.
 The bounded GitHub model cache is user-configurable in Settings. Synthetic public tests and an opt-in permitted
 real-runtime test pass without committing the runtime, fixture, or generated
-packages. Project reopen and final packaged-App interaction remain the manual
-acceptance gate before #14 can close.
+packages. Project reopen and packaged-App interaction were accepted on
+2026-09-08. Issue #14 is complete; public Spine pack redistribution remains
+separately gated from the personal-use App.
 
 ### P1 — Harden build, cache, progress, download, and installation
 
@@ -273,7 +278,7 @@ flowchart LR
 | #13 Model visibility | P0 | Hidden Live2D Parts persist and match preview, visible bounds, cache identity, and both builds |
 | #6 Clawd package | P0 | Core-state ZIP imports into pinned Clawd |
 | #7 Codex package | P0 | Nine-row ZIP loads in Codex |
-| #14 Optional Spine renderer | P1 | One pinned Spine line completes preview, visibility, capture, and both target builds after an explicit verified download |
+| #14 Optional Spine renderer | Complete | Accepted with version-matched support, library selection, restart reuse, visibility, cache behavior, and both target builds |
 | #8 Build/export | P1 | Progress, cancel, cache, preview, download, and explicit install pass |
 | #10 macOS V1 | Final | Clean-profile full workflow passes |
 | #9 Codex skill/session | Removed scope | Close after the unused implementation and documentation are removed |
