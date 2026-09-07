@@ -27,7 +27,7 @@
 
 ## Contents
 
-[Why Live2Pet](#why-live2pet) · [How it works](#how-it-works) · [Get started](#get-started) · [Compatibility](#compatibility) · [Runtimes](#runtime-setup) · [More](#more)
+[Why Live2Pet](#why-live2pet) · [How it works](#how-it-works) · [Desktop preview](#desktop-preview) · [Get started](#get-started) · [Compatibility](#compatibility) · [Runtimes](#runtime-setup) · [More](#more)
 
 ## Why Live2Pet
 
@@ -48,6 +48,12 @@
 
 Your models stay local. Original source files stay unchanged.
 Pointer tracking is preview-only; exported Live2D frames use a stable neutral focus and 60 Hz physics integration regardless of output frame rate.
+
+## Desktop preview
+
+<p align="center"><img src="docs/assets/live2pet-desktop-pet-preview.gif" alt="A Live2Pet-generated Miku desktop pet running beside Clawd on Desk" width="250"></p>
+
+<p align="center"><sub>From an animated model to a working desktop companion.</sub></p>
 
 ## Get started
 

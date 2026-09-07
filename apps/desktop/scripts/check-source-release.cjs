@@ -16,7 +16,12 @@ const forbiddenDirectory = /(?:^|\/)(?:examples?|archive|artifacts?)(?:\/|$)/i;
 const forbiddenExtension = /\.(?:pck|lpk|moc|moc3|dat|webp|zip)$/i;
 const forbiddenRuntime = /(?:^|\/)(?:live2dcubismcore|minified-live2d(?:core)?|live2d\.min)\.(?:js|wasm)$/i;
 const maximumTextBytes = 2 * 1024 * 1024;
-const allowedBinaryReleaseFiles = new Set(['apps/desktop/assets/icon.icns', 'apps/desktop/assets/icon.png', 'docs/assets/app-preview.png']);
+const allowedBinaryReleaseFiles = new Set([
+  'apps/desktop/assets/icon.icns',
+  'apps/desktop/assets/icon.png',
+  'docs/assets/app-preview.png',
+  'docs/assets/live2pet-desktop-pet-preview.gif',
+]);
 
 function trackedFiles() {
   const output = execFileSync('git', ['ls-files', '-c', '-o', '--exclude-standard', '-z'], { cwd: repositoryRoot });
