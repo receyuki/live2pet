@@ -545,3 +545,22 @@ are not packaged interactive acceptance: the user still needs to exercise model
 library selection, runtime installation/reuse, playback, saving/reopening, and
 both target exports in the rebuilt App. Spine 3.8 is not supported; real-model
 acceptance for 4.0 and 4.2 remains outstanding. Issue #14 stays open.
+
+### Visual model browser checkpoint — 2026-09-07
+
+Models now combines the former welcome/import surface and Source diagnostics.
+Library cards preview before project replacement; an explicit Use this model
+action retains the existing unsaved-change guard. Local visible cards use supplied
+covers or sequential 256 px runtime captures, with a 16 MiB session cache. GitHub
+models are downloaded only on selection. Pending thumbnail work pauses while a
+live detail preview is selected. Library selection survives navigation to Map
+and Build.
+
+The opt-in `library-thumbnail.electron.cjs` and `library-ui.electron.cjs` checks
+used local uncommitted Cubism 2/modern resources: four real thumbnail images
+loaded, selecting a card opened the native renderer and Motion selector, and
+the native surface was visually inspected separately from the HTML screenshot.
+Unit/UI checks cover thumbnail reuse without project registration and the
+preview-before-use/save boundary. Fixtures and screenshots remain untracked.
+User acceptance of the rebuilt App and the remaining Spine version gates is
+still pending; this checkpoint does not close #14.

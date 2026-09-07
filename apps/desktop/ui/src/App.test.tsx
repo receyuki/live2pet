@@ -196,11 +196,14 @@ describe('Live2Pet desktop shell', () => {
     render(<App />);
 
     await user.click(screen.getByRole('button', { name: 'Browse model folder' }));
-    expect(await screen.findByRole('heading', { name: 'Models' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Models', level: 2 })).toBeVisible();
     expect(screen.getByText('heroes/hero.json')).toBeVisible();
     await user.click(screen.getByRole('button', { name: /Spine Hero/ }));
+    await vi.waitFor(() => expect(api.inspectLibrarySource).toHaveBeenCalledWith({ libraryId: 'library-1', sourceId: 'source-1', projectId: 'library-preview' }));
+    expect(api.saveProject).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole('button', { name: 'Use this model' }));
     expect(api.inspectLibrarySource).toHaveBeenCalledWith({ libraryId: 'library-1', sourceId: 'source-1', projectId: 'spine-hero' });
-    expect(await screen.findByRole('heading', { name: 'Source Package' })).toBeVisible();
+    await vi.waitFor(() => expect(screen.queryByRole('button', { name: 'Use this model' })).not.toBeInTheDocument());
     api.emitAppCommand('save');
     await vi.waitFor(() => expect(api.saveProject).toHaveBeenCalled());
     expect(api.saveProject.mock.calls[0][0].project.source.path).toBe('/Users/test/Models/hero');
@@ -393,7 +396,7 @@ describe('Live2Pet desktop shell', () => {
 
     window.dispatchEvent(new KeyboardEvent('keydown'));
     const openButton = screen.queryByRole('button', { name: 'Open project' });
-    expect(openButton).not.toBeInTheDocument();
+    expect(openButton).toBeInTheDocument();
     // Native Open is also a replacement path and must respect the same guard.
     api.emitAppCommand('open');
     expect(confirm).toHaveBeenCalled();
@@ -693,7 +696,7 @@ describe('Live2Pet desktop shell', () => {
     render(<App />);
 
     await user.click(screen.getByRole('button', { name: 'Open project' }));
-    expect(await screen.findByRole('heading', { name: 'Turn animated models into desktop pets.' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Models', level: 1 })).toBeVisible();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
@@ -963,7 +966,7 @@ describe('Live2Pet desktop shell', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Set up later' }));
 
-    expect(screen.getByRole('heading', { name: 'Turn animated models into desktop pets.' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Models', level: 1 })).toBeVisible();
     expect(localStorage.getItem('live2pet.desktop.setup-completed')).toBe('true');
   });
 

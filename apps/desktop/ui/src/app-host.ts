@@ -203,6 +203,7 @@ type Live2PetApi = {
   openSourceLibrary?(): Promise<AppResponse<SourceLibraryOperation>>;
   openGitHubLibrary?(url: string): Promise<AppResponse<SourceLibraryOperation>>;
   inspectLibrarySource?(input: { libraryId: string; sourceId: string; projectId: string }): Promise<AppResponse<SourceLibrarySelection>>;
+  getLibraryThumbnail?(input: { libraryId: string; sourceId: string; projectId: string }): Promise<AppResponse<{ dataUrl: string | null }>>;
   getSourceLibraryCacheStatus?(): Promise<AppResponse<SourceLibraryCacheStatus>>;
   configureSourceLibraryCache?(maxBytes: number): Promise<AppResponse<SourceLibraryCacheStatus>>;
   clearSourceLibraryCache?(): Promise<AppResponse<SourceLibraryCacheStatus>>;
@@ -326,6 +327,12 @@ export async function inspectLibrarySource(libraryId: string, sourceId: string, 
   const api = desktopApi();
   if (!api?.inspectLibrarySource) throw new DesktopApiError('APP_SOURCE_LIBRARY_UNAVAILABLE', 'Model libraries require the Desktop App.');
   return unwrap(api.inspectLibrarySource({ libraryId, sourceId, projectId }));
+}
+
+export async function getLibraryThumbnail(libraryId: string, sourceId: string) {
+  const api = desktopApi();
+  if (!api?.getLibraryThumbnail) return { dataUrl: null };
+  return unwrap(api.getLibraryThumbnail({ libraryId, sourceId, projectId: 'library-thumbnail' }));
 }
 
 export async function getSourceLibraryCacheStatus(): Promise<SourceLibraryCacheStatus> {

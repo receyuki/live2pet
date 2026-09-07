@@ -58,6 +58,7 @@ const APP_IPC_METHODS = Object.freeze([
   'openSourceLibrary',
   'openGitHubLibrary',
   'inspectLibrarySource',
+  'getLibraryThumbnail',
   'getSourceLibraryCacheStatus',
   'configureSourceLibraryCache',
   'clearSourceLibraryCache',
@@ -704,6 +705,12 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
         if (!sourceLibraryService) fail('APP_SOURCE_LIBRARY_UNAVAILABLE', 'Model library browsing is not configured in this App.');
         return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeLibrarySource(await sourceLibraryService.inspect(normalizeLibrarySourceRequest(normalized.args[0]))) };
       }
+      if (normalized.method === 'getLibraryThumbnail') {
+        if (!sourceLibraryService?.thumbnail) fail('APP_SOURCE_LIBRARY_UNAVAILABLE', 'Model thumbnails are unavailable.');
+        const result = await sourceLibraryService.thumbnail(normalizeLibrarySourceRequest(normalized.args[0]));
+        if (result.dataUrl !== null && (typeof result.dataUrl !== 'string' || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(result.dataUrl) || result.dataUrl.length > 1024 * 1024)) fail('INVALID_SOURCE_LIBRARY_RESULT', 'Invalid model thumbnail.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result };
+      }
       if (normalized.method === 'getSourceLibraryCacheStatus') {
         if (!sourceLibraryService) fail('APP_SOURCE_LIBRARY_UNAVAILABLE', 'GitHub model caching is not configured in this App.');
         if (normalized.args.length) fail('INVALID_SOURCE_LIBRARY_REQUEST', 'GitHub model cache status does not accept arguments.');
@@ -1002,6 +1009,7 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
     openSourceLibrary: () => invoke('openSourceLibrary'),
     openGitHubLibrary: (input) => invoke('openGitHubLibrary', input),
     inspectLibrarySource: (input) => invoke('inspectLibrarySource', input),
+    getLibraryThumbnail: (input) => invoke('getLibraryThumbnail', input),
     getSourceLibraryCacheStatus: () => invoke('getSourceLibraryCacheStatus'),
     configureSourceLibraryCache: (maxBytes) => invoke('configureSourceLibraryCache', { maxBytes }),
     clearSourceLibraryCache: () => invoke('clearSourceLibraryCache', { confirmClear: true }),

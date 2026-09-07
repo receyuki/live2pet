@@ -1,3 +1,4 @@
+import { ModelLibrary } from './model-library';
 import {
   Button,
   ButtonGroup,
@@ -364,10 +365,9 @@ function SetupView({ locale, returning, onComplete, onRuntimeSettingsChange }: {
   );
 }
 
-function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onLibrarySelection, onOpenProject, onOpenRecent, onOpenPreview, onRecoverDraft, onDiscardDraft }: { locale: Locale; busy: boolean; error: string; recentProjects: RecentProject[]; draft: ProjectDraft | null; onImport: (files: File[], directDrop?: boolean) => void; onLibrarySelection: (library: SourceLibrary, candidate: SourceLibraryCandidate) => Promise<void>; onOpenProject: () => void; onOpenRecent: (project: RecentProject) => void; onOpenPreview: () => void; onRecoverDraft: () => void; onDiscardDraft: () => void }) {
+function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onLibrarySelection, onOpenProject, onOpenRecent, onOpenPreview, onRecoverDraft, onDiscardDraft, currentModel, library, setLibrary }: { library: SourceLibrary | null; setLibrary: (library: SourceLibrary) => void; currentModel?: ReactNode; locale: Locale; busy: boolean; error: string; recentProjects: RecentProject[]; draft: ProjectDraft | null; onImport: (files: File[], directDrop?: boolean) => void; onLibrarySelection: (library: SourceLibrary, candidate: SourceLibraryCandidate) => Promise<void>; onOpenProject: () => void; onOpenRecent: (project: RecentProject) => void; onOpenPreview: () => void; onRecoverDraft: () => void; onDiscardDraft: () => void }) {
   const t = (key: MessageKey) => translate(locale, key);
   const [dragActive, setDragActive] = useState(false);
-  const [library, setLibrary] = useState<SourceLibrary | null>(null);
   const [libraryBusy, setLibraryBusy] = useState(false);
   const [libraryError, setLibraryError] = useState("");
   const [githubUrl, setGithubUrl] = useState("");
@@ -413,13 +413,13 @@ function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onL
       >
         {dragActive && <div className="drop-overlay" aria-hidden="true"><Upload size={22} />{t("dropSource")}</div>}
         <div className="welcome-copy">
-          <p className="eyebrow"><Sparkles size={13} />{t("welcomeEyebrow")}</p>
-          <h1>{t("welcomeTitle")}</h1>
-          <p>{t("welcomeBody")}</p>
+          <h1>{t("source")}</h1>
+          <p>{t("libraryPreviewOnly")}</p>
           <div className="welcome-actions">
             <input ref={folderInput} className="visually-hidden" type="file" multiple {...{ webkitdirectory: "" }} onChange={selected} />
             <input ref={pckInput} className="visually-hidden" type="file" accept=".pck" onChange={selected} />
             <Button variant="primary" size="lg" isDisabled={busy || libraryBusy || !hasDesktopApi()} onPress={() => void browseLocalLibrary()}><FolderOpen size={18} />{t("browseLocalLibrary")}</Button>
+            <Button variant="secondary" size="lg" isDisabled={busy || !hasDesktopApi()} onPress={() => folderInput.current?.click()}><FolderOpen size={18} />{t("importSource")}</Button>
             <Button variant="secondary" size="lg" isDisabled={busy || !hasDesktopApi()} onPress={() => pckInput.current?.click()}><Box size={18} />{t("importPck")}</Button>
             <Button variant="secondary" size="lg" isDisabled={busy || !hasDesktopApi()} onPress={onOpenProject}><FolderOpen size={18} />{t("openProject")}</Button>
           </div>
@@ -434,15 +434,10 @@ function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onL
           <Button className="button--ghost" variant="ghost" onPress={onOpenPreview}>{t("sampleProject")}<ChevronRight size={15} /></Button>
         </div>
       </section>
+      {currentModel}
       {library && <section className="model-library-section" aria-label={t("modelLibraryTitle")}>
         <div className="section-heading-row"><div><p className="eyebrow">{t("modelLibraryTitle")}</p><h2>{library.name}</h2><p>{translate(locale, "modelLibraryCount", { count: library.candidates.length, depth: library.maxDepth })}</p></div><Chip size="sm" variant="soft">{library.kind === "github" ? "GitHub" : t("localFolder")}</Chip></div>
-        {library.candidates.length === 0 ? <div className="empty-state">{t("modelLibraryEmpty")}</div> : <div className="model-library-grid">{library.candidates.map((candidate) => (
-          <Button key={candidate.id} className="model-library-card" variant="ghost" isDisabled={busy || libraryBusy} onPress={() => void onLibrarySelection(library, candidate)}>
-            <span className="model-library-cover">{candidate.format === "spine" ? <WandSparkles size={26} /> : <Sparkles size={26} />}</span>
-            <span className="grow-copy"><strong>{candidate.name}</strong><small>{candidate.relativePath}</small><span className="model-library-meta">{candidate.format === "spine" ? `Spine${candidate.runtimeLine ? ` ${candidate.runtimeLine}` : ""}` : candidate.format === "live2d-pck" ? "PCK" : "Live2D"}</span></span>
-            <ChevronRight size={15} />
-          </Button>
-        ))}</div>}
+        {library.candidates.length === 0 ? <div className="empty-state">{t("modelLibraryEmpty")}</div> : <ModelLibrary key={library.libraryId} library={library} locale={locale} onUse={onLibrarySelection} />}
       </section>}
       {draft && <section className="draft-recovery" aria-label={t("draftRecoveryTitle")}>
         <Card className="surface-card"><Card.Content>
@@ -515,7 +510,7 @@ function SourceView({ locale, project, inspection, inspectionRequired, runtimeRe
     ? `${inspection.model.format === 'spine' ? `Spine ${inspection.model.runtimeLine}` : `Cubism ${inspection.model.cubism}`} · ${inspection.motions.length} ${t("sourceMotions")} · ${inspection.expressions.length} ${t("sourceExpressions")}`
     : inspectionRequired ? t("sourceRelinkRequired") : t("sourceSummary");
   return (
-    <main className="page">
+    <section className="page">
       <PageHeading eyebrow={t("source")} title={t("sourceTitle")} body={t("sourceBody")} />
       <div className="source-grid">
         <Card
@@ -536,7 +531,7 @@ function SourceView({ locale, project, inspection, inspectionRequired, runtimeRe
           <Button variant="primary" isDisabled={(inspectionRequired && !inspection) || Boolean(review)} onPress={onMap}>{t("map")}<ChevronRight size={16} /></Button></Card.Content></Card>
         <Card className="surface-card source-facts"><Card.Content>{facts.map(([key, value]) => <div className="fact" key={key}><span>{t(key as MessageKey)}</span><strong title={value}>{value}</strong></div>)}</Card.Content></Card>
       </div>
-    </main>
+    </section>
   );
 }
 
@@ -877,6 +872,7 @@ export function App() {
   const [buildState, dispatchBuild] = useReducer(buildReducer, undefined, initialBuildState);
   const [appVersion, setAppVersion] = useState("0.1.0");
   const [importBusy, setImportBusy] = useState(false);
+  const [modelLibrary, setModelLibrary] = useState<SourceLibrary | null>(null);
   const [importError, setImportError] = useState("");
   const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings | null>(null);
   const [spinePack, setSpinePack] = useState<SpinePackStatus | null>(null);
@@ -1299,8 +1295,7 @@ export function App() {
       </header>
       <div className="app-content">
         {actionFeedback && <div className="action-feedback" role="alert">{actionFeedback}</div>}
-        {state.destination === "welcome" && <WelcomeView locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} draft={projectDraft} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onLibrarySelection={openLibrarySource} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onOpenPreview={openPreview} onRecoverDraft={() => void recoverProjectDraft()} onDiscardDraft={discardProjectDraft} />}
-        {state.destination === "source" && <SourceView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} inspectionRequired={Boolean(state.project?.document)} runtimeReady={runtimeReady} busy={importBusy} onConfigureRuntime={configureRequiredRuntime} onRelink={relinkCurrentSource} onAcknowledgeReview={acknowledgeCurrentSourceReview} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
+        {(state.destination === "welcome" || state.destination === "source") && <WelcomeView library={modelLibrary} setLibrary={setModelLibrary} locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} draft={projectDraft} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onLibrarySelection={openLibrarySource} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onOpenPreview={openPreview} onRecoverDraft={() => void recoverProjectDraft()} onDiscardDraft={discardProjectDraft} currentModel={state.project ? <details className="model-current-details" open={!modelLibrary || sourceReviewRequired}><summary>{state.project.document?.name ?? t("source")}</summary><SourceView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} inspectionRequired={Boolean(state.project?.document)} runtimeReady={runtimeReady} busy={importBusy} onConfigureRuntime={configureRequiredRuntime} onRelink={relinkCurrentSource} onAcknowledgeReview={acknowledgeCurrentSourceReview} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} /></details> : null} />}
         {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={configureRequiredRuntime} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => dispatch({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => dispatch({ type: "CLEAR_ASSIGNMENT", destination })} onVisualSettings={(settings) => dispatch({ type: "SET_VISUAL_SETTINGS", settings })} />}
         {state.destination === "build" && <BuildView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} runtimeReady={runtimeReady} state={buildState} onName={(name) => dispatch({ type: "RENAME_PROJECT", name })} onPreset={(target, preset) => dispatch({ type: "SET_RENDER_PRESET", target, preset })} onCustomRender={(settings) => dispatch({ type: 'SET_CLAWD_RENDER', settings })} onBuild={buildProjectTarget} onCancel={(target) => void cancelProjectBuild(target)} />}
       </div>

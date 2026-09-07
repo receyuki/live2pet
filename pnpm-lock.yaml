@@ -43,6 +43,9 @@ importers:
       '@zip.js/zip.js':
         specifier: 2.7.57
         version: 2.7.57
+      sharp:
+        specifier: 0.34.5
+        version: 0.34.5
     devDependencies:
       '@electron/packager':
         specifier: 20.3.0

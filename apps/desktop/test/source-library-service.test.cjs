@@ -36,6 +36,23 @@ test('opens a local folder as a two-level model library without exposing its pat
   assert.equal(selected.sourcePath, root);
 });
 
+test('serializes and reuses local thumbnails without registering a project source', async () => {
+  const root = temporaryDirectory();
+  let renders = 0;
+  const service = createSourceLibraryService({
+    githubCacheRoot: path.join(root, 'cache'),
+    showOpenDialog: async () => ({ filePaths: [root] }),
+    discoverSources: () => ({ name: 'models', candidates: [{ id: 'source-1', name: 'Hero', relativePath: 'hero.model3.json', format: 'live2d', inputPath: root }] }),
+    inspectSource: () => assert.fail('thumbnail must not register or replace project sources'),
+    renderThumbnail: async candidate => { renders += 1; assert.equal(candidate.inputPath, root); return { dataUrl: 'data:image/png;base64,YQ==' }; },
+  });
+  const { library } = await service.openLocal();
+  const input = { libraryId: library.libraryId, sourceId: 'source-1' };
+  const results = await Promise.all([service.thumbnail(input), service.thumbnail(input)]);
+  assert.equal(renders, 1);
+  assert.equal(results[0].dataUrl, results[1].dataUrl);
+});
+
 test('browses GitHub tree metadata then downloads only the selected model folder', async () => {
   const root = temporaryDirectory();
   const requests = [];

@@ -188,11 +188,13 @@ async function fetchJson(fetchImpl, url) {
   return response.json();
 }
 
-function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSource, githubCacheRoot, cacheSettingsFile = path.join(githubCacheRoot || '', 'cache-settings.json'), fetchImpl = globalThis.fetch, maxDepth = 2, getProtectedSourcePaths = () => [] } = {}) {
+function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSource, githubCacheRoot, cacheSettingsFile = path.join(githubCacheRoot || '', 'cache-settings.json'), fetchImpl = globalThis.fetch, maxDepth = 2, getProtectedSourcePaths = () => [], renderThumbnail } = {}) {
   if (typeof showOpenDialog !== 'function' || typeof discoverSources !== 'function' || typeof inspectSource !== 'function') throw new TypeError('Source library service requires dialog, discovery, and inspection dependencies.');
   if (typeof githubCacheRoot !== 'string' || !path.isAbsolute(githubCacheRoot)) throw new TypeError('Source library GitHub cache root must be absolute.');
   if (typeof cacheSettingsFile !== 'string' || !path.isAbsolute(cacheSettingsFile)) throw new TypeError('Source library cache settings path must be absolute.');
   const libraries = new Map();
+  const thumbnails = new Map();
+  let thumbnailBytes = 0;
   let maxCacheBytes = loadCacheLimit(cacheSettingsFile);
   let cacheOperation = Promise.resolve();
   const withCacheLock = (operation) => {
@@ -293,6 +295,26 @@ function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSo
     return candidate.format === 'live2d-pck' ? path.join(destination, path.posix.basename(candidate.relativePath)) : destination;
   };
   return Object.freeze({
+    thumbnail: ({ libraryId, sourceId } = {}) => withCacheLock(async () => {
+      const library = libraries.get(libraryId);
+      const candidate = library?.candidates.find((entry) => entry.id === sourceId);
+      if (!candidate || library.kind !== 'local') return { dataUrl: null };
+      const key = `${libraryId}:${sourceId}`;
+      if (thumbnails.has(key)) return thumbnails.get(key);
+      if (!renderThumbnail) return { dataUrl: null };
+      const result = await renderThumbnail(candidate);
+      if (result.dataUrl) {
+        const size = Buffer.byteLength(result.dataUrl);
+        if (size > 1024 * 1024) return { dataUrl: null };
+        while (thumbnailBytes + size > 16 * 1024 * 1024 && thumbnails.size) {
+          const oldest = thumbnails.keys().next().value;
+          thumbnailBytes -= Buffer.byteLength(thumbnails.get(oldest).dataUrl);
+          thumbnails.delete(oldest);
+        }
+        thumbnails.set(key, result); thumbnailBytes += size;
+      }
+      return result;
+    }),
     openLocal: async () => {
       const selected = await showOpenDialog({ title: 'Choose model library folder', properties: ['openDirectory'] });
       if (selected?.canceled || !selected?.filePaths?.[0]) return { cancelled: true };

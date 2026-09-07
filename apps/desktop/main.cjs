@@ -287,6 +287,11 @@ function getSourceLibraryService() {
       showOpenDialog: (options) => dialog.showOpenDialog(mainWindow, options),
       discoverSources: discoverSourcePackages,
       inspectSource: sourceInspectionService,
+      renderThumbnail: (candidate) => require('./library-thumbnail-renderer.cjs').createLibraryThumbnailRenderer({
+        ownerWindow: mainWindow, createView: createPreviewView,
+        resolveRuntime: (version) => loadRuntimeForGeneration(runtimeSettingsPath(), version),
+        resolveSpinePack: (line) => spinePackService.resolve(line), vendorPaths: previewVendorPaths,
+      })(candidate),
       getProtectedSourcePaths: () => [...sourceRegistry.values()].map((source) => source.inputPath),
       githubCacheRoot: path.join(app.getPath('userData'), 'cache', 'github-models'),
       cacheSettingsFile: path.join(app.getPath('userData'), 'settings', 'github-model-cache.json'),

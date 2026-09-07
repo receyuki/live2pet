@@ -23,6 +23,7 @@
     "typecheck:ui": "tsc -p tsconfig.ui.json --noEmit"
   },
   "dependencies": {
+    "sharp": "0.34.5",
     "@live2pet/app-host": "workspace:*",
     "@live2pet/clawd-target": "workspace:*",
     "@live2pet/codex-target": "workspace:*",

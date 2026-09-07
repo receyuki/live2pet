@@ -66,7 +66,7 @@ The local App is unsigned. macOS may require you to approve it in **System Setti
 
 1. On first launch, add the Live2D runtime files you already own, or skip setup and inspect a model first.
 2. Browse a local model folder, paste a public GitHub repository/folder URL, or import a supported Live2D PCK file. Local drag and drop remains available.
-3. In **Source**, review the detected model generation, motions, expressions, and warnings. A supported Spine source offers **Install Spine support** when needed.
+3. In **Models**, browse the gallery or import a model directly. Select a card to preview its animations without replacing your project, then choose **Use this model**. The current model's expandable details contain resource checks and runtime actions, including **Install Spine support** when needed.
 4. In **Map**, choose an animation, preview it, and assign it separately to Clawd or Codex states.
 5. Use **Visibility** when you need to inspect and hide a background, overlay, or other separable model element.
 6. Enter a package name in **Build**, choose a render preset, and build either target.
@@ -97,6 +97,10 @@ Only import runtime code from a source you trust. Removing a runtime from Live2P
 Live2Pet recognizes Spine export versions before installing a renderer. For Spine 4.0–4.3, an explicit **Install** action downloads the matching pinned official `@esotericsoftware/spine-player` distribution, verifies its SHA-256 values, and saves it in private App storage for reuse. Packs are not bundled with this repository or downloaded during first-run setup. Other detected Spine lines remain unsupported until a reproducible official pack is available.
 
 ### Model libraries and GitHub cache
+
+The **Models** page combines project opening, source import, and library browsing. Local cards show a supplied `preview`/`cover` image when available, otherwise a 256 px rendered thumbnail using your installed runtime. Visible cards are processed one at a time; the in-memory thumbnail cache is capped at 16 MiB and resets when the App quits. Missing runtimes are reported rather than downloaded automatically. Selecting a card opens one live preview with a Motion selector; only **Use this model** replaces the current project. The library stays available when switching to Map or Build.
+
+GitHub cards do not automatically download models to generate thumbnails. Click a card to download only its selected model and open the live preview. Source diagnostics are part of Models, not a separate navigation tab.
 
 Projects created from a model library retain the selected local source location and model configuration for reopening. GitHub model locations are cache entries, not permanent project assets: if an entry is cleared or evicted, select the model again and relink its source. Saving a `.live2pet` project does not embed the model files.
 

@@ -102,6 +102,7 @@ contextBridge.exposeInMainWorld('live2pet', Object.freeze({
   openSourceLibrary: () => invoke('openSourceLibrary'),
   openGitHubLibrary: (url) => invoke('openGitHubLibrary', { url }),
   inspectLibrarySource: (input) => invoke('inspectLibrarySource', input),
+  getLibraryThumbnail: (input) => invoke('getLibraryThumbnail', input),
   getSourceLibraryCacheStatus: () => invoke('getSourceLibraryCacheStatus'),
   configureSourceLibraryCache: (maxBytes) => invoke('configureSourceLibraryCache', { maxBytes }),
   clearSourceLibraryCache: () => invoke('clearSourceLibraryCache', { confirmClear: true }),
