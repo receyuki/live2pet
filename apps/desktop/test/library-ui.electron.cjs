@@ -3,7 +3,7 @@ const path = require('node:path');
 const { app, BrowserWindow, WebContentsView, ipcMain } = require('electron');
 const { discoverSourcePackages, inspectSourcePackage } = require('@live2pet/source-inspector');
 const { createPreviewSessionService } = require('../preview-session-service.cjs');
-const { loadRuntimeForGeneration } = require('@live2pet/runtime');
+const { loadRuntimeForGeneration, loadRuntimeSettings, redactRuntimeSettings } = require('@live2pet/runtime');
 const { createLibraryThumbnailRenderer } = require('../library-thumbnail-renderer.cjs');
 const { createSourceLibraryService } = require('../source-library-service.cjs');
 const fs = require('node:fs');
@@ -42,7 +42,7 @@ app.whenReady().then(async () => {
       case 'openSourceLibrary': result = await library.openLocal(); break;
       case 'getLibraryThumbnail': result = await library.thumbnail(request.args[0]); break;
       case 'inspectLibrarySource': result = await library.inspect(request.args[0]); break;
-      case 'getRuntimeSettings': result = { schemaVersion: 2, runtimes: [] }; break;
+      case 'getRuntimeSettings': result = redactRuntimeSettings(await loadRuntimeSettings(process.env.LIVE2PET_RUNTIME_SETTINGS)); break;
       case 'getSpinePackStatus': result = { packs: [], installed: false }; break;
       case 'listRecentProjects': result = []; break;
       default: return { protocolVersion: 1, ok: false, error: { code: 'TEST_UNAVAILABLE', message: 'Not used by this visual check.' } };
@@ -64,6 +64,10 @@ app.whenReady().then(async () => {
     if (!modelView) throw new Error('Native model view was not attached');
     fs.writeFileSync(process.env.LIVE2PET_LIBRARY_SCREENSHOT.replace('.png', '-native.png'), (await modelView.webContents.capturePage()).toPNG());
     fs.writeFileSync(process.env.LIVE2PET_LIBRARY_SCREENSHOT.replace('.png', '-selected.png'), (await window.capturePage()).toPNG());
+    await window.webContents.executeJavaScript(`const button=[...document.querySelectorAll('.library-detail button')].find(item=>item.textContent.includes('Use and start mapping'));if(!button || button.disabled)throw new Error('Confirmation unavailable');button.click()`);
+    await window.webContents.executeJavaScript(`new Promise((resolve,reject)=>{const end=Date.now()+30000;const check=()=>{if(document.querySelector('.map-workspace'))resolve(true);else if(Date.now()>end)reject(new Error('Confirmation did not enter Map'));else setTimeout(check,100)};check()})`);
+    await window.webContents.executeJavaScript(`if(document.querySelector('.draft-recovery, .model-current-details'))throw new Error('Duplicate source or draft card after confirmation')`);
+    fs.writeFileSync(process.env.LIVE2PET_LIBRARY_SCREENSHOT.replace('.png', '-mapping.png'), (await window.capturePage()).toPNG());
     console.log('LIBRARY_UI_PASS');
   } finally { await preview.close(); window.destroy(); fs.rmSync(root, { recursive: true, force: true }); }
   app.quit();

@@ -20,6 +20,12 @@ Spine inspection accepts detected version lines independently of renderer availa
 
 ## Consequences
 
+### Preview confirmation and project entry
+
+Library selection and direct imports use the same preview inspector before creating a project. The inspector owns inventory, resource warnings, runtime recovery, and animation preview. **Use and start mapping** requires a ready preview and no missing required resources, creates the project, and enters Map with the selected Motion. Cancelling replacement keeps the current project and inspector. Returning from Settings preserves the selected candidate.
+
+Successfully reopened projects enter Map directly; missing or changed sources retain the repair/review flow. Routine source details are available in a compact Map summary instead of an extra Models accordion. Autosave persists the current document without offering it for recovery during the same session; recovery is offered for a draft found at startup.
+
 - Users can browse large local collections without repeatedly opening individual folders.
 - A GitHub repository is never cloned and unselected model assets are not downloaded.
 - Cache growth is bounded and controlled by the user.

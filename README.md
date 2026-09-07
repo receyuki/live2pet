@@ -66,7 +66,7 @@ The local App is unsigned. macOS may require you to approve it in **System Setti
 
 1. On first launch, add the Live2D runtime files you already own, or skip setup and inspect a model first.
 2. Browse a local model folder, paste a public GitHub repository/folder URL, or import a supported Live2D PCK file. Local drag and drop remains available.
-3. In **Models**, browse the gallery or import a model directly. Select a card to preview its animations without replacing your project, then choose **Use this model**. The current model's expandable details contain resource checks and runtime actions, including **Install Spine support** when needed.
+3. In **Models**, select a card or import a model directly. Review its version, resource inventory, warnings, and animations in the preview panel. Resolve missing runtimes there, then choose **Use and start mapping** to enter Map with the selected Motion. Existing projects open in Map when their source is available; missing or changed sources require review first.
 4. In **Map**, choose an animation, preview it, and assign it separately to Clawd or Codex states.
 5. Use **Visibility** when you need to inspect and hide a background, overlay, or other separable model element.
 6. Enter a package name in **Build**, choose a render preset, and build either target.
@@ -74,6 +74,8 @@ The local App is unsigned. macOS may require you to approve it in **System Setti
 8. Save the `.live2pet` project if you want to reopen or revise the mapping later. You can clear the recent-project list from **Models** without deleting any project files.
 
 Global runtime, output, cache, language, and installation-location preferences live in **Settings**. Model choices and mappings stay in the project.
+
+Unsaved edits are saved locally for recovery on the next launch. The current project's autosave does not create a recovery card while you are editing it.
 
 <a id="runtime-setup"></a>
 
@@ -98,7 +100,7 @@ Live2Pet recognizes Spine export versions before installing a renderer. For Spin
 
 ### Model libraries and GitHub cache
 
-The **Models** page combines project opening, source import, and library browsing. Dragging in a model folder opens it as a model library, while a dropped PCK file is imported directly; folder drops work whether Electron exposes the folder itself or its nested files. This keeps multi-model collections from being misread as one Source Package. Local cards show a supplied `preview`/`cover` image when available, otherwise a 256 px rendered thumbnail using your installed runtime. Visible cards are queued first, then offscreen cards fill in automatically in the background. At most two thumbnails render concurrently; hidden Spine thumbnail views are advanced without relying on animation frames, and a stuck render still times out after 15 seconds so it cannot freeze or block the rest of the library. The in-memory thumbnail cache is capped at 16 MiB and resets when the App quits. Missing runtimes are reported rather than downloaded automatically, while detected unsupported Spine lines are labeled directly. Selecting a card opens one live preview with a Motion selector; only **Use this model** replaces the current project. The library stays available when switching to Map or Build.
+The **Models** page combines project opening, source import, and library browsing. Dragging in a model folder opens it as a model library, while a dropped PCK file is imported directly; folder drops work whether Electron exposes the folder itself or its nested files. This keeps multi-model collections from being misread as one Source Package. Local cards show a supplied `preview`/`cover` image when available, otherwise a 256 px rendered thumbnail using your installed runtime. Visible cards are queued first, then offscreen cards fill in automatically in the background. At most two thumbnails render concurrently; hidden Spine thumbnail views are advanced without relying on animation frames, and a stuck render still times out after 15 seconds so it cannot freeze or block the rest of the library. The in-memory thumbnail cache is capped at 16 MiB and resets when the App quits. Missing runtimes are reported rather than downloaded automatically, while detected unsupported Spine lines are labeled directly. Selecting a card opens one live preview with a Motion selector; only **Use and start mapping** replaces the current project. The library stays available when switching to Map or Build.
 
 GitHub cards do not automatically download models to generate thumbnails. Click a card to download only its selected model and open the live preview. Source diagnostics are part of Models, not a separate navigation tab.
 

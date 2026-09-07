@@ -21,7 +21,7 @@ const savedProject = {
   },
 };
 
-function installDesktopApi({ runtimes = emptyRuntimes, preview = false, previewVisualElements = [], previewThumbnail, buildHost = false, recentProjects = [], openCancelled = false, saveCancelled = false, openedProject = savedProject }: { runtimes?: typeof emptyRuntimes | { schemaVersion: 2; configured: boolean; restartRequired: false; runtimes: Array<{ runtimeName: string; runtimeKind: 'legacy-cubism2'; cubismGenerations: number[]; fingerprint: string; available: boolean }> }; preview?: boolean; previewVisualElements?: VisualElement[]; previewThumbnail?: (input: { id: string }) => Promise<{ id: string; dataUrl: string | null }> | { id: string; dataUrl: string | null }; buildHost?: boolean; recentProjects?: Array<{ documentId: string; name: string; fileName: string; available: boolean }>; openCancelled?: boolean; saveCancelled?: boolean; openedProject?: Live2PetProject } = {}) {
+function installDesktopApi({ runtimes = emptyRuntimes, preview = true, previewVisualElements = [], previewThumbnail, buildHost = false, recentProjects = [], openCancelled = false, saveCancelled = false, openedProject = savedProject }: { runtimes?: typeof emptyRuntimes | { schemaVersion: 2; configured: boolean; restartRequired: false; runtimes: Array<{ runtimeName: string; runtimeKind: 'legacy-cubism2'; cubismGenerations: number[]; fingerprint: string; available: boolean }> }; preview?: boolean; previewVisualElements?: VisualElement[]; previewThumbnail?: (input: { id: string }) => Promise<{ id: string; dataUrl: string | null }> | { id: string; dataUrl: string | null }; buildHost?: boolean; recentProjects?: Array<{ documentId: string; name: string; fileName: string; available: boolean }>; openCancelled?: boolean; saveCancelled?: boolean; openedProject?: Live2PetProject } = {}) {
   const inspectSource = vi.fn(async (): Promise<{ protocolVersion: 1; ok: true; result: SourceInspection }> => ({
     protocolVersion: 1 as const,
     ok: true,
@@ -203,9 +203,15 @@ describe('Live2Pet desktop shell', () => {
     await user.click(screen.getByRole('button', { name: /Spine Hero/ }));
     await vi.waitFor(() => expect(api.inspectLibrarySource).toHaveBeenCalledWith({ libraryId: 'library-1', sourceId: 'source-1', projectId: 'library-preview' }));
     expect(api.saveProject).not.toHaveBeenCalled();
-    await user.click(await screen.findByRole('button', { name: 'Use this model' }));
+    expect(screen.queryByRole('navigation', { name: 'Project' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeEnabled());
+    await user.click(await screen.findByRole('button', { name: 'Use and start mapping' }));
     expect(api.inspectLibrarySource).toHaveBeenCalledWith({ libraryId: 'library-1', sourceId: 'source-1', projectId: 'spine-hero' });
-    await vi.waitFor(() => expect(screen.queryByRole('button', { name: 'Use this model' })).not.toBeInTheDocument());
+    await vi.waitFor(() => expect(screen.queryByRole('button', { name: 'Use and start mapping' })).not.toBeInTheDocument());
+    expect(screen.getByRole('main', { name: 'Map' })).toBeVisible();
+    expect(document.querySelector('.model-current-details')).toBeNull();
     api.emitAppCommand('save');
     await vi.waitFor(() => expect(api.saveProject).toHaveBeenCalled());
     expect(api.saveProject.mock.calls[0][0].project.source.path).toBe('/Users/test/Models/hero');
@@ -284,7 +290,7 @@ describe('Live2Pet desktop shell', () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole('button', { name: 'Open project' }));
-    await screen.findByRole('heading', { name: 'Source Package' });
+    await screen.findByRole('main', { name: 'Map' });
     await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
     expect(document.querySelectorAll('.motion-item')).toHaveLength(0);
     expect(document.querySelectorAll('.expression-grid button')).toHaveLength(0);
@@ -298,6 +304,8 @@ describe('Live2Pet desktop shell', () => {
     const { container } = render(<App />);
 
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Use and start mapping' }));
     expect(await screen.findByText('Unsaved changes')).toBeVisible();
     expect(screen.queryByText('Local project')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Save project' }));
@@ -314,13 +322,15 @@ describe('Live2Pet desktop shell', () => {
     const user = userEvent.setup();
     const { container } = render(<App />);
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Use and start mapping' }));
     expect(await screen.findByRole('button', { name: 'New project' })).toBeVisible();
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
     await user.click(screen.getByRole('button', { name: 'New project' }));
     expect(await screen.findByRole('button', { name: 'Open project' })).toBeVisible();
     expect(screen.queryByRole('navigation', { name: 'Project' })).not.toBeInTheDocument();
     expect(confirm).toHaveBeenCalled();
-    expect(api.inspectSource).toHaveBeenCalledOnce();
+    expect(api.inspectSource).toHaveBeenCalledTimes(2);
   });
 
   it('autosaves only the project document and clears the draft after a successful Save', async () => {
@@ -330,12 +340,17 @@ describe('Live2Pet desktop shell', () => {
     const { container } = render(<App />);
 
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Use and start mapping' }));
     await vi.waitFor(() => expect(localStorage.getItem(PROJECT_DRAFT_KEY)).not.toBeNull());
     const envelope = JSON.parse(localStorage.getItem(PROJECT_DRAFT_KEY)!);
     expect(Object.keys(envelope).sort()).toEqual(['project', 'savedAt', 'schemaVersion']);
     expect(envelope.project).not.toHaveProperty('inspection');
     expect(envelope.project).not.toHaveProperty('runtimeSettings');
     expect(envelope.project).not.toHaveProperty('buildState');
+    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Models' }));
+    expect(screen.queryByRole('region', { name: 'Recover unsaved project' })).not.toBeInTheDocument();
+    expect(container.querySelector('.model-current-details')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'Save project' }));
     await vi.waitFor(() => expect(saveProject).toHaveBeenCalledOnce());
@@ -353,7 +368,7 @@ describe('Live2Pet desktop shell', () => {
     await user.click(screen.getByRole('button', { name: 'Recover' }));
 
     await vi.waitFor(() => expect(relinkSource).toHaveBeenCalledWith({ project: savedProject, inputPath: '/Users/test/Saved Source.pck' }));
-    expect(await screen.findByRole('heading', { name: 'Source Package' })).toBeVisible();
+    expect(await screen.findByRole('main', { name: 'Map' })).toBeVisible();
     expect(screen.getByText('Unsaved changes')).toBeVisible();
     expect(localStorage.getItem(PROJECT_DRAFT_KEY)).not.toBeNull();
   });
@@ -365,6 +380,8 @@ describe('Live2Pet desktop shell', () => {
     const { container } = render(<App />);
 
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Use and start mapping' }));
     await vi.waitFor(() => expect(localStorage.getItem(PROJECT_DRAFT_KEY)).not.toBeNull());
     const draftBeforeSave = localStorage.getItem(PROJECT_DRAFT_KEY);
     await user.click(screen.getByRole('button', { name: 'Save project' }));
@@ -392,13 +409,15 @@ describe('Live2Pet desktop shell', () => {
     const { container } = render(<App />);
 
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Use and start mapping' }));
     const unload = new Event('beforeunload', { cancelable: true });
     window.dispatchEvent(unload);
     expect(unload.defaultPrevented).toBe(true);
 
     window.dispatchEvent(new KeyboardEvent('keydown'));
     const openButton = screen.queryByRole('button', { name: 'Open project' });
-    expect(openButton).toBeInTheDocument();
+    expect(openButton).not.toBeInTheDocument();
     // Native Open is also a replacement path and must respect the same guard.
     api.emitAppCommand('open');
     expect(confirm).toHaveBeenCalled();
@@ -412,6 +431,8 @@ describe('Live2Pet desktop shell', () => {
     const { container } = render(<App />);
 
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Use and start mapping' }));
     await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
 
     expect(screen.getAllByRole('button', { name: /^Use selected ·/ })).toHaveLength(CLAWD_PROFILE.states.all.length + CLAWD_PROFILE.reactions.length);
@@ -433,6 +454,8 @@ describe('Live2Pet desktop shell', () => {
     const user = userEvent.setup();
     const { container } = render(<App />);
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Use and start mapping' }));
     await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
     vi.spyOn(container.querySelector('.preview-native-surface')!, 'getBoundingClientRect').mockReturnValue({ x: 280, y: 90, width: 400, height: 520, top: 90, right: 680, bottom: 610, left: 280, toJSON: () => ({}) });
     fireEvent(window, new Event('resize'));
@@ -458,6 +481,8 @@ describe('Live2Pet desktop shell', () => {
     const { container } = render(<App />);
 
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Use and start mapping' }));
     await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
     screen.getByRole('button', { name: 'Smile' }).focus();
     await user.keyboard('{Enter}');
@@ -483,6 +508,8 @@ describe('Live2Pet desktop shell', () => {
     const { container } = render(<App />);
 
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Use and start mapping' }));
     await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
     await user.click(screen.getByRole('button', { name: 'Use selected · Idle' }));
     const idleRow = () => screen.getByRole('button', { name: 'Use selected · Idle' }).closest('.mapping-row') as HTMLElement;
@@ -524,6 +551,8 @@ describe('Live2Pet desktop shell', () => {
     const { container } = render(<App />);
 
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Use and start mapping' }));
     await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
     await user.click(screen.getByRole('button', { name: 'Smile' }));
     await user.click(screen.getByRole('button', { name: 'Use selected · Idle' }));
@@ -606,7 +635,7 @@ describe('Live2Pet desktop shell', () => {
     await user.click(await screen.findByRole('button', { name: /Saved Project/ }));
     expect(openProject).toHaveBeenCalledWith({ documentId: 'opaque-document' });
     await vi.waitFor(() => expect(relinkSource).toHaveBeenCalledWith({ project: savedProject, inputPath: '/Users/test/Saved Source.pck' }));
-    expect(await screen.findByRole('heading', { name: 'Source Package' })).toBeVisible();
+    expect(await screen.findByRole('main', { name: 'Map' })).toBeVisible();
   });
 
   it('blocks Map and Build until changed Source recipes are explicitly reviewed', async () => {
@@ -660,6 +689,7 @@ describe('Live2Pet desktop shell', () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const recent = [{ documentId: 'opaque-document', name: 'Saved Project', fileName: 'saved.live2pet', available: true }];
     const api = installDesktopApi({ recentProjects: recent });
+    api.relinkSource.mockRejectedValueOnce(new Error('Source missing'));
     const user = userEvent.setup();
     const { container } = render(<App />);
     await user.click(await screen.findByRole('button', { name: /Saved Project/ }));
@@ -680,7 +710,7 @@ describe('Live2Pet desktop shell', () => {
     render(<App />);
 
     api.emitAppCommand('open');
-    expect(await screen.findByRole('heading', { name: 'Source Package' })).toBeVisible();
+    expect(await screen.findByRole('main', { name: 'Map' })).toBeVisible();
     api.emitAppCommand('build');
     expect(await screen.findByRole('heading', { name: 'Package Build' })).toBeVisible();
     api.emitAppCommand('setup');
@@ -740,13 +770,13 @@ describe('Live2Pet desktop shell', () => {
 
     expect((await screen.findAllByText('Vicious Khepri'))[0]).toBeVisible();
     expect(screen.getByText(/Cubism 2/)).toBeVisible();
-    expect(screen.getByText('model.moc')).toBeVisible();
-    expect(inspectSource).toHaveBeenCalledWith({ inputPath: '/Users/test/Vicious Khepri.pck', projectId: 'vicious-khepri' });
+    expect(screen.getByRole('heading', { name: 'Source Package' })).toBeVisible();
+    expect(inspectSource).toHaveBeenCalledWith({ inputPath: '/Users/test/Vicious Khepri.pck', projectId: 'library-preview' });
   });
 
   it('recognizes a Spine 4.3 source and installs its optional renderer inline', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
-    const api = installDesktopApi();
+    const api = installDesktopApi({ preview: false });
     api.inspectSource.mockResolvedValue({
       protocolVersion: 1,
       ok: true,
@@ -767,11 +797,12 @@ describe('Live2Pet desktop shell', () => {
     expect(await screen.findByText(/Spine 4\.3/)).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Install' }));
     expect(api.installSpinePack).toHaveBeenCalledWith('4.3');
-    await vi.waitFor(() => expect(screen.queryByRole('button', { name: 'Install' })).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeDisabled();
   });
 
   it('routes a project with a missing runtime to Settings and preserves its Source destination', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    installDesktopApi({ preview: false });
     const user = userEvent.setup();
     const { container } = render(<App />);
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
@@ -787,6 +818,8 @@ describe('Live2Pet desktop shell', () => {
     const user = userEvent.setup();
     const { container } = render(<App />);
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Use and start mapping' }));
     await user.click(
       within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }),
     );
@@ -814,6 +847,8 @@ describe('Live2Pet desktop shell', () => {
     const user = userEvent.setup();
     const { container } = render(<App />);
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Use and start mapping' }));
     await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
     const surface = container.querySelector('.preview-native-surface') as HTMLDivElement;
     vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue({ x: 280, y: 90, width: 640, height: 520, top: 90, right: 920, bottom: 610, left: 280, toJSON: () => ({}) });
@@ -828,7 +863,7 @@ describe('Live2Pet desktop shell', () => {
     await vi.waitFor(() => expect(window.live2pet!.controlPreview).toHaveBeenCalledWith({ action: 'seek', time: 0.5 }));
     expect(window.live2pet!.controlPreview).not.toHaveBeenCalledWith({ action: 'seek', time: 0.07 });
     await user.click(screen.getByRole('button', { name: 'Reset preview' }));
-    await vi.waitFor(() => expect(openPreview).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(openPreview).toHaveBeenCalledTimes(3));
     expect(openPreview).toHaveBeenLastCalledWith({ projectId: 'vicious-khepri', sourceFingerprint: 'fixture', bounds: { x: 280, y: 90, width: 640, height: 520 }, visualSettings: { hiddenElementIds: [] } });
   });
 
@@ -851,6 +886,8 @@ describe('Live2Pet desktop shell', () => {
     const user = userEvent.setup();
     const { container } = render(<App />);
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Use and start mapping' }));
     await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
     const surface = container.querySelector('.preview-native-surface') as HTMLDivElement;
     vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue({ x: 280, y: 90, width: 640, height: 520, top: 90, right: 920, bottom: 610, left: 280, toJSON: () => ({}) });
@@ -939,7 +976,7 @@ describe('Live2Pet desktop shell', () => {
     fireEvent.drop(destination === 'welcome' ? screen.getByLabelText('Import model source') : screen.getByRole('main'), { dataTransfer: { types: ['Files'], files: [new File(['{}'], 'My Pet.live2pet')] } });
     await vi.waitFor(() => expect(openProject).toHaveBeenCalledWith({ inputPath: '/Users/test/My Pet.live2pet' }));
     expect(inspectSource).not.toHaveBeenCalled();
-    expect(await screen.findByRole('heading', { name: 'Source Package' })).toBeVisible();
+    expect(await screen.findByRole('main', { name: 'Map' })).toBeVisible();
   });
 
   it('preserves unsaved work when a dropped project replacement is declined', async () => {
@@ -948,9 +985,11 @@ describe('Live2Pet desktop shell', () => {
     const user = userEvent.setup();
     const { container } = render(<App />);
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
-    await screen.findByRole('heading', { name: 'Source Package' });
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Use and start mapping' }));
+    await screen.findByRole('main', { name: 'Map' });
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    const zone = container.querySelector('.source-grid .drop-zone')!;
+    const zone = screen.getByRole('main', { name: 'Map' });
     const dataTransfer = { types: ['Files'], files: [new File(['{}'], 'Another.live2pet')] };
     fireEvent.dragEnter(zone, { dataTransfer });
     fireEvent.drop(zone, { dataTransfer });

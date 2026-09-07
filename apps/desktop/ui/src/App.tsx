@@ -1,4 +1,4 @@
-import { ModelLibrary } from './model-library';
+import { ModelLibrary, ModelPreview } from './model-library';
 import {
   Button,
   ButtonGroup,
@@ -90,6 +90,7 @@ import {
   SpinePackStatus,
   SourceLibrary,
   SourceLibraryCandidate,
+  SourceLibrarySelection,
   RecentProject,
   saveProject,
   SourceInspection,
@@ -351,7 +352,7 @@ function SetupView({ locale, returning, onComplete, onRuntimeSettingsChange }: {
   );
 }
 
-function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onLibrarySelection, onOpenProject, onOpenRecent, onClearRecent, onOpenPreview, onRecoverDraft, onDiscardDraft, currentModel, library, setLibrary }: { library: SourceLibrary | null; setLibrary: (library: SourceLibrary) => void; currentModel?: ReactNode; locale: Locale; busy: boolean; error: string; recentProjects: RecentProject[]; draft: ProjectDraft | null; onImport: (files: File[], directDrop?: boolean) => void; onLibrarySelection: (library: SourceLibrary, candidate: SourceLibraryCandidate) => Promise<void>; onOpenProject: () => void; onOpenRecent: (project: RecentProject) => void; onClearRecent: () => void; onOpenPreview: () => void; onRecoverDraft: () => void; onDiscardDraft: () => void }) {
+function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onLibrarySelection, onOpenProject, onOpenRecent, onClearRecent, onOpenPreview, onRecoverDraft, onDiscardDraft, currentModel, library, setLibrary, pendingSource, onConfirmSource, onDismissSource, onConfigureRuntime, selectedLibraryModel, onSelectLibraryModel }: { selectedLibraryModel: SourceLibraryCandidate | null; onSelectLibraryModel: (model: SourceLibraryCandidate | null) => void; pendingSource: SourceLibrarySelection | null; onConfirmSource: (motion: string) => Promise<void>; onDismissSource: () => void; onConfigureRuntime: () => void; library: SourceLibrary | null; setLibrary: (library: SourceLibrary) => void; currentModel?: ReactNode; locale: Locale; busy: boolean; error: string; recentProjects: RecentProject[]; draft: ProjectDraft | null; onImport: (files: File[], directDrop?: boolean) => void; onLibrarySelection: (library: SourceLibrary, candidate: SourceLibraryCandidate, motion: string) => Promise<void>; onOpenProject: () => void; onOpenRecent: (project: RecentProject) => void; onClearRecent: () => void; onOpenPreview: () => void; onRecoverDraft: () => void; onDiscardDraft: () => void }) {
   const t = (key: MessageKey) => translate(locale, key);
   const [dragActive, setDragActive] = useState(false);
   const [libraryBusy, setLibraryBusy] = useState(false);
@@ -428,9 +429,10 @@ function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onL
         </div>
       </section>
       {currentModel}
-      {library && <section className="model-library-section" aria-label={t("modelLibraryTitle")}>
+      {pendingSource && <section className="model-library-section direct-source-review"><ModelPreview key={pendingSource.sourcePath + pendingSource.inspection.source.fingerprint} candidate={pendingSource.candidate} direct={pendingSource} locale={locale} onUse={onConfirmSource} onClose={onDismissSource} onConfigureRuntime={onConfigureRuntime} /></section>}
+      {!pendingSource && library && <section className="model-library-section" aria-label={t("modelLibraryTitle")}>
         <div className="section-heading-row"><div><p className="eyebrow">{t("modelLibraryTitle")}</p><h2>{library.name}</h2><p>{translate(locale, "modelLibraryCount", { count: library.candidates.length, depth: library.maxDepth })}</p></div><Chip size="sm" variant="soft">{library.kind === "github" ? "GitHub" : t("localFolder")}</Chip></div>
-        {library.candidates.length === 0 ? <div className="empty-state">{t("modelLibraryEmpty")}</div> : <ModelLibrary key={library.libraryId} library={library} locale={locale} onUse={onLibrarySelection} />}
+        {library.candidates.length === 0 ? <div className="empty-state">{t("modelLibraryEmpty")}</div> : <ModelLibrary key={library.libraryId} library={library} locale={locale} selectedModel={selectedLibraryModel} onSelectModel={onSelectLibraryModel} onUse={onLibrarySelection} onConfigureRuntime={onConfigureRuntime} />}
       </section>}
       {draft && <section className="draft-recovery" aria-label={t("draftRecoveryTitle")}>
         <Card className="surface-card"><Card.Content>
@@ -732,7 +734,8 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
     setPreviewRetry(value => value + 1);
   };
   return (
-    <main className="map-workspace">
+    <main className="map-workspace" aria-label={t('map')}>
+      {inspection && <details className="mapping-source-summary"><summary>{projectDocument?.name} · {inspection.model.format === "spine" ? "Spine " + inspection.model.runtimeLine : "Cubism " + inspection.model.cubism}</summary><p>{projectDocument?.source.path}</p><p>{inspection.motions.length} {t("sourceMotions")} · {inspection.expressions.length} {t("sourceExpressions")} · {inspection.model.textures.length} {t("sourceTextures")}</p></details>}
       <Tabs className="workspace-panel library-tabs" selectedKey={visibilityOpen ? 'visibility' : 'motions'} onSelectionChange={key => { if (key !== 'visibility') setSoloId(null); setVisibilityOpen(key === 'visibility'); }}>
         <Tabs.List className={buttonGroupVariants().base({ className: 'target-switch library-switch' })} aria-label={t('modelTools')}>
           <Tabs.Tab id="motions" render={props => <div {...props as ComponentPropsWithRef<'div'>} className={buttonVariants({ size: 'sm', variant: !visibilityOpen ? 'primary' : 'secondary' })} />}>{t('motionsAndExpressions')}</Tabs.Tab>
@@ -865,6 +868,8 @@ export function App() {
   const [buildState, dispatchBuild] = useReducer(buildReducer, undefined, initialBuildState);
   const [appVersion, setAppVersion] = useState("0.1.0");
   const [importBusy, setImportBusy] = useState(false);
+  const [selectedLibraryModel, setSelectedLibraryModel] = useState<SourceLibraryCandidate | null>(null);
+  const [pendingSource, setPendingSource] = useState<SourceLibrarySelection | null>(null);
   const [modelLibrary, setModelLibrary] = useState<SourceLibrary | null>(null);
   const [importError, setImportError] = useState("");
   const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings | null>(null);
@@ -893,8 +898,7 @@ export function App() {
   useEffect(() => {
     if (!state.project?.dirty || !state.project.document) return;
     const timer = window.setTimeout(() => {
-      const draft = writeProjectDraft(state.project!.document!);
-      if (draft) setProjectDraft(draft);
+      writeProjectDraft(state.project!.document!);
     }, PROJECT_DRAFT_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
   }, [state.project?.dirty, state.project?.document]);
@@ -953,8 +957,7 @@ export function App() {
     if (!state.project?.dirty) return true;
     if (!window.confirm(t("confirmReplaceDirtyProject"))) return false;
     if (state.project.document) {
-      const draft = writeProjectDraft(state.project.document);
-      if (draft) setProjectDraft(draft);
+      writeProjectDraft(state.project.document);
     }
     return true;
   }
@@ -970,6 +973,7 @@ export function App() {
     dispatchBuild({ type: 'RESET' });
     setActionFeedback('');
     setImportError('');
+    setPendingSource(null);
     dispatch({ type: 'CLOSE_PROJECT' });
   }
 
@@ -1010,6 +1014,8 @@ export function App() {
       if (relinked && result.project.source.path) {
         dispatch({ type: "SOURCE_RELINKED", document: relinked.project, inspection: relinked.inspection, sourcePath: result.project.source.path });
       }
+      if (relinked && !relinked.reviewRequired) dispatch({ type: "NAVIGATE", destination: "map" });
+      setProjectDraft(null);
       if (relinkError) setActionFeedback(relinkError);
     } catch (cause) {
       setActionFeedback(cause instanceof Error ? cause.message : t("error"));
@@ -1077,62 +1083,58 @@ export function App() {
     }
   }
   async function importSourceFiles(files: File[], directDrop = false) {
-    if (!confirmProjectReplacement()) return;
     setImportBusy(true);
     setImportError("");
     try {
       if (!isSingleSourceSelection(files, directDrop)) throw new Error(t("dropOne"));
-      const inputPath = sourcePathFromSelection(files, getDesktopFilePath, directDrop);
-      if (!inputPath) throw new Error(t("sourcePathUnavailable"));
-      const sourceName = files[0]?.webkitRelativePath?.split('/')[0] || files[0]?.name.replace(/\.pck$/i, '') || 'Live2Pet';
-      const projectId = projectIdFromSourceName(sourceName);
-      const inspection = await inspectSource(inputPath, projectId);
-      const document: Live2PetProject = {
-        schemaVersion: 2,
-        visualSettings: { hiddenElementIds: [] },
-        projectId,
-        appVersion,
-        name: inspection.source.name,
-        source: {
-          kind: inspection.source.kind,
-          name: inspection.source.name,
-          fingerprint: inspection.source.fingerprint,
-          path: inputPath,
-          modelConfig: inspection.source.modelConfig,
-        },
-        recipes: [],
-        targets: {
-          clawd: { profile: "clawd", mappings: {}, reactions: {}, options: {} },
-          "codex-pet": { profile: "codex-pet", mappings: {}, reactions: {}, options: {} },
-        },
-      };
-      dispatch({
-        type: "OPEN_PROJECT",
-        project: {
-          id: projectId,
-          name: inspection.source.name,
-          document,
-          dirty: true,
-          sourcePath: inputPath,
-          inspection,
-          selectedMotionId: inspection.motions[0]?.id ?? null,
-          selectedExpressionId: null,
-        },
-      });
-    } catch (cause) {
-      setImportError(cause instanceof Error ? cause.message : t("error"));
-    } finally {
-      setImportBusy(false);
-    }
+      const sourcePath = sourcePathFromSelection(files, getDesktopFilePath, directDrop);
+      if (!sourcePath) throw new Error(t("sourcePathUnavailable"));
+      const inspection = await inspectSource(sourcePath, 'library-preview');
+      setPendingSource({ sourcePath, inspection, candidate: {
+        id: inspection.source.fingerprint, name: inspection.source.name,
+        relativePath: inspection.source.modelConfig, format: inspection.model.format === 'spine' ? 'spine' : 'live2d',
+        version: null, runtimeLine: inspection.model.runtimeLine ?? null, binary: false,
+      } });
+    } catch (cause) { setImportError(cause instanceof Error ? cause.message : t("error")); }
+    finally { setImportBusy(false); }
   }
 
-  async function openLibrarySource(library: SourceLibrary, candidate: SourceLibraryCandidate) {
+  async function refreshRendererSettings() {
+    const [runtimes, spine] = await Promise.all([getRuntimeSettings(), getSpinePackStatus()]);
+    setRuntimeSettings(runtimes);
+    setSpinePack(spine);
+  }
+
+  async function confirmPendingSource(motion: string) {
+    if (!pendingSource || !confirmProjectReplacement()) return;
+    const { sourcePath, inspection } = pendingSource;
+    const projectId = projectIdFromSourceName(inspection.source.name);
+    const checked = await inspectSource(sourcePath, projectId);
+    await refreshRendererSettings();
+    const document: Live2PetProject = {
+      schemaVersion: 2, projectId, appVersion, name: checked.source.name,
+      source: { ...checked.source, path: sourcePath }, recipes: [],
+      visualSettings: { hiddenElementIds: [] },
+      targets: {
+        clawd: { profile: "clawd", mappings: {}, reactions: {}, options: {} },
+        "codex-pet": { profile: "codex-pet", mappings: {}, reactions: {}, options: {} },
+      },
+    };
+    dispatchBuild({ type: 'RESET' });
+    dispatch({ type: "OPEN_PROJECT", project: { id: projectId, name: document.name, sourcePath, document, dirty: true, inspection: checked, selectedMotionId: motion || checked.motions[0]?.id || null } });
+    dispatch({ type: "NAVIGATE", destination: "map" });
+    setPendingSource(null);
+    setProjectDraft(null);
+  }
+
+  async function openLibrarySource(library: SourceLibrary, candidate: SourceLibraryCandidate, motion: string) {
     if (!confirmProjectReplacement()) return;
     setImportBusy(true);
     setImportError("");
     try {
       const projectId = projectIdFromSourceName(candidate.name);
       const { inspection, sourcePath } = await inspectLibrarySource(library.libraryId, candidate.id, projectId);
+      await refreshRendererSettings();
       const document: Live2PetProject = {
         schemaVersion: 2,
         visualSettings: { hiddenElementIds: [] },
@@ -1146,7 +1148,10 @@ export function App() {
           "codex-pet": { profile: "codex-pet", mappings: {}, reactions: {}, options: {} },
         },
       };
-      dispatch({ type: "OPEN_PROJECT", project: { id: projectId, name: inspection.source.name, sourcePath, document, dirty: true, inspection, selectedMotionId: inspection.motions[0]?.id ?? null, selectedExpressionId: null } });
+      dispatch({ type: "OPEN_PROJECT", project: { id: projectId, name: inspection.source.name, sourcePath, document, dirty: true, inspection, selectedMotionId: motion || inspection.motions[0]?.id || null, selectedExpressionId: null } });
+      dispatchBuild({ type: "RESET" });
+      dispatch({ type: "NAVIGATE", destination: "map" });
+      setProjectDraft(null);
     } catch (cause) {
       setImportError(cause instanceof Error ? cause.message : t("error"));
     } finally {
@@ -1188,6 +1193,7 @@ export function App() {
     try {
       const document = await acknowledgeSourceReview(project);
       dispatch({ type: "SOURCE_REVIEW_ACKNOWLEDGED", document });
+      dispatch({ type: "NAVIGATE", destination: "map" });
     } catch (cause) {
       setActionFeedback(cause instanceof Error ? cause.message : t("error"));
     } finally {
@@ -1225,7 +1231,9 @@ export function App() {
       });
       if (relinked && projectDraft.project.source.path) {
         dispatch({ type: "SOURCE_RELINKED", document: relinked.project, inspection: relinked.inspection, sourcePath: projectDraft.project.source.path });
+        if (!relinked.reviewRequired) dispatch({ type: "NAVIGATE", destination: "map" });
       }
+      setProjectDraft(null);
     } catch (cause) {
       setActionFeedback(cause instanceof Error ? cause.message : t("error"));
     } finally {
@@ -1294,7 +1302,7 @@ export function App() {
       </header>
       <div className="app-content">
         {actionFeedback && <div className="action-feedback" role="alert">{actionFeedback}</div>}
-        {(state.destination === "welcome" || state.destination === "source") && <WelcomeView library={modelLibrary} setLibrary={setModelLibrary} locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} draft={projectDraft} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onLibrarySelection={openLibrarySource} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onClearRecent={() => void clearRecentProjectHistory()} onOpenPreview={openPreview} onRecoverDraft={() => void recoverProjectDraft()} onDiscardDraft={discardProjectDraft} currentModel={state.project ? <details className="model-current-details" open={!modelLibrary || sourceReviewRequired}><summary>{state.project.document?.name ?? t("source")}</summary><SourceView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} inspectionRequired={Boolean(state.project?.document)} runtimeReady={runtimeReady} busy={importBusy} onConfigureRuntime={configureRequiredRuntime} onRelink={relinkCurrentSource} onAcknowledgeReview={acknowledgeCurrentSourceReview} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} /></details> : null} />}
+        {(state.destination === "welcome" || state.destination === "source") && <WelcomeView selectedLibraryModel={selectedLibraryModel} onSelectLibraryModel={setSelectedLibraryModel} pendingSource={pendingSource} onConfirmSource={confirmPendingSource} onDismissSource={() => setPendingSource(null)} onConfigureRuntime={() => dispatch({ type: "OPEN_SETTINGS", section: "runtimes" })} library={modelLibrary} setLibrary={library => { setModelLibrary(library); setSelectedLibraryModel(null); setPendingSource(null); }} locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} draft={state.project ? null : projectDraft} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onLibrarySelection={openLibrarySource} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onClearRecent={() => void clearRecentProjectHistory()} onOpenPreview={openPreview} onRecoverDraft={() => void recoverProjectDraft()} onDiscardDraft={discardProjectDraft} currentModel={state.project && (!state.project.inspection || sourceReviewRequired) ? <div className="model-current-details"><SourceView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} inspectionRequired={Boolean(state.project?.document)} runtimeReady={runtimeReady} busy={importBusy} onConfigureRuntime={configureRequiredRuntime} onRelink={relinkCurrentSource} onAcknowledgeReview={acknowledgeCurrentSourceReview} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} /></div> : null} />}
         {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={configureRequiredRuntime} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => dispatch({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => dispatch({ type: "CLEAR_ASSIGNMENT", destination })} onVisualSettings={(settings) => dispatch({ type: "SET_VISUAL_SETTINGS", settings })} />}
         {state.destination === "build" && <BuildView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} runtimeReady={runtimeReady} state={buildState} onName={(name) => dispatch({ type: "RENAME_PROJECT", name })} onPreset={(target, preset) => dispatch({ type: "SET_RENDER_PRESET", target, preset })} onCustomRender={(settings) => dispatch({ type: 'SET_CLAWD_RENDER', settings })} onBuild={buildProjectTarget} onCancel={(target) => void cancelProjectBuild(target)} />}
       </div>
