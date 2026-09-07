@@ -6,7 +6,7 @@
 <p align="center">
   <a href="https://github.com/receyuki/live2pet/releases"><img src="https://img.shields.io/badge/release-coming%20soon-9087ff?style=flat-square" alt="Release: coming soon"></a>
   <a href="https://github.com/receyuki/live2pet/stargazers"><img src="https://img.shields.io/github/stars/receyuki/live2pet?style=flat-square&color=9087ff" alt="GitHub stars"></a>
-  <img src="https://img.shields.io/badge/platform-macOS-111118?style=flat-square&logo=apple&logoColor=white" alt="Platform: macOS">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-111118?style=flat-square&logo=electron&logoColor=white" alt="Platforms: macOS and Windows">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/receyuki/live2pet?style=flat-square&color=9087ff" alt="License: Apache-2.0"></a>
 </p>
 <p align="center">
@@ -57,9 +57,22 @@ Pointer tracking is preview-only; exported Live2D frames use a stable neutral fo
 
 ## Get started
 
-**macOS preview · source build available · public installers coming later.**
+**Unsigned preview builds for macOS and Windows.**
 
-You currently need Git, Node.js 22.12+, and pnpm 11. Build the unsigned App:
+Open the latest successful [Desktop CI and preview release](https://github.com/receyuki/live2pet/actions/workflows/desktop-release.yml), download its artifact, and unzip it:
+
+- `Live2Pet-macOS-universal.zip` supports Intel and Apple Silicon Macs.
+- `Live2Pet-Windows-x64.zip` supports 64-bit Windows.
+
+These preview builds are not code-signed. On macOS, if Finder says Live2Pet is damaged or cannot be opened, first make sure the ZIP came from this repository, move `Live2Pet.app` to Applications, then run:
+
+```sh
+xattr -r -d com.apple.quarantine /Applications/Live2Pet.app
+```
+
+On Windows, Microsoft Defender SmartScreen may show an unrecognized-app warning. Verify that the ZIP came from this repository, then use **More info → Run anyway** if you want to continue. Signing and notarization are planned for a later release.
+
+To build the unsigned App from source instead, install Git, Node.js 22.12+, and pnpm 11:
 
 ```sh
 git clone https://github.com/receyuki/live2pet.git
@@ -87,7 +100,7 @@ On first launch, add your runtime and choose a model. [Setup help and troublesho
 
 Save your work as a **.live2pet** project to continue editing later.
 
-Spine support is in preview; Windows is planned. PCK support depends on its contents and packaging. [Detailed support and limitations →](docs/guides/user-guide.md#compatibility)
+Spine and Windows support are in preview. PCK support depends on its contents and packaging. [Detailed support and limitations →](docs/guides/user-guide.md#compatibility)
 
 <a id="runtime-setup"></a>
 

@@ -146,8 +146,7 @@ function walkFiles(root, prefix = '') {
   return files;
 }
 
-function verifyBundleLayout(appPath) {
-  const resources = path.join(appPath, 'Contents', 'Resources');
+function verifyResourcesLayout(resources, { sharpPattern = /sharp-darwin-(?:x64|arm64)\.node$/i, requiredSharpPatterns = [] } = {}) {
   const required = [
     path.join(resources, 'app.asar'),
     path.join(resources, 'mapper-dist', 'index.html'),
@@ -162,15 +161,20 @@ function verifyBundleLayout(appPath) {
   if (forbidden.length) fail('FORBIDDEN_PACKAGE_ASSET', 'The packaged App contains a user-provided or generated asset.', { forbidden });
   const nativeRoot = path.join(resources, 'app.asar.unpacked', 'node_modules');
   const nativeEntries = fs.existsSync(nativeRoot) ? walkFiles(nativeRoot) : [];
-  if (!nativeEntries.some((entry) => /sharp-darwin-(?:x64|arm64)\.node$/i.test(entry))) {
+  if (!nativeEntries.some((entry) => sharpPattern.test(entry))) {
     fail('SHARP_NATIVE_BINARY_MISSING', 'The packaged App does not contain an unpacked Sharp native module.');
   }
+  const missingSharp = requiredSharpPatterns.filter((pattern) => !nativeEntries.some((entry) => pattern.test(entry)));
+  if (missingSharp.length) fail('SHARP_NATIVE_BINARY_MISSING', 'The packaged App does not contain every required Sharp architecture.', { missingArchitectures: missingSharp.length });
   return {
-    appPath,
     resources: ['mapper-dist', 'renderer-dist'],
     nativeSharp: true,
     forbiddenAssetCount: 0,
   };
+}
+
+function verifyBundleLayout(appPath, options = {}) {
+  return { appPath, ...verifyResourcesLayout(path.join(appPath, 'Contents', 'Resources'), options) };
 }
 
 async function packageMacApp() {
@@ -212,11 +216,16 @@ module.exports = {
   APP_NAME,
   ELECTRON_VERSION,
   FORBIDDEN_BUNDLE_ENTRY,
+  copyResources,
   createPackagerOptions,
   currentMacArch,
+  deployProductionStage,
+  desktopRoot,
   findElectronZipDir,
+  outputRoot,
   packageMacApp,
   pnpmInvocation,
   verifyBundleLayout,
+  verifyResourcesLayout,
   verifyProductionStage,
 };

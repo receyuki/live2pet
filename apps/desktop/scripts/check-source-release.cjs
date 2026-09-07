@@ -18,6 +18,7 @@ const forbiddenRuntime = /(?:^|\/)(?:live2dcubismcore|minified-live2d(?:core)?|l
 const maximumTextBytes = 2 * 1024 * 1024;
 const allowedBinaryReleaseFiles = new Set([
   'apps/desktop/assets/icon.icns',
+  'apps/desktop/assets/icon.ico',
   'apps/desktop/assets/icon.png',
   'docs/assets/app-preview.png',
   'docs/assets/live2pet-desktop-pet-preview.gif',

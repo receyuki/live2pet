@@ -6,7 +6,7 @@
 <p align="center">
   <a href="https://github.com/receyuki/live2pet/releases"><img src="https://img.shields.io/badge/release-coming%20soon-9087ff?style=flat-square" alt="Release: coming soon"></a>
   <a href="https://github.com/receyuki/live2pet/stargazers"><img src="https://img.shields.io/github/stars/receyuki/live2pet?style=flat-square&color=9087ff" alt="GitHub stars"></a>
-  <img src="https://img.shields.io/badge/platform-macOS-111118?style=flat-square&logo=apple&logoColor=white" alt="Platform: macOS">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-111118?style=flat-square&logo=electron&logoColor=white" alt="平台：macOS 和 Windows">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/receyuki/live2pet?style=flat-square&color=9087ff" alt="License: Apache-2.0"></a>
 </p>
 <p align="center">
@@ -57,9 +57,22 @@
 
 ## 开始使用
 
-**macOS 预览阶段 · 可从源码构建 · 公开安装包稍后提供。**
+**提供 macOS 与 Windows 未签名预览包。**
 
-目前需要 Git、Node.js 22.12+ 和 pnpm 11。构建未签名 App：
+打开最近一次成功的 [Desktop CI and preview release](https://github.com/receyuki/live2pet/actions/workflows/desktop-release.yml)，下载对应的 Artifact 并解压：
+
+- `Live2Pet-macOS-universal.zip` 同时支持 Intel 和 Apple Silicon Mac。
+- `Live2Pet-Windows-x64.zip` 支持 64 位 Windows。
+
+这些预览包尚未进行代码签名。如果 macOS 提示 Live2Pet“已损坏”或“无法打开”，请先确认 ZIP 来自本仓库，将 `Live2Pet.app` 移到“应用程序”文件夹，再运行：
+
+```sh
+xattr -r -d com.apple.quarantine /Applications/Live2Pet.app
+```
+
+Windows 上可能出现 Microsoft Defender SmartScreen 的“无法识别的应用”提示。确认 ZIP 来自本仓库后，可选择**更多信息 → 仍要运行**。代码签名与 macOS 公证将在后续版本处理。
+
+如需从源码构建未签名 App，请先安装 Git、Node.js 22.12+ 和 pnpm 11：
 
 ```sh
 git clone https://github.com/receyuki/live2pet.git
@@ -87,7 +100,7 @@ open apps/desktop/out/Live2Pet-darwin-*/Live2Pet.app
 
 也可以保存为 **.live2pet** 项目，方便以后继续编辑。
 
-Spine 仍在预览阶段，Windows 支持已列入后续计划。PCK 是否可用取决于其内容和封装方式。[详细兼容性与限制 →](docs/guides/user-guide.zh-CN.md#compatibility)
+Spine 与 Windows 支持仍在预览阶段。PCK 是否可用取决于其内容和封装方式。[详细兼容性与限制 →](docs/guides/user-guide.zh-CN.md#compatibility)
 
 <a id="runtime-setup"></a>
 

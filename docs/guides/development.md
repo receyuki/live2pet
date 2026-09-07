@@ -20,7 +20,7 @@ pnpm typecheck
 pnpm release:check
 ```
 
-## Build a macOS App
+## Build desktop Apps
 
 ```sh
 pnpm --filter @live2pet/desktop package:mac
@@ -28,6 +28,14 @@ pnpm --filter @live2pet/desktop smoke:mac
 ```
 
 The bundle is unsigned. Public distribution, signing, and notarization are separate release work.
+
+Windows x64 must be packaged on Windows:
+
+```sh
+pnpm --filter @live2pet/desktop package:win
+```
+
+The `Desktop CI and preview release` GitHub Actions workflow runs verification on pushes and pull requests. A manual run builds a Windows x64 ZIP plus native Intel and Apple Silicon macOS slices, verifies each slice, and merges them into one Universal App ZIP. A `v*` tag publishes those ZIPs as a GitHub prerelease. It does not create signed installers.
 
 ## Repository map
 

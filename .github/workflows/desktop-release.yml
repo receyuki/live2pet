@@ -1,0 +1,158 @@
+name: Desktop CI and preview release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+permissions:
+  contents: read
+
+env:
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+
+jobs:
+  verify:
+    name: Verify source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@11.19.0 --activate
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Test, typecheck, and inspect release contents
+        run: pnpm test && pnpm typecheck && pnpm release:check
+
+  mac-slices:
+    name: macOS ${{ matrix.arch }} slice
+    if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: macos-15-intel
+          - arch: arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@11.19.0 --activate
+      - name: Confirm runner architecture
+        run: test "$(node -p process.arch)" = "${{ matrix.arch }}"
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Package native App slice
+        run: pnpm --filter @live2pet/desktop package:mac
+      - name: Verify package layout and startup
+        run: pnpm --filter @live2pet/desktop smoke:mac
+      - name: Preserve App bundle metadata
+        run: tar -czf "Live2Pet-macOS-${{ matrix.arch }}.tar.gz" -C apps/desktop/out "Live2Pet-darwin-${{ matrix.arch }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}-slice
+          path: Live2Pet-macOS-${{ matrix.arch }}.tar.gz
+          compression-level: 0
+          retention-days: 2
+
+  mac-universal:
+    name: macOS Universal preview
+    if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
+    needs: mac-slices
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@11.19.0 --activate
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: macos-*-slice
+          path: slices
+      - name: Restore native App slices
+        run: |
+          mkdir -p apps/desktop/out
+          tar -xzf slices/macos-x64-slice/Live2Pet-macOS-x64.tar.gz -C apps/desktop/out
+          tar -xzf slices/macos-arm64-slice/Live2Pet-macOS-arm64.tar.gz -C apps/desktop/out
+      - name: Merge and verify Universal App
+        run: |
+          pnpm --filter @live2pet/desktop package:mac:universal
+          architectures="$(lipo -archs apps/desktop/out/Live2Pet-darwin-universal/Live2Pet.app/Contents/MacOS/Live2Pet)"
+          case "$architectures" in *x86_64*arm64*|*arm64*x86_64*) ;; *) echo "Unexpected architectures: $architectures"; exit 1;; esac
+      - name: Create downloadable ZIP
+        run: ditto -c -k --sequesterRsrc --keepParent apps/desktop/out/Live2Pet-darwin-universal/Live2Pet.app Live2Pet-macOS-universal.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: live2pet-macos-universal
+          path: Live2Pet-macOS-universal.zip
+          compression-level: 0
+          retention-days: 14
+
+  windows:
+    name: Windows x64 preview
+    if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
+    needs: verify
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Enable pnpm
+        shell: bash
+        run: corepack enable && corepack prepare pnpm@11.19.0 --activate
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Package Windows App
+        run: pnpm --filter @live2pet/desktop package:win
+      - name: Create downloadable ZIP
+        shell: pwsh
+        run: Compress-Archive -Path apps/desktop/out/Live2Pet-win32-x64 -DestinationPath Live2Pet-Windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: live2pet-windows-x64
+          path: Live2Pet-Windows-x64.zip
+          compression-level: 0
+          retention-days: 14
+
+  prerelease:
+    name: Publish tagged preview
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    needs: [mac-universal, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: live2pet-*
+          path: release-assets
+          merge-multiple: true
+      - name: Create or update GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag --generate-notes --prerelease --title "Live2Pet $GITHUB_REF_NAME preview"
+          fi

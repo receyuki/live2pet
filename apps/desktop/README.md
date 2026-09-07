@@ -113,7 +113,7 @@ Before a package build, stage the browser dependencies into a self-contained Map
 pnpm --filter @live2pet/desktop prepare:mapper
 ```
 
-## Build the local unsigned macOS App
+## Build unsigned desktop previews
 
 The personal-use V1 can be assembled for the current Mac architecture with
 Node.js 22.12 or newer:
@@ -136,10 +136,19 @@ tools, and briefly opens the Mapper window until it reports ready. Both commands
 reject unsupported architectures and scan for models, Cubism runtimes,
 copyrighted examples, and generated character packages.
 
-This output is deliberately unsigned and is not a public distributable. It has
-no maker, signing, notarization, update, or publication step. macOS may require
-the local user to approve launching it. Public binaries remain blocked by the
-separate installer release gate.
+Windows x64 builds must run on Windows:
+
+```text
+pnpm --filter @live2pet/desktop run package:win
+```
+
+GitHub Actions can build both native macOS slices, smoke-test them, merge them
+into a Universal App, and build the Windows x64 folder. Manual workflow runs
+retain both downloadable ZIPs as preview artifacts; a `v*` tag publishes them
+as a prerelease. These are deliberately unsigned App archives, not signed
+installers: there is no maker, Developer ID, notarization, or update channel.
+See the repository README for platform security prompts and the release
+checklist for the remaining public-installer gates.
 
 To compare the bounded stacked transport with the former per-frame transport
 using a copyright-safe synthetic RGBA workload, run:
