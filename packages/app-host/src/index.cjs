@@ -55,6 +55,12 @@ const APP_IPC_METHODS = Object.freeze([
   'getRecentProjects',
   'openProject',
   'saveProject',
+  'openSourceLibrary',
+  'openGitHubLibrary',
+  'inspectLibrarySource',
+  'getSourceLibraryCacheStatus',
+  'configureSourceLibraryCache',
+  'clearSourceLibraryCache',
   'inspectSource',
   'relinkSource',
   'acknowledgeSourceReview',
@@ -198,6 +204,49 @@ function summarizeSourceInspection(result) {
   return sanitized;
 }
 
+function normalizeGitHubLibraryRequest(value) {
+  if (!isRecord(value) || Object.keys(value).some((key) => key !== 'url') || typeof value.url !== 'string' || !value.url.trim() || value.url.length > 2048) fail('INVALID_SOURCE_LIBRARY_REQUEST', 'A valid public GitHub repository or folder URL is required.');
+  return { url: value.url.trim() };
+}
+
+function normalizeLibrarySourceRequest(value) {
+  if (!isRecord(value)) fail('INVALID_SOURCE_LIBRARY_REQUEST', 'Model library selection must be an object.');
+  const allowed = new Set(['libraryId', 'sourceId', 'projectId']);
+  if (Object.keys(value).some((key) => !allowed.has(key))) fail('INVALID_SOURCE_LIBRARY_REQUEST', 'Model library selection contains unsupported fields.');
+  for (const key of ['libraryId', 'sourceId']) if (typeof value[key] !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(value[key])) fail('INVALID_SOURCE_LIBRARY_REQUEST', `${key} must be an opaque model library identifier.`);
+  if (value.projectId !== undefined && (typeof value.projectId !== 'string' || !/^[a-z0-9][a-z0-9._-]{0,95}$/i.test(value.projectId))) fail('INVALID_SOURCE_LIBRARY_REQUEST', 'projectId must be filename-safe when provided.');
+  return { libraryId: value.libraryId, sourceId: value.sourceId, ...(value.projectId === undefined ? {} : { projectId: value.projectId }) };
+}
+
+function summarizeSourceLibraryOperation(result) {
+  if (!isRecord(result) || typeof result.cancelled !== 'boolean') fail('INVALID_SOURCE_LIBRARY_RESULT', 'Model library operation returned an invalid result.');
+  if (result.cancelled) return { cancelled: true };
+  const library = sanitizeInspectionValue(result.library);
+  if (!isRecord(library) || library.schemaVersion !== 1 || typeof library.libraryId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(library.libraryId) || typeof library.name !== 'string' || !['local', 'github'].includes(library.kind) || !Number.isInteger(library.maxDepth) || !Array.isArray(library.candidates) || library.candidates.length > 512) fail('INVALID_SOURCE_LIBRARY_RESULT', 'Model library did not return the supported catalog contract.');
+  for (const candidate of library.candidates) {
+    if (!isRecord(candidate) || typeof candidate.id !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(candidate.id) || typeof candidate.name !== 'string' || typeof candidate.relativePath !== 'string' || !['live2d', 'live2d-pck', 'spine'].includes(candidate.format)) fail('INVALID_SOURCE_LIBRARY_RESULT', 'Model library contains an invalid project entry.');
+  }
+  return { cancelled: false, library };
+}
+
+function summarizeLibrarySource(result) {
+  if (!isRecord(result) || !isRecord(result.candidate)) fail('INVALID_SOURCE_LIBRARY_RESULT', 'Selected model did not return a candidate and inspection.');
+  const candidate = sanitizeInspectionValue(result.candidate);
+  if (typeof candidate.id !== 'string' || typeof candidate.name !== 'string' || typeof candidate.relativePath !== 'string' || !['live2d', 'live2d-pck', 'spine'].includes(candidate.format)) fail('INVALID_SOURCE_LIBRARY_RESULT', 'Selected model candidate is invalid.');
+  return { candidate, inspection: summarizeSourceInspection(result.inspection) };
+}
+
+function summarizeSourceLibraryCache(result, clearing = false) {
+  if (!isRecord(result) || result.schemaVersion !== 1 || !Number.isSafeInteger(result.maxBytes) || result.maxBytes < 256 * 1024 * 1024 || !Number.isSafeInteger(result.byteLength) || result.byteLength < 0 || !Number.isSafeInteger(result.entryCount) || result.entryCount < 0) fail('INVALID_SOURCE_LIBRARY_CACHE_RESULT', 'GitHub model cache returned invalid totals.');
+  return {
+    schemaVersion: 1,
+    maxBytes: result.maxBytes,
+    byteLength: result.byteLength,
+    entryCount: result.entryCount,
+    ...(clearing ? { removedEntries: Number(result.removedEntries) || 0, removedBytes: Number(result.removedBytes) || 0 } : {}),
+  };
+}
+
 function normalizeRuntimeRequest(value) {
   if (!isRecord(value)) fail('INVALID_RUNTIME_REQUEST', 'App runtime configuration input must be an object.');
   const allowed = new Set(['inputPath']);
@@ -208,17 +257,24 @@ function normalizeRuntimeRequest(value) {
 }
 
 function normalizeSpinePackInstallRequest(value) {
-  if (!isRecord(value) || Object.keys(value).some((key) => key !== 'confirmInstall') || value.confirmInstall !== true) {
+  if (!isRecord(value) || Object.keys(value).some((key) => !['confirmInstall', 'runtimeLine'].includes(key)) || value.confirmInstall !== true) {
     fail('SPINE_PACK_CONSENT_REQUIRED', 'Installing the optional Spine renderer pack requires explicit confirmation.');
   }
-  return { confirmInstall: true };
+  if (typeof value.runtimeLine !== 'string' || !/^\d+\.\d+$/.test(value.runtimeLine)) fail('INVALID_SPINE_PACK_REQUEST', 'Installing Spine support requires a major.minor runtimeLine.');
+  return { confirmInstall: true, runtimeLine: value.runtimeLine };
 }
 
 function summarizeSpinePackStatus(result) {
-  if (!isRecord(result) || result.schemaVersion !== 1 || result.id !== 'spine-player-4.3' || result.runtimeLine !== '4.3' || typeof result.version !== 'string' || typeof result.installed !== 'boolean') {
+  if (!isRecord(result) || result.schemaVersion !== 2 || !Array.isArray(result.packs) || !result.packs.length || result.packs.length > 16) {
     fail('INVALID_SPINE_PACK_RESULT', 'Spine renderer-pack status did not match the supported contract.');
   }
-  return { schemaVersion: 1, id: result.id, runtimeLine: result.runtimeLine, version: result.version, installed: result.installed };
+  const lines = new Set();
+  const packs = result.packs.map((pack) => {
+    if (!isRecord(pack) || pack.schemaVersion !== 2 || typeof pack.id !== 'string' || typeof pack.runtimeLine !== 'string' || !/^\d+\.\d+$/.test(pack.runtimeLine) || lines.has(pack.runtimeLine) || typeof pack.version !== 'string' || typeof pack.downloadable !== 'boolean' || typeof pack.installed !== 'boolean') fail('INVALID_SPINE_PACK_RESULT', 'Spine renderer-pack catalog contains an invalid entry.');
+    lines.add(pack.runtimeLine);
+    return { schemaVersion: 2, id: pack.id, runtimeLine: pack.runtimeLine, version: pack.version, downloadable: pack.downloadable, installed: pack.installed };
+  });
+  return { schemaVersion: 2, packs };
 }
 
 function normalizeCaptureCacheRecipe(value, index) {
@@ -590,10 +646,11 @@ function typedError(error) {
   };
 }
 
-function createAppIpcRouter({ projectWorkspaceService = null, projectSourceService = null, sourceInspectionService = null, runtimeSettingsService = null, spinePackService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, targetInstallationService = null, packageOutputService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
+function createAppIpcRouter({ projectWorkspaceService = null, projectSourceService = null, sourceInspectionService = null, sourceLibraryService = null, runtimeSettingsService = null, spinePackService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, targetInstallationService = null, packageOutputService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
   if (projectWorkspaceService !== null && (!isRecord(projectWorkspaceService) || typeof projectWorkspaceService.getRecentProjects !== 'function' || typeof projectWorkspaceService.openProject !== 'function' || typeof projectWorkspaceService.saveProject !== 'function')) fail('INVALID_APP_ROUTER', 'projectWorkspaceService must expose getRecentProjects, openProject, and saveProject functions when provided.');
   if (projectSourceService !== null && (!isRecord(projectSourceService) || typeof projectSourceService.relink !== 'function' || typeof projectSourceService.acknowledgeReview !== 'function')) fail('INVALID_APP_ROUTER', 'projectSourceService must expose relink and acknowledgeReview functions when provided.');
   if (sourceInspectionService !== null && typeof sourceInspectionService !== 'function') fail('INVALID_APP_ROUTER', 'sourceInspectionService must be a function when provided.');
+  if (sourceLibraryService !== null && (!isRecord(sourceLibraryService) || !['openLocal', 'openGitHub', 'inspect', 'getCacheStatus', 'configureCache', 'clearCache'].every((method) => typeof sourceLibraryService[method] === 'function'))) fail('INVALID_APP_ROUTER', 'sourceLibraryService must expose model library and cache functions when provided.');
   if (runtimeSettingsService !== null && (!isRecord(runtimeSettingsService) || typeof runtimeSettingsService.get !== 'function' || typeof runtimeSettingsService.configure !== 'function' || typeof runtimeSettingsService.clear !== 'function')) fail('INVALID_APP_ROUTER', 'runtimeSettingsService must expose get, configure, and clear functions when provided.');
   if (spinePackService !== null && (!isRecord(spinePackService) || typeof spinePackService.get !== 'function' || typeof spinePackService.install !== 'function' || typeof spinePackService.remove !== 'function')) fail('INVALID_APP_ROUTER', 'spinePackService must expose get, install, and remove functions when provided.');
   if (captureCacheService !== null && (!isRecord(captureCacheService) || typeof captureCacheService.status !== 'function')) fail('INVALID_APP_ROUTER', 'captureCacheService must expose a status function when provided.');
@@ -632,6 +689,36 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
       if (normalized.method === 'saveProject') {
         if (!projectWorkspaceService) fail('APP_PROJECT_WORKSPACE_UNAVAILABLE', 'The project workspace service is not configured.');
         return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeProjectOperation(await projectWorkspaceService.saveProject(normalizeSaveProjectRequest(normalized.args[0]))) };
+      }
+      if (normalized.method === 'openSourceLibrary') {
+        if (!sourceLibraryService) fail('APP_SOURCE_LIBRARY_UNAVAILABLE', 'Model library browsing is not configured in this App.');
+        if (normalized.args.length) fail('INVALID_SOURCE_LIBRARY_REQUEST', 'Opening a local model library does not accept arguments.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeSourceLibraryOperation(await sourceLibraryService.openLocal()) };
+      }
+      if (normalized.method === 'openGitHubLibrary') {
+        if (!sourceLibraryService) fail('APP_SOURCE_LIBRARY_UNAVAILABLE', 'GitHub model library browsing is not configured in this App.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeSourceLibraryOperation(await sourceLibraryService.openGitHub(normalizeGitHubLibraryRequest(normalized.args[0]))) };
+      }
+      if (normalized.method === 'inspectLibrarySource') {
+        if (!sourceLibraryService) fail('APP_SOURCE_LIBRARY_UNAVAILABLE', 'Model library browsing is not configured in this App.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeLibrarySource(await sourceLibraryService.inspect(normalizeLibrarySourceRequest(normalized.args[0]))) };
+      }
+      if (normalized.method === 'getSourceLibraryCacheStatus') {
+        if (!sourceLibraryService) fail('APP_SOURCE_LIBRARY_UNAVAILABLE', 'GitHub model caching is not configured in this App.');
+        if (normalized.args.length) fail('INVALID_SOURCE_LIBRARY_REQUEST', 'GitHub model cache status does not accept arguments.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeSourceLibraryCache(await sourceLibraryService.getCacheStatus()) };
+      }
+      if (normalized.method === 'configureSourceLibraryCache') {
+        if (!sourceLibraryService) fail('APP_SOURCE_LIBRARY_UNAVAILABLE', 'GitHub model caching is not configured in this App.');
+        const value = normalized.args[0];
+        if (!isRecord(value) || Object.keys(value).some((key) => key !== 'maxBytes') || !Number.isSafeInteger(value.maxBytes)) fail('INVALID_SOURCE_LIBRARY_REQUEST', 'GitHub model cache configuration requires an integer maxBytes value.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeSourceLibraryCache(await sourceLibraryService.configureCache({ maxBytes: value.maxBytes })) };
+      }
+      if (normalized.method === 'clearSourceLibraryCache') {
+        if (!sourceLibraryService) fail('APP_SOURCE_LIBRARY_UNAVAILABLE', 'GitHub model caching is not configured in this App.');
+        const value = normalized.args[0];
+        if (!isRecord(value) || Object.keys(value).some((key) => key !== 'confirmClear') || value.confirmClear !== true) fail('CACHE_CLEAR_AUTHORIZATION_REQUIRED', 'Clearing downloaded GitHub models requires explicit confirmation.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeSourceLibraryCache(await sourceLibraryService.clearCache({ confirmClear: true }), true) };
       }
       if (normalized.method === 'inspectSource') {
         if (!sourceInspectionService) fail('APP_INSPECTION_UNAVAILABLE', 'The App Source Package inspection service is not configured.');
@@ -683,8 +770,9 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
       }
       if (normalized.method === 'removeSpinePack') {
         if (!spinePackService) fail('APP_SPINE_PACK_UNAVAILABLE', 'Optional Spine support is not configured in this App.');
-        if (normalized.args.length) fail('INVALID_SPINE_PACK_REQUEST', 'Removing Spine support does not accept arguments.');
-        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeSpinePackStatus(await spinePackService.remove()) };
+        const value = normalized.args[0];
+        if (!isRecord(value) || Object.keys(value).some((key) => key !== 'runtimeLine') || typeof value.runtimeLine !== 'string' || !/^\d+\.\d+$/.test(value.runtimeLine)) fail('INVALID_SPINE_PACK_REQUEST', 'Removing Spine support requires a major.minor runtimeLine.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeSpinePackStatus(await spinePackService.remove(value.runtimeLine)) };
       }
       if (normalized.method === 'getCaptureCacheStatus') {
         if (!captureCacheService) fail('APP_CAPTURE_CACHE_UNAVAILABLE', 'The App capture cache service is not configured.');
@@ -910,6 +998,12 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
     getRecentProjects: () => invoke('getRecentProjects'),
     openProject: (input = {}) => invoke('openProject', input),
     saveProject: (input) => invoke('saveProject', input),
+    openSourceLibrary: () => invoke('openSourceLibrary'),
+    openGitHubLibrary: (input) => invoke('openGitHubLibrary', input),
+    inspectLibrarySource: (input) => invoke('inspectLibrarySource', input),
+    getSourceLibraryCacheStatus: () => invoke('getSourceLibraryCacheStatus'),
+    configureSourceLibraryCache: (maxBytes) => invoke('configureSourceLibraryCache', { maxBytes }),
+    clearSourceLibraryCache: () => invoke('clearSourceLibraryCache', { confirmClear: true }),
     onAppCommand,
     inspectSource: (input) => invoke('inspectSource', input),
     relinkSource: (input) => invoke('relinkSource', input),
@@ -918,8 +1012,8 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
     configureRuntime: (input) => invoke('configureRuntime', input),
     clearRuntimeSettings: (input) => input === undefined ? invoke('clearRuntimeSettings') : invoke('clearRuntimeSettings', input),
     getSpinePackStatus: () => invoke('getSpinePackStatus'),
-    installSpinePack: () => invoke('installSpinePack', { confirmInstall: true }),
-    removeSpinePack: () => invoke('removeSpinePack'),
+    installSpinePack: (runtimeLine) => invoke('installSpinePack', { confirmInstall: true, runtimeLine }),
+    removeSpinePack: (runtimeLine) => invoke('removeSpinePack', { runtimeLine }),
     getCaptureCacheStatus: (input) => invoke('getCaptureCacheStatus', input),
     getBuildCacheStatus: () => invoke('getBuildCacheStatus'),
     clearBuildCache: (input) => invoke('clearBuildCache', input),

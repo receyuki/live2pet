@@ -13,7 +13,7 @@ The center column of the Mapper is the only user-visible Source Package preview.
 ## Primary workflow
 
 1. Open the macOS Desktop App and complete or skip the first-run Setup Assistant.
-2. From Welcome, open a `.live2pet` project or select a supported Live2D folder, Live2D PCK file, or Spine folder.
+2. From Welcome, open a `.live2pet` project, browse a local or public GitHub Source Library, or select a supported Live2D PCK file.
 3. Let Live2Pet identify the source format and required renderer. Reuse saved Live2D runtimes automatically; when a Spine source needs its optional renderer pack, explicitly download it from the inline prompt or install it beforehand in Settings.
 4. Review normalized model and resource results in Source.
 5. In Map, browse Motions and any available Expressions, play them in the center-column preview, hide unwanted Visual Elements, and create a Motion-plus-optional-Expression Animation Recipe.
@@ -53,7 +53,8 @@ The center column of the Mapper is the only user-visible Source Package preview.
 
 - Accept a directory containing a valid Cubism 2 `model.json` or Cubism 3+ `.model3.json` and its referenced local resources.
 - Accept the already-tested uncompressed and unencrypted Live2D `PCK\0` layout.
-- Accept a standard Spine directory containing one skeleton `.json` or `.skel`, one matching `.atlas`, and its referenced texture pages for the single supported Spine `major.minor` line.
+- Accept a standard Spine directory containing one skeleton `.json` or `.skel`, one matching `.atlas`, and its referenced texture pages for supported Spine 4.0–4.3 runtime lines.
+- Discover candidate Source Packages up to two levels below a selected local folder or public GitHub tree folder. GitHub discovery must not clone the repository or download model blobs until a candidate is selected.
 - Detect the Spine export version where the source format allows it and report whether the optional matching renderer pack is installed. Binary `.skel` inspection may defer its full Motion and Slot catalog until that pack is available.
 - List discovered Motions and Expressions without guessing their semantic meaning.
 - Report missing or incompatible resources by actionable relative identity.
@@ -64,10 +65,11 @@ The center column of the Mapper is the only user-visible Source Package preview.
 
 - Modern Cubism preview uses the existing Pixi renderer adapter with a user-provided official Cubism Core.
 - Legacy Cubism 2 preview uses its legacy Pixi adapter with a user-provided compatible `live2d.min.js`.
-- Spine preview uses an isolated adapter for one pinned Spine `major.minor` line. It must not share the Live2D adapter's PixiJS realm.
+- Spine preview uses an isolated adapter with a pinned pack matching the source `major.minor` line. It must not share the Live2D adapter's PixiJS realm.
 - In Desktop mode, App-managed local storage is the sole runtime source of truth. The App copies an explicitly selected runtime there, validates it, records its detected compatibility, and automatically reuses it for matching models on later launches; the Mapper does not persist a second runtime copy.
 - A user can add, verify, replace, or clear each saved Live2D runtime from Settings. Runtime changes do not require rebuilding Live2Pet.
-- The Spine renderer pack is optional and is not downloaded during first-run setup. When a Spine source is detected without its matching pack, Source and Map show one inline action to download it; Settings also provides proactive install, verification, and removal.
+- Spine renderer packs are optional and are not downloaded during first-run setup. When a Spine source is detected without its matching pack, Source and Map show one inline action to download it; Settings provides individual install, verification, and removal for supported lines.
+- Selected GitHub models use a bounded App-private LRU cache. Settings shows usage, allows a 256 MiB–20 GiB limit, and provides an explicit clear action. The default is 1 GiB; one model may not exceed 4 GiB or 10,000 files.
 - Every Spine pack download requires an explicit user action, uses a fixed HTTPS URL for an exact version, enforces a maximum size, verifies pinned SHA-256 or equivalent integrity metadata, and installs atomically into App-private storage for automatic reuse. Arbitrary runtime URLs, model-supplied JavaScript, and silent downloads are prohibited.
 - First-run setup may be deferred. Source inspection remains available without a runtime, while preview and build show a direct link to the required runtime Settings entry.
 - The App chooses the renderer family and supported version from source inspection; it must not ask the user to make that technical choice for every model.
@@ -143,7 +145,7 @@ Open a permitted Live2D model with a removable background Part. Hide that Part f
 
 ### Spine path
 
-Import a permitted Spine folder for the single supported runtime line on a profile without the optional renderer pack. Confirm that inspection identifies Spine and offers a non-blocking inline download action. Explicitly download and verify the pack, restart the App, then reopen without another download. Preview and map one Motion, hide one Slot, build and validate one Clawd package and one Codex Pet package, and confirm both use the same visibility. A fixture from another Spine `major.minor` line must produce an actionable mismatch.
+Import permitted Spine folders for supported 4.x runtime lines on a profile without the optional renderer packs. Confirm that inspection identifies each line and offers a non-blocking inline download action. Explicitly download and verify a matching pack, restart the App, then reopen without another download. Preview and map one Motion, hide one Slot, build and validate one Clawd package and one Codex Pet package, and confirm both use the same visibility. An unsupported runtime line must produce an actionable mismatch.
 
 ### Both-target project path
 

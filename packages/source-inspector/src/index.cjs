@@ -8,7 +8,10 @@ const MAX_PCK_ENTRIES = 4096;
 const PCK_RECORD_SIZE = 25;
 const SOURCE_CACHE_SCHEMA_VERSION = 1;
 const SOURCE_CACHE_HEADER_BYTES = 4 * 1024 * 1024;
-const SUPPORTED_SPINE_RUNTIME_LINE = '4.3';
+const SOURCE_LIBRARY_SCHEMA_VERSION = 1;
+const DEFAULT_LIBRARY_SCAN_DEPTH = 2;
+const MAX_LIBRARY_CANDIDATES = 512;
+const IGNORED_LIBRARY_DIRECTORIES = new Set(['.git', '.hg', '.svn', 'node_modules']);
 const SOURCE_CACHE_KEY = Object.freeze({
   runtimeVersion: 'source-inspector',
   rendererVersion: 'none',
@@ -153,6 +156,7 @@ function walkSourceDirectory(root) {
       const relative = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
       if (entry.isSymbolicLink()) fail('UNSUPPORTED_SYMLINK', `Source Package contains a symbolic link: ${relative}`);
       if (entry.isDirectory()) {
+        if (IGNORED_LIBRARY_DIRECTORIES.has(entry.name)) continue;
         visit(absolute, relative);
         continue;
       }
@@ -403,9 +407,19 @@ function readSpineBinaryString(buffer, cursor) {
 }
 
 function spineBinaryVersion(buffer) {
-  const cursor = { offset: 0 };
-  readSpineBinaryString(buffer, cursor);
-  return readSpineBinaryString(buffer, cursor);
+  const attempts = [{ offset: 0 }, { offset: 8 }];
+  for (const cursor of attempts) {
+    try {
+      if (cursor.offset === 0) readSpineBinaryString(buffer, cursor);
+      const version = readSpineBinaryString(buffer, cursor);
+      if (spineRuntimeLine(version)) return version;
+    } catch (error) {
+      if (!(error instanceof SourceInspectionError)) throw error;
+    }
+  }
+  const header = buffer.subarray(0, Math.min(buffer.length, 256)).toString('latin1');
+  const fallback = header.match(/(?:^|[^0-9])([2-9]\.[0-9]+(?:\.[0-9]+)?)(?:[^0-9]|$)/)?.[1];
+  return fallback || null;
 }
 
 function inspectSpineDirectory(root, sourceFiles, skeletonCandidate, atlasCandidate, fingerprint) {
@@ -417,9 +431,6 @@ function inspectSpineDirectory(root, sourceFiles, skeletonCandidate, atlasCandid
   const version = isJson ? skeleton?.skeleton?.spine : spineBinaryVersion(skeletonBuffer);
   const runtimeLine = spineRuntimeLine(version);
   if (!runtimeLine) fail('INVALID_SPINE_VERSION', 'Spine skeleton does not declare a recognizable export version.');
-  if (runtimeLine !== SUPPORTED_SPINE_RUNTIME_LINE) {
-    fail('UNSUPPORTED_SPINE_VERSION', `Spine ${runtimeLine} is not supported by this build. Re-export with Spine ${SUPPORTED_SPINE_RUNTIME_LINE} or install a future matching renderer pack.`, { detected: runtimeLine, supported: SUPPORTED_SPINE_RUNTIME_LINE });
-  }
   const atlasDirectory = path.posix.dirname(atlasCandidate.relative) === '.' ? '' : path.posix.dirname(atlasCandidate.relative);
   const modelFile = view.addResource('skeleton', skeletonCandidate.relative, true, '').relative;
   const atlasFile = view.addResource('atlas', atlasCandidate.relative, true, '').relative;
@@ -437,7 +448,7 @@ function inspectSpineDirectory(root, sourceFiles, skeletonCandidate, atlasCandid
   };
 }
 
-function inspectDirectory(root, { files = null, fingerprint = null, withResources = false } = {}) {
+function inspectDirectory(root, { files = null, fingerprint = null, withResources = false, modelConfig = null } = {}) {
   const sourceFiles = files || walkSourceDirectory(root);
   const modelCandidates = sourceFiles.filter((file) => /\.model3\.json$/i.test(file.relative) || /(^|\/)model\.json$/i.test(file.relative));
   const spineJsonCandidates = sourceFiles.filter((file) => {
@@ -448,10 +459,14 @@ function inspectDirectory(root, { files = null, fingerprint = null, withResource
     } catch { return false; }
   });
   const spineCandidates = [...spineJsonCandidates, ...sourceFiles.filter((file) => /\.skel$/i.test(file.relative))];
-  if (modelCandidates.length && spineCandidates.length) fail('AMBIGUOUS_SOURCE_FORMAT', 'Source Package contains both Live2D and Spine model configurations.');
-  if (!modelCandidates.length && spineCandidates.length) {
-    if (spineCandidates.length > 1) fail('AMBIGUOUS_SPINE_SKELETON', 'Source Package contains more than one Spine skeleton.', { candidates: spineCandidates.map((file) => file.relative) });
-    const skeleton = spineCandidates[0];
+  const selectedConfig = modelConfig == null ? null : normalizeReference(modelConfig);
+  const selectedLive2d = selectedConfig ? modelCandidates.filter((file) => file.relative === selectedConfig) : modelCandidates;
+  const selectedSpine = selectedConfig ? spineCandidates.filter((file) => file.relative === selectedConfig) : spineCandidates;
+  if (selectedConfig && !selectedLive2d.length && !selectedSpine.length) fail('MODEL_CONFIG_NOT_FOUND', `The selected model configuration was not found: ${selectedConfig}`);
+  if (!selectedConfig && modelCandidates.length && spineCandidates.length) fail('AMBIGUOUS_SOURCE_FORMAT', 'Source Package contains both Live2D and Spine model configurations.');
+  if (selectedSpine.length) {
+    if (selectedSpine.length > 1) fail('AMBIGUOUS_SPINE_SKELETON', 'Source Package contains more than one Spine skeleton.', { candidates: selectedSpine.map((file) => file.relative) });
+    const skeleton = selectedSpine[0];
     const skeletonDirectory = path.posix.dirname(skeleton.relative);
     const skeletonBase = basenameWithoutExtension(skeleton.relative, ['.json', '.skel']);
     const atlasCandidates = sourceFiles.filter((file) => /\.atlas$/i.test(file.relative));
@@ -461,10 +476,10 @@ function inspectDirectory(root, { files = null, fingerprint = null, withResource
     const manifest = inspectSpineDirectory(root, sourceFiles, skeleton, atlas, fingerprint);
     return withResources ? { manifest, buffers: new Map() } : manifest;
   }
-  if (!modelCandidates.length) fail('MODEL_CONFIG_NOT_FOUND', 'Source Package contains no Live2D model config or supported Spine skeleton.');
-  if (modelCandidates.length > 1) fail('AMBIGUOUS_MODEL_CONFIG', 'Source Package contains more than one model configuration.', { candidates: modelCandidates.map((file) => file.relative) });
+  if (!selectedLive2d.length) fail('MODEL_CONFIG_NOT_FOUND', 'Source Package contains no Live2D model config or supported Spine skeleton.');
+  if (selectedLive2d.length > 1) fail('AMBIGUOUS_MODEL_CONFIG', 'Source Package contains more than one model configuration.', { candidates: selectedLive2d.map((file) => file.relative) });
 
-  const config = modelCandidates[0];
+  const config = selectedLive2d[0];
   const settings = parseJsonBuffer(fs.readFileSync(config.absolute), config.relative);
   const cubism = /\.model3\.json$/i.test(config.relative)
     ? Number(settings.Meta?.CubismVersion || settings.Version || 3)
@@ -590,16 +605,21 @@ function resolveSourceInput(inputPath) {
   fail('UNSUPPORTED_INPUT', 'Select a Source Package directory or a .pck file.');
 }
 
-function inspectSourcePackage(inputPath, { cache = null, projectId } = {}) {
+function inspectSourcePackage(inputPath, { cache = null, projectId, modelConfig = null } = {}) {
   const descriptor = resolveSourceInput(inputPath);
+  if (descriptor.kind !== 'directory' && modelConfig != null) fail('INVALID_MODEL_SELECTION', 'A model configuration can only select a model inside a Source Package directory.');
+  const selectedConfig = modelConfig == null ? null : normalizeReference(modelConfig);
+  const inspectionFingerprint = selectedConfig
+    ? hashBuffer(Buffer.from(`${descriptor.fingerprint}\0${selectedConfig}`, 'utf8'))
+    : descriptor.fingerprint;
   const useCache = sourceCacheAvailable(cache);
-  const key = useCache ? sourceCacheKey(descriptor.fingerprint) : null;
+  const key = useCache ? sourceCacheKey(inspectionFingerprint) : null;
   if (useCache) {
     const cached = cache.get(key);
     if (cached) {
       try {
         const decoded = decodeInspectionCache(cached.data);
-        if (decoded.manifest?.source?.fingerprint === descriptor.fingerprint) return decoded.manifest;
+        if (decoded.manifest?.source?.fingerprint === inspectionFingerprint) return decoded.manifest;
       } catch {
         // A stale or manually damaged cache entry is ignored and rebuilt below.
       }
@@ -607,24 +627,105 @@ function inspectSourcePackage(inputPath, { cache = null, projectId } = {}) {
   }
 
   const inspected = descriptor.kind === 'directory'
-    ? inspectDirectory(descriptor.resolved, { files: descriptor.files, fingerprint: descriptor.fingerprint, withResources: useCache })
+    ? inspectDirectory(descriptor.resolved, { files: descriptor.files, fingerprint: inspectionFingerprint, withResources: useCache, modelConfig: selectedConfig })
     : inspectPck(descriptor.resolved, { bytes: descriptor.bytes, fingerprint: descriptor.fingerprint, withResources: useCache });
   const manifest = useCache ? inspected.manifest : inspected;
   if (useCache) {
     const data = encodeInspectionCache({ manifest, buffers: inspected.buffers });
     cache.put(key, data, {
       ...(projectId === undefined ? {} : { projectId }),
-      sourceFingerprint: descriptor.fingerprint,
+      sourceFingerprint: inspectionFingerprint,
       artifact: SOURCE_CACHE_KEY.artifact,
     });
   }
   return manifest;
 }
 
+function discoverSourcePackages(inputPath, { maxDepth = DEFAULT_LIBRARY_SCAN_DEPTH } = {}) {
+  if (!Number.isInteger(maxDepth) || maxDepth < 0 || maxDepth > 8) fail('INVALID_LIBRARY_SCAN_DEPTH', 'Source library scan depth must be an integer from 0 to 8.');
+  if (typeof inputPath !== 'string' || !inputPath.trim()) fail('INPUT_REQUIRED', 'A Source library directory is required.');
+  const root = path.resolve(inputPath);
+  let rootStat;
+  try { rootStat = fs.lstatSync(root); } catch { fail('INPUT_NOT_FOUND', 'The selected Source library does not exist.'); }
+  if (!rootStat.isDirectory()) fail('INVALID_SOURCE_LIBRARY', 'A Source library must be a directory.');
+  const candidates = [];
+  const addCandidate = ({ absolute, relative, format, modelConfig, version = null, runtimeLine = null, binary = false, name = null }) => {
+    if (candidates.length >= MAX_LIBRARY_CANDIDATES) fail('SOURCE_LIBRARY_TOO_LARGE', `Source library contains more than ${MAX_LIBRARY_CANDIDATES} model projects within the selected scan depth.`);
+    const normalized = relative.replaceAll('\\', '/');
+    candidates.push({
+      id: hashBuffer(Buffer.from(`${format}\0${normalized}`, 'utf8')).slice(0, 24),
+      name: name || basenameWithoutExtension(normalized, ['.model3.json', '.json', '.skel', '.pck']),
+      relativePath: normalized,
+      format,
+      modelConfig,
+      version,
+      runtimeLine,
+      binary,
+      inputPath: absolute,
+    });
+  };
+  const visit = (directory, relativeDirectory, depth) => {
+    let entries;
+    try { entries = fs.readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name)); }
+    catch { return; }
+    const files = entries.filter((entry) => entry.isFile());
+    const fileNames = new Set(files.map((entry) => entry.name));
+    for (const entry of files) {
+      const absolute = path.join(directory, entry.name);
+      const relative = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
+      const lower = entry.name.toLowerCase();
+      if (lower.endsWith('.pck')) {
+        addCandidate({ absolute, relative, format: 'live2d-pck', modelConfig: null });
+        continue;
+      }
+      if (lower.endsWith('.model3.json')) {
+        addCandidate({ absolute: directory, relative, format: 'live2d', modelConfig: relativeDirectory ? relative.slice(relativeDirectory.length + 1) : relative });
+        continue;
+      }
+      if (lower === 'model.json') {
+        try {
+          const settings = parseJsonBuffer(fs.readFileSync(absolute), relative);
+          if (settings?.model && Array.isArray(settings.textures) && settings.motions && typeof settings.motions === 'object') {
+            addCandidate({ absolute: directory, relative, format: 'live2d', modelConfig: entry.name, name: path.basename(directory) });
+          }
+        } catch {}
+        continue;
+      }
+      if (lower.endsWith('.skel')) {
+        const version = spineBinaryVersion(fs.readFileSync(absolute));
+        const atlasName = `${entry.name.slice(0, -5)}.atlas`;
+        if (fileNames.has(atlasName)) addCandidate({ absolute: directory, relative, format: 'spine', modelConfig: entry.name, version, runtimeLine: spineRuntimeLine(version), binary: true });
+        continue;
+      }
+      if (lower.endsWith('.json') && !/\.(?:motion3|exp3|physics3|pose3|userdata3)\.json$/i.test(lower)) {
+        try {
+          const skeleton = parseJsonBuffer(fs.readFileSync(absolute), relative);
+          const version = skeleton?.skeleton?.spine;
+          const atlasName = `${entry.name.slice(0, -5)}.atlas`;
+          if (version && skeleton.animations && typeof skeleton.animations === 'object' && fileNames.has(atlasName)) {
+            addCandidate({ absolute: directory, relative, format: 'spine', modelConfig: entry.name, version: String(version), runtimeLine: spineRuntimeLine(version) });
+          }
+        } catch {}
+      }
+    }
+    if (depth >= maxDepth) return;
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.isSymbolicLink() || IGNORED_LIBRARY_DIRECTORIES.has(entry.name)) continue;
+      visit(path.join(directory, entry.name), relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name, depth + 1);
+    }
+  };
+  visit(root, '', 0);
+  candidates.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+  return { schemaVersion: SOURCE_LIBRARY_SCHEMA_VERSION, name: path.basename(root), maxDepth, candidates };
+}
+
 module.exports = {
+  DEFAULT_LIBRARY_SCAN_DEPTH,
   SOURCE_CACHE_SCHEMA_VERSION,
+  SOURCE_LIBRARY_SCHEMA_VERSION,
   SourceInspectionError,
   decodeInspectionCache,
+  discoverSourcePackages,
   encodeInspectionCache,
   inspectSourcePackage,
   normalizeReference,

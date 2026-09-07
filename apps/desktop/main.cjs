@@ -4,6 +4,7 @@ const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, screen, shell, WebC
 const { createRuntimeHelpWindowHandler } = require('./runtime-help.cjs');
 const { createTargetInstallationService } = require('./target-installation-service.cjs');
 const { createPackageOutputService } = require('./package-output-service.cjs');
+const { createSourceLibraryService } = require('./source-library-service.cjs');
 
 const {
   APP_COMMAND_CHANNEL,
@@ -20,7 +21,7 @@ const {
 } = require('./project-workspace-service.cjs');
 const { CacheStore, SHARP_ENCODER_VERSION, buildProjectTargets } = require('@live2pet/package-build');
 const { installPackage } = require('@live2pet/installation');
-const { inspectSourcePackage } = require('@live2pet/source-inspector');
+const { discoverSourcePackages, inspectSourcePackage } = require('@live2pet/source-inspector');
 const { getSpinePackStatus, installSpinePack, removeSpinePack, resolveSpinePack } = require('@live2pet/spine-pack');
 const { createPreviewSessionService } = require('./preview-session-service.cjs');
 const { createCaptureCacheService } = require('./capture-cache-service.cjs');
@@ -57,6 +58,7 @@ let previewSession = null;
 let mainRendererRecoveryInProgress = false;
 let projectWorkspaceService = null;
 let projectSourceService = null;
+let sourceLibraryService = null;
 const sourceRegistry = new Map();
 
 protocol.registerSchemesAsPrivileged([{
@@ -70,17 +72,17 @@ function appDocumentPath() {
   return app.isPackaged ? PACKAGED_RENDERER_PATH : DEVELOPMENT_RENDERER_PATH;
 }
 
-function sourceInspectionService({ inputPath, projectId } = {}) {
+function sourceInspectionService({ inputPath, projectId, modelConfig } = {}) {
   if (!sourceCache) {
     sourceCache = new CacheStore({
       rootDir: path.join(app.getPath('userData'), 'cache', 'source-inspection'),
       maxBytes: SOURCE_CACHE_LIMIT,
     });
   }
-  const manifest = inspectSourcePackage(inputPath, { cache: sourceCache, projectId });
+  const manifest = inspectSourcePackage(inputPath, { cache: sourceCache, projectId, modelConfig });
   if (projectId) {
     sourceRegistry.delete(projectId);
-    sourceRegistry.set(projectId, { inputPath, sourceFingerprint: manifest.source.fingerprint, manifest });
+    sourceRegistry.set(projectId, { inputPath, modelConfig, sourceFingerprint: manifest.source.fingerprint, manifest });
     while (sourceRegistry.size > 8) sourceRegistry.delete(sourceRegistry.keys().next().value);
   }
   return manifest;
@@ -109,10 +111,14 @@ function spinePackRoot() {
 
 const spinePackService = Object.freeze({
   get: async () => getSpinePackStatus(spinePackRoot()),
-  install: async ({ confirmInstall }) => installSpinePack(spinePackRoot(), { confirmInstall }),
-  remove: async () => {
+  install: async ({ confirmInstall, runtimeLine }) => {
+    await installSpinePack(spinePackRoot(), { confirmInstall, runtimeLine });
+    return getSpinePackStatus(spinePackRoot());
+  },
+  remove: async (runtimeLine) => {
     if (previewSession) await previewSession.close();
-    return removeSpinePack(spinePackRoot());
+    removeSpinePack(spinePackRoot(), runtimeLine);
+    return getSpinePackStatus(spinePackRoot());
   },
   resolve: (runtimeLine) => resolveSpinePack(spinePackRoot(), runtimeLine),
 });
@@ -275,6 +281,20 @@ function getProjectSourceService() {
   return projectSourceService;
 }
 
+function getSourceLibraryService() {
+  if (!sourceLibraryService) {
+    sourceLibraryService = createSourceLibraryService({
+      showOpenDialog: (options) => dialog.showOpenDialog(mainWindow, options),
+      discoverSources: discoverSourcePackages,
+      inspectSource: sourceInspectionService,
+      githubCacheRoot: path.join(app.getPath('userData'), 'cache', 'github-models'),
+      cacheSettingsFile: path.join(app.getPath('userData'), 'settings', 'github-model-cache.json'),
+      maxDepth: 2,
+    });
+  }
+  return sourceLibraryService;
+}
+
 function sendAppCommand(command) {
   if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
   mainWindow.webContents.send(APP_COMMAND_CHANNEL, command);
@@ -317,6 +337,7 @@ function registerIpc() {
     projectWorkspaceService: getProjectWorkspaceService(),
     projectSourceService: getProjectSourceService(),
     sourceInspectionService,
+    sourceLibraryService: getSourceLibraryService(),
     runtimeSettingsService,
     spinePackService,
     captureCacheService: getCaptureCacheService(),

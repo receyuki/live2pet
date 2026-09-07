@@ -19,6 +19,7 @@ import {
   ExternalLink,
   FolderOpen,
   Gauge,
+  GitBranch,
   HardDrive,
   Languages,
   Moon,
@@ -51,8 +52,14 @@ import {
   getRecentProjects,
   getRuntimeSettings,
   getSpinePackStatus,
+  getSourceLibraryCacheStatus,
+  configureSourceLibraryCache,
+  clearSourceLibraryCache,
   installSpinePack,
   removeSpinePack,
+  openSourceLibrary,
+  openGitHubLibrary,
+  inspectLibrarySource,
   getDesktopFilePath,
   hasDesktopApi,
   hasPreviewApi,
@@ -79,6 +86,8 @@ import {
   PreviewStatus,
   RuntimeSettings,
   SpinePackStatus,
+  SourceLibrary,
+  SourceLibraryCandidate,
   RecentProject,
   saveProject,
   SourceInspection,
@@ -257,12 +266,12 @@ function RuntimePanel({ locale, compact = false, spinePack = null, onSettingsCha
     }
   }
 
-  async function changeSpinePack(action: 'install' | 'remove') {
+  async function changeSpinePack(runtimeLine: string, action: 'install' | 'remove') {
     if (action === 'remove' && !window.confirm(t('confirmRemoveSpinePack'))) return;
     setBusy(true);
     setError('');
     try {
-      const next = action === 'install' ? await installSpinePack() : await removeSpinePack();
+      const next = action === 'install' ? await installSpinePack(runtimeLine) : await removeSpinePack(runtimeLine);
       onSpinePackChange?.(next);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t('error'));
@@ -325,12 +334,12 @@ function RuntimePanel({ locale, compact = false, spinePack = null, onSettingsCha
             <Trash2 size={14} />{t("removeAll")}
           </Button>
         )}
-        {compact && <><div className="runtime-item spine-pack-item">
+        {compact && <>{(spinePack?.packs ?? []).map((pack) => <div className="runtime-item spine-pack-item" key={pack.runtimeLine}>
           <span className="large-icon"><WandSparkles size={19} /></span>
-          <span className="grow-copy"><strong>{t('spinePackTitle')}</strong><small>{t('spinePackVersion', { value: spinePack?.version ?? '4.3.13' })}</small></span>
-          <Chip color={spinePack?.installed ? 'success' : 'default'} size="sm" variant="soft">{t(spinePack?.installed ? 'runtimeAvailable' : 'runtimeMissing')}</Chip>
-          <Button variant="secondary" size="sm" isDisabled={busy} onPress={() => void changeSpinePack(spinePack?.installed ? 'remove' : 'install')}>{t(spinePack?.installed ? 'removeSpinePack' : 'installSpinePack')}</Button>
-        </div>
+          <span className="grow-copy"><strong>{t('spinePackLine', { value: pack.runtimeLine })}</strong><small>{t('spinePackVersion', { value: pack.version })}</small></span>
+          <Chip color={pack.installed ? 'success' : 'default'} size="sm" variant="soft">{t(pack.installed ? 'runtimeAvailable' : 'runtimeMissing')}</Chip>
+          <Button variant="secondary" size="sm" isDisabled={busy || !pack.downloadable} onPress={() => void changeSpinePack(pack.runtimeLine, pack.installed ? 'remove' : 'install')}>{t(pack.installed ? 'removeSpinePack' : 'installSpinePack')}</Button>
+        </div>)}
         <p className="drop-hint">{t('spinePackHint')}</p></>}
       </Card.Content>
     </Card>
@@ -355,9 +364,13 @@ function SetupView({ locale, returning, onComplete, onRuntimeSettingsChange }: {
   );
 }
 
-function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onOpenProject, onOpenRecent, onOpenPreview, onRecoverDraft, onDiscardDraft }: { locale: Locale; busy: boolean; error: string; recentProjects: RecentProject[]; draft: ProjectDraft | null; onImport: (files: File[], directDrop?: boolean) => void; onOpenProject: () => void; onOpenRecent: (project: RecentProject) => void; onOpenPreview: () => void; onRecoverDraft: () => void; onDiscardDraft: () => void }) {
+function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onLibrarySelection, onOpenProject, onOpenRecent, onOpenPreview, onRecoverDraft, onDiscardDraft }: { locale: Locale; busy: boolean; error: string; recentProjects: RecentProject[]; draft: ProjectDraft | null; onImport: (files: File[], directDrop?: boolean) => void; onLibrarySelection: (library: SourceLibrary, candidate: SourceLibraryCandidate) => Promise<void>; onOpenProject: () => void; onOpenRecent: (project: RecentProject) => void; onOpenPreview: () => void; onRecoverDraft: () => void; onDiscardDraft: () => void }) {
   const t = (key: MessageKey) => translate(locale, key);
   const [dragActive, setDragActive] = useState(false);
+  const [library, setLibrary] = useState<SourceLibrary | null>(null);
+  const [libraryBusy, setLibraryBusy] = useState(false);
+  const [libraryError, setLibraryError] = useState("");
+  const [githubUrl, setGithubUrl] = useState("");
   const dragDepth = useRef(0);
   const folderInput = useRef<HTMLInputElement>(null);
   const pckInput = useRef<HTMLInputElement>(null);
@@ -374,6 +387,19 @@ function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onO
     const files = Array.from(event.dataTransfer.files);
     if (files.some(isProjectFile)) return;
     if (files.length) onImport(files, true);
+  }
+  async function browseLocalLibrary() {
+    setLibraryBusy(true); setLibraryError("");
+    try { const result = await openSourceLibrary(); if (!result.cancelled) setLibrary(result.library); }
+    catch (cause) { setLibraryError(cause instanceof Error ? cause.message : t("error")); }
+    finally { setLibraryBusy(false); }
+  }
+  async function browseGitHubLibrary() {
+    if (!githubUrl.trim()) return;
+    setLibraryBusy(true); setLibraryError("");
+    try { const result = await openGitHubLibrary(githubUrl.trim()); if (!result.cancelled) setLibrary(result.library); }
+    catch (cause) { setLibraryError(cause instanceof Error ? cause.message : t("error")); }
+    finally { setLibraryBusy(false); }
   }
   return (
     <main className="welcome-view">
@@ -393,16 +419,31 @@ function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onO
           <div className="welcome-actions">
             <input ref={folderInput} className="visually-hidden" type="file" multiple {...{ webkitdirectory: "" }} onChange={selected} />
             <input ref={pckInput} className="visually-hidden" type="file" accept=".pck" onChange={selected} />
-            <Button variant="primary" size="lg" isDisabled={busy || !hasDesktopApi()} onPress={() => folderInput.current?.click()}><Upload size={18} />{t("importFolder")}</Button>
+            <Button variant="primary" size="lg" isDisabled={busy || libraryBusy || !hasDesktopApi()} onPress={() => void browseLocalLibrary()}><FolderOpen size={18} />{t("browseLocalLibrary")}</Button>
             <Button variant="secondary" size="lg" isDisabled={busy || !hasDesktopApi()} onPress={() => pckInput.current?.click()}><Box size={18} />{t("importPck")}</Button>
             <Button variant="secondary" size="lg" isDisabled={busy || !hasDesktopApi()} onPress={onOpenProject}><FolderOpen size={18} />{t("openProject")}</Button>
           </div>
+          <div className="github-library-row">
+            <Input aria-label={t("githubLibraryUrl")} placeholder="https://github.com/owner/repo/tree/main/models" value={githubUrl} onChange={(event) => setGithubUrl(event.target.value)} />
+            <Button variant="secondary" isDisabled={busy || libraryBusy || !githubUrl.trim() || !hasDesktopApi()} onPress={() => void browseGitHubLibrary()}><GitBranch size={16} />{t("browseGitHubLibrary")}</Button>
+          </div>
           <p className="import-hint">{busy ? t("loading") : t("importHint")}</p>
-          {busy && <ProgressBar aria-label={t("loading")} isIndeterminate className="mt-4" />}
+          {(busy || libraryBusy) && <ProgressBar aria-label={t("loading")} isIndeterminate className="mt-4" />}
           {error && <p className="inline-error" role="alert">{error}</p>}
+          {libraryError && <p className="inline-error" role="alert">{libraryError}</p>}
           <Button className="button--ghost" variant="ghost" onPress={onOpenPreview}>{t("sampleProject")}<ChevronRight size={15} /></Button>
         </div>
       </section>
+      {library && <section className="model-library-section" aria-label={t("modelLibraryTitle")}>
+        <div className="section-heading-row"><div><p className="eyebrow">{t("modelLibraryTitle")}</p><h2>{library.name}</h2><p>{translate(locale, "modelLibraryCount", { count: library.candidates.length, depth: library.maxDepth })}</p></div><Chip size="sm" variant="soft">{library.kind === "github" ? "GitHub" : t("localFolder")}</Chip></div>
+        {library.candidates.length === 0 ? <div className="empty-state">{t("modelLibraryEmpty")}</div> : <div className="model-library-grid">{library.candidates.map((candidate) => (
+          <Button key={candidate.id} className="model-library-card" variant="ghost" isDisabled={busy || libraryBusy} onPress={() => void onLibrarySelection(library, candidate)}>
+            <span className="model-library-cover">{candidate.format === "spine" ? <WandSparkles size={26} /> : <Sparkles size={26} />}</span>
+            <span className="grow-copy"><strong>{candidate.name}</strong><small>{candidate.relativePath}</small><span className="model-library-meta">{candidate.format === "spine" ? `Spine${candidate.runtimeLine ? ` ${candidate.runtimeLine}` : ""}` : candidate.format === "live2d-pck" ? "PCK" : "Live2D"}</span></span>
+            <ChevronRight size={15} />
+          </Button>
+        ))}</div>}
+      </section>}
       {draft && <section className="draft-recovery" aria-label={t("draftRecoveryTitle")}>
         <Card className="surface-card"><Card.Content>
           <div className="draft-recovery-copy">
@@ -787,9 +828,26 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
 function SettingsView({ locale, section, appearance, spinePack, onSection, onLocale, onAppearance, onRuntimeSettingsChange, onSpinePackChange, onClose }: { locale: Locale; section: SettingsSection; appearance: AppSettings["appearance"]; spinePack: SpinePackStatus | null; onSection: (section: SettingsSection) => void; onLocale: (locale: Locale) => void; onAppearance: (appearance: AppSettings["appearance"]) => void; onRuntimeSettingsChange: (settings: RuntimeSettings) => void; onSpinePackChange: (status: SpinePackStatus) => void; onClose: () => void }) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   const [cache, setCache] = useState({ byteLength: 0, entryCount: 0, maxBytes: 0 });
+  const [libraryCache, setLibraryCache] = useState({ schemaVersion: 1 as const, byteLength: 0, entryCount: 0, maxBytes: 1024 ** 3 });
+  const [libraryCacheGiB, setLibraryCacheGiB] = useState("1");
+  const [storageError, setStorageError] = useState("");
   const nav: Array<[SettingsSection, MessageKey, ReactNode]> = [["general", "general", <SlidersHorizontal size={16} />], ["runtimes", "runtimes", <Gauge size={16} />], ["targets", "targets", <PackageCheck size={16} />], ["storage", "storage", <Database size={16} />]];
-  useEffect(() => { if (section === "storage") void getCacheStatus().then(setCache); }, [section]);
+  useEffect(() => { if (section === "storage") { void getCacheStatus().then(setCache); void getSourceLibraryCacheStatus().then((next) => { setLibraryCache(next); setLibraryCacheGiB(String(Number((next.maxBytes / 1024 ** 3).toFixed(2)))); }); } }, [section]);
   async function clearBuildCache() { if (!window.confirm(t("confirmClearCache"))) return; await clearCache(); setCache(await getCacheStatus()); }
+  async function saveLibraryCacheLimit() {
+    setStorageError("");
+    try {
+      const next = await configureSourceLibraryCache(Math.round(Number(libraryCacheGiB) * 1024 ** 3));
+      setLibraryCache(next);
+      setLibraryCacheGiB(String(Number((next.maxBytes / 1024 ** 3).toFixed(2))));
+    } catch (cause) { setStorageError(cause instanceof Error ? cause.message : t("error")); }
+  }
+  async function clearLibraryCache() {
+    if (!window.confirm(t("confirmClearLibraryCache"))) return;
+    setStorageError("");
+    try { setLibraryCache(await clearSourceLibraryCache()); }
+    catch (cause) { setStorageError(cause instanceof Error ? cause.message : t("error")); }
+  }
   return (
     <>
     <header className="app-toolbar settings-toolbar">
@@ -804,7 +862,7 @@ function SettingsView({ locale, section, appearance, spinePack, onSection, onLoc
         {section === "general" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("general")} body={t("settingsBody")} /><Card className="surface-card"><Card.Content><div className="setting-row"><span className="large-icon"><Languages size={19} /></span><span className="grow-copy"><strong>{t("language")}</strong></span><ButtonGroup><Button variant={locale === "en" ? "primary" : "secondary"} onPress={() => onLocale("en")}>English</Button><Button variant={locale === "zh-CN" ? "primary" : "secondary"} onPress={() => onLocale("zh-CN")}>简体中文</Button></ButtonGroup></div></Card.Content></Card><Card className="surface-card"><Card.Content><div className="setting-row"><span className="large-icon">{appearance === "dark" ? <Moon size={19} /> : <Sun size={19} />}</span><span className="grow-copy"><strong>{t("appearance")}</strong></span><ButtonGroup>{(["system", "light", "dark"] as const).map((item) => <Button key={item} variant={appearance === item ? "primary" : "secondary"} onPress={() => onAppearance(item)}>{t(item)}</Button>)}</ButtonGroup></div></Card.Content></Card></div>}
         {section === "runtimes" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("runtimes")} body={t("runtimeBody")} /><RuntimePanel locale={locale} compact spinePack={spinePack} onSettingsChange={onRuntimeSettingsChange} onSpinePackChange={onSpinePackChange} /></div>}
         {section === "targets" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("targets")} body={t("targetBody")} /><TargetSettings locale={locale} /></div>}
-        {section === "storage" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("storage")} body={t("storageBody")} /><OutputSettings locale={locale} /><Card className="surface-card"><Card.Content><div className="section-heading-row"><div><p className="eyebrow"><Database size={13} />{t("storageTitle")}</p><h2>{cache.entryCount ? t("cacheEntries", { count: cache.entryCount, size: `${Math.round(cache.byteLength / 1024 / 1024)} MiB` }) : t("cacheEmpty")}</h2></div><Button variant="secondary" onPress={clearBuildCache} isDisabled={!cache.entryCount}><Trash2 size={15} />{t("clearCache")}</Button></div></Card.Content></Card></div>}
+        {section === "storage" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("storage")} body={t("storageBody")} /><OutputSettings locale={locale} /><Card className="surface-card"><Card.Content><div className="section-heading-row"><div><p className="eyebrow"><Database size={13} />{t("storageTitle")}</p><h2>{cache.entryCount ? t("cacheEntries", { count: cache.entryCount, size: `${Math.round(cache.byteLength / 1024 / 1024)} MiB` }) : t("cacheEmpty")}</h2></div><Button variant="secondary" onPress={clearBuildCache} isDisabled={!cache.entryCount}><Trash2 size={15} />{t("clearCache")}</Button></div></Card.Content></Card><Card className="surface-card"><Card.Content><div className="section-heading-row"><div><p className="eyebrow"><GitBranch size={13} />{t("githubCacheTitle")}</p><h2>{t("githubCacheUsage", { count: libraryCache.entryCount, size: `${Math.round(libraryCache.byteLength / 1024 / 1024)} MiB` })}</h2><p>{t("githubCacheHint")}</p></div><Button variant="secondary" onPress={() => void clearLibraryCache()} isDisabled={!libraryCache.entryCount}><Trash2 size={15} />{t("clearCache")}</Button></div><div className="cache-limit-row"><Input type="number" min="0.25" max="20" step="0.25" aria-label={t("githubCacheLimit")} value={libraryCacheGiB} onChange={(event) => setLibraryCacheGiB(event.target.value)} /><span>GiB</span><Button variant="primary" onPress={() => void saveLibraryCacheLimit()}>{t("saveCacheLimit")}</Button></div>{storageError && <p className="inline-error" role="alert">{storageError}</p>}</Card.Content></Card></div>}
       </section>
     </main>
     </>
@@ -1073,6 +1131,34 @@ export function App() {
     }
   }
 
+  async function openLibrarySource(library: SourceLibrary, candidate: SourceLibraryCandidate) {
+    if (!confirmProjectReplacement()) return;
+    setImportBusy(true);
+    setImportError("");
+    try {
+      const projectId = projectIdFromSourceName(candidate.name);
+      const { inspection } = await inspectLibrarySource(library.libraryId, candidate.id, projectId);
+      const document: Live2PetProject = {
+        schemaVersion: 2,
+        visualSettings: { hiddenElementIds: [] },
+        projectId,
+        appVersion,
+        name: inspection.source.name,
+        source: { kind: inspection.source.kind, name: inspection.source.name, fingerprint: inspection.source.fingerprint, modelConfig: inspection.source.modelConfig },
+        recipes: [],
+        targets: {
+          clawd: { profile: "clawd", mappings: {}, reactions: {}, options: {} },
+          "codex-pet": { profile: "codex-pet", mappings: {}, reactions: {}, options: {} },
+        },
+      };
+      dispatch({ type: "OPEN_PROJECT", project: { id: projectId, name: inspection.source.name, document, dirty: true, inspection, selectedMotionId: inspection.motions[0]?.id ?? null, selectedExpressionId: null } });
+    } catch (cause) {
+      setImportError(cause instanceof Error ? cause.message : t("error"));
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
   async function relinkCurrentSource(files: File[], directDrop = false) {
     const project = state.project?.document;
     if (!project) return;
@@ -1174,12 +1260,15 @@ export function App() {
 
   const requiredCubism = state.project?.inspection?.model.cubism;
   const requiredSpine = state.project?.inspection?.model.format === 'spine';
+  const matchingSpinePack = spinePack?.packs?.find((pack) => pack.runtimeLine === state.project?.inspection?.model.runtimeLine);
   const runtimeReady = requiredSpine
-    ? Boolean(spinePack?.installed && spinePack.runtimeLine === state.project?.inspection?.model.runtimeLine)
+    ? Boolean(matchingSpinePack?.installed)
     : (!requiredCubism || Boolean(runtimeSettings?.runtimes.some((runtime) => runtime.available && runtime.cubismGenerations.includes(requiredCubism))));
   const openRuntimeSettings = () => dispatch({ type: "OPEN_SETTINGS", section: "runtimes" });
   const configureRequiredRuntime = requiredSpine ? async () => {
-    try { setSpinePack(await installSpinePack()); } catch (cause) { setActionFeedback(cause instanceof Error ? cause.message : t('error')); }
+    const runtimeLine = state.project?.inspection?.model.runtimeLine;
+    if (!runtimeLine) return;
+    try { setSpinePack(await installSpinePack(runtimeLine)); } catch (cause) { setActionFeedback(cause instanceof Error ? cause.message : t('error')); }
   } : openRuntimeSettings;
   const statusBar = <footer className="status-bar">
     <span className="save-status"><i className="status-dot" />{!hasDesktopApi() ? t("notConnected") : state.project?.dirty ? t("unsaved") : state.project?.documentId ? t("saved") : t("noSavedProject")}</span>
@@ -1210,7 +1299,7 @@ export function App() {
       </header>
       <div className="app-content">
         {actionFeedback && <div className="action-feedback" role="alert">{actionFeedback}</div>}
-        {state.destination === "welcome" && <WelcomeView locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} draft={projectDraft} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onOpenPreview={openPreview} onRecoverDraft={() => void recoverProjectDraft()} onDiscardDraft={discardProjectDraft} />}
+        {state.destination === "welcome" && <WelcomeView locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} draft={projectDraft} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onLibrarySelection={openLibrarySource} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onOpenPreview={openPreview} onRecoverDraft={() => void recoverProjectDraft()} onDiscardDraft={discardProjectDraft} />}
         {state.destination === "source" && <SourceView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} inspectionRequired={Boolean(state.project?.document)} runtimeReady={runtimeReady} busy={importBusy} onConfigureRuntime={configureRequiredRuntime} onRelink={relinkCurrentSource} onAcknowledgeReview={acknowledgeCurrentSourceReview} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
         {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={configureRequiredRuntime} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => dispatch({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => dispatch({ type: "CLEAR_ASSIGNMENT", destination })} onVisualSettings={(settings) => dispatch({ type: "SET_VISUAL_SETTINGS", settings })} />}
         {state.destination === "build" && <BuildView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} runtimeReady={runtimeReady} state={buildState} onName={(name) => dispatch({ type: "RENAME_PROJECT", name })} onPreset={(target, preset) => dispatch({ type: "SET_RENDER_PRESET", target, preset })} onCustomRender={(settings) => dispatch({ type: 'SET_CLAWD_RENDER', settings })} onBuild={buildProjectTarget} onCancel={(target) => void cancelProjectBuild(target)} />}

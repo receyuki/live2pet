@@ -55,6 +55,9 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.equal(APP_IPC_METHODS.includes('getRecentProjects'), true);
   assert.equal(APP_IPC_METHODS.includes('openProject'), true);
   assert.equal(APP_IPC_METHODS.includes('saveProject'), true);
+  assert.equal(APP_IPC_METHODS.includes('openSourceLibrary'), true);
+  assert.equal(APP_IPC_METHODS.includes('openGitHubLibrary'), true);
+  assert.equal(APP_IPC_METHODS.includes('inspectLibrarySource'), true);
   assert.equal(APP_IPC_METHODS.includes('getSkillStatus'), false);
   assert.equal(APP_IPC_METHODS.includes('installSkill'), false);
   assert.equal(APP_IPC_METHODS.includes('getBuildCacheStatus'), true);
@@ -69,7 +72,7 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.throws(() => normalizeInspectRequest({ inputPath: '/tmp/source', shell: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_INSPECT_REQUEST');
   assert.deepEqual(normalizeRuntimeRequest({ inputPath: '/tmp/live2d.min.js' }), { inputPath: '/tmp/live2d.min.js' });
   assert.throws(() => normalizeRuntimeRequest({ inputPath: '/tmp/runtime', shell: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_RUNTIME_REQUEST');
-  assert.deepEqual(normalizeSpinePackInstallRequest({ confirmInstall: true }), { confirmInstall: true });
+  assert.deepEqual(normalizeSpinePackInstallRequest({ confirmInstall: true, runtimeLine: '4.1' }), { confirmInstall: true, runtimeLine: '4.1' });
   assert.throws(() => normalizeSpinePackInstallRequest({}), (error) => error instanceof AppHostError && error.code === 'SPINE_PACK_CONSENT_REQUIRED');
   assert.deepEqual(normalizeRelinkSourceRequest({ project: { schemaVersion: 1 }, inputPath: '/tmp/replacement.pck' }), { project: { schemaVersion: 1 }, inputPath: '/tmp/replacement.pck' });
   assert.throws(() => normalizeRelinkSourceRequest({ project: {}, inputPath: '/tmp/source', path: '/tmp/leak' }), (error) => error instanceof AppHostError && error.code === 'INVALID_SOURCE_RELINK_REQUEST');
@@ -138,29 +141,58 @@ test('output preload wrappers expose only artifact IDs and native setting action
 
 test('Spine pack IPC requires consent and exposes status without local paths', async () => {
   let installed = false;
-  const status = () => ({ schemaVersion: 1, id: 'spine-player-4.3', runtimeLine: '4.3', version: '4.3.13', installed, directory: '/private/renderer-packs' });
+  const status = () => ({ schemaVersion: 2, packs: [{ schemaVersion: 2, id: 'spine-player-4.1', runtimeLine: '4.1', version: '4.1.56', downloadable: true, installed, directory: '/private/renderer-packs' }] });
   const router = createAppIpcRouter({ spinePackService: {
     get: async () => status(),
-    install: async ({ confirmInstall }) => { assert.equal(confirmInstall, true); installed = true; return status(); },
-    remove: async () => { installed = false; return status(); },
+    install: async ({ confirmInstall, runtimeLine }) => { assert.equal(confirmInstall, true); assert.equal(runtimeLine, '4.1'); installed = true; return status(); },
+    remove: async (runtimeLine) => { assert.equal(runtimeLine, '4.1'); installed = false; return status(); },
   } });
   const request = (method, ...args) => router({ protocolVersion: 1, method, args });
-  assert.deepEqual((await request('getSpinePackStatus')).result, { schemaVersion: 1, id: 'spine-player-4.3', runtimeLine: '4.3', version: '4.3.13', installed: false });
+  assert.deepEqual((await request('getSpinePackStatus')).result, { schemaVersion: 2, packs: [{ schemaVersion: 2, id: 'spine-player-4.1', runtimeLine: '4.1', version: '4.1.56', downloadable: true, installed: false }] });
   assert.equal((await request('installSpinePack', {})).error.code, 'SPINE_PACK_CONSENT_REQUIRED');
-  assert.equal((await request('installSpinePack', { confirmInstall: true })).result.installed, true);
-  assert.equal((await request('removeSpinePack')).result.installed, false);
+  assert.equal((await request('installSpinePack', { confirmInstall: true, runtimeLine: '4.1' })).result.packs[0].installed, true);
+  assert.equal((await request('removeSpinePack', { runtimeLine: '4.1' })).result.packs[0].installed, false);
 });
 
 test('Spine pack preload wrappers expose only fixed actions', async () => {
   const calls = [];
   const api = createAppPreloadApi({ ipcRenderer: { invoke: async (channel, request) => { calls.push({ channel, request }); return { ok: true }; } } });
   await api.getSpinePackStatus();
-  await api.installSpinePack();
-  await api.removeSpinePack();
+  await api.installSpinePack('4.1');
+  await api.removeSpinePack('4.1');
   assert.deepEqual(calls.map((value) => value.request), [
     { protocolVersion: 1, method: 'getSpinePackStatus', args: [] },
-    { protocolVersion: 1, method: 'installSpinePack', args: [{ confirmInstall: true }] },
-    { protocolVersion: 1, method: 'removeSpinePack', args: [] },
+    { protocolVersion: 1, method: 'installSpinePack', args: [{ confirmInstall: true, runtimeLine: '4.1' }] },
+    { protocolVersion: 1, method: 'removeSpinePack', args: [{ runtimeLine: '4.1' }] },
+  ]);
+});
+
+test('Source Library IPC browses metadata, inspects opaque selections, and configures bounded cache', async () => {
+  const calls = [];
+  const candidate = { id: 'source_1234', name: 'Hero', relativePath: 'set/hero.model3.json', format: 'live2d', version: null, runtimeLine: null, binary: false };
+  const library = { schemaVersion: 1, libraryId: 'library_1234', name: 'Models', kind: 'github', maxDepth: 2, candidates: [candidate] };
+  const inspection = { schemaVersion: 1, source: { kind: 'standard-directory', name: 'Hero', fingerprint: 'a'.repeat(64), modelConfig: 'hero.model3.json' }, model: { cubism: 3, configFile: 'hero.model3.json', modelFile: 'hero.moc3', textures: [] }, motions: [], expressions: [], resources: [], warnings: [] };
+  const cache = { schemaVersion: 1, maxBytes: 1024 ** 3, byteLength: 0, entryCount: 0 };
+  const router = createAppIpcRouter({ sourceLibraryService: {
+    openLocal: async () => ({ cancelled: false, library: { ...library, kind: 'local' } }),
+    openGitHub: async input => { calls.push(input); return { cancelled: false, library }; },
+    inspect: async input => { calls.push(input); return { candidate, inspection }; },
+    getCacheStatus: async () => cache,
+    configureCache: async input => { calls.push(input); return { ...cache, maxBytes: input.maxBytes }; },
+    clearCache: async input => { calls.push(input); return { ...cache, removedEntries: 0, removedBytes: 0 }; },
+  } });
+  const request = (method, ...args) => router({ protocolVersion: 1, method, args });
+  assert.equal((await request('openSourceLibrary')).result.library.kind, 'local');
+  assert.equal((await request('openGitHubLibrary', { url: 'https://github.com/owner/repo/tree/main/models' })).result.library.candidates[0].relativePath, candidate.relativePath);
+  assert.equal((await request('inspectLibrarySource', { libraryId: library.libraryId, sourceId: candidate.id, projectId: 'hero' })).result.inspection.source.name, 'Hero');
+  assert.equal((await request('configureSourceLibraryCache', { maxBytes: 2 * 1024 ** 3 })).result.maxBytes, 2 * 1024 ** 3);
+  assert.equal((await request('clearSourceLibraryCache', { confirmClear: true })).ok, true);
+  assert.equal((await request('clearSourceLibraryCache', {})).error.code, 'CACHE_CLEAR_AUTHORIZATION_REQUIRED');
+  assert.deepEqual(calls, [
+    { url: 'https://github.com/owner/repo/tree/main/models' },
+    { libraryId: library.libraryId, sourceId: candidate.id, projectId: 'hero' },
+    { maxBytes: 2 * 1024 ** 3 },
+    { confirmClear: true },
   ]);
 });
 

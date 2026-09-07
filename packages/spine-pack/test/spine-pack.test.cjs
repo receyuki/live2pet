@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { SPINE_PACK, SpinePackError, getSpinePackStatus, installSpinePack, removeSpinePack } = require('../src/index.cjs');
+const { SPINE_PACK, SPINE_PACKS, SpinePackError, getSpinePackStatus, installSpinePack, removeSpinePack, resolveSpinePack } = require('../src/index.cjs');
 
 function root() { return fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-spine-pack-')); }
 function fixturePack() {
@@ -33,11 +33,25 @@ test('installs verified files atomically, reuses them, and removes one pack', as
   assert.equal(progress.length, 3);
   await installSpinePack(destination, { confirmInstall: true, fetchImpl, pack });
   assert.equal(requests, 3);
-  assert.equal(removeSpinePack(destination, pack).installed, false);
+  assert.equal(removeSpinePack(destination, pack.runtimeLine, pack).installed, false);
 });
 
 test('rejects integrity failures without leaving an installed pack', async () => {
   const destination = root();
   await assert.rejects(() => installSpinePack(destination, { confirmInstall: true, fetchImpl: async () => ({ ok: true, headers: { get: () => '7' }, arrayBuffer: async () => Buffer.from('damaged') }) }), (error) => error instanceof SpinePackError && error.code === 'SPINE_PACK_INTEGRITY_FAILED');
-  assert.equal(getSpinePackStatus(destination).installed, false);
+  assert.equal(getSpinePackStatus(destination, '4.3').installed, false);
+});
+
+test('publishes independently installable official Spine 4.x runtime lines', async () => {
+  const destination = root();
+  assert.deepEqual(SPINE_PACKS.map((pack) => pack.runtimeLine), ['4.3', '4.2', '4.1', '4.0']);
+  const status = getSpinePackStatus(destination);
+  assert.equal(status.schemaVersion, 2);
+  assert.deepEqual(status.packs.map((pack) => ({ line: pack.runtimeLine, installed: pack.installed })), [
+    { line: '4.3', installed: false },
+    { line: '4.2', installed: false },
+    { line: '4.1', installed: false },
+    { line: '4.0', installed: false },
+  ]);
+  assert.throws(() => resolveSpinePack(destination, '3.8'), (error) => error.code === 'UNSUPPORTED_SPINE_VERSION' && error.details.supported.includes('4.1'));
 });

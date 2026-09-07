@@ -2,6 +2,7 @@ const { RendererContractError } = require('./errors.cjs');
 const { normalizeVisualSettings } = require('./visual-settings.cjs');
 
 const DEFAULT_OPTIONS = Object.freeze({ width: 512, height: 512, padding: 0.08, playbackMode: 'manual' });
+const SUPPORTED_SPINE_RUNTIME_LINES = Object.freeze(['4.0', '4.1', '4.2', '4.3']);
 
 function fail(code, message, details = {}) { throw new RendererContractError(code, message, details); }
 function finite(value, label, minimum, maximum) {
@@ -15,9 +16,10 @@ function integer(value, label) {
   return number;
 }
 function encodeRelativeUrl(value) { return String(value).split('/').map(encodeURIComponent).join('/'); }
+function supportsSpineRuntime(value) { return SUPPORTED_SPINE_RUNTIME_LINES.includes(String(value)); }
 
 function spineSourceFromManifest(manifest, { baseUrl = '' } = {}) {
-  if (!manifest || manifest.model?.format !== 'spine' || manifest.model?.runtimeLine !== '4.3') fail('INVALID_RENDER_SOURCE', 'A supported Spine 4.3 manifest is required.');
+  if (!manifest || manifest.model?.format !== 'spine' || !supportsSpineRuntime(manifest.model?.runtimeLine)) fail('INVALID_RENDER_SOURCE', 'A supported Spine 4.x manifest is required.');
   const prefix = String(baseUrl).replace(/\/+$/, '');
   return {
     format: 'spine',
@@ -158,7 +160,7 @@ class SpinePlayerAdapter {
   async evaluate(fn, ...args) { try { return await this.page.evaluate(fn, ...args); } catch (error) { if (error instanceof RendererContractError) throw error; fail('RENDERER_PAGE_ERROR', error?.message || String(error)); } }
   requireLoaded() { if (!this.source || !this.state.loaded) fail('RENDERER_NOT_LOADED', 'Load a Spine Source Package before using the renderer.'); }
   motion(id) { const motion = this.source?.motions.find((item) => item.id === id); if (!motion) fail('MOTION_NOT_FOUND', `Animation is not available: ${id}`); return motion; }
-  async load(source) { if (source?.format !== 'spine' || source.runtimeLine !== '4.3' || !Array.isArray(source.motions)) fail('INVALID_RENDER_SOURCE', 'A supported Spine 4.3 renderer source is required.'); const loaded = await this.evaluate(pageLoad, source, this.options); this.state = loaded.state; this.source = { ...source, motions: loaded.motions }; this.visualElements = loaded.slots; return { contractVersion: 1, motionCount: this.source.motions.length, expressionCount: 0 }; }
+  async load(source) { if (source?.format !== 'spine' || !supportsSpineRuntime(source.runtimeLine) || !Array.isArray(source.motions)) fail('INVALID_RENDER_SOURCE', 'A supported Spine 4.x renderer source is required.'); const loaded = await this.evaluate(pageLoad, source, this.options); this.state = loaded.state; this.source = { ...source, motions: loaded.motions }; this.visualElements = loaded.slots; return { contractVersion: 1, motionCount: this.source.motions.length, expressionCount: 0 }; }
   async unload() { if (this.source) await this.evaluate(pageUnload); this.source = null; this.visualElements = []; this.state = { loaded: false, motionId: null, expressionId: null, time: 0, playing: false, loop: true, speed: 1 }; }
   getVisualElements() { this.requireLoaded(); return this.visualElements.map((item) => ({ ...item })); }
   getMotions() { this.requireLoaded(); return this.source.motions.map((item) => ({ ...item })); }
@@ -181,4 +183,4 @@ class SpinePlayerAdapter {
   async captureRgba({ width = this.options.width, height = this.options.height, motionId = this.state.motionId, time = this.state.time } = {}) { const motion = this.motion(motionId); const targetWidth = integer(width, 'Capture width'), targetHeight = integer(height, 'Capture height'), captureTime = finite(time, 'Capture time', 0, Math.max(0, motion.duration)); const capture = await this.evaluate(pageCapture, motionId, captureTime, targetWidth, targetHeight, this.page.supportsBinaryResults === true); const rgba = ArrayBuffer.isView(capture?.rgba) ? new Uint8Array(capture.rgba.buffer, capture.rgba.byteOffset, capture.rgba.byteLength) : Array.isArray(capture?.rgba) ? Uint8Array.from(capture.rgba) : null; if (!rgba || rgba.byteLength !== targetWidth * targetHeight * 4) fail('INVALID_RENDER_CAPTURE', 'Spine renderer returned an invalid RGBA capture.'); this.state.motionId = motionId; this.state.time = captureTime; return { contractVersion: 1, width: targetWidth, height: targetHeight, motionId, time: captureTime, rgba }; }
 }
 
-module.exports = { SpinePlayerAdapter, spineSourceFromManifest };
+module.exports = { SUPPORTED_SPINE_RUNTIME_LINES, SpinePlayerAdapter, spineSourceFromManifest, supportsSpineRuntime };

@@ -5,8 +5,12 @@ Live2Pet turns user-supplied animated 2D content into portable packages for agen
 ## Language
 
 **Source Package**:
-A user-selected collection containing one supported animated 2D model and the local resources needed to inspect and render its available animations. V1 recognizes Live2D and one versioned Spine source layout.
+A user-selected collection containing one supported animated 2D model and the local resources needed to inspect and render its available animations. V1 recognizes Live2D and version-matched Spine 4.x source layouts.
 _Avoid_: Resource pack, model pack, asset bundle
+
+**Source Library**:
+A local folder or public GitHub repository folder that may contain multiple Source Packages. Live2Pet scans at most two folder levels for candidates; a remote Source Package is downloaded only after the user selects it.
+_Avoid_: Cloned repository, bundled examples
 
 **Motion**:
 A named animation available in a Source Package.

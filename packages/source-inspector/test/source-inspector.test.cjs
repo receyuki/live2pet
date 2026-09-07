@@ -7,7 +7,7 @@ const { execFileSync } = require('node:child_process');
 const test = require('node:test');
 
 const { CacheStore } = require('../../package-build/src/cache.cjs');
-const { SourceInspectionError, decodeInspectionCache, inspectSourcePackage } = require('../src/index.cjs');
+const { SourceInspectionError, decodeInspectionCache, discoverSourcePackages, inspectSourcePackage } = require('../src/index.cjs');
 
 function temporaryDirectory() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-inspector-'));
@@ -197,16 +197,13 @@ test('inspects a Spine 4.3 folder without requiring a renderer pack', () => {
   assert.equal(manifest.warnings.length, 0);
 });
 
-test('reports missing Spine atlas pages and rejects unsupported Spine lines actionably', () => {
+test('reports missing Spine atlas pages and leaves runtime-line support to the resolver', () => {
   const missing = inspectSourcePackage(spineFixture({ missingTexture: true }).root);
   assert.deepEqual(missing.warnings, [{ code: 'MISSING_RESOURCE', resource: 'effects.png', kind: 'texture' }]);
 
-  assert.throws(
-    () => inspectSourcePackage(spineFixture({ version: '4.2.99' }).root),
-    (error) => error instanceof SourceInspectionError
-      && error.code === 'UNSUPPORTED_SPINE_VERSION'
-      && /4\.3/.test(error.message),
-  );
+  const older = inspectSourcePackage(spineFixture({ version: '4.2.99' }).root);
+  assert.equal(older.model.runtimeLine, '4.2');
+  assert.equal(older.model.spineVersion, '4.2.99');
 });
 
 test('identifies a Spine 4.3 binary skeleton before the renderer pack supplies its catalog', () => {
@@ -220,6 +217,42 @@ test('identifies a Spine 4.3 binary skeleton before the renderer pack supplies i
   assert.equal(manifest.model.runtimeLine, '4.3');
   assert.deepEqual(manifest.motions, []);
   assert.deepEqual(manifest.visualElements, []);
+});
+
+test('recognizes legacy fixed-hash Spine binary headers', () => {
+  const root = temporaryDirectory();
+  writeFixture(root, 'hero.skel', Buffer.concat([Buffer.from('12345678'), spineBinaryString('4.1.11')]));
+  writeFixture(root, 'hero.atlas', 'hero.png\nsize: 8,8\nfilter: Linear,Linear\nbody\nbounds: 0,0,8,8\n');
+  writeFixture(root, 'hero.png', Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+  const manifest = inspectSourcePackage(root);
+  assert.equal(manifest.model.spineVersion, '4.1.11');
+  assert.equal(manifest.model.runtimeLine, '4.1');
+});
+
+test('discovers a two-level mixed model library and inspects one selected model', () => {
+  const root = temporaryDirectory();
+  writeFixture(root, 'root.skel', Buffer.concat([Buffer.from('12345678'), spineBinaryString('4.1.11')]));
+  writeFixture(root, 'root.atlas', 'root.png\nsize: 8,8\nfilter: Linear,Linear\nbody\nbounds: 0,0,8,8\n');
+  writeFixture(root, 'root.png', Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  writeFixture(root, 'cutscene/cutscene.json', JSON.stringify({ skeleton: { spine: '4.2.7' }, animations: { idle: {} } }));
+  writeFixture(root, 'cutscene/cutscene.atlas', 'cutscene.png\nsize: 8,8\nfilter: Linear,Linear\nbody\nbounds: 0,0,8,8\n');
+  writeFixture(root, 'cutscene/cutscene.png', Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  writeFixture(root, 'nested/second/hero.model3.json', JSON.stringify({ Version: 3, FileReferences: { Moc: 'hero.moc3', Textures: [], Motions: {} } }));
+  writeFixture(root, 'nested/second/hero.moc3', Buffer.from('moc3'));
+  writeFixture(root, 'too/deep/third/ignored.model3.json', JSON.stringify({ Version: 3, FileReferences: { Moc: 'ignored.moc3', Textures: [], Motions: {} } }));
+
+  const library = discoverSourcePackages(root, { maxDepth: 2 });
+  assert.equal(library.schemaVersion, 1);
+  assert.deepEqual(library.candidates.map(({ relativePath, format, runtimeLine }) => ({ relativePath, format, runtimeLine })), [
+    { relativePath: 'cutscene/cutscene.json', format: 'spine', runtimeLine: '4.2' },
+    { relativePath: 'nested/second/hero.model3.json', format: 'live2d', runtimeLine: null },
+    { relativePath: 'root.skel', format: 'spine', runtimeLine: '4.1' },
+  ]);
+
+  const selected = inspectSourcePackage(root, { modelConfig: 'root.skel' });
+  assert.equal(selected.model.modelFile, 'root.skel');
+  assert.equal(selected.model.runtimeLine, '4.1');
 });
 
 test('reports missing referenced resources without hiding the rest of the manifest', () => {

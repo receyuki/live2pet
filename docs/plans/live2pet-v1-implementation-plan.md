@@ -1,10 +1,10 @@
 # Live2Pet Personal-Use V1 Implementation Plan
 
-Status: Updated on 2026-09-07 — Live2D implementation accepted; optional Spine 4.3 implementation is awaiting packaged-App user acceptance
+Status: Updated on 2026-09-07 — Live2D implementation accepted; Spine 4.x packs and Source Library browsing are awaiting packaged-App user acceptance
 
 ## Outcome and boundary
 
-The only current release outcome is a dependable personal-use macOS Desktop App that converts a permitted Live2D model folder, supported Live2D PCK file, or one supported Spine folder into a previewed, validated, downloadable Clawd or Codex ZIP, lets the user hide removable model backgrounds, and explicitly installs the generated package when the user chooses Install or Build & Install.
+The only current release outcome is a dependable personal-use macOS Desktop App that browses permitted local or public GitHub model collections, converts one selected Live2D Source Package, supported Live2D PCK file, or supported Spine 4.x Source Package into a previewed, validated, downloadable Clawd or Codex ZIP, lets the user hide removable model backgrounds, and explicitly installs the generated package when the user chooses Install or Build & Install.
 
 V1 does not include the official Cubism Web Framework integration, a Codex skill, Mapper Session, Windows qualification, signing, notarization, or public binary distribution. Only Windows and public distribution remain possible future milestones; the other removed product surfaces are not part of the current roadmap.
 
@@ -151,22 +151,23 @@ Acceptance gate:
 - generated previews match the artifact rather than source playback; and
 - any host mismatch is captured as a narrow compatibility fix, not a new framework project.
 
-### P1 — Add one optional Spine renderer path
+### P1 — Add optional version-matched Spine renderer paths and Source Libraries
 
 Issue: [#14](https://github.com/receyuki/live2pet/issues/14)
 
-Outcome: a user with a supported Spine folder can explicitly install its optional renderer pack once, then use the same preview, visibility, mapping, build, download, and target-installation workflow as Live2D.
+Outcome: a user can browse a multi-model local folder or public GitHub folder, select one model without cloning unrelated assets, and install the matching optional Spine 4.0–4.3 renderer pack once before using the same workflow as Live2D.
 
 Work:
 
 1. Detect a standard Spine folder with skeleton `.json` or `.skel`, `.atlas`, and referenced texture pages before any renderer download.
-2. Select one pinned Spine `major.minor` line from a permitted real fixture; use the current official 4.3 line only when no fixture establishes another requirement, and reject mismatches actionably.
-3. Add an optional renderer-pack service with a fixed exact-version HTTPS source, explicit user consent, byte limit, pinned integrity verification, atomic App-private installation, automatic reuse, and Settings removal.
-4. Show one inline Download Spine Support action after a matching source is detected. Dismissal must preserve inspection and must not produce repeated modal prompts.
-5. Run Spine in an isolated renderer realm. First test the official `spine-player` distribution; if deterministic stepping/capture is insufficient, use official `spine-pixi-v8` plus matching PixiJS behind the same internal adapter.
-6. Implement the shared renderer contract for Motion playback, deterministic stepping, transparent RGBA capture, visible bounds, failure isolation, and Spine Slot visibility.
-7. Reuse existing recipes and target builders. Keep Expressions empty for Spine and use the default skin in V1 rather than relabeling skins.
-8. Add synthetic public tests and a permitted local fixture acceptance run without committing model or runtime artifacts.
+2. Resolve pinned official Spine Player packs independently for 4.0, 4.1, 4.2, and 4.3; reject all other runtime lines actionably rather than attempting cross-version loading.
+3. Discover Source Packages up to two levels deep in a local folder or public GitHub tree. Browse GitHub metadata without cloning, download only a selected model folder, and bound the user-configurable LRU cache.
+4. Add an optional renderer-pack service with a fixed exact-version HTTPS source, explicit user consent, byte limit, pinned integrity verification, atomic App-private installation, automatic reuse, and Settings removal.
+5. Show one inline Download Spine Support action after a matching source is detected. Dismissal must preserve inspection and must not produce repeated modal prompts.
+6. Run Spine in an isolated renderer realm. First test the official `spine-player` distribution; if deterministic stepping/capture is insufficient, use official `spine-pixi-v8` plus matching PixiJS behind the same internal adapter.
+7. Implement the shared renderer contract for Motion playback, deterministic stepping, transparent RGBA capture, visible bounds, failure isolation, and Spine Slot visibility.
+8. Reuse existing recipes and target builders. Keep Expressions empty for Spine and use the default skin in V1 rather than relabeling skins.
+9. Add synthetic public tests and a permitted local fixture acceptance run without committing model or runtime artifacts.
 
 Acceptance gate:
 
@@ -176,10 +177,11 @@ Acceptance gate:
 - that project builds and validates at least one Clawd package and one Codex Pet package; and
 - an unsupported version and failed integrity check each provide actionable recovery without losing project state.
 
-Implementation checkpoint (2026-09-07): standard Spine 4.3 JSON and binary
-skeleton inspection, the explicit verified `spine-player` 4.3.13 pack, isolated
-preview/capture, Slot visibility, binary catalog hydration, and both existing
-target builders are implemented. Synthetic public tests and an opt-in permitted
+Implementation checkpoint (2026-09-07): standard Spine 4.x JSON and binary
+skeleton inspection, explicit verified `spine-player` packs for 4.0–4.3, isolated
+preview/capture, Slot visibility, binary catalog hydration, both existing target
+builders, and two-level local/public GitHub Source Library browsing are implemented.
+The bounded GitHub model cache is user-configurable in Settings. Synthetic public tests and an opt-in permitted
 real-runtime test pass without committing the runtime, fixture, or generated
 packages. Project reopen and final packaged-App interaction remain the manual
 acceptance gate before #14 can close.

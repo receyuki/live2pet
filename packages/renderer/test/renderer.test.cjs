@@ -452,7 +452,9 @@ test('adapter selection follows the inspected Cubism generation', () => {
   assert.equal(selectRendererAdapter(5).kind, 'modern-cubism');
   assert.equal(selectRendererAdapter({ format: 'spine', runtimeLine: '4.3' }).kind, 'spine-player-4.3');
   assert.equal(selectRendererAdapter({ format: 'spine', runtimeLine: '4.3' }).Adapter, SpinePlayerAdapter);
-  assert.throws(() => selectRendererAdapter({ format: 'spine', runtimeLine: '4.2' }), { code: 'UNSUPPORTED_SPINE_VERSION' });
+  assert.equal(selectRendererAdapter({ format: 'spine', runtimeLine: '4.2' }).kind, 'spine-player-4.2');
+  assert.equal(selectRendererAdapter({ format: 'spine', runtimeLine: '4.0' }).Adapter, SpinePlayerAdapter);
+  assert.throws(() => selectRendererAdapter({ format: 'spine', runtimeLine: '3.8' }), { code: 'UNSUPPORTED_SPINE_VERSION' });
   assert.throws(
     () => selectRendererAdapter(6),
     (error) => error instanceof RendererContractError && error.code === 'UNSUPPORTED_CUBISM_VERSION',

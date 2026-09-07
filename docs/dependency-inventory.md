@@ -33,11 +33,11 @@ public App or CI dependency contract.
 ## Optional downloaded renderer pack
 
 Spine support is not part of the installed App or repository. After an explicit
-user action, Live2Pet downloads the exact official
-`@esotericsoftware/spine-player` 4.3.13 IIFE/CSS/license files from fixed HTTPS
-URLs, enforces an 8 MiB aggregate limit, verifies pinned SHA-256 values, and
-stores the pack in private App data. The pack is reused automatically and can
-be removed in Settings. It is governed by the Spine Runtime License and is not
+user action, Live2Pet downloads one exact official
+`@esotericsoftware/spine-player` pack matching Spine 4.0, 4.1, 4.2, or 4.3 from
+fixed HTTPS URLs, enforces an 8 MiB per-pack aggregate limit, verifies pinned
+SHA-256 values, and stores it in private App data. Packs are reused automatically
+and can be removed individually in Settings. They are governed by the Spine Runtime License and are not
 relicensed by Live2Pet's Apache-2.0 license.
 
 ## User-provided runtime inputs

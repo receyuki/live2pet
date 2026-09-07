@@ -13,13 +13,30 @@ export type RuntimeSettings = {
   runtimes: RuntimeDescriptor[];
 };
 
-export type SpinePackStatus = {
-  schemaVersion: 1;
-  id: 'spine-player-4.3';
-  runtimeLine: '4.3';
+export type SpinePackEntry = {
+  schemaVersion: 2;
+  id: string;
+  runtimeLine: string;
   version: string;
+  downloadable: boolean;
   installed: boolean;
 };
+
+export type SpinePackStatus = { schemaVersion: 2; packs: SpinePackEntry[] };
+
+export type SourceLibraryCandidate = {
+  id: string;
+  name: string;
+  relativePath: string;
+  format: 'live2d' | 'live2d-pck' | 'spine';
+  version: string | null;
+  runtimeLine: string | null;
+  binary: boolean;
+};
+export type SourceLibrary = { schemaVersion: 1; libraryId: string; name: string; kind: 'local' | 'github'; maxDepth: number; candidates: SourceLibraryCandidate[] };
+export type SourceLibraryOperation = { cancelled: true } | { cancelled: false; library: SourceLibrary };
+export type SourceLibrarySelection = { candidate: SourceLibraryCandidate; inspection: SourceInspection };
+export type SourceLibraryCacheStatus = { schemaVersion: 1; maxBytes: number; byteLength: number; entryCount: number; removedEntries?: number; removedBytes?: number };
 
 export type SourceMotion = {
   id: string;
@@ -181,8 +198,14 @@ type Live2PetApi = {
   configureRuntime(input: { inputPath: string }): Promise<AppResponse<RuntimeSettings>>;
   clearRuntimeSettings(input?: { fingerprint: string }): Promise<AppResponse<RuntimeSettings>>;
   getSpinePackStatus(): Promise<AppResponse<SpinePackStatus>>;
-  installSpinePack(): Promise<AppResponse<SpinePackStatus>>;
-  removeSpinePack(): Promise<AppResponse<SpinePackStatus>>;
+  installSpinePack(input: { confirmInstall: true; runtimeLine: string }): Promise<AppResponse<SpinePackStatus>>;
+  removeSpinePack(input: { runtimeLine: string }): Promise<AppResponse<SpinePackStatus>>;
+  openSourceLibrary?(): Promise<AppResponse<SourceLibraryOperation>>;
+  openGitHubLibrary?(url: string): Promise<AppResponse<SourceLibraryOperation>>;
+  inspectLibrarySource?(input: { libraryId: string; sourceId: string; projectId: string }): Promise<AppResponse<SourceLibrarySelection>>;
+  getSourceLibraryCacheStatus?(): Promise<AppResponse<SourceLibraryCacheStatus>>;
+  configureSourceLibraryCache?(maxBytes: number): Promise<AppResponse<SourceLibraryCacheStatus>>;
+  clearSourceLibraryCache?(): Promise<AppResponse<SourceLibraryCacheStatus>>;
   getBuildCacheStatus(): Promise<AppResponse<{ schemaVersion: 1; byteLength: number; entryCount: number; maxBytes: number }>>;
   clearBuildCache(input: { confirmClear: true }): Promise<AppResponse<{ removedEntries: number; removedBytes: number; schemaVersion: 1; byteLength: number; entryCount: number; maxBytes: number }>>;
   buildProject?(input: { project: Live2PetProject; targets: BuildTarget[]; optionsByTarget: Partial<Record<BuildTarget, { package: true; spriteVersionNumber?: 2 }>> }): Promise<AppResponse<BuildProjectResult>>;
@@ -271,20 +294,56 @@ export async function clearRuntimeSettings(fingerprint?: string): Promise<Runtim
 
 export async function getSpinePackStatus(): Promise<SpinePackStatus> {
   const api = desktopApi();
-  if (!api?.getSpinePackStatus) return { schemaVersion: 1, id: 'spine-player-4.3', runtimeLine: '4.3', version: '4.3.13', installed: false };
+  if (!api?.getSpinePackStatus) return { schemaVersion: 2, packs: [] };
   return unwrap(api.getSpinePackStatus());
 }
 
-export async function installSpinePack(): Promise<SpinePackStatus> {
+export async function installSpinePack(runtimeLine: string): Promise<SpinePackStatus> {
   const api = desktopApi();
   if (!api?.installSpinePack) throw new DesktopApiError('APP_SPINE_PACK_UNAVAILABLE', 'Optional Spine support requires the Desktop App.');
-  return unwrap(api.installSpinePack());
+  return unwrap(api.installSpinePack({ confirmInstall: true, runtimeLine }));
 }
 
-export async function removeSpinePack(): Promise<SpinePackStatus> {
+export async function removeSpinePack(runtimeLine: string): Promise<SpinePackStatus> {
   const api = desktopApi();
   if (!api?.removeSpinePack) throw new DesktopApiError('APP_SPINE_PACK_UNAVAILABLE', 'Optional Spine support requires the Desktop App.');
-  return unwrap(api.removeSpinePack());
+  return unwrap(api.removeSpinePack({ runtimeLine }));
+}
+
+export async function openSourceLibrary(): Promise<SourceLibraryOperation> {
+  const api = desktopApi();
+  if (!api?.openSourceLibrary) throw new DesktopApiError('APP_SOURCE_LIBRARY_UNAVAILABLE', 'Model libraries require the Desktop App.');
+  return unwrap(api.openSourceLibrary());
+}
+
+export async function openGitHubLibrary(url: string): Promise<SourceLibraryOperation> {
+  const api = desktopApi();
+  if (!api?.openGitHubLibrary) throw new DesktopApiError('APP_SOURCE_LIBRARY_UNAVAILABLE', 'GitHub model libraries require the Desktop App.');
+  return unwrap(api.openGitHubLibrary(url));
+}
+
+export async function inspectLibrarySource(libraryId: string, sourceId: string, projectId: string): Promise<SourceLibrarySelection> {
+  const api = desktopApi();
+  if (!api?.inspectLibrarySource) throw new DesktopApiError('APP_SOURCE_LIBRARY_UNAVAILABLE', 'Model libraries require the Desktop App.');
+  return unwrap(api.inspectLibrarySource({ libraryId, sourceId, projectId }));
+}
+
+export async function getSourceLibraryCacheStatus(): Promise<SourceLibraryCacheStatus> {
+  const api = desktopApi();
+  if (!api?.getSourceLibraryCacheStatus) return { schemaVersion: 1, maxBytes: 1024 ** 3, byteLength: 0, entryCount: 0 };
+  return unwrap(api.getSourceLibraryCacheStatus());
+}
+
+export async function configureSourceLibraryCache(maxBytes: number): Promise<SourceLibraryCacheStatus> {
+  const api = desktopApi();
+  if (!api?.configureSourceLibraryCache) throw new DesktopApiError('APP_SOURCE_LIBRARY_UNAVAILABLE', 'GitHub model cache settings require the Desktop App.');
+  return unwrap(api.configureSourceLibraryCache(maxBytes));
+}
+
+export async function clearSourceLibraryCache(): Promise<SourceLibraryCacheStatus> {
+  const api = desktopApi();
+  if (!api?.clearSourceLibraryCache) throw new DesktopApiError('APP_SOURCE_LIBRARY_UNAVAILABLE', 'GitHub model cache settings require the Desktop App.');
+  return unwrap(api.clearSourceLibraryCache());
 }
 
 export async function getCacheStatus() {

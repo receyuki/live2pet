@@ -36,10 +36,16 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, previewV
     },
   }));
   const configureRuntime = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: runtimes }));
-  const spinePack = { schemaVersion: 1 as const, id: 'spine-player-4.3' as const, runtimeLine: '4.3' as const, version: '4.3.13', installed: false };
+  const spinePack = { schemaVersion: 2 as const, packs: [{ schemaVersion: 2 as const, id: 'spine-player-4.3', runtimeLine: '4.3', version: '4.3.13', downloadable: true, installed: false }] };
   const getSpinePackStatus = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: spinePack }));
-  const installSpinePack = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { ...spinePack, installed: true } }));
+  const installSpinePack = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { ...spinePack, packs: spinePack.packs.map((pack) => ({ ...pack, installed: true })) } }));
   const removeSpinePack = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: spinePack }));
+  const sourceLibrary = { schemaVersion: 1 as const, libraryId: 'library-1', name: 'Models', kind: 'local' as const, maxDepth: 2, candidates: [{ id: 'source-1', name: 'Spine Hero', relativePath: 'heroes/hero.json', format: 'spine' as const, version: null, runtimeLine: null, binary: false }] };
+  const openSourceLibrary = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { cancelled: false as const, library: sourceLibrary } }));
+  const inspectLibrarySource = vi.fn(async ({ sourceId }: { sourceId: string }) => ({ protocolVersion: 1 as const, ok: true, result: { candidate: sourceLibrary.candidates.find((candidate) => candidate.id === sourceId)!, inspection: (await inspectSource()).result } }));
+  const getSourceLibraryCacheStatus = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, maxBytes: 1024 ** 3, byteLength: 64 * 1024 ** 2, entryCount: 2 } }));
+  const configureSourceLibraryCache = vi.fn(async (maxBytes: number) => ({ protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, maxBytes, byteLength: 64 * 1024 ** 2, entryCount: 2 } }));
+  const clearSourceLibraryCache = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, maxBytes: 1024 ** 3, byteLength: 0, entryCount: 0, removedEntries: 2, removedBytes: 64 * 1024 ** 2 } }));
   const relinkSource = vi.fn(async ({ project }: { project: Live2PetProject; inputPath: string }) => ({
     protocolVersion: 1 as const,
     ok: true,
@@ -86,6 +92,12 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, previewV
       getSpinePackStatus,
       installSpinePack,
       removeSpinePack,
+      openSourceLibrary,
+      openGitHubLibrary: vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { cancelled: false as const, library: { ...sourceLibrary, kind: 'github' as const } } })),
+      inspectLibrarySource,
+      getSourceLibraryCacheStatus,
+      configureSourceLibraryCache,
+      clearSourceLibraryCache,
       getBuildCacheStatus: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { byteLength: 0, entryCount: 0, maxBytes: 1024 } })),
       clearBuildCache: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { removedEntries: 0, removedBytes: 0 } })),
       getFilePath: vi.fn((file: File) => `/Users/test/${file.name}`),
@@ -110,7 +122,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, previewV
       } : {}),
     },
   });
-  return { configureRuntime, getSpinePackStatus, installSpinePack, removeSpinePack, inspectSource, relinkSource, acknowledgeSourceReview, openPreview, getPreviewVisualElements, getPreviewVisualElementThumbnail, openProject, saveProject, buildProject, emitAppCommand: (command: 'new' | 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => appCommandListener?.(command) };
+  return { configureRuntime, getSpinePackStatus, installSpinePack, removeSpinePack, openSourceLibrary, inspectLibrarySource, getSourceLibraryCacheStatus, configureSourceLibraryCache, clearSourceLibraryCache, inspectSource, relinkSource, acknowledgeSourceReview, openPreview, getPreviewVisualElements, getPreviewVisualElementThumbnail, openProject, saveProject, buildProject, emitAppCommand: (command: 'new' | 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => appCommandListener?.(command) };
 }
 
 function setSystemDarkMode(matches: boolean) {
@@ -177,6 +189,36 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('Live2Pet desktop shell', () => {
+  it('browses a local model library before inspecting the selected model', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const api = installDesktopApi();
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole('button', { name: 'Browse model folder' }));
+    expect(await screen.findByRole('heading', { name: 'Models' })).toBeVisible();
+    expect(screen.getByText('heroes/hero.json')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: /Spine Hero/ }));
+    expect(api.inspectLibrarySource).toHaveBeenCalledWith({ libraryId: 'library-1', sourceId: 'source-1', projectId: 'spine-hero' });
+    expect(await screen.findByRole('heading', { name: 'Source Package' })).toBeVisible();
+  });
+
+  it('lets the user change and clear the bounded GitHub model cache', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const api = installDesktopApi();
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('button', { name: /Storage/ }));
+    expect(await screen.findByText('2 downloaded models · 64 MiB')).toBeVisible();
+    const limit = screen.getByRole('spinbutton', { name: 'GitHub model cache limit' });
+    await user.clear(limit);
+    await user.type(limit, '2');
+    await user.click(screen.getByRole('button', { name: 'Save limit' }));
+    expect(api.configureSourceLibraryCache).toHaveBeenCalledWith(2 * 1024 ** 3);
+  });
+
   it('keeps setup, Welcome, and design preview free of decorative mascots', async () => {
     const user = userEvent.setup();
     const { container } = render(<App />);
@@ -700,9 +742,9 @@ describe('Live2Pet desktop shell', () => {
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Spine Hero.pck'));
 
     expect(await screen.findByText(/Spine 4\.3/)).toBeVisible();
-    await user.click(screen.getByRole('button', { name: 'Install Spine support' }));
-    expect(api.installSpinePack).toHaveBeenCalledTimes(1);
-    await vi.waitFor(() => expect(screen.queryByRole('button', { name: 'Install Spine support' })).not.toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Install' }));
+    expect(api.installSpinePack).toHaveBeenCalledWith({ confirmInstall: true, runtimeLine: '4.3' });
+    await vi.waitFor(() => expect(screen.queryByRole('button', { name: 'Install' })).not.toBeInTheDocument());
   });
 
   it('routes a project with a missing runtime to Settings and preserves its Source destination', async () => {
