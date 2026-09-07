@@ -605,3 +605,10 @@ including its velocity, to a neutral center for every exported frame. The prior
 focus and preview interaction state are restored afterward. This prevents a
 pointer position or residual focus movement from introducing build-only jitter
 while retaining mouse following in the interactive preview.
+
+Capture also advances modern Cubism state in steps no larger than 1/60 second.
+Pixi normally coalesces multiple `model.update()` calls until a render; Live2Pet
+flushes each intermediate internal update without drawing an extra GPU frame.
+An opt-in local Miku fixture produced pixel-identical 12 FPS output at matching
+points in a 60 Hz reference capture, where the previous implementation diverged
+by up to approximately 1.90% of normalized whole-frame RGBA values.

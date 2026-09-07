@@ -47,7 +47,7 @@
 3. **Build and enjoy** — name your pet, choose quality, then save the ZIP or install it.
 
 Your models stay local. Original source files stay unchanged.
-Pointer tracking is preview-only; exported Live2D frames use a stable neutral focus.
+Pointer tracking is preview-only; exported Live2D frames use a stable neutral focus and 60 Hz physics integration regardless of output frame rate.
 
 ## Get started
 

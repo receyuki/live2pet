@@ -456,7 +456,25 @@ function pageCapture(motionId, time, width, height, priority, binary = false) {
       }
       // Capture uses source time and a neutral focus, independent of preview
       // speed, wall time, and the user's latest pointer position.
-      runtime.model.update(Math.max(0.001, (captureTime - previousTime) * 1000));
+      const elapsedMilliseconds = Math.max(0, (captureTime - previousTime) * 1000);
+      const integrationStep = 1000 / 60;
+      if (elapsedMilliseconds === 0) runtime.model.update(0.001);
+      else {
+        let remaining = elapsedMilliseconds;
+        while (remaining > integrationStep + 0.001) {
+          runtime.model.update(integrationStep);
+          // Pixi only forwards accumulated model time into Cubism during a
+          // render. Flush the internal update without drawing an intermediate
+          // frame so physics receives stable steps without multiplying GPU
+          // capture work.
+          if (runtime.model.deltaTime && typeof runtime.model.internalModel?.update === 'function') {
+            runtime.model.internalModel.update(runtime.model.deltaTime, runtime.model.elapsedTime);
+            runtime.model.deltaTime = 0;
+          }
+          remaining -= integrationStep;
+        }
+        runtime.model.update(Math.max(0.001, remaining));
+      }
       runtime.render();
       const pixels = runtime.readPixels();
       // Electron preserves typed arrays across executeJavaScript. Expanding

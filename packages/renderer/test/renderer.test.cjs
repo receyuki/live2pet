@@ -273,6 +273,7 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
   const previousWindow = global.window;
   const previousDocument = global.document;
   const updates = [];
+  const internalUpdates = [];
   const legacyTimes = [];
   let captureObservedTicker = null;
   let captureObservedPhysicsVelocity = null;
@@ -294,6 +295,7 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
   };
   const model = {
     autoInteract: true,
+    deltaTime: 0,
     elapsedTime: 100,
     scale: { set() {} },
     x: 0,
@@ -301,6 +303,7 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     getLocalBounds: () => ({ x: 0, y: 0, width: 100, height: 200 }),
     internalModel: Object.assign(new EventEmitter(), {
       focusController,
+      update(deltaMilliseconds) { internalUpdates.push(deltaMilliseconds); },
       motionManager: { stopAllMotions() { updates.push('reset'); } },
       coreModel: { loadParameters() {} },
       physics: {
@@ -309,7 +312,11 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
       },
     }),
     motion: async () => undefined,
-    update: (deltaMilliseconds) => updates.push(deltaMilliseconds),
+    update(deltaMilliseconds) {
+      updates.push(deltaMilliseconds);
+      this.deltaTime += deltaMilliseconds;
+      this.elapsedTime += deltaMilliseconds;
+    },
     unregisterInteraction() { this.interactionManager = null; },
     registerInteraction(manager) { this.interactionManager = manager; interactionRestores += 1; },
   };
@@ -320,7 +327,12 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
       this.renderer = {
         width: options.width,
         height: options.height,
-        render() {},
+        render() {
+          if (model.deltaTime) {
+            model.internalModel.update(model.deltaTime, model.elapsedTime);
+            model.deltaTime = 0;
+          }
+        },
         resize: (width, height) => {
           this.renderer.width = width;
           this.renderer.height = height;
@@ -392,9 +404,15 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     assert.deepEqual(focusController, { targetX: 0.8, targetY: -0.7, x: 0.6, y: -0.5, vx: 0.4, vy: -0.3 });
     assert.equal(interactionRestores, 1);
     updates.length = 0;
+    const internalUpdatesBeforeCapture = internalUpdates.length;
     await pageCapture('Base:wave', 0.6, 8, 4, 3);
     assert.equal(physicsSteps, 120, 'sequential capture frames must not restart physics');
-    assert.ok(Math.abs(updates.filter(Number.isFinite).reduce((a, b) => a + b, 0) - 100) < 0.001, 'capture advances by the frame delta, not the absolute timestamp or preview speed');
+    const captureUpdates = updates.filter(Number.isFinite);
+    const captureInternalUpdates = internalUpdates.slice(internalUpdatesBeforeCapture);
+    assert.ok(captureUpdates.every(delta => delta <= 1000 / 60 + 0.001), 'capture keeps physics integration at 60 Hz or finer regardless of export frame rate');
+    assert.ok(captureInternalUpdates.every(delta => delta <= 1000 / 60 + 0.001), 'every capture substep reaches Cubism physics instead of being coalesced by Pixi');
+    assert.ok(Math.abs(captureInternalUpdates.reduce((a, b) => a + b, 0) - 100) < 0.001, 'Cubism physics receives the complete capture interval');
+    assert.ok(Math.abs(captureUpdates.reduce((a, b) => a + b, 0) - 100) < 0.001, 'capture substeps still advance by exactly the frame delta, not the absolute timestamp or preview speed');
     pagePause();
     const sought = await pageSeek(0.25, 3);
     assert.equal(sought.time, 0.25);
