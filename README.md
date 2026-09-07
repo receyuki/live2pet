@@ -2,276 +2,189 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Turn Live2D models into portable packages for agent-pet hosts.
+Turn your Live2D model into a desktop pet package—locally, visually, and without editing the original model.
 
-Live2Pet is an early-stage local desktop toolchain for loading Cubism models, previewing their original motions, mapping those motions to target-specific pet states, and building validated Clawd theme and Codex custom-pet packages. The current V1 milestone is deliberately limited to a personal-use macOS App.
+Live2Pet is a macOS desktop app for people who already have a permitted Live2D model and want to use its original animations in [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk) or Codex custom pets. Import a model, preview its motions, map them to pet states, hide unwanted visual elements, and build a validated ZIP from one project workspace.
 
-The interface focuses on your project: Setup and Welcome contain task controls
-rather than decorative mascots, and empty previews explain what is missing.
-Settings uses the same top toolbar as the workspace, with Done at the top right.
-The system App icon is unchanged.
+> [!IMPORTANT]
+> Live2Pet is currently a personal-use, unsigned macOS project. There is no public prebuilt release yet. The complete Live2D workflow is accepted; optional Spine support is the next milestone. Windows support is planned after V1.
+
+## Highlights
+
+- Import standard Cubism model folders and supported uncompressed, unencrypted Live2D PCK files.
+- Save Cubism 2 and Cubism 3–5 runtimes once; Live2Pet selects the matching version automatically.
+- Preview motions and expressions with play, pause, restart, seek, loop, and preview-speed controls.
+- Map the selected motion directly to required and optional Clawd or Codex pet states.
+- Inspect model elements with thumbnails and hierarchy, then hide unwanted backgrounds or effects without changing source files.
+- Save and reopen portable `.live2pet` project files. Projects contain references and settings, not model or runtime bytes.
+- Build Clawd Theme Packages and Codex Pet V2 packages with progress, cancellation, generated-result previews, cache reuse, and validation.
+- Save ZIPs anywhere, install them explicitly, or use **Build & Install**. Existing packages are never silently replaced.
+- Use the App in English or Simplified Chinese.
+
+## Supported formats
+
+| Input or target | Current support |
+| --- | --- |
+| Cubism 3, 4, and 5 | Standard folders containing `.model3.json` and `.moc3` |
+| Cubism 2 | Standard folders containing `.model.json` and `.moc` |
+| Live2D PCK | Tested uncompressed and unencrypted layouts containing a supported Cubism model |
+| Clawd on Desk | Core states, optional states/reactions, transparent animated WebP assets, theme validation, preview, and installation |
+| Codex custom pets | V2 11-row atlas by default, including the nine required animation mappings and neutral look cells |
+| Spine | Not yet available; tracked as the next V1 renderer milestone |
+| Windows | Not yet qualified; planned after V1 |
+
+PCK is a container, not a specific game's format and not a guarantee of compatibility. Encrypted, compressed, proprietary, or incomplete packages are rejected with an explanation.
+
+## Quick start
+
+There is no signed downloadable build yet. To try the current App, build the local unsigned macOS bundle from source.
+
+### Requirements
+
+- macOS on the current supported architecture
+- Git
+- Node.js 22.12 or newer
+- pnpm 11 through Corepack
+- A legally obtained model and the matching Live2D runtime
+
+### Build the App
+
+```sh
+git clone https://github.com/receyuki/live2pet.git
+cd live2pet
+corepack enable
+pnpm install
+pnpm --filter @live2pet/desktop package:mac
+open apps/desktop/out/Live2Pet-darwin-*/Live2Pet.app
+```
+
+The local App is unsigned. macOS may require you to approve it in **System Settings → Privacy & Security**. Public signed and notarized installers are a separate release milestone.
+
+## Using Live2Pet
+
+1. On first launch, add the Live2D runtime files you already own, or skip setup and inspect a model first.
+2. Import a Live2D folder or PCK file. You can also drag it into the App.
+3. In **Source**, review the detected Cubism generation, motions, expressions, and warnings.
+4. In **Map**, choose an animation, preview it, and assign it separately to Clawd or Codex states.
+5. Use **Visibility** when you need to inspect and hide a background, overlay, or other separable model element.
+6. Enter a package name in **Build**, choose a render preset, and build either target.
+7. Preview the generated result, then choose **Save ZIP**, **Install**, or **Build & Install**.
+8. Save the `.live2pet` project if you want to reopen or revise the mapping later.
+
+Global runtime, output, cache, language, and installation-location preferences live in **Settings**. Model choices and mappings stay in the project.
 
 <a id="runtime-setup"></a>
 
-## Runtime setup: why a separate download?
+## Runtime setup
 
-A model contains the character data; a runtime is the code that makes it move.
-Live2Pet includes its interface and rendering adapters, but deliberately does
-not bundle or download Live2D's proprietary runtime. Its license is separate
-from this repository's source code. Obtain it from the appropriate source and
-review its terms yourself; importing it does not grant rights to your models
-or to publish derived pets.
+A model contains character data; a runtime is the code that makes it move. Live2Pet includes its interface and renderer adapters, but does not bundle or silently download Live2D's proprietary runtime. Obtain the appropriate runtime separately and review its terms.
 
-| Your model | Runtime to import | Where to get it |
+| Model generation | Runtime to import | Source |
 | --- | --- | --- |
-| Cubism 3 and later (`.model3.json` / `.moc3`) | Cubism Core for Web, typically `Core/live2dcubismcore.min.js` | [Official Cubism SDK for Web download](https://www.live2d.com/en/sdk/download/web/) — download the SDK and extract it first. |
-| Cubism 2 (`.model.json` / `.moc`, including some PCK packages) | Legacy Web runtime `live2d.min.js` | Third-party legacy source: [dylanNew/live2d runtime directory](https://github.com/dylanNew/live2d/tree/master/webgl/Live2D/lib), or [open the raw JavaScript file](https://raw.githubusercontent.com/dylanNew/live2d/master/webgl/Live2D/lib/live2d.min.js) and save it as `live2d.min.js`. |
+| Cubism 3–5 (`.model3.json` / `.moc3`) | Cubism Core for Web, usually `Core/live2dcubismcore.min.js` | [Official Cubism SDK for Web](https://www.live2d.com/en/sdk/download/web/) |
+| Cubism 2 (`.model.json` / `.moc`) | Legacy Web runtime `live2d.min.js` | Third-party archive: [dylanNew/live2d](https://github.com/dylanNew/live2d/tree/master/webgl/Live2D/lib) |
 
-For Cubism 2, save the JavaScript file itself, not the GitHub HTML page, then
-drag that file into Live2Pet. The linked repository is a **third-party copy**,
-not an official or maintained Live2D download channel. [Live2D's notice](https://help.live2d.com/en/other/other_20/)
-states that new Cubism 2.1 SDK downloads are no longer available. Check the
-source and applicable runtime license before using the copy; public GitHub
-availability is not a grant of rights. Live2Pet only links to it and does not
-bundle, automatically download, or redistribute it.
+For modern models, download and extract the **Web SDK**, not the Editor, Unity SDK, or Native SDK. For Cubism 2, save the JavaScript file itself rather than the GitHub HTML page. The linked Cubism 2 repository is a third-party copy, not an official maintained download channel; [Live2D states](https://help.live2d.com/en/other/other_20/) that new Cubism 2.1 SDK downloads are no longer available.
 
-The SDK download page asks you to review Live2D's software licenses. Use the
-**Web** SDK, not the Editor, Unity SDK, or Native SDK. A modern Core does not
-replace the Cubism 2 runtime. PCK is a container, not a runtime generation or a
-guarantee that its contents are supported.
+In first-time Setup or **Settings → Runtimes**, drag in the runtime JavaScript file or extracted SDK folder. Live2Pet validates it, detects the supported generation, and stores a private local copy. Both generations can coexist and are reused automatically after restart, even if the original download is moved.
 
-1. Extract the downloaded SDK locally.
-2. In first-time Setup or **Settings → Runtimes**, drag in the JavaScript runtime
-   file or extracted SDK folder, or use **Add runtime / Choose SDK folder**.
-3. Live2Pet detects the generation and saves its own local copy. You do not need
-   to rebuild the App or import the runtime every launch. Both generations can
-   be saved together and selected automatically for the model.
+Only import runtime code from a source you trust. Removing a runtime from Live2Pet does not delete the original file. Inspection works without a runtime; playback and capture require a matching one. The in-App help button opens this section in the language currently selected in Live2Pet.
 
-Only import trusted runtime code. Removing a saved runtime from Settings does
-not delete your original file. You can skip this step to inspect resources,
-but model playback and capture require a matching saved runtime. This guide
-covers the current Live2D workflow; it does not imply Spine support is complete.
+## Mapping and model visibility
 
-The App's download-guide button opens this section in your system browser,
-using the English or Chinese README according to the App's current language.
+Clawd and Codex mappings are independent. The App clearly labels required states; optional states may remain empty. Live2Pet never guesses directional Codex rows or automatically maps animations on your behalf.
 
-## Components
+The **Animations** and **Visibility** tabs share the Map library. Visibility provides:
 
-### Save packages without installing
+- a collapsible parent/child hierarchy when the model exposes one;
+- an **Unattached meshes** group for root ArtMeshes outside the Part hierarchy;
+- lazy thumbnails beside visible rows and a larger selected-element preview;
+- search that retains the ancestor path;
+- temporary **Solo**, persistent **Hide / Show**, and **Restore all**;
+- **Detect large elements** for finding broad geometry in modern Cubism motions; and
+- **Reset preview** when a model pose or renderer state needs to be recreated.
 
-After a successful build, choose **Save ZIP** to save the portable package
-separately from **Install**. **Settings → Storage → Package output** defaults to
-asking for a location each time using the native save dialog. You can instead
-choose a default output folder; same-name files receive numbered suffixes and
-existing files are preserved. The App shows the saved path. Output preferences
-stay on this device, not in projects or packages. Saving remains an explicit
-action after building and never installs a pet.
+Hidden identities are saved in the project and applied consistently to preview, bounds, cache identity, Clawd output, and Codex output. Replacing a source with different content resets old model-specific visibility choices; moving the same unchanged source keeps them.
 
-Choose **Build & Install** when you want one continuous operation. The build must
-still finish and validate before the App asks for installation confirmation. If
-the same package already exists, replacement requires a second explicit
-confirmation and uses the installer's rollback-safe upgrade path. Build reports
-include total and per-stage timing alongside cache, validation, warning, and
-artifact-size information.
+Live2Pet cannot separate a background and character painted into the same ArtMesh. Large motion-driven effects may still affect framing until their separable element is hidden.
 
-### Custom Clawd output
+## Building, saving, and installing
 
-Build retains **Compact / Balanced / High** as defaults. **Custom** starts from
-the selected preset and exposes square resolution (128–2048 px), frame rate
-(1–60 FPS), and WebP quality (1–100). Overrides are saved in the project; choosing
-any preset clears them. Lower settings usually reduce size, but trade detail or
-smoothness. Frame sampling and playback timing change together. Codex retains
-its target-defined atlas geometry and presets. Custom controls appear immediately
-when Custom is selected and are hidden when a default preset is selected.
+Clawd provides **Compact**, **Balanced**, and **High** presets plus **Custom** resolution, frame rate, and WebP quality. Codex retains its target-defined atlas geometry. Lower Clawd values usually reduce file size at the cost of detail or smoothness.
 
-Clawd's **80 MiB** ZIP import limit is a compatibility warning, not a build
-failure. Oversized ZIPs remain available to save, with their size and the limit
-shown in readable units. Clawd itself may still reject them; lower settings and
-rebuild for compatibility. Archive extraction safety limits remain enforced.
+Clawd's 80 MiB import limit is shown as a compatibility warning rather than a build failure. Live2Pet still lets you save the ZIP, but Clawd may reject it. Reduce resolution, frame rate, or quality and rebuild when necessary.
 
-### Hide model backgrounds manually
+The build cache reuses verified captured frames and encoded assets. Least-recently-used entries are removed as the cache fills; a single oversized entry is skipped without failing the build. Build reports include validation, warnings, artifact sizes, cache hits, and total/per-stage timings without exposing source paths or captured pixels.
 
-In **Map**, switch between the **Animations** and **Visibility** tabs.
-Under Visibility, search the model's elements and choose **Hide / Show**.
-Parts follow the model's collapsible parent/child hierarchy; search results keep
-their ancestor path visible. Root ArtMeshes that belong to no Part appear in one
-**Unattached meshes** group, which can also be hidden or shown together. Use
-**Solo** to identify an element temporarily, or **Restore all** to undo hiding.
-Small isolated element images appear beside their names as rows enter the visible
-list. Select an image to enlarge it in the preview above. Images are generated
-one at a time and reused across tab switches; changing the source, Motion, or
-Expression resets them. Empty elements and failed previews are labeled; select a
-failed image to retry. These are pose snapshots, not original atlas tiles.
-Live2Pet never hides an element automatically based on its name. Friendly names
-are used when the model supplies them; otherwise original IDs are shown. Modern
-Cubism models therefore keep backgrounds authored outside the Part hierarchy
-hideable without inventing a false parent relationship.
+**Save ZIP** never installs. **Install** always asks for confirmation. **Build & Install** waits for a successful validated build and then asks for confirmation. If the same package already exists, replacement requires a second confirmation and uses an atomic backup/rollback path.
 
-For modern Cubism models, **Detect large elements** samples nine poses in the
-selected Motion and puts up to eight large visible elements first. Their images
-come from the sampled pose, so overlays absent at the start can be identified.
-**Solo** on a detected Part jumps to that sampled time. Detection does not hide
-anything; inspect each candidate before choosing **Hide**. It pauses at the
-Motion's start when finished. This geometry-based aid can miss brief effects
-and cannot classify a Part as background or foreground. Cubism 2 retains manual
-inspection. Thumbnail checkerboards make translucent overlays easier to see.
+**Settings → Targets & Installation** detects standard macOS locations for Clawd on Desk and Codex, or lets you select another App and package folder. Detection never launches an App or installs anything. Resetting a saved location does not remove installed packages.
 
-The project saves your hidden elements and applies them to preview and both target
-builds. Toggling visibility updates the current pose immediately; sampled
-animation framing runs only when capture is needed, independently per Motion
-so a large effect in another Motion cannot shrink the whole package. Solo is not saved. Older
-projects open with every Part visible. A background painted into the same mesh
-as the character cannot be separated by this control.
-Visibility changes center the current visible content using the actual viewport.
-After upgrading from the earlier shifted-framing build, rebuild affected packages;
-Desktop skips the incompatible old capture cache automatically.
-Modern Cubism capture settles physics at the opening pose before recording,
-without dropping opening frames. Rebuild older packages to remove captured
-startup jolts. If only some Motions look tiny, preview those Motions under
-Visibility: a large overlay may appear only during playback and still control
-framing until you explicitly hide its Part.
+## Projects, privacy, and rights
 
-Use **Reset preview** beside the current Motion name to recreate the Live2D
-preview when its pose or renderer state looks wrong. It returns the current
-Motion to the beginning, clears temporary Solo inspection, and reapplies the
-project's saved visibility; it does not alter mappings or saved hidden elements.
+Live2Pet is local-first. Models, runtimes, rendered frames, generated packages, and absolute paths are not uploaded by the App. Runtime copies, preferences, caches, and install locations remain private App data.
 
-Use **New project** in the toolbar or **File → New Project** (`⌘N` / `Ctrl+N`)
-to return to import without restarting Live2Pet. Unsaved work receives the same
-recovery confirmation as opening another project; active builds must finish or
-be cancelled first.
+This repository intentionally excludes character models, generated pets, runtime binaries, and copyrighted examples. A `.live2pet` file stores source references, fingerprints, mappings, render settings, and visibility choices; it does not embed model or runtime files.
 
-The bounded disk cache automatically evicts the least recently used entries
-when space is needed. An individual entry larger than the entire cache budget
-is skipped without failing the build or discarding other useful entries;
-rebuilding that uncached content may take longer.
+Live2Pet does not grant rights to any model, texture, motion, game asset, runtime, or derived animation. You are responsible for confirming that you may use and redistribute your inputs and generated packages. The repository's Apache-2.0 license applies to Live2Pet's source code, not to imported assets or third-party runtimes.
 
-Generated Clawd themes include a default clickable rectangle covering their
-logical canvas. Transparent margins inside it also receive pointer input.
-Rebuild and reinstall older packages that lack this rectangle; custom hit boxes
-provided through build metadata are preserved.
-They also declare neutral `objectScale` values so Clawd does not apply its
-built-in overscan and upward offset to the exported canvas.
-Replacing source contents resets model-specific hidden IDs, while moving the
-same unchanged source keeps them. The original source and saved project are not
-silently modified by relinking.
+## Troubleshooting
 
-### Targets and installation
+### The model can be inspected but not previewed
 
-**Settings → Targets & Installation** detects the Clawd on Desk and Codex macOS
-Apps in `/Applications` and `~/Applications`, validating each bundle identifier
-and displaying its version. **Locate App** supports another location or a renamed
-bundle. A missing result means only that the checked locations did not match;
-other platforms currently report App detection as unavailable.
+Add the matching runtime in **Settings → Runtimes**. A modern Cubism Core cannot render Cubism 2, and the legacy runtime cannot render modern `.moc3` models.
 
-App presence and package-folder readiness are separate checks. The page shows
-the resolved folder, whether it is writable, or whether it will be created only
-on confirmed installation. Clawd's default macOS folder is
-`~/Library/Application Support/clawd-on-desk/themes`, as documented in the
-[host's theme guide](https://github.com/rullerzhou-afk/clawd-on-desk/blob/main/docs/guides/guide-theme-creation.md).
-Codex defaults to `$CODEX_HOME/pets`, or `~/.codex/pets` when `CODEX_HOME` is unset.
-The existing `LIVE2PET_CLAWD_ROOT` / `LIVE2PET_CODEX_ROOT` overrides remain supported.
+### A PCK file is rejected
 
-Choose a custom package folder to save it on this device. Build uses that folder
-and confirms the exact destination before installing; existing packages are not
-silently overwritten. The Build page's folder picker also remembers its choice.
-Resetting a location removes only the preference, not any installed files.
-Selecting an App does not change its data folder or prove pet-format compatibility.
-Detection never launches an App, creates a package folder, or installs a pet.
+Only bounded, uncompressed, unencrypted layouts containing supported Live2D resources are accepted. Live2Pet does not decrypt proprietary packages.
 
-Absolute installation paths are visible only in local settings/confirmation UI;
-these preferences are not stored in projects or exported pet packages.
+### The generated pet is too small or cropped
 
-### Workspace packages
+Rebuild with the current version, preview the affected motion, and inspect large or animated visual elements. Old cached framing is invalidated automatically, but previously exported ZIPs do not change until rebuilt.
 
-- `apps/mapper/` — browser-based Live2D motion preview, Clawd mapping, user-configurable Clawd idle/tier behavior pools, Codex nine-row mapping, local Codex ZIP fallback build, shared-App Clawd Theme ZIP build, generated target previews, final-size Codex row playback, and explicit Desktop-App installation controls. The Mapper has no runtime CDN dependency: modern Core can be selected locally, and Cubism 2 preview requires a user-selected local `live2d.min.js`. Selected runtimes are saved only in the browser profile and restored on the next launch; the clear-saved control removes those local copies. Its first English/Chinese (`zh-CN`) locale layer is presentation-only and does not change project or package schemas.
-- `packages/source-inspector/` — normalized Source Package inspection API and versioned `live2pet-inspect` CLI for standard Cubism directories and supported Live2D PCK files.
-- `packages/project/` — reference-only `.live2pet` Project schema, reusable Motion-plus-Expression Animation Recipes, target Render Preset persistence, deterministic serialization, atomic file I/O, autosave recovery, source relinking, and review gating.
-- `packages/runtime/` — user-provided Cubism runtime discovery, bounded validation, redacted diagnosis, persistent App-managed copies, and generation-aware selection metadata.
-- `packages/renderer/` — versioned playback/capture contract, deterministic motion candidate sampling, copyright-safe synthetic renderer for CI, and automatic selection between the V1 Pixi modern and legacy adapters.
-- `packages/frame-selection/` — deterministic motion-aware candidate deduplication and ordered frame selection for target atlases.
-- `packages/package-build/` — cancellable project-target builds for Codex Pet and guide-shaped Clawd themes, including shared-renderer RGBA capture, target-owned Render Presets, verified candidate-frame and encoded-WebP cache reuse, path-free build provenance and concise build reports, generated-asset target preview plans, pre-package Target Profile validation, safe versioned artifact names, RGBA composition, Sharp WebP encoding, deterministic manifests, size limits, zip.js package creation, review gating, and integrity-checked bounded disk caches for derived build assets.
-- `packages/cli/` — stable JSON CLI envelope over source inspection, runtime diagnosis, `.live2pet` project validation, shared Package Build from transient pre-captured inputs, ZIP package validation, export/install, and cache management.
-- `packages/installation/` — explicit, conflict-aware installation for generated Codex Pet and Clawd Theme packages; building and downloading never install implicitly.
-- `packages/app-host/` — typed IPC router, preload API, artifact download/install boundary, opaque native location handles, and hardened window defaults.
-- `apps/desktop/` — Electron App with the default React/TypeScript/HeroUI interface: first-run Setup, Welcome, full-page Settings, and Source/Map/Build destinations. It saves projects, previews models, builds ZIPs, and explicitly installs generated artifacts without bundling user runtimes or models. The center column is the only Source Package preview; `apps/mapper/` remains a development reference, not the App entrypoint.
-- `packages/clawd-target/` — guide-aligned Clawd Target Profile validation for states, sleep modes, fallbacks, and reactions.
-- `packages/codex-target/` — versioned Codex Pet V1/V2 atlas geometry, nine-row mapping, frame-reference layout planning, RGBA composition, and package-shape validation. Desktop builds use [V2 with neutral look poses](docs/codex-sprite-v2.md).
-- `packages/live2d-exporter/` — deterministic transparent-frame exporter and Live2D PCK unpacker.
-- `docs/research/` — architecture, integration, and ecosystem research.
-- `docs/agents/` — repository conventions consumed by engineering skills.
+### Clawd does not respond when the pet is clicked
 
-## Planning
+Rebuild and reinstall the theme. Current packages include a canvas-sized default hit box and neutral display scaling; older generated themes may not.
 
-- [`CONTEXT.md`](CONTEXT.md) — shared domain vocabulary.
-- [`docs/adr/`](docs/adr/) — accepted architecture and product decisions.
-- [`docs/specs/live2pet-v1.md`](docs/specs/live2pet-v1.md) — scoped personal-use V1 product and acceptance specification.
-- [`docs/agents/project-workflow.md`](docs/agents/project-workflow.md) — save/recovery, source relinking, review gating, and project privacy rules.
-- [`docs/plans/live2pet-v1-implementation-plan.md`](docs/plans/live2pet-v1-implementation-plan.md) — outcome-ordered remaining work, issue map, and verification gates.
-- [`docs/dependency-inventory.md`](docs/dependency-inventory.md) — pinned runtime dependencies, native modules, and user-provided asset boundaries.
-- [`docs/release-checklist.md`](docs/release-checklist.md) — source-publication, private macOS validation, and installer-release gates.
+### Clawd rejects a large ZIP
 
-## Local-only data
+Select **Compact** or reduce the Custom resolution, frame rate, or WebP quality until the result is below the host's displayed limit.
 
-Character models, rendered frames, theme examples, and release ZIP files are intentionally excluded from Git. They remain local under `examples/`, `.work/`, `archive/`, and `artifacts/` and are not part of the open-source repository.
+### The target App is not detected
 
-Live2Pet does not grant rights to any imported model, texture, motion, or derived animation. Cubism Core is also kept local and is not redistributed by this repository.
+Use **Settings → Targets & Installation → Locate App** or select the package folder manually. “Not found” means the standard locations did not match; it does not prove the App is absent.
 
-For runtime sources and one-time import instructions, see [Runtime setup](#runtime-setup).
+## Project status and roadmap
 
-## Development status
+The Live2D-only desktop workflow through #12 is implemented and accepted. The next V1 task is one optional, version-pinned Spine renderer path. Final clean-profile macOS release qualification follows Spine. Windows x64, public signed/notarized binaries, auto-update, and Codex Skill automation are post-V1 work.
 
-Map provides keyboard-accessible loop and 0.5×/1×/1.5×/2× speed controls for
-source preview. Changing either replays the motion; these temporary controls do
-not change saved mappings or generated-package timing.
-Codex compatibility and timing notes are collapsed under Format details on
-the Build page; missing requirements and build errors remain visible.
+See the [V1 specification](docs/specs/live2pet-v1.md), [implementation plan](docs/plans/live2pet-v1-implementation-plan.md), and [GitHub Issues](https://github.com/receyuki/live2pet/issues) for normative scope and progress.
 
-The core inspection, project, mapping, center-column source preview, manual model Visibility, target-build, progress, cache, validation, generated-preview, artifact-download, and explicit package-install seams are implemented in the default HeroUI App. Remaining V1 work includes target-host UI activation/playback acceptance, optional versioned Spine support, and final macOS accessibility and release qualification.
+## Contributing and development
 
-Codex Skill integration, a hosted Mapper Session, a separate preview window, the official Cubism Web Framework bridge, Windows qualification, and public signed binaries are outside the V1 product. See the [implementation plan](docs/plans/live2pet-v1-implementation-plan.md) for the current order and close criteria.
-
-## Local verification
-
-Start the default Desktop App or build a local unsigned macOS bundle:
+Contributions and focused bug reports are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md), search existing issues, and avoid attaching models or runtime files unless you have clear redistribution rights.
 
 ```sh
-pnpm --filter @live2pet/desktop start
-pnpm --filter @live2pet/desktop package:mac
-pnpm --filter @live2pet/desktop smoke:mac
-```
-
-Start and package commands build the HeroUI assets and stage the internal rendering vendors automatically. The packaged App does not require a Vite server or a preview flag. `preview:shell` is retained as an alias for `start`.
-
-The macOS package includes compiled UI assets, not duplicate React/HeroUI/icon
-library source trees or local icon drafts. Vite emits the bundled dependency
-license report; stylesheet licenses are copied alongside it. Electron and native
-image dependencies remain intact. The current x64 bundle measures about 316 MiB
-on disk (down from 434 MiB); this is installed size, not a compressed download.
-
-For opt-in real-model Desktop acceptance, see [the local acceptance guide](docs/desktop-acceptance.md).
-
-```sh
+corepack enable
+pnpm install
 pnpm test
 pnpm typecheck
 pnpm release:check
-node packages/source-inspector/bin/live2pet-inspect.cjs --input /path/to/source-package --pretty
-node packages/cli/bin/live2pet.cjs version --pretty
-node packages/cli/bin/live2pet.cjs inspect --input /path/to/source-package --pretty
-node packages/cli/bin/live2pet.cjs runtime-diagnose --input /path/to/CubismCore.js --pretty
-node packages/cli/bin/live2pet.cjs project-validate --input /path/to/project.live2pet --pretty
-node packages/cli/bin/live2pet.cjs project-recover --input /path/to/project.live2pet --pretty
-node packages/cli/bin/live2pet.cjs package-build --input /path/to/build-spec.json --output /path/to/exports --pretty
-node packages/cli/bin/live2pet.cjs package-validate --input /path/to/package.zip --pretty
-node packages/cli/bin/live2pet.cjs export --input /path/to/package.zip --output /path/to/export.zip --pretty
-node packages/cli/bin/live2pet.cjs install --input /path/to/package.zip --target codex-pet --target-root /path/to/pets --confirm-install --pretty
-node packages/cli/bin/live2pet.cjs cache-status --cache-dir /path/to/cache --pretty
-node packages/cli/bin/live2pet.cjs cache-clear --cache-dir /path/to/cache --project-id my-project --pretty
-# Optional real-runtime smoke tests (local inputs only; never commit these paths)
-LIVE2PET_MODERN_RUNTIME=/path/to/live2dcubismcore.min.js LIVE2PET_MODERN_SOURCE=/path/to/modern-model \
-  node --test packages/renderer/test/modern-runtime.integration.test.cjs
-LIVE2PET_CUBISM2_RUNTIME=/path/to/live2d.min.js LIVE2PET_CUBISM2_SOURCE=/path/to/destiny-child-model \
-  node --test packages/renderer/test/legacy-runtime.integration.test.cjs
+pnpm --filter @live2pet/desktop start
 ```
 
-Inspection output is metadata-only: it contains relative resource identities, fingerprints, warnings, and Motion/Expression catalogs, not model bytes, runtime binaries, bearer tokens, or unrelated absolute paths. The browser preview uses the version-matched Pixi `@pixi/unsafe-eval` compatibility bundle and allows only generated `blob:` resource URLs under the existing strict CSP; it does not enable general `unsafe-eval`.
+Useful engineering references:
+
+- [Architecture decisions](docs/adr/)
+- [Desktop acceptance guide](docs/desktop-acceptance.md)
+- [Dependency inventory](docs/dependency-inventory.md)
+- [Release checklist](docs/release-checklist.md)
+- [Repository agent conventions](AGENTS.md)
+
+The main implementation areas are `apps/desktop` for the Electron/HeroUI App and the `packages/*` modules for inspection, projects, runtimes, rendering, targets, builds, installation, and the CLI. `apps/mapper` is retained as a development reference and is not the production App entrypoint.
+
+## License
+
+Live2Pet source code is licensed under [Apache License 2.0](LICENSE). Third-party components and their notices are listed in [NOTICE](NOTICE), [the dependency inventory](docs/dependency-inventory.md), and the packaged App's third-party notices.
+
+Please report security-sensitive problems according to [SECURITY.md](SECURITY.md), not through a public issue.
