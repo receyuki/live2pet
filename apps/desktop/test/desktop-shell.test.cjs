@@ -8,6 +8,7 @@ const root = path.resolve(__dirname, '..');
 test('desktop shell pins the HeroUI entrypoint and keeps navigation and IPC narrow', () => {
   const main = fs.readFileSync(path.join(root, 'main.cjs'), 'utf8');
   const preload = fs.readFileSync(path.join(root, 'preload.cjs'), 'utf8');
+  const styles = fs.readFileSync(path.join(root, 'ui/src/styles.css'), 'utf8');
   assert.match(main, /const PACKAGED_RENDERER_PATH = path\.join\(process\.resourcesPath, 'renderer-dist', 'index\.html'\);/);
   assert.match(main, /return app\.isPackaged \? PACKAGED_RENDERER_PATH : DEVELOPMENT_RENDERER_PATH;/);
   assert.match(main, /loadRuntimeForGeneration/);
@@ -75,6 +76,7 @@ test('desktop shell pins the HeroUI entrypoint and keeps navigation and IPC narr
   assert.match(preload, /onBuildProgress/);
   assert.doesNotMatch(preload, /require\(['"]\.\.\/\.\.\/packages\/app-host/);
   assert.doesNotMatch(preload, /exposeInMainWorld\([^,]+,\s*\{\s*ipcRenderer/);
+  assert.match(styles, /\.settings-sidebar\{min-width:0;overflow-y:auto;overflow-x:hidden\}/);
 });
 
 test('desktop removes deferred Skill, Mapper Session, and separate-preview entrypoints', () => {

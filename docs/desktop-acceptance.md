@@ -440,6 +440,11 @@ passed, and the packaged App passed native Sharp/libvips loading, HeroUI mount,
 and prohibited-asset scans. Local sources, runtimes, generated packages,
 screenshots, progress traces, and disposable profiles remain uncommitted.
 
+Reviewing the packaged Settings screenshot exposed a horizontal scrollbar in the
+fixed-width navigation rail. The rail now clips horizontal overflow and lets long
+localized labels shrink with an ellipsis while retaining vertical scrolling and
+the complete accessible button name.
+
 ### Inline Part browsing and explicit package saving — 2026-09-03
 
 The Map library now uses HeroUI Animations/Visibility tabs. Visible Part rows
