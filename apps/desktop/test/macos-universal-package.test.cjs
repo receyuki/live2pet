@@ -4,7 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { requireSlice, resolvePaths } = require('../scripts/merge-macos-universal.cjs');
+const { removeCodeSignatureResources, requireSlice, resolvePaths } = require('../scripts/merge-macos-universal.cjs');
 
 test('universal package paths keep architecture slices separate', () => {
   const paths = resolvePaths('/tmp/live2pet-universal');
@@ -17,6 +17,23 @@ test('universal merge rejects a missing architecture slice', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-universal-test-'));
   try {
     assert.throws(() => requireSlice(path.join(root, 'missing.app'), 'x64'), (error) => error.code === 'MACOS_SLICE_MISSING');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('universal merge removes only temporary code-signature resources', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-signature-test-'));
+  try {
+    const signature = path.join(root, 'Contents', 'Frameworks', 'Helper.framework', '_CodeSignature');
+    const resource = path.join(root, 'Contents', 'Resources', 'keep.txt');
+    fs.mkdirSync(signature, { recursive: true });
+    fs.mkdirSync(path.dirname(resource), { recursive: true });
+    fs.writeFileSync(path.join(signature, 'CodeResources'), 'architecture-specific');
+    fs.writeFileSync(resource, 'keep');
+    removeCodeSignatureResources(root);
+    assert.equal(fs.existsSync(signature), false);
+    assert.equal(fs.readFileSync(resource, 'utf8'), 'keep');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

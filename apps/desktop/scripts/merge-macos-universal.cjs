@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 
 const { APP_NAME, outputRoot, verifyBundleLayout } = require('./package-macos.cjs');
 
@@ -20,10 +21,21 @@ function requireSlice(appPath, arch) {
   verifyBundleLayout(appPath, { requiredSharpPatterns: [new RegExp(`sharp-darwin-${arch}\\.node$`, 'i')] });
 }
 
+function removeCodeSignatureResources(root) {
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const absolute = path.join(root, entry.name);
+    if (!entry.isDirectory()) continue;
+    if (entry.name === '_CodeSignature') fs.rmSync(absolute, { recursive: true, force: true });
+    else removeCodeSignatureResources(absolute);
+  }
+}
+
 async function mergeMacUniversal(root = outputRoot) {
   const paths = resolvePaths(root);
   requireSlice(paths.x64AppPath, 'x64');
   requireSlice(paths.arm64AppPath, 'arm64');
+  removeCodeSignatureResources(paths.x64AppPath);
+  removeCodeSignatureResources(paths.arm64AppPath);
   fs.mkdirSync(path.dirname(paths.outAppPath), { recursive: true });
   const { makeUniversalApp } = await import('@electron/universal');
   await makeUniversalApp({
@@ -32,6 +44,8 @@ async function mergeMacUniversal(root = outputRoot) {
     mergeASARs: true,
     singleArchFiles: 'node_modules/@img/**',
   });
+  execFileSync('/usr/bin/codesign', ['--deep', '--force', '--sign', '-', paths.outAppPath], { stdio: 'inherit' });
+  execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', paths.outAppPath], { stdio: 'inherit' });
   const verification = verifyBundleLayout(paths.outAppPath, {
     requiredSharpPatterns: [/sharp-darwin-x64\.node$/i, /sharp-darwin-arm64\.node$/i],
   });
@@ -45,4 +59,4 @@ if (require.main === module) mergeMacUniversal().catch((error) => {
   process.exitCode = 1;
 });
 
-module.exports = { mergeMacUniversal, requireSlice, resolvePaths };
+module.exports = { mergeMacUniversal, removeCodeSignatureResources, requireSlice, resolvePaths };

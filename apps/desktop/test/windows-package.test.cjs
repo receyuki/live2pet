@@ -12,6 +12,7 @@ const {
 } = require('../scripts/package-windows.cjs');
 
 test('Windows package options are unsigned, x64, and Sharp-safe', () => {
+  assert.equal(require('../package.json').author, 'Live2Pet contributors');
   const options = createWindowsPackagerOptions({ stageRoot: 'C:\\stage', extraResource: ['C:\\renderer'], arch: 'x64' });
   assert.equal(options.platform, 'win32');
   assert.equal(options.arch, 'x64');

@@ -3,6 +3,7 @@
   "productName": "Live2Pet",
   "private": true,
   "version": "0.1.0",
+  "author": "Live2Pet contributors",
   "description": "Local-first Live2Pet desktop shell",
   "main": "main.cjs",
   "files": [
