@@ -259,15 +259,14 @@ function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSo
     if (tree.truncated === true) fail('GITHUB_TREE_TOO_LARGE', 'This GitHub folder is too large to browse as one model library. Choose a more specific /tree/ folder URL.');
     return { ...parsed, ref, treeSha: tree.sha || treeSha, entries: tree.tree };
   };
-  const materializeRemote = async (library, candidate) => {
+  const remoteMaterialization = (library, candidate) => {
     const key = digest(`${library.owner}\0${library.repo}\0${library.ref}\0${library.folder}\0${library.treeSha}\0${candidate.relativePath}`);
     const destination = path.join(githubCacheRoot, `${library.owner}-${library.repo}`, key);
     const ready = path.join(destination, '.live2pet-source-ready');
-    if (fs.existsSync(ready)) {
-      const now = new Date();
-      try { fs.utimesSync(ready, now, now); } catch {}
-      return candidate.format === 'live2d-pck' ? path.join(destination, path.posix.basename(candidate.relativePath)) : destination;
-    }
+    const inputPath = candidate.format === 'live2d-pck' ? path.join(destination, path.posix.basename(candidate.relativePath)) : destination;
+    return { destination, inputPath, ready };
+  };
+  const remoteFiles = (library, candidate) => {
     const candidateDirectory = path.posix.dirname(candidate.relativePath) === '.' ? '' : path.posix.dirname(candidate.relativePath);
     const nestedProjectDirectories = library.candidates
       .filter((other) => other.id !== candidate.id)
@@ -284,8 +283,18 @@ function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSo
     const declaredBytes = selected.reduce((total, entry) => total + (Number.isSafeInteger(entry.size) ? entry.size : 0), 0);
     const modelLimit = Math.min(maxCacheBytes, MAX_REMOTE_MODEL_BYTES);
     if (declaredBytes > modelLimit) fail('REMOTE_SOURCE_TOO_LARGE', 'The selected model exceeds the configured cache limit or the 4 GiB per-model safety limit.');
+    return { candidateDirectory, declaredBytes, modelLimit, selected };
+  };
+  const materializeRemote = async (library, candidate, protectedDestinations = []) => {
+    const { destination, inputPath, ready } = remoteMaterialization(library, candidate);
+    if (fs.existsSync(ready)) {
+      const now = new Date();
+      try { fs.utimesSync(ready, now, now); } catch {}
+      return inputPath;
+    }
+    const { candidateDirectory, declaredBytes, modelLimit, selected } = remoteFiles(library, candidate);
     fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 });
-    pruneGithubCache(githubCacheRoot, declaredBytes, [...getProtectedSourcePaths(), destination], maxCacheBytes);
+    pruneGithubCache(githubCacheRoot, declaredBytes, [...getProtectedSourcePaths(), ...protectedDestinations, destination], maxCacheBytes);
     if (fs.existsSync(destination)) fs.rmSync(destination, { recursive: true, force: true });
     const staging = `${destination}.${process.pid}.${crypto.randomUUID()}.tmp`;
     fs.mkdirSync(staging, { mode: 0o700 });
@@ -305,26 +314,32 @@ function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSo
         fs.writeFileSync(target, bytes, { mode: 0o600, flag: 'wx' });
       }
       fs.writeFileSync(path.join(staging, '.live2pet-source-ready'), `${library.owner}/${library.repo}@${library.ref}\n`, { mode: 0o600, flag: 'wx' });
-      pruneGithubCache(githubCacheRoot, directoryBytes(staging), [...getProtectedSourcePaths(), destination], maxCacheBytes);
+      pruneGithubCache(githubCacheRoot, directoryBytes(staging), [...getProtectedSourcePaths(), ...protectedDestinations, destination], maxCacheBytes);
       fs.renameSync(staging, destination);
     } catch (error) {
       try { fs.rmSync(staging, { recursive: true, force: true }); } catch {}
       throw error;
     }
-    return candidate.format === 'live2d-pck' ? path.join(destination, path.posix.basename(candidate.relativePath)) : destination;
+    return inputPath;
   };
   return Object.freeze({
     thumbnail: async ({ libraryId, sourceId } = {}) => {
       const library = libraries.get(libraryId);
       const candidate = library?.candidates.find((entry) => entry.id === sourceId);
-      if (!candidate || library.kind !== 'local') return { dataUrl: null };
+      if (!candidate) return { dataUrl: null };
+      let thumbnailCandidate = candidate;
+      if (library.kind === 'github') {
+        const remote = remoteMaterialization(library, candidate);
+        if (!fs.existsSync(remote.ready)) return { dataUrl: null };
+        thumbnailCandidate = { ...candidate, inputPath: remote.inputPath };
+      }
       const key = `${libraryId}:${sourceId}`;
       if (thumbnails.has(key)) return thumbnails.get(key);
       if (!renderThumbnail) return { dataUrl: null };
       if (!thumbnailOperations.has(key)) {
         const operation = runThumbnail(async () => {
           if (thumbnails.has(key)) return thumbnails.get(key);
-          const result = await renderThumbnailWithTimeout(candidate);
+          const result = await renderThumbnailWithTimeout(thumbnailCandidate);
           if (result.dataUrl) {
             const size = Buffer.byteLength(result.dataUrl);
             if (size > 1024 * 1024) return { dataUrl: null };
@@ -360,6 +375,50 @@ function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSo
       const record = { id: crypto.randomUUID(), kind: 'github', name: `${remote.owner}/${remote.repo}${remote.folder ? `/${remote.folder}` : ''}`, candidates, ...remote };
       return { cancelled: false, library: register(record) };
     },
+    downloadAll: ({ libraryId, onProgress } = {}) => withCacheLock(async () => {
+      const library = libraries.get(libraryId);
+      if (!library) fail('SOURCE_LIBRARY_EXPIRED', 'Reopen the model library before downloading its models.');
+      if (library.kind !== 'github') fail('INVALID_SOURCE_LIBRARY_REQUEST', 'Download all is available only for GitHub model libraries.');
+      if (onProgress !== undefined && typeof onProgress !== 'function') fail('INVALID_SOURCE_LIBRARY_REQUEST', 'Download progress listener must be a function.');
+      const total = library.candidates.length;
+      const result = { schemaVersion: LIBRARY_SCHEMA_VERSION, libraryId, total, completed: 0, downloaded: 0, cached: 0, failed: 0, failures: [] };
+      const report = (stage, currentName = null) => onProgress?.({ libraryId, stage, total, completed: result.completed, downloaded: result.downloaded, cached: result.cached, failed: result.failed, percent: total ? Math.floor(result.completed / total * 100) : 100, ...(currentName ? { currentName } : {}) });
+      const plans = [];
+      for (const candidate of library.candidates) {
+        try {
+          const remote = remoteMaterialization(library, candidate);
+          const cached = fs.existsSync(remote.ready);
+          plans.push({ candidate, remote, cached, declaredBytes: cached ? 0 : remoteFiles(library, candidate).declaredBytes });
+        } catch (error) {
+          result.completed += 1; result.failed += 1;
+          result.failures.push({ sourceId: candidate.id, code: error?.code || 'GITHUB_DOWNLOAD_FAILED' });
+        }
+      }
+      const protectedDestinations = plans.map((plan) => plan.remote.destination);
+      const requiredBytes = plans.reduce((sum, plan) => sum + plan.declaredBytes, 0);
+      pruneGithubCache(githubCacheRoot, requiredBytes, [...getProtectedSourcePaths(), ...protectedDestinations], maxCacheBytes);
+      report('downloading');
+      for (const plan of plans) {
+        try {
+          if (plan.cached) {
+            const now = new Date();
+            try { fs.utimesSync(plan.remote.ready, now, now); } catch {}
+            result.cached += 1;
+          } else {
+            report('downloading', plan.candidate.name);
+            await materializeRemote(library, plan.candidate, protectedDestinations);
+            result.downloaded += 1;
+          }
+        } catch (error) {
+          result.failed += 1;
+          result.failures.push({ sourceId: plan.candidate.id, code: error?.code || 'GITHUB_DOWNLOAD_FAILED' });
+        }
+        result.completed += 1;
+        report('downloading', plan.candidate.name);
+      }
+      report('complete');
+      return result;
+    }),
     inspect: ({ libraryId, sourceId, projectId } = {}) => withCacheLock(async () => {
       const library = libraries.get(libraryId);
       if (!library) fail('SOURCE_LIBRARY_EXPIRED', 'Reopen the model library before selecting a model.');

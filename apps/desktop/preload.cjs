@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 // sync with createAppPreloadApi() in packages/app-host/src/index.cjs.
 const APP_IPC_CHANNEL = 'live2pet:app';
 const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';
+const APP_LIBRARY_DOWNLOAD_PROGRESS_CHANNEL = 'live2pet:library-download-progress';
 const APP_COMMAND_CHANNEL = 'live2pet:command';
 const APP_COMMANDS = new Set(['new', 'open', 'save', 'settings', 'build', 'setup', 'undo', 'redo']);
 const PREVIEW_IPC_CHANNEL = 'live2pet:preview';
@@ -57,6 +58,29 @@ const onBuildProgress = (listener) => {
     ipcRenderer.removeListener(APP_BUILD_PROGRESS_CHANNEL, handler);
   };
 };
+const normalizeLibraryDownloadProgressPayload = (payload) => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload) || payload.protocolVersion !== APP_IPC_PROTOCOL_VERSION) return null;
+  if (typeof payload.downloadId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(payload.downloadId) || !Number.isInteger(payload.sequence) || payload.sequence < 1) return null;
+  if (typeof payload.libraryId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(payload.libraryId) || !['downloading', 'complete'].includes(payload.stage)) return null;
+  for (const key of ['total', 'completed', 'downloaded', 'cached', 'failed', 'percent']) if (!Number.isInteger(payload[key]) || payload[key] < 0 || (key === 'percent' ? payload[key] > 100 : payload[key] > 512)) return null;
+  if (payload.completed > payload.total || payload.downloaded + payload.cached + payload.failed > payload.completed) return null;
+  if (payload.currentName !== undefined && (typeof payload.currentName !== 'string' || !payload.currentName.trim() || payload.currentName.length > 256 || /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(payload.currentName))) return null;
+  return { protocolVersion: APP_IPC_PROTOCOL_VERSION, downloadId: payload.downloadId, sequence: payload.sequence, libraryId: payload.libraryId, stage: payload.stage, total: payload.total, completed: payload.completed, downloaded: payload.downloaded, cached: payload.cached, failed: payload.failed, percent: payload.percent, ...(payload.currentName ? { currentName: payload.currentName.trim() } : {}) };
+};
+const onLibraryDownloadProgress = (listener) => {
+  if (typeof listener !== 'function') throw new TypeError('onLibraryDownloadProgress requires a function listener.');
+  const handler = (_event, payload) => {
+    const normalized = normalizeLibraryDownloadProgressPayload(payload);
+    if (normalized) listener(Object.freeze(normalized));
+  };
+  ipcRenderer.on(APP_LIBRARY_DOWNLOAD_PROGRESS_CHANNEL, handler);
+  let active = true;
+  return () => {
+    if (!active) return;
+    active = false;
+    ipcRenderer.removeListener(APP_LIBRARY_DOWNLOAD_PROGRESS_CHANNEL, handler);
+  };
+};
 const onAppCommand = (listener) => {
   if (typeof listener !== 'function') throw new TypeError('onAppCommand requires a function listener.');
   const handler = (_event, command) => {
@@ -102,11 +126,13 @@ contextBridge.exposeInMainWorld('live2pet', Object.freeze({
   saveProject: (input) => invoke('saveProject', input),
   openSourceLibrary: (inputPath) => inputPath ? invoke('openSourceLibrary', { inputPath }) : invoke('openSourceLibrary'),
   openGitHubLibrary: (url) => invoke('openGitHubLibrary', { url }),
+  downloadSourceLibrary: (libraryId) => invoke('downloadSourceLibrary', { libraryId }),
   inspectLibrarySource: (input) => invoke('inspectLibrarySource', input),
   getLibraryThumbnail: (input) => invoke('getLibraryThumbnail', input),
   getSourceLibraryCacheStatus: () => invoke('getSourceLibraryCacheStatus'),
   configureSourceLibraryCache: (maxBytes) => invoke('configureSourceLibraryCache', { maxBytes }),
   clearSourceLibraryCache: () => invoke('clearSourceLibraryCache', { confirmClear: true }),
+  onLibraryDownloadProgress,
   onAppCommand,
   inspectSource: (input) => invoke('inspectSource', input),
   relinkSource: (input) => invoke('relinkSource', input),

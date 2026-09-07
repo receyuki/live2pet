@@ -17,6 +17,7 @@ import {
   ChevronRight,
   CircleCheck,
   Database,
+  Download,
   ExternalLink,
   FolderOpen,
   Gauge,
@@ -61,6 +62,7 @@ import {
   removeSpinePack,
   openSourceLibrary,
   openGitHubLibrary,
+  downloadSourceLibrary,
   inspectLibrarySource,
   getDesktopFilePath,
   hasDesktopApi,
@@ -72,6 +74,7 @@ import {
   layoutLive2DPreview,
   onLive2DPreviewStatus,
   onBuildProgress,
+  onLibraryDownloadProgress,
   onAppCommand,
   openProject,
   openLive2DPreview,
@@ -91,6 +94,7 @@ import {
   SourceLibrary,
   SourceLibraryCandidate,
   SourceLibrarySelection,
+  SourceLibraryDownloadProgress,
   RecentProject,
   saveProject,
   SourceInspection,
@@ -353,11 +357,15 @@ function SetupView({ locale, returning, onComplete, onRuntimeSettingsChange }: {
 }
 
 function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onLibrarySelection, onOpenProject, onOpenRecent, onClearRecent, onRecoverDraft, onDiscardDraft, currentModel, library, setLibrary, pendingSource, onConfirmSource, onDismissSource, onConfigureRuntime, selectedLibraryModel, onSelectLibraryModel }: { selectedLibraryModel: SourceLibraryCandidate | null; onSelectLibraryModel: (model: SourceLibraryCandidate | null) => void; pendingSource: SourceLibrarySelection | null; onConfirmSource: (motion: string) => Promise<void>; onDismissSource: () => void; onConfigureRuntime: () => void; library: SourceLibrary | null; setLibrary: (library: SourceLibrary) => void; currentModel?: ReactNode; locale: Locale; busy: boolean; error: string; recentProjects: RecentProject[]; draft: ProjectDraft | null; onImport: (files: File[], directDrop?: boolean) => void; onLibrarySelection: (library: SourceLibrary, candidate: SourceLibraryCandidate, motion: string) => Promise<void>; onOpenProject: () => void; onOpenRecent: (project: RecentProject) => void; onClearRecent: () => void; onRecoverDraft: () => void; onDiscardDraft: () => void }) {
-  const t = (key: MessageKey) => translate(locale, key);
+  const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   const [dragActive, setDragActive] = useState(false);
   const [libraryBusy, setLibraryBusy] = useState(false);
   const [libraryError, setLibraryError] = useState("");
   const [githubUrl, setGithubUrl] = useState("");
+  const [libraryDownloadBusy, setLibraryDownloadBusy] = useState(false);
+  const [libraryDownloadProgress, setLibraryDownloadProgress] = useState<SourceLibraryDownloadProgress | null>(null);
+  const [libraryDownloadSummary, setLibraryDownloadSummary] = useState("");
+  const [thumbnailRevision, setThumbnailRevision] = useState(0);
   const dragDepth = useRef(0);
   const folderInput = useRef<HTMLInputElement>(null);
   const pckInput = useRef<HTMLInputElement>(null);
@@ -395,17 +403,39 @@ function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onL
     catch (cause) { setLibraryError(cause instanceof Error ? cause.message : t("error")); }
     finally { setLibraryBusy(false); }
   }
+  useEffect(() => {
+    if (!library || library.kind !== 'github') return;
+    return onLibraryDownloadProgress(event => {
+      if (event.libraryId === library.libraryId) setLibraryDownloadProgress(event);
+    });
+  }, [library?.libraryId, library?.kind]);
+  useEffect(() => {
+    setLibraryDownloadBusy(false); setLibraryDownloadProgress(null); setLibraryDownloadSummary(""); setThumbnailRevision(0);
+  }, [library?.libraryId]);
+  async function downloadAllModels() {
+    if (!library || library.kind !== 'github' || libraryDownloadBusy) return;
+    setLibraryDownloadBusy(true); setLibraryError(""); setLibraryDownloadSummary("");
+    setLibraryDownloadProgress({ protocolVersion: 1, downloadId: 'pending-download', sequence: 0, libraryId: library.libraryId, stage: 'downloading', total: library.candidates.length, completed: 0, downloaded: 0, cached: 0, failed: 0, percent: 0 });
+    try {
+      const result = await downloadSourceLibrary(library.libraryId);
+      setLibraryDownloadSummary(t('libraryDownloadComplete', { downloaded: result.downloaded, cached: result.cached, failed: result.failed }));
+      setThumbnailRevision(value => value + 1);
+    } catch (cause) { setLibraryDownloadProgress(null); setLibraryError(cause instanceof Error ? cause.message : t("error")); }
+    finally { setLibraryDownloadBusy(false); }
+  }
   return (
-    <main className="welcome-view">
+    <main
+      aria-label={t("importSource")}
+      className={`welcome-view drop-zone${dragActive ? " drop-zone-active" : ""}`}
+      onDragEnter={(event) => { if (!busy && hasDraggedFiles(event.dataTransfer)) { event.preventDefault(); dragDepth.current += 1; setDragActive(true); } }}
+      onDragOver={(event) => { if (hasDraggedFiles(event.dataTransfer)) event.preventDefault(); }}
+      onDragLeave={() => { dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDragActive(false); }}
+      onDrop={dropSource}
+    >
+      {dragActive && <div className="drop-overlay" aria-hidden="true"><Upload size={22} />{t("dropSource")}</div>}
       <section
-        aria-label={t("importSource")}
-        className={`welcome-hero drop-zone${dragActive ? " drop-zone-active" : ""}`}
-        onDragEnter={(event) => { if (!busy && hasDraggedFiles(event.dataTransfer)) { event.preventDefault(); dragDepth.current += 1; setDragActive(true); } }}
-        onDragOver={(event) => { if (hasDraggedFiles(event.dataTransfer)) event.preventDefault(); }}
-        onDragLeave={() => { dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDragActive(false); }}
-        onDrop={dropSource}
+        className="welcome-hero"
       >
-        {dragActive && <div className="drop-overlay" aria-hidden="true"><Upload size={22} />{t("dropSource")}</div>}
         <div className="welcome-copy">
           <h1>{t("source")}</h1>
           <p>{t("libraryPreviewOnly")}</p>
@@ -430,8 +460,10 @@ function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onL
       {currentModel}
       {pendingSource && <section className="model-library-section direct-source-review"><ModelPreview key={pendingSource.sourcePath + pendingSource.inspection.source.fingerprint} candidate={pendingSource.candidate} direct={pendingSource} locale={locale} onUse={onConfirmSource} onClose={onDismissSource} onConfigureRuntime={onConfigureRuntime} /></section>}
       {!pendingSource && library && <section className="model-library-section" aria-label={t("modelLibraryTitle")}>
-        <div className="section-heading-row"><div><p className="eyebrow">{t("modelLibraryTitle")}</p><h2>{library.name}</h2><p>{translate(locale, "modelLibraryCount", { count: library.candidates.length, depth: library.maxDepth })}</p></div><Chip size="sm" variant="soft">{library.kind === "github" ? "GitHub" : t("localFolder")}</Chip></div>
-        {library.candidates.length === 0 ? <div className="empty-state">{t("modelLibraryEmpty")}</div> : <ModelLibrary key={library.libraryId} library={library} locale={locale} selectedModel={selectedLibraryModel} onSelectModel={onSelectLibraryModel} onUse={onLibrarySelection} onConfigureRuntime={onConfigureRuntime} />}
+        <div className="section-heading-row"><div><p className="eyebrow">{t("modelLibraryTitle")}</p><h2>{library.name}</h2><p>{translate(locale, "modelLibraryCount", { count: library.candidates.length, depth: library.maxDepth })}</p></div><div className="model-library-heading-actions"><Chip size="sm" variant="soft">{library.kind === "github" ? "GitHub" : t("localFolder")}</Chip>{library.kind === 'github' && library.candidates.length > 0 && <Button size="sm" variant="secondary" isDisabled={libraryDownloadBusy} onPress={() => void downloadAllModels()}><Download size={15} />{libraryDownloadBusy ? t('libraryDownloading') : t('libraryDownloadAll')}</Button>}</div></div>
+        {library.kind === 'github' && libraryDownloadProgress && <div className="library-download-progress" aria-live="polite"><div><strong>{t('libraryDownloadProgress', { completed: libraryDownloadProgress.completed, total: libraryDownloadProgress.total })}</strong><span>{libraryDownloadProgress.percent}%</span></div>{libraryDownloadProgress.currentName && libraryDownloadBusy && <small title={libraryDownloadProgress.currentName}>{libraryDownloadProgress.currentName}</small>}<ProgressBar aria-label={t('libraryDownloading')} value={libraryDownloadProgress.percent}><ProgressBar.Track><ProgressBar.Fill /></ProgressBar.Track></ProgressBar></div>}
+        {libraryDownloadSummary && <p className="library-download-summary" role="status">{libraryDownloadSummary}</p>}
+        {library.candidates.length === 0 ? <div className="empty-state">{t("modelLibraryEmpty")}</div> : <ModelLibrary key={library.libraryId} library={library} locale={locale} selectedModel={selectedLibraryModel} onSelectModel={onSelectLibraryModel} onUse={onLibrarySelection} onConfigureRuntime={onConfigureRuntime} thumbnailRevision={thumbnailRevision} />}
       </section>}
       {draft && <section className="draft-recovery" aria-label={t("draftRecoveryTitle")}>
         <Card className="surface-card"><Card.Content>

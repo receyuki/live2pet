@@ -37,6 +37,8 @@ export type SourceLibrary = { schemaVersion: 1; libraryId: string; name: string;
 export type SourceLibraryOperation = { cancelled: true } | { cancelled: false; library: SourceLibrary };
 export type SourceLibrarySelection = { sourcePath: string; candidate: SourceLibraryCandidate; inspection: SourceInspection };
 export type SourceLibraryCacheStatus = { schemaVersion: 1; maxBytes: number; byteLength: number; entryCount: number; removedEntries?: number; removedBytes?: number };
+export type SourceLibraryDownloadResult = { schemaVersion: 1; libraryId: string; total: number; completed: number; downloaded: number; cached: number; failed: number; failures: Array<{ sourceId: string; code: string }> };
+export type SourceLibraryDownloadProgress = { protocolVersion: 1; downloadId: string; sequence: number; libraryId: string; stage: 'downloading' | 'complete'; total: number; completed: number; downloaded: number; cached: number; failed: number; percent: number; currentName?: string };
 
 export type SourceMotion = {
   id: string;
@@ -203,11 +205,13 @@ type Live2PetApi = {
   removeSpinePack(runtimeLine: string): Promise<AppResponse<SpinePackStatus>>;
   openSourceLibrary?(inputPath?: string): Promise<AppResponse<SourceLibraryOperation>>;
   openGitHubLibrary?(url: string): Promise<AppResponse<SourceLibraryOperation>>;
+  downloadSourceLibrary?(libraryId: string): Promise<AppResponse<SourceLibraryDownloadResult>>;
   inspectLibrarySource?(input: { libraryId: string; sourceId: string; projectId: string }): Promise<AppResponse<SourceLibrarySelection>>;
   getLibraryThumbnail?(input: { libraryId: string; sourceId: string; projectId: string }): Promise<AppResponse<{ dataUrl: string | null }>>;
   getSourceLibraryCacheStatus?(): Promise<AppResponse<SourceLibraryCacheStatus>>;
   configureSourceLibraryCache?(maxBytes: number): Promise<AppResponse<SourceLibraryCacheStatus>>;
   clearSourceLibraryCache?(): Promise<AppResponse<SourceLibraryCacheStatus>>;
+  onLibraryDownloadProgress?(listener: (event: SourceLibraryDownloadProgress) => void): () => void;
   getBuildCacheStatus(): Promise<AppResponse<{ schemaVersion: 1; byteLength: number; entryCount: number; maxBytes: number }>>;
   clearBuildCache(input: { confirmClear: true }): Promise<AppResponse<{ removedEntries: number; removedBytes: number; schemaVersion: 1; byteLength: number; entryCount: number; maxBytes: number }>>;
   buildProject?(input: { project: Live2PetProject; targets: BuildTarget[]; optionsByTarget: Partial<Record<BuildTarget, { package: true; spriteVersionNumber?: 2 }>> }): Promise<AppResponse<BuildProjectResult>>;
@@ -322,6 +326,16 @@ export async function openGitHubLibrary(url: string): Promise<SourceLibraryOpera
   const api = desktopApi();
   if (!api?.openGitHubLibrary) throw new DesktopApiError('APP_SOURCE_LIBRARY_UNAVAILABLE', 'GitHub model libraries require the Desktop App.');
   return unwrap(api.openGitHubLibrary(url));
+}
+
+export async function downloadSourceLibrary(libraryId: string): Promise<SourceLibraryDownloadResult> {
+  const api = desktopApi();
+  if (!api?.downloadSourceLibrary) throw new DesktopApiError('APP_SOURCE_LIBRARY_UNAVAILABLE', 'GitHub model library downloading requires the Desktop App.');
+  return unwrap(api.downloadSourceLibrary(libraryId));
+}
+
+export function onLibraryDownloadProgress(listener: (event: SourceLibraryDownloadProgress) => void): () => void {
+  return desktopApi()?.onLibraryDownloadProgress?.(listener) ?? (() => undefined);
 }
 
 export async function inspectLibrarySource(libraryId: string, sourceId: string, projectId: string): Promise<SourceLibrarySelection> {

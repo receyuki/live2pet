@@ -9,6 +9,7 @@ const { createSourceLibraryService } = require('./source-library-service.cjs');
 const {
   APP_COMMAND_CHANNEL,
   APP_BUILD_PROGRESS_CHANNEL,
+  APP_LIBRARY_DOWNLOAD_PROGRESS_CHANNEL,
   APP_IPC_CHANNEL,
   createAppIpcRouter,
   createAppWindowOptions,
@@ -355,6 +356,10 @@ function registerIpc() {
     onBuildProgress: (event) => {
       if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
       try { mainWindow.webContents.send(APP_BUILD_PROGRESS_CHANNEL, event); } catch {}
+    },
+    onLibraryDownloadProgress: (event) => {
+      if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+      try { mainWindow.webContents.send(APP_LIBRARY_DOWNLOAD_PROGRESS_CHANNEL, event); } catch {}
     },
     appVersion: app.getVersion(),
   });

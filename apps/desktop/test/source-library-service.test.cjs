@@ -148,6 +148,47 @@ test('browses GitHub tree metadata then downloads only the selected model folder
   assert.equal(fs.existsSync(path.join(inspected[0].inputPath, 'other.model3.json')), false);
 });
 
+test('downloads every GitHub model with monotonic progress and lazily renders cached thumbnails', async () => {
+  const root = temporaryDirectory();
+  const requests = [];
+  const rendered = [];
+  const entries = [
+    { path: 'hero/hero.model3.json', type: 'blob', size: 32 },
+    { path: 'hero/hero.moc3', type: 'blob', size: 4 },
+    { path: 'other/other.model3.json', type: 'blob', size: 32 },
+    { path: 'other/other.moc3', type: 'blob', size: 4 },
+  ];
+  const service = createSourceLibraryService({
+    githubCacheRoot: path.join(root, 'github-cache'),
+    showOpenDialog: async () => ({ canceled: true }),
+    discoverSources: () => assert.fail('remote browsing must not scan local files'),
+    inspectSource: async () => assert.fail('bulk download must not inspect or register models'),
+    renderThumbnail: async candidate => { rendered.push(candidate); return { dataUrl: 'data:image/png;base64,YQ==' }; },
+    fetchImpl: async url => {
+      requests.push(url);
+      if (url.includes('/git/trees/')) return { ok: true, json: async () => ({ sha: 'tree-sha', truncated: false, tree: entries }) };
+      return { ok: true, arrayBuffer: async () => Buffer.from(url.endsWith('.json') ? '{"Version":3}' : 'moc') };
+    },
+  });
+  const { library } = await service.openGitHub({ url: 'https://github.com/example/models/tree/main' });
+  const before = await service.thumbnail({ libraryId: library.libraryId, sourceId: library.candidates[0].id });
+  assert.equal(before.dataUrl, null);
+  const progress = [];
+  const first = await service.downloadAll({ libraryId: library.libraryId, onProgress: event => progress.push(event) });
+  assert.deepEqual({ total: first.total, completed: first.completed, downloaded: first.downloaded, cached: first.cached, failed: first.failed }, { total: 2, completed: 2, downloaded: 2, cached: 0, failed: 0 });
+  assert.equal(progress[0].percent, 0);
+  assert.equal(progress.at(-1).percent, 100);
+  assert.ok(progress.every((event, index) => index === 0 || event.percent >= progress[index - 1].percent));
+  assert.equal(requests.filter(url => url.includes('raw.githubusercontent.com')).length, 4);
+  const thumbnail = await service.thumbnail({ libraryId: library.libraryId, sourceId: library.candidates[0].id });
+  assert.equal(thumbnail.dataUrl, 'data:image/png;base64,YQ==');
+  assert.equal(rendered.length, 1);
+  assert.ok(path.isAbsolute(rendered[0].inputPath));
+  const second = await service.downloadAll({ libraryId: library.libraryId });
+  assert.deepEqual({ downloaded: second.downloaded, cached: second.cached, failed: second.failed }, { downloaded: 0, cached: 2, failed: 0 });
+  assert.equal(requests.filter(url => url.includes('raw.githubusercontent.com')).length, 4);
+});
+
 test('resolves nested GitHub folders through non-recursive trees without downloading assets', async () => {
   const requests = [];
   const trees = {

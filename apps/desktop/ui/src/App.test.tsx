@@ -72,6 +72,12 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = true, previewVi
   const clearRecentProjects = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { recentProjects: [] } }));
   let appCommandListener: ((command: 'new' | 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => void) | undefined;
   let buildProgressListener: ((event: { protocolVersion: 1; buildId: string; sequence: number; target: 'clawd'; stage: string; status: string; fraction: number }) => void) | undefined;
+  let libraryDownloadProgressListener: ((event: { protocolVersion: 1; downloadId: string; sequence: number; libraryId: string; stage: 'downloading' | 'complete'; total: number; completed: number; downloaded: number; cached: number; failed: number; percent: number; currentName?: string }) => void) | undefined;
+  const downloadSourceLibrary = vi.fn(async (libraryId: string) => {
+    libraryDownloadProgressListener?.({ protocolVersion: 1, downloadId: 'download_1234', sequence: 1, libraryId, stage: 'downloading', total: 1, completed: 0, downloaded: 0, cached: 0, failed: 0, percent: 0, currentName: 'Spine Hero' });
+    libraryDownloadProgressListener?.({ protocolVersion: 1, downloadId: 'download_1234', sequence: 2, libraryId, stage: 'complete', total: 1, completed: 1, downloaded: 1, cached: 0, failed: 0, percent: 100 });
+    return { protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, libraryId, total: 1, completed: 1, downloaded: 1, cached: 0, failed: 0, failures: [] } };
+  });
   const buildProject = vi.fn(async () => {
     buildProgressListener?.({ protocolVersion: 1, buildId: 'build_12345678', sequence: 1, target: 'clawd', stage: 'package', status: 'completed', fraction: 1 });
     return { protocolVersion: 1 as const, ok: true, result: { projectId: openedProject.projectId, targets: ['clawd' as const], builds: { clawd: { target: 'clawd' as const, validation: { ok: true }, preview: { ready: true } } }, warnings: [], artifacts: [{ artifactId: 'artifact-1', target: 'clawd' as const, filename: 'saved-clawd.zip', byteLength: 3 }] } };
@@ -96,6 +102,8 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = true, previewVi
       removeSpinePack,
       openSourceLibrary,
       openGitHubLibrary: vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { cancelled: false as const, library: { ...sourceLibrary, kind: 'github' as const } } })),
+      downloadSourceLibrary,
+      onLibraryDownloadProgress: vi.fn((listener) => { libraryDownloadProgressListener = listener; return () => { libraryDownloadProgressListener = undefined; }; }),
       inspectLibrarySource,
       getSourceLibraryCacheStatus,
       configureSourceLibraryCache,
@@ -124,7 +132,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = true, previewVi
       } : {}),
     },
   });
-  return { configureRuntime, getSpinePackStatus, installSpinePack, removeSpinePack, openSourceLibrary, inspectLibrarySource, getSourceLibraryCacheStatus, configureSourceLibraryCache, clearSourceLibraryCache, inspectSource, relinkSource, acknowledgeSourceReview, openPreview, getPreviewVisualElements, getPreviewVisualElementThumbnail, openProject, saveProject, clearRecentProjects, buildProject, emitAppCommand: (command: 'new' | 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => appCommandListener?.(command) };
+  return { configureRuntime, getSpinePackStatus, installSpinePack, removeSpinePack, openSourceLibrary, inspectLibrarySource, downloadSourceLibrary, getSourceLibraryCacheStatus, configureSourceLibraryCache, clearSourceLibraryCache, inspectSource, relinkSource, acknowledgeSourceReview, openPreview, getPreviewVisualElements, getPreviewVisualElementThumbnail, openProject, saveProject, clearRecentProjects, buildProject, emitAppCommand: (command: 'new' | 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => appCommandListener?.(command) };
 }
 
 function setSystemDarkMode(matches: boolean) {
@@ -231,6 +239,19 @@ describe('Live2Pet desktop shell', () => {
     await user.type(limit, '2');
     await user.click(screen.getByRole('button', { name: 'Save limit' }));
     expect(api.configureSourceLibraryCache).toHaveBeenCalledWith(2 * 1024 ** 3);
+  });
+
+  it('downloads all detected GitHub models with determinate progress', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const api = installDesktopApi();
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(screen.getByRole('textbox', { name: 'Public GitHub repository or folder URL' }), 'https://github.com/example/models');
+    await user.click(screen.getByRole('button', { name: 'Browse GitHub' }));
+    await user.click(await screen.findByRole('button', { name: 'Download all' }));
+    await vi.waitFor(() => expect(api.downloadSourceLibrary).toHaveBeenCalledWith('library-1'));
+    expect(screen.getByRole('progressbar', { name: 'Downloading models' })).toHaveAttribute('aria-valuenow', '100');
+    expect(screen.getByText('Downloaded 1 · already cached 0 · failed 0')).toBeVisible();
   });
 
   it('keeps setup and Welcome free of decorative mascots and internal preview controls', async () => {

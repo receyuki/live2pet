@@ -13,6 +13,7 @@ const { inspectSourcePackage } = require('../../source-inspector/src/index.cjs')
 const {
   APP_BUILD_ARTIFACT_CHUNK_BYTES,
   APP_BUILD_PROGRESS_CHANNEL,
+  APP_LIBRARY_DOWNLOAD_PROGRESS_CHANNEL,
   APP_COMMAND_CHANNEL,
   APP_IPC_CHANNEL,
   APP_IPC_METHODS,
@@ -170,6 +171,7 @@ test('Spine pack preload wrappers expose only fixed actions', async () => {
 
 test('Source Library IPC browses metadata, inspects opaque selections, and configures bounded cache', async () => {
   const calls = [];
+  const progress = [];
   const candidate = { id: 'source_1234', name: 'Hero', relativePath: 'set/hero.model3.json', format: 'live2d', version: null, runtimeLine: null, binary: false };
   const library = { schemaVersion: 1, libraryId: 'library_1234', name: 'Models', kind: 'github', maxDepth: 2, candidates: [candidate] };
   const inspection = { schemaVersion: 1, source: { kind: 'standard-directory', name: 'Hero', fingerprint: 'a'.repeat(64), modelConfig: 'hero.model3.json' }, model: { cubism: 3, configFile: 'hero.model3.json', modelFile: 'hero.moc3', textures: [] }, motions: [], expressions: [], resources: [], warnings: [] };
@@ -177,16 +179,24 @@ test('Source Library IPC browses metadata, inspects opaque selections, and confi
   const router = createAppIpcRouter({ sourceLibraryService: {
     openLocal: async input => { calls.push({ local: input }); return { cancelled: false, library: { ...library, kind: 'local' } }; },
     openGitHub: async input => { calls.push(input); return { cancelled: false, library }; },
+    downloadAll: async input => {
+      calls.push({ download: { libraryId: input.libraryId } });
+      input.onProgress({ libraryId: input.libraryId, stage: 'downloading', total: 1, completed: 0, downloaded: 0, cached: 0, failed: 0, percent: 0, currentName: 'Hero' });
+      input.onProgress({ libraryId: input.libraryId, stage: 'complete', total: 1, completed: 1, downloaded: 1, cached: 0, failed: 0, percent: 100 });
+      return { schemaVersion: 1, libraryId: input.libraryId, total: 1, completed: 1, downloaded: 1, cached: 0, failed: 0, failures: [] };
+    },
     inspect: async input => { calls.push(input); return { sourcePath: '/private/models/hero', candidate, inspection }; },
     getCacheStatus: async () => cache,
     configureCache: async input => { calls.push(input); return { ...cache, maxBytes: input.maxBytes }; },
     clearCache: async input => { calls.push(input); return { ...cache, removedEntries: 0, removedBytes: 0 }; },
-  } });
+  }, onLibraryDownloadProgress: event => progress.push(event) });
   const request = (method, ...args) => router({ protocolVersion: 1, method, args });
   assert.equal((await request('openSourceLibrary')).result.library.kind, 'local');
   assert.equal((await request('openSourceLibrary', { inputPath: '/private/models' })).result.library.kind, 'local');
   assert.equal((await request('openSourceLibrary', { inputPath: 'relative/models' })).error.code, 'INVALID_SOURCE_LIBRARY_REQUEST');
   assert.equal((await request('openGitHubLibrary', { url: 'https://github.com/owner/repo/tree/main/models' })).result.library.candidates[0].relativePath, candidate.relativePath);
+  assert.equal((await request('downloadSourceLibrary', { libraryId: library.libraryId })).result.downloaded, 1);
+  assert.deepEqual(progress.map(event => [event.sequence, event.percent, event.currentName]), [[1, 0, 'Hero'], [2, 100, undefined]]);
   assert.equal((await request('inspectLibrarySource', { libraryId: library.libraryId, sourceId: candidate.id, projectId: 'hero' })).result.inspection.source.name, 'Hero');
   assert.equal((await request('configureSourceLibraryCache', { maxBytes: 2 * 1024 ** 3 })).result.maxBytes, 2 * 1024 ** 3);
   assert.equal((await request('clearSourceLibraryCache', { confirmClear: true })).ok, true);
@@ -195,6 +205,7 @@ test('Source Library IPC browses metadata, inspects opaque selections, and confi
     { local: {} },
     { local: { inputPath: '/private/models' } },
     { url: 'https://github.com/owner/repo/tree/main/models' },
+    { download: { libraryId: library.libraryId } },
     { libraryId: library.libraryId, sourceId: candidate.id, projectId: 'hero' },
     { maxBytes: 2 * 1024 ** 3 },
     { confirmClear: true },
@@ -905,6 +916,7 @@ test('preload exposes only typed methods and the window options keep Electron sa
   await api.clearRuntimeSettings();
   await api.chooseInstallRoot('clawd');
   await api.cancelBuild('build_1234');
+  await api.downloadSourceLibrary('library_1234');
   assert.equal(calls[0][0], APP_IPC_CHANNEL);
   assert.deepEqual(calls[0][1], { protocolVersion: 1, method: 'getVersion', args: [] });
   assert.deepEqual(calls[1][1], { protocolVersion: 1, method: 'getRecentProjects', args: [] });
@@ -923,6 +935,7 @@ test('preload exposes only typed methods and the window options keep Electron sa
   assert.deepEqual(calls[14][1], { protocolVersion: 1, method: 'clearRuntimeSettings', args: [] });
   assert.deepEqual(calls[15][1], { protocolVersion: 1, method: 'chooseInstallRoot', args: [{ target: 'clawd' }] });
   assert.deepEqual(calls[16][1], { protocolVersion: 1, method: 'cancelBuild', args: [{ buildId: 'build_1234' }] });
+  assert.deepEqual(calls[17][1], { protocolVersion: 1, method: 'downloadSourceLibrary', args: [{ libraryId: 'library_1234' }] });
   for (const method of ['getSkillStatus', 'installSkill', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'closeMapperSession', 'startRendererPreview', 'loadRendererSource', 'rendererCommand', 'getRendererPreviewStatus', 'restartRendererPreview', 'closeRendererPreview']) {
     assert.equal(Object.hasOwn(api, method), false);
   }
@@ -956,6 +969,26 @@ test('preload onBuildProgress subscribes with a safe payload and supports idempo
   unsubscribe();
   assert.equal(removed.length, 1);
   assert.equal(removed[0][0], APP_BUILD_PROGRESS_CHANNEL);
+});
+
+test('preload exposes bounded model download progress and drops invalid payloads', () => {
+  const listeners = new Map();
+  const removed = [];
+  const api = createAppPreloadApi({
+    ipcRenderer: {
+      invoke: async () => ({ ok: true }),
+      on: (channel, listener) => listeners.set(channel, listener),
+      removeListener: (channel, listener) => removed.push([channel, listener]),
+    },
+  });
+  const received = [];
+  const unsubscribe = api.onLibraryDownloadProgress(event => received.push(event));
+  const handler = listeners.get(APP_LIBRARY_DOWNLOAD_PROGRESS_CHANNEL);
+  handler({}, { protocolVersion: 1, downloadId: 'download_1234', sequence: 1, libraryId: 'library_1234', stage: 'downloading', total: 2, completed: 1, downloaded: 1, cached: 0, failed: 0, percent: 50, currentName: 'Hero', path: '/private/model' });
+  handler({}, { protocolVersion: 1, downloadId: 'bad', sequence: 2, libraryId: 'library_1234', stage: 'downloading', total: 2, completed: 3, downloaded: 3, cached: 0, failed: 0, percent: 150 });
+  assert.deepEqual(received, [{ protocolVersion: 1, downloadId: 'download_1234', sequence: 1, libraryId: 'library_1234', stage: 'downloading', total: 2, completed: 1, downloaded: 1, cached: 0, failed: 0, percent: 50, currentName: 'Hero' }]);
+  unsubscribe();
+  assert.equal(removed[0][0], APP_LIBRARY_DOWNLOAD_PROGRESS_CHANNEL);
 });
 
 test('preload onAppCommand forwards only allowlisted menu commands', () => {

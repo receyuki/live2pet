@@ -6,6 +6,7 @@ const { installPackage } = require('@live2pet/installation');
 const APP_IPC_PROTOCOL_VERSION = 1;
 const APP_IPC_CHANNEL = 'live2pet:app';
 const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';
+const APP_LIBRARY_DOWNLOAD_PROGRESS_CHANNEL = 'live2pet:library-download-progress';
 const APP_COMMAND_CHANNEL = 'live2pet:command';
 const APP_COMMANDS = Object.freeze(['new', 'open', 'save', 'settings', 'build', 'setup']);
 const APP_BUILD_ARTIFACT_CHUNK_BYTES = 1024 * 1024;
@@ -58,6 +59,7 @@ const APP_IPC_METHODS = Object.freeze([
   'saveProject',
   'openSourceLibrary',
   'openGitHubLibrary',
+  'downloadSourceLibrary',
   'inspectLibrarySource',
   'getLibraryThumbnail',
   'getSourceLibraryCacheStatus',
@@ -223,6 +225,31 @@ function normalizeLibrarySourceRequest(value) {
   for (const key of ['libraryId', 'sourceId']) if (typeof value[key] !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(value[key])) fail('INVALID_SOURCE_LIBRARY_REQUEST', `${key} must be an opaque model library identifier.`);
   if (value.projectId !== undefined && (typeof value.projectId !== 'string' || !/^[a-z0-9][a-z0-9._-]{0,95}$/i.test(value.projectId))) fail('INVALID_SOURCE_LIBRARY_REQUEST', 'projectId must be filename-safe when provided.');
   return { libraryId: value.libraryId, sourceId: value.sourceId, ...(value.projectId === undefined ? {} : { projectId: value.projectId }) };
+}
+
+function normalizeLibraryDownloadRequest(value) {
+  if (!isRecord(value) || Object.keys(value).some((key) => key !== 'libraryId') || typeof value.libraryId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(value.libraryId)) fail('INVALID_SOURCE_LIBRARY_REQUEST', 'Download all requires an opaque model library identifier.');
+  return { libraryId: value.libraryId };
+}
+
+function summarizeLibraryDownload(result) {
+  if (!isRecord(result) || result.schemaVersion !== 1 || typeof result.libraryId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(result.libraryId)) fail('INVALID_SOURCE_LIBRARY_RESULT', 'Model library download returned an invalid result.');
+  for (const key of ['total', 'completed', 'downloaded', 'cached', 'failed']) if (!Number.isSafeInteger(result[key]) || result[key] < 0 || result[key] > 512) fail('INVALID_SOURCE_LIBRARY_RESULT', 'Model library download returned invalid totals.');
+  if (result.completed !== result.total || result.downloaded + result.cached + result.failed !== result.total || !Array.isArray(result.failures) || result.failures.length !== result.failed || result.failures.length > 512) fail('INVALID_SOURCE_LIBRARY_RESULT', 'Model library download totals do not reconcile.');
+  const failures = result.failures.map((failure) => {
+    if (!isRecord(failure) || typeof failure.sourceId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(failure.sourceId) || typeof failure.code !== 'string' || !/^[A-Z0-9_]{1,64}$/.test(failure.code)) fail('INVALID_SOURCE_LIBRARY_RESULT', 'Model library download contains an invalid failure.');
+    return { sourceId: failure.sourceId, code: failure.code };
+  });
+  return { schemaVersion: 1, libraryId: result.libraryId, total: result.total, completed: result.completed, downloaded: result.downloaded, cached: result.cached, failed: result.failed, failures };
+}
+
+function normalizeLibraryDownloadProgressPayload(payload) {
+  if (!isRecord(payload) || payload.protocolVersion !== APP_IPC_PROTOCOL_VERSION || typeof payload.downloadId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(payload.downloadId) || !Number.isInteger(payload.sequence) || payload.sequence < 1) return null;
+  if (typeof payload.libraryId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(payload.libraryId) || !['downloading', 'complete'].includes(payload.stage)) return null;
+  for (const key of ['total', 'completed', 'downloaded', 'cached', 'failed', 'percent']) if (!Number.isSafeInteger(payload[key]) || payload[key] < 0 || (key === 'percent' ? payload[key] > 100 : payload[key] > 512)) return null;
+  if (payload.completed > payload.total || payload.downloaded + payload.cached + payload.failed > payload.completed) return null;
+  if (payload.currentName !== undefined && (typeof payload.currentName !== 'string' || !payload.currentName.trim() || payload.currentName.length > 256 || /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(payload.currentName))) return null;
+  return { protocolVersion: APP_IPC_PROTOCOL_VERSION, downloadId: payload.downloadId, sequence: payload.sequence, libraryId: payload.libraryId, stage: payload.stage, total: payload.total, completed: payload.completed, downloaded: payload.downloaded, cached: payload.cached, failed: payload.failed, percent: payload.percent, ...(payload.currentName ? { currentName: payload.currentName.trim() } : {}) };
 }
 
 function summarizeSourceLibraryOperation(result) {
@@ -654,11 +681,11 @@ function typedError(error) {
   };
 }
 
-function createAppIpcRouter({ projectWorkspaceService = null, projectSourceService = null, sourceInspectionService = null, sourceLibraryService = null, runtimeSettingsService = null, spinePackService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, targetInstallationService = null, packageOutputService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
+function createAppIpcRouter({ projectWorkspaceService = null, projectSourceService = null, sourceInspectionService = null, sourceLibraryService = null, runtimeSettingsService = null, spinePackService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, targetInstallationService = null, packageOutputService = null, onBuildProgress = null, onLibraryDownloadProgress = null, appVersion = '0.1.0' } = {}) {
   if (projectWorkspaceService !== null && (!isRecord(projectWorkspaceService) || typeof projectWorkspaceService.getRecentProjects !== 'function' || typeof projectWorkspaceService.clearRecentProjects !== 'function' || typeof projectWorkspaceService.openProject !== 'function' || typeof projectWorkspaceService.saveProject !== 'function')) fail('INVALID_APP_ROUTER', 'projectWorkspaceService must expose getRecentProjects, clearRecentProjects, openProject, and saveProject functions when provided.');
   if (projectSourceService !== null && (!isRecord(projectSourceService) || typeof projectSourceService.relink !== 'function' || typeof projectSourceService.acknowledgeReview !== 'function')) fail('INVALID_APP_ROUTER', 'projectSourceService must expose relink and acknowledgeReview functions when provided.');
   if (sourceInspectionService !== null && typeof sourceInspectionService !== 'function') fail('INVALID_APP_ROUTER', 'sourceInspectionService must be a function when provided.');
-  if (sourceLibraryService !== null && (!isRecord(sourceLibraryService) || !['openLocal', 'openGitHub', 'inspect', 'getCacheStatus', 'configureCache', 'clearCache'].every((method) => typeof sourceLibraryService[method] === 'function'))) fail('INVALID_APP_ROUTER', 'sourceLibraryService must expose model library and cache functions when provided.');
+  if (sourceLibraryService !== null && (!isRecord(sourceLibraryService) || !['openLocal', 'openGitHub', 'downloadAll', 'inspect', 'getCacheStatus', 'configureCache', 'clearCache'].every((method) => typeof sourceLibraryService[method] === 'function'))) fail('INVALID_APP_ROUTER', 'sourceLibraryService must expose model library, download, and cache functions when provided.');
   if (runtimeSettingsService !== null && (!isRecord(runtimeSettingsService) || typeof runtimeSettingsService.get !== 'function' || typeof runtimeSettingsService.configure !== 'function' || typeof runtimeSettingsService.clear !== 'function')) fail('INVALID_APP_ROUTER', 'runtimeSettingsService must expose get, configure, and clear functions when provided.');
   if (spinePackService !== null && (!isRecord(spinePackService) || typeof spinePackService.get !== 'function' || typeof spinePackService.install !== 'function' || typeof spinePackService.remove !== 'function')) fail('INVALID_APP_ROUTER', 'spinePackService must expose get, install, and remove functions when provided.');
   if (captureCacheService !== null && (!isRecord(captureCacheService) || typeof captureCacheService.status !== 'function')) fail('INVALID_APP_ROUTER', 'captureCacheService must expose a status function when provided.');
@@ -667,6 +694,7 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
   if (installRootPickerService !== null && typeof installRootPickerService !== 'function') fail('INVALID_APP_ROUTER', 'installRootPickerService must be a function when provided.');
   if (targetInstallationService !== null && (!isRecord(targetInstallationService) || typeof targetInstallationService.get !== 'function' || typeof targetInstallationService.configure !== 'function')) fail('INVALID_APP_ROUTER', 'targetInstallationService must expose get and configure.');
   if (onBuildProgress !== null && typeof onBuildProgress !== 'function') fail('INVALID_APP_ROUTER', 'onBuildProgress must be a function when provided.');
+  if (onLibraryDownloadProgress !== null && typeof onLibraryDownloadProgress !== 'function') fail('INVALID_APP_ROUTER', 'onLibraryDownloadProgress must be a function when provided.');
   if (packageOutputService !== null && (!isRecord(packageOutputService) || ['get', 'configure', 'save'].some(method => typeof packageOutputService[method] !== 'function'))) fail('INVALID_APP_ROUTER', 'packageOutputService must expose get, configure, and save.');
   if (typeof appVersion !== 'string' || !appVersion.trim()) fail('INVALID_APP_ROUTER', 'appVersion must be a non-empty string.');
   let buildArtifacts = new Map();
@@ -713,6 +741,18 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
       if (normalized.method === 'openGitHubLibrary') {
         if (!sourceLibraryService) fail('APP_SOURCE_LIBRARY_UNAVAILABLE', 'GitHub model library browsing is not configured in this App.');
         return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeSourceLibraryOperation(await sourceLibraryService.openGitHub(normalizeGitHubLibraryRequest(normalized.args[0]))) };
+      }
+      if (normalized.method === 'downloadSourceLibrary') {
+        if (!sourceLibraryService) fail('APP_SOURCE_LIBRARY_UNAVAILABLE', 'GitHub model library downloading is not configured in this App.');
+        const input = normalizeLibraryDownloadRequest(normalized.args[0]);
+        const downloadId = crypto.randomUUID();
+        let sequence = 0;
+        const result = await sourceLibraryService.downloadAll({ ...input, onProgress: (event) => {
+          if (!onLibraryDownloadProgress) return;
+          const safe = normalizeLibraryDownloadProgressPayload({ protocolVersion: APP_IPC_PROTOCOL_VERSION, downloadId, sequence: ++sequence, ...event });
+          if (safe) try { onLibraryDownloadProgress(safe); } catch {}
+        } });
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeLibraryDownload(result) };
       }
       if (normalized.method === 'inspectLibrarySource') {
         if (!sourceLibraryService) fail('APP_SOURCE_LIBRARY_UNAVAILABLE', 'Model library browsing is not configured in this App.');
@@ -1005,6 +1045,21 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
       ipcRenderer.removeListener(APP_BUILD_PROGRESS_CHANNEL, handler);
     };
   };
+  const onLibraryDownloadProgress = (listener) => {
+    if (typeof listener !== 'function') throw new TypeError('onLibraryDownloadProgress requires a function listener.');
+    if (typeof ipcRenderer.on !== 'function' || typeof ipcRenderer.removeListener !== 'function') throw new TypeError('onLibraryDownloadProgress requires Electron event listener support.');
+    const handler = (_event, payload) => {
+      const normalized = normalizeLibraryDownloadProgressPayload(payload);
+      if (normalized) listener(Object.freeze(normalized));
+    };
+    ipcRenderer.on(APP_LIBRARY_DOWNLOAD_PROGRESS_CHANNEL, handler);
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      ipcRenderer.removeListener(APP_LIBRARY_DOWNLOAD_PROGRESS_CHANNEL, handler);
+    };
+  };
   const resolveFilePath = (file) => {
     if (typeof getFilePath !== 'function') return null;
     try {
@@ -1022,11 +1077,13 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
     saveProject: (input) => invoke('saveProject', input),
     openSourceLibrary: (inputPath) => inputPath ? invoke('openSourceLibrary', { inputPath }) : invoke('openSourceLibrary'),
     openGitHubLibrary: (input) => invoke('openGitHubLibrary', input),
+    downloadSourceLibrary: (libraryId) => invoke('downloadSourceLibrary', { libraryId }),
     inspectLibrarySource: (input) => invoke('inspectLibrarySource', input),
     getLibraryThumbnail: (input) => invoke('getLibraryThumbnail', input),
     getSourceLibraryCacheStatus: () => invoke('getSourceLibraryCacheStatus'),
     configureSourceLibraryCache: (maxBytes) => invoke('configureSourceLibraryCache', { maxBytes }),
     clearSourceLibraryCache: () => invoke('clearSourceLibraryCache', { confirmClear: true }),
+    onLibraryDownloadProgress,
     onAppCommand,
     inspectSource: (input) => invoke('inspectSource', input),
     relinkSource: (input) => invoke('relinkSource', input),
@@ -1081,6 +1138,7 @@ module.exports = {
   APP_COMMANDS,
   APP_BUILD_ARTIFACT_CHUNK_BYTES,
   APP_BUILD_PROGRESS_CHANNEL,
+  APP_LIBRARY_DOWNLOAD_PROGRESS_CHANNEL,
   APP_SOURCE_INSPECTION_PROGRESS_STAGE,
   APP_RUNTIME_PROGRESS_STAGE,
   APP_IPC_CHANNEL,
@@ -1109,6 +1167,7 @@ module.exports = {
   normalizeInstallRootRequest,
   normalizeBuildProgressEvent,
   normalizeBuildProgressPayload,
+  normalizeLibraryDownloadProgressPayload,
   summarizeBuild,
   summarizeBuildTargets,
   summarizeInstall,

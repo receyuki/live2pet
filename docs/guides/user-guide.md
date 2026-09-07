@@ -44,8 +44,8 @@ A model contains character data; its runtime makes it move. Live2D's proprietary
 
 ## Browse and choose
 
-- **Local:** browse or drop a folder. Live2Pet discovers models up to two folder levels below it and generates card thumbnails.
-- **GitHub:** paste a public repository or folder URL. Browsing reads metadata; selecting a card downloads only that model.
+- **Local:** browse or drop a folder anywhere on the Models page. Live2Pet discovers models up to two folder levels below it and generates card thumbnails lazily as they enter view.
+- **GitHub:** paste a public repository or folder URL. Browsing reads metadata; selecting a card downloads only that model. **Download all** fetches every detected model, shows determinate progress, continues past individual failures, and then reports downloaded, cached, and failed counts. Thumbnails still load lazily.
 - **PCK:** import or drop a supported file directly.
 - Review the version, inventory, warnings, and motions in the preview, then click **Use and start mapping**.
 
@@ -87,6 +87,7 @@ Installation asks for confirmation. Replacing an installed package requires expl
 - Unsaved edits are retained locally for recovery on the next launch.
 - Clear recent history without deleting project files.
 - GitHub downloads use a **1 GiB** default cache. Change it between **256 MiB and 20 GiB** in Settings → Storage.
+- **Download all** checks that the detected collection fits the configured cache before it starts. Increase the limit or choose a narrower GitHub folder when needed.
 - Older cache entries are evicted as needed. Sources in use are protected; restart to release them if necessary.
 - If a cached GitHub source was removed, select the model again and relink the project.
 - Build caches reuse captured frames and encoded assets; oversized entries are skipped without failing a build.
