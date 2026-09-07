@@ -66,11 +66,18 @@ open apps/desktop/out/Live2Pet-darwin-*/Live2Pet.app
 
 ## 支持范围
 
-| 导入 | 生成 |
-| --- | --- |
-| **Live2D Cubism 2–5** 模型文件夹 | **[Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk)** 主题，包含透明 WebP 动画 |
-| **受支持的 Live2D PCK** 文件 | **Codex 自定义宠物** V2 动画图集 |
-| **Spine 4.0–4.3** 文件夹，需可选渲染器 | 保存 **.live2pet** 项目，方便以后继续编辑 |
+**支持导入**
+
+- Live2D Cubism 2–5 模型文件夹
+- 受支持的 Live2D PCK 文件
+- Spine 4.0–4.3 文件夹，需可选渲染器
+
+**支持导出** — 受支持的模型均可选择以下任一目标：
+
+- **[Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk)** — 包含透明 WebP 动画的主题
+- **Codex 自定义宠物** — V2 动画图集
+
+也可以保存为 **.live2pet** 项目，方便以后继续编辑。
 
 Spine 仍在预览阶段，Windows 支持已列入后续计划。PCK 是否可用取决于其内容和封装方式。[详细兼容性与限制 →](docs/guides/user-guide.zh-CN.md#compatibility)
 

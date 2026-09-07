@@ -66,11 +66,18 @@ On first launch, add your runtime and choose a model. [Setup help and troublesho
 
 ## Compatibility
 
-| Bring in | Send to |
-| --- | --- |
-| **Live2D Cubism 2–5** model folders | **[Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk)** themes with transparent animated WebP |
-| **Supported Live2D PCK** files | **Codex custom pets** with V2 sprite atlases |
-| **Spine 4.0–4.3** folders, with an optional renderer | Save a **.live2pet** project to edit later |
+**Supported inputs**
+
+- Live2D Cubism 2–5 model folders
+- Supported Live2D PCK files
+- Spine 4.0–4.3 folders, with an optional renderer
+
+**Export destinations** — choose either target for a supported model:
+
+- **[Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk)** — themes with transparent animated WebP
+- **Codex custom pets** — V2 sprite atlases
+
+Save your work as a **.live2pet** project to continue editing later.
 
 Spine support is in preview; Windows is planned. PCK support depends on its contents and packaging. [Detailed support and limitations →](docs/guides/user-guide.md#compatibility)
 
