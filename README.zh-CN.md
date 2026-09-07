@@ -1,55 +1,57 @@
-# Live2Pet
+<h1 align="center">Live2Pet</h1>
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+<p align="center"><strong>把喜欢的角色，变成桌面上的陪伴。</strong></p>
+<p align="center">将 Live2D 与 Spine 动画制作成 Clawd on Desk 和 Codex 桌面宠物。</p>
 
-把已有 Live2D 或 Spine 模型转换成桌面宠物包——完全在本地完成、可视化配置，并且不修改原始模型。
+<p align="center">
+  <a href="https://github.com/receyuki/live2pet/releases"><img src="https://img.shields.io/badge/release-coming%20soon-9087ff?style=flat-square" alt="Release: coming soon"></a>
+  <a href="https://github.com/receyuki/live2pet/stargazers"><img src="https://img.shields.io/github/stars/receyuki/live2pet?style=flat-square&color=9087ff" alt="GitHub stars"></a>
+  <img src="https://img.shields.io/badge/platform-macOS-111118?style=flat-square&logo=apple&logoColor=white" alt="Platform: macOS">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/receyuki/live2pet?style=flat-square&color=9087ff" alt="License: Apache-2.0"></a>
+</p>
+<p align="center">
+  <img src="https://img.shields.io/badge/Electron-111118?style=flat-square&logo=electron&logoColor=9feaf9" alt="Electron">
+  <img src="https://img.shields.io/badge/React-111118?style=flat-square&logo=react&logoColor=61dafb" alt="React">
+  <img src="https://img.shields.io/badge/TypeScript-111118?style=flat-square&logo=typescript&logoColor=3178c6" alt="TypeScript">
+  <a href="https://www.heroui.com/"><img src="https://img.shields.io/badge/UI-HeroUI-111118?style=flat-square" alt="HeroUI"></a>
+</p>
 
-Live2Pet 是一款 macOS 桌面应用，面向已经拥有合法可用 Live2D 或 Spine 模型、希望把模型原始动画用于 [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk) 或 Codex 自定义宠物的用户。你可以在一个项目工作区里导入模型、预览动作、关联宠物状态、隐藏不需要的元素，并构建经过验证的 ZIP 包。
+<p align="center">
+  <a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a><br>
+  <a href="#开始使用">开始使用</a> · <a href="docs/guides/user-guide.zh-CN.md">使用指南</a> · <a href="https://github.com/receyuki/live2pet/issues">反馈问题</a>
+</p>
 
-> [!IMPORTANT]
-> Live2Pet 目前是供个人使用的未签名 macOS 项目，暂时没有公开的预构建安装包。Live2D 完整流程已经验收；可选 Spine 4.x 与多模型库浏览正在进行 App 内验收。Windows 支持计划放在 V1 之后。
+<p align="center"><img src="docs/assets/app-preview.png" alt="Live2Pet 映射工作区：选择动画、实时预览猫咪模型，并关联 Clawd 宠物状态" width="100%"></p>
 
-## 主要功能
+<p align="center"><sub>浏览 → 预览 → 映射 → 生成，全程在你的电脑上完成。</sub></p>
 
-- 导入标准 Cubism 模型文件夹，以及受支持的未压缩、未加密 Live2D PCK 文件。
-- 浏览最多两层的本地模型集合或公开 GitHub 文件夹；GitHub 只下载你选中的模型，不会下载整个仓库。
-- 导入包含 JSON 或二进制骨骼、图集和纹理页的标准 Spine 4.0–4.3 文件夹。
-- Cubism 2 与 Cubism 3–5 运行时只需保存一次，之后自动选择匹配版本。
-- 通过播放、暂停、重放、拖动进度、循环和预览倍速检查动作与表情。
-- 将当前动作直接关联到 Clawd 或 Codex 的必选、可选状态。
-- 通过元素小图和父子层级检查模型，并隐藏不需要的背景或特效，不修改源文件。
-- 保存和重新打开 `.live2pet` 项目；项目只保存引用与设置，不包含模型或运行时代码。
-- 构建 Clawd 主题包和 Codex Pet V2 包，支持进度、取消、结果预览、缓存复用和格式验证。
-- 可将 ZIP 保存到任意位置、明确安装，或使用“构建并安装”；不会静默覆盖已有宠物包。
-- 支持英文和简体中文界面。
+## 目录
 
-## 支持范围
+[你可以做什么](#你可以做什么) · [三步制作宠物](#三步制作宠物) · [开始使用](#开始使用) · [支持范围](#支持范围) · [运行时](#runtime-setup) · [了解更多](#了解更多)
 
-| 输入或目标 | 当前支持情况 |
+## 你可以做什么
+
+| | 让宠物更像你喜欢的样子 |
 | --- | --- |
-| Cubism 3、4、5 | 包含 `.model3.json` 和 `.moc3` 的标准文件夹 |
-| Cubism 2 | 包含 `.model.json` 和 `.moc` 的标准文件夹 |
-| Live2D PCK | 已测试包含受支持 Cubism 模型的未压缩、未加密结构 |
-| Clawd on Desk | 核心状态、可选状态/反应、透明动态 WebP、主题验证、预览与安装 |
-| Codex 自定义宠物 | 默认生成 V2 11 行图集，包含九个必选动画映射和中立方向姿势 |
-| Spine 4.0–4.3 | 包含一个 `.json` 或 `.skel` 骨骼、匹配 `.atlas` 和引用纹理页的标准文件夹；使用匹配的可选渲染包，支持默认 Skin 与 Slot 显隐 |
-| Windows | 尚未验证；计划在 V1 之后支持 |
+| **找到喜欢的角色** | 浏览本地模型库或 GitHub 文件夹，只下载选中的模型。 |
+| **看清每一个动作** | 实时播放、暂停、拖动进度，挑出最合适的动画。 |
+| **留下角色，隐藏杂物** | 通过部件小图识别并隐藏可分离的背景、遮罩或特效。 |
+| **一个项目，两种去处** | 将动作关联到 Clawd 或 Codex 状态，直接生成宠物包。 |
+| **下次接着做** | 保存项目、自动复用运行时，支持中英文界面。 |
 
-PCK 只是容器，并不属于某个特定游戏，也不代表一定兼容。加密、压缩、专有或资源不完整的包会被拒绝，并显示原因。
+## 三步制作宠物
 
-## 快速开始
+1. **选一个模型** — 拖入文件夹或受支持的 PCK，也可以浏览 GitHub 模型集合。
+2. **调整成喜欢的样子** — 预览动作、隐藏多余部件、关联宠物状态。
+3. **生成，放上桌面** — 起名字、选画质，保存 ZIP 或安装到目标应用。
 
-目前还没有签名后的公开下载版本。要试用当前 App，需要从源码构建本地未签名 macOS 应用。
+模型在本地处理，原始资源保持不变。
 
-### 环境要求
+## 开始使用
 
-- 当前支持架构的 macOS
-- Git
-- Node.js 22.12 或更新版本
-- 通过 Corepack 使用 pnpm 11
-- 合法取得的模型及其匹配 Live2D 运行时，或 Spine 使用场景所需的许可
+**macOS 预览阶段 · 可从源码构建 · 公开安装包稍后提供。**
 
-### 构建 App
+目前需要 Git、Node.js 22.12+ 和 pnpm 11。构建未签名 App：
 
 ```sh
 git clone https://github.com/receyuki/live2pet.git
@@ -60,155 +62,39 @@ pnpm --filter @live2pet/desktop package:mac
 open apps/desktop/out/Live2Pet-darwin-*/Live2Pet.app
 ```
 
-本地 App 未签名，macOS 可能要求你在“系统设置 → 隐私与安全性”中允许打开。公开签名和公证安装包属于后续独立发布里程碑。
+首次启动时添加运行时，再选择模型即可。[安装说明与常见问题 →](docs/guides/user-guide.zh-CN.md)
 
-## 使用流程
+## 支持范围
 
-1. 第一次启动时添加你已经拥有的 Live2D 运行时；也可以跳过设置，先检查模型资源。
-2. 浏览本地模型文件夹、粘贴公开 GitHub 仓库/文件夹地址，或导入受支持的 Live2D PCK 文件；仍可拖入本地资源。
-3. 在“模型”页选择卡片或直接导入模型，在预览模块检查版本、资源数量、警告和动画，并解决运行时问题。点击“使用并开始映射”后，直接进入映射页并保留所选动作。已有项目的资源可用时直接进入映射；资源缺失或发生变化时先处理资源检查。
-4. 在“映射”页选择动作，按需使用模型提供的表情，预览后分别关联到 Clawd 或 Codex 状态。拖动两处分隔线可以调整“动画 / 模型预览 / 目标配置”三栏宽度。
-5. 如果需要去掉背景、遮罩或特效，在“显示与隐藏”中检查并隐藏可分离元素。
-6. 在“构建”页输入包名称、选择渲染档位，然后构建目标包。
-7. 预览生成结果，再选择“保存 ZIP”“安装”或“构建并安装”。
-8. 如果以后还要调整映射，保存 `.live2pet` 项目。“模型”页可清空最近项目记录，不会删除项目文件。
+| 导入 | 生成 |
+| --- | --- |
+| **Live2D Cubism 2–5** 模型文件夹 | **[Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk)** 主题，包含透明 WebP 动画 |
+| **受支持的 Live2D PCK** 文件 | **Codex 自定义宠物** V2 动画图集 |
+| **Spine 4.0–4.3** 文件夹，需可选渲染器 | 保存 **.live2pet** 项目，方便以后继续编辑 |
 
-运行时、输出、缓存、语言和安装位置属于全局设置；模型选择和动作映射保存在项目中。
-
-未保存的编辑会自动保存在本机，供下次启动时恢复。编辑当前项目期间，自动保存不会再生成“恢复未保存项目”卡片。
+Spine 仍在预览阶段，Windows 支持已列入后续计划。PCK 是否可用取决于其内容和封装方式。[详细兼容性与限制 →](docs/guides/user-guide.zh-CN.md#compatibility)
 
 <a id="runtime-setup"></a>
 
-## 运行时配置
+## 运行时
 
-模型文件包含角色数据，运行时则是让角色动起来的代码。Live2Pet 包含界面和渲染适配层，但不会捆绑或静默下载 Live2D 的专有运行时。请自行从合适来源取得运行时并阅读其许可条款。
+**添加一次，后续自动复用。** Live2D 运行时受独立条款约束，需要单独取得。将下载的运行时文件或解压后的 SDK 文件夹拖入“设置 → 运行时”。
 
-| 模型版本 | 需要导入的运行时 | 来源 |
-| --- | --- | --- |
-| Cubism 3–5（`.model3.json` / `.moc3`） | Cubism Core for Web，通常为 `Core/live2dcubismcore.min.js` | [Cubism SDK for Web 官方下载](https://www.live2d.com/en/sdk/download/web/) |
-| Cubism 2（`.model.json` / `.moc`） | 旧版 Web 运行时 `live2d.min.js` | 第三方存档：[dylanNew/live2d](https://github.com/dylanNew/live2d/tree/master/webgl/Live2D/lib) |
+| 模型版本 | 获取方式 |
+| --- | --- |
+| Cubism 3–5 | [官方 Cubism SDK for Web](https://www.live2d.com/en/sdk/download/web/) → `Core/live2dcubismcore.min.js` |
+| Cubism 2 | 从[第三方旧版存档](https://github.com/dylanNew/live2d/tree/master/webgl/Live2D/lib)获取 `live2d.min.js` |
+| Spine 4.0–4.3 | 在 App 中为匹配的渲染器点击“安装” |
 
-现代模型请下载并解压 **Web SDK**，不要选择 Editor、Unity SDK 或 Native SDK。Cubism 2 请保存 JavaScript 文件本身，而不是 GitHub 网页。上面的 Cubism 2 仓库是第三方副本，不是官方维护的下载渠道；[Live2D 已说明](https://help.live2d.com/en/other/other_20/)不再提供新的 Cubism 2.1 SDK 下载。
+[为什么需要单独下载？详细配置与许可说明 →](docs/guides/user-guide.zh-CN.md#runtimes)
 
-在首次引导或“设置 → 运行时”中，拖入运行时 JavaScript 文件或解压后的 SDK 文件夹。Live2Pet 会检查文件、识别支持的版本，并保存一份私有本地副本。两个版本可以同时存在，重启后会自动复用，即使原下载文件已经移动也不需要重复选择。
+## 了解更多
 
-只导入可信来源的运行时代码。从 Live2Pet 删除运行时不会删除原始文件。没有运行时时仍可检查资源，但播放和捕获需要匹配版本。App 内的帮助按钮会根据当前语言打开本章节。
+- **使用帮助：** [使用指南与常见问题](docs/guides/user-guide.zh-CN.md)
+- **接下来的计划：** [Issues](https://github.com/receyuki/live2pet/issues) · [V1 计划](docs/plans/live2pet-v1-implementation-plan.md)
+- **参与开发：** [贡献指南](CONTRIBUTING.md) · [开发文档](docs/guides/development.md)
+- **安全问题：** [漏洞报告](SECURITY.md)
 
-### 可选 Spine 支持
+使用 Electron、React、TypeScript 和 HeroUI 构建。源代码采用 [Apache-2.0](LICENSE) 许可。
 
-Live2Pet 会在安装渲染器前识别 Spine 导出版本。对于 Spine 4.0–4.3，只有用户明确点击“安装”后，App 才会下载对应的官方固定版本 `@esotericsoftware/spine-player`，校验 SHA-256，并保存到 App 私有目录供以后自动复用。这些渲染包不会随仓库分发，也不会在首次引导时自动下载。其他能够识别的 Spine 版本会保持不支持，直到可以加入来源可复现的官方渲染包。
-
-### 模型库与 GitHub 缓存
-
-「模型」页统一提供打开项目、导入资源和浏览模型库。拖入模型文件夹会将其作为模型库打开，拖入 PCK 文件则直接导入；无论 Electron 将文件夹表示为目录本身还是其中的多个文件，都能正确识别。这样包含多个模型的集合不会再被误判为一个 Source Package。优先使用本地模型附带的 `preview`／`cover` 图片，没有封面时使用已安装的运行时生成 256 像素缩略图。可见卡片优先排队，屏幕外的卡片随后会在后台自动补齐；最多同时渲染两个缩略图，隐藏的 Spine 缩略图视图不再依赖动画帧完成初始化，单个渲染超过 15 秒仍会停止等待，不会卡住 App 或阻塞整个模型库。缩略图内存缓存最多 16 MiB，退出 App 后释放。缺少运行时会提示，不会自动下载；识别到尚不支持的 Spine 版本时会直接标明。点击卡片可实时预览并选择动作，只有点击「使用并开始映射」才会替换当前项目。切换到映射或构建后，模型库仍会保留。
-
-GitHub 卡片不会为了生成缩略图自动下载模型；点击卡片后才下载该模型并打开实时预览。原「资源」页的检查信息收进当前模型的可展开详情，不再占用单独的导航标签。
-
-从模型库创建的项目会保存所选资源的本地位置及模型配置，供下次打开时使用。GitHub 模型的位置属于缓存，不是永久项目资源：缓存被清理或淘汰后，需要重新选择模型并关联资源。保存 `.live2pet` 项目不会将模型文件嵌入项目中。
-
-缓存清理会保留本次 App 会话仍登记使用的资源，包括已加载的 PCK 文件。如果这些资源导致无法调低上限，可重启 App 释放占用，或选择更高的上限。下载和清理会按顺序执行，下载结束后还会按实际大小再次检查容量。
-
-本地 Electron 集成测试已覆盖 Spine 4.1 二进制和 4.3 JSON 模型的渲染、部件隐藏及两种目标包导出。Spine 4.0/4.2 和打包后 App 的完整流程仍待真实模型验收；能够识别版本不代表已经验证所有兼容性。
-
-“浏览模型文件夹”会在所选本地文件夹下最多扫描两层，找出 Live2D 和 Spine 资源包。公开 GitHub 仓库或 `/tree/<branch>/<folder>` 地址只读取目录元数据，不会 clone 仓库；只有点击某个模型卡片后才会下载该模型。下载缓存默认上限为 1 GiB，可在“设置 → 存储”中查看占用、修改上限（256 MiB–20 GiB）或清空。达到上限时会自动移除最久未使用的模型。
-
-Spine 运行时受 [Spine Runtime License](https://github.com/EsotericSoftware/spine-runtimes/blob/4.3/LICENSE)约束。Live2Pet 的 Apache-2.0 许可不会授予 Spine Editor 许可，也不会重新许可该运行时、模型或生成资源。安装渲染包或分发生成结果前，请确认你的使用方式符合适用条款。
-
-## 动作映射与模型显示
-
-Clawd 与 Codex 映射相互独立。App 会明确标记必选状态；可选状态可以留空。Live2Pet 不会猜测 Codex 左右方向，也不会自动替用户完成映射。
-
-映射页由可调整宽度的“动画 / 模型预览 / 目标配置”三栏组成。左侧以“动作”为主要 Tab，以“显示与隐藏”为第二 Tab；只有模型实际提供表情时，才会在动作列表中显示表情选项。显示与隐藏功能包括：
-
-- 模型提供关系时，按可收起的父子层级显示；
-- 将 Part 体系之外的根级 ArtMesh 放入“未归属网格”；
-- 可见行旁按需生成小图，并在上方放大当前元素；
-- 搜索结果保留祖先路径；
-- 临时“单独查看”、持久“隐藏 / 显示”和“全部恢复”；
-- 现代 Cubism 可用“检测大范围元素”寻找动作中的宽大几何内容；以及
-- 姿势或渲染状态异常时可以“重置预览”。
-
-隐藏元素的 ID 会保存在项目中，并一致用于预览、取景、缓存、Clawd 输出和 Codex 输出。更换为内容不同的资源会重置旧模型的隐藏配置；只移动同一份未变化资源则保留。
-
-如果人物和背景画在同一个 ArtMesh 中，Live2Pet 无法将它们分开。由动作驱动的大范围特效也可能继续影响取景，直到你明确隐藏其可分离元素。
-
-## 构建、保存与安装
-
-Clawd 提供“精简 / 平衡 / 高质量”档位，以及可调分辨率、帧率和 WebP 质量的“自定义”模式。Codex 保持目标规定的图集尺寸。调低 Clawd 参数通常能减小体积，但会牺牲细节或流畅度。
-
-Clawd 的 80 MiB 导入限制会显示为兼容性警告，而不是构建失败。Live2Pet 仍允许保存 ZIP，但 Clawd 可能拒绝导入；此时需要降低分辨率、帧率或质量后重新构建。
-
-构建缓存会复用验证过的捕获帧和编码资源。空间不足时自动移除最久未使用的条目；单个条目超过缓存总容量时会跳过缓存，但不会让构建失败。构建报告包含验证、警告、生成包体积、缓存命中、总耗时和各阶段耗时，不会暴露源文件路径或捕获像素。
-
-“保存 ZIP”绝不会安装。“安装”一定会请求确认。“构建并安装”会等待构建和验证成功后再请求确认。如果同名包已经存在，替换还需要第二次确认，并使用带原包备份与失败回滚的流程。
-
-“设置 → 目标与安装”会检查 Clawd on Desk 和 Codex 的标准 macOS 位置，也支持手动指定 App 与宠物包文件夹。检测不会启动 App，也不会安装内容。重置保存位置不会删除已经安装的宠物包。
-
-## 项目、隐私与内容权利
-
-Live2Pet 坚持本地优先。App 不会上传模型、运行时、渲染帧、生成包或绝对路径。运行时副本、偏好、缓存和安装位置只保存在本机 App 数据中。
-
-本仓库有意排除角色模型、生成宠物包、运行时二进制和可能受版权保护的示例。`.live2pet` 文件保存资源引用、指纹、映射、渲染设置和显示选择，不会嵌入模型或运行时代码。
-
-Live2Pet 不授予模型、纹理、动作、游戏资源、运行时或衍生动画的使用权。你需要自行确认是否有权使用和分发输入内容及生成包。仓库的 Apache-2.0 许可证只适用于 Live2Pet 源代码，不适用于导入资产或第三方运行时。
-
-## 常见问题
-
-### 可以检查模型，但无法预览
-
-在“设置 → 运行时”添加匹配的 Live2D 运行时；受支持的 Spine 4.0–4.3 资源则安装与其版本匹配的可选渲染包。现代 Cubism Core 不能渲染 Cubism 2，旧版运行时也不能渲染现代 `.moc3` 模型。
-
-### PCK 文件被拒绝
-
-目前只接受受限大小、未压缩、未加密并包含受支持 Live2D 资源的结构。Live2Pet 不会解密专有资源包。
-
-### 生成的宠物太小或被裁切
-
-使用当前版本重新构建，预览出现问题的动作，并检查宽大的静态或动态元素。旧取景缓存会自动失效，但以前导出的 ZIP 必须重新构建才会变化。
-
-### Clawd 中无法点击宠物
-
-重新构建并安装主题。当前生成包包含覆盖逻辑画布的默认点击框和中立显示缩放；旧主题可能没有这些信息。
-
-### Clawd 拒绝体积过大的 ZIP
-
-选择“精简”，或降低自定义分辨率、帧率和 WebP 质量，直到结果低于界面提示的宿主限制。
-
-### 没有检测到目标 App
-
-使用“设置 → 目标与安装 → 手动定位 App”，或手动选择宠物包目录。“未找到”只表示标准位置没有匹配，并不能证明 App 没有安装。
-
-## 项目状态与路线图
-
-截至 #12 的 Live2D 桌面流程已经实现并完成验收。可选、固定版本的 Spine 4.0–4.3 渲染包和模型库浏览已经实现，仍需在打包 App 中进行最终用户验收。之后进行全新用户环境下的 macOS 正式版验收。Windows x64、公开签名/公证安装包、自动更新和 Codex Skill 自动化属于 V1 之后的工作。
-
-规范范围和进度请查看 [V1 规格](docs/specs/live2pet-v1.md)、[实施计划](docs/plans/live2pet-v1-implementation-plan.md)与 [GitHub Issues](https://github.com/receyuki/live2pet/issues)。
-
-## 参与贡献与开发
-
-欢迎提交聚焦的问题报告和贡献。请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)并搜索已有 Issue；除非明确拥有再分发权，请不要上传模型或运行时文件。
-
-```sh
-corepack enable
-pnpm install
-pnpm test
-pnpm typecheck
-pnpm release:check
-pnpm --filter @live2pet/desktop start
-```
-
-常用工程资料：
-
-- [架构决策](docs/adr/)
-- [桌面验收指南](docs/desktop-acceptance.md)
-- [依赖清单](docs/dependency-inventory.md)
-- [发布检查表](docs/release-checklist.md)
-- [仓库 Agent 约定](AGENTS.md)
-
-主要实现位于 `apps/desktop`（Electron/HeroUI App）与 `packages/*`（资源检查、项目、运行时、渲染、目标包、构建、安装和 CLI）。`apps/mapper` 仅保留为开发参考，不是正式 App 入口。
-
-## 许可证
-
-Live2Pet 源代码使用 [Apache License 2.0](LICENSE)。第三方组件及其声明见 [NOTICE](NOTICE)、[依赖清单](docs/dependency-inventory.md)和打包 App 内的第三方声明。
-
-安全敏感问题请按照 [SECURITY.md](SECURITY.md)报告，不要发布为公开 Issue。
+<sub>模型与运行时保留各自的许可。预览图仅展示使用效果，图中模型不随项目分发。参见[第三方声明](NOTICE)。</sub>

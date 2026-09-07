@@ -14,6 +14,8 @@ user's computer, and pull requests must not add user-provided model data.
    Motion or Expression files, Cubism Core, legacy runtimes, rendered frames,
    generated themes, or downloaded archives.
 
+See the [developer guide](docs/guides/development.md) for local startup, packaging, and the repository map.
+
 ## Local verification
 
 Install the pinned workspace dependencies with pnpm, then run:
@@ -37,9 +39,9 @@ to the repository or CI artifacts.
   buffers out of IPC responses, reports, snapshots, and logs.
 - Add a focused test for a new behavior or failure mode. Prefer observable
   acceptance checks over implementation-specific call counts.
-- Product-facing README, issue, and guide text is written in English. UI copy
-  may be translated through the Mapper's locale layer, but schema keys and
-  error codes remain language-neutral.
+- Maintain the English and Simplified Chinese READMEs and user guides together.
+  Issues and engineering documentation use English. Schema keys and error
+  codes remain language-neutral.
 - Update the relevant specification, plan, or agent guide when a contract or
   release boundary changes.
 
@@ -49,4 +51,3 @@ Describe the user-visible outcome, affected packages, verification commands,
 and any local-only or externally blocked acceptance step. Keep generated
 packages and screenshots out of the pull request unless their provenance and
 redistribution rights are documented and the release checklist permits them.
-
