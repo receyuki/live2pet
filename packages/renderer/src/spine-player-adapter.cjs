@@ -1,7 +1,7 @@
 const { RendererContractError } = require('./errors.cjs');
 const { normalizeVisualSettings } = require('./visual-settings.cjs');
 
-const DEFAULT_OPTIONS = Object.freeze({ width: 512, height: 512, padding: 0.08, playbackMode: 'manual' });
+const DEFAULT_OPTIONS = Object.freeze({ width: 512, height: 512, padding: 0.08, playbackMode: 'manual', loadTimeoutMs: 15000 });
 const SUPPORTED_SPINE_RUNTIME_LINES = Object.freeze(['4.0', '4.1', '4.2', '4.3']);
 
 function fail(code, message, details = {}) { throw new RendererContractError(code, message, details); }
@@ -109,6 +109,18 @@ function pageLoad(source, options) {
       },
     };
     window.__live2petSpine = runtime;
+    let settled = false;
+    let loadPoll = null;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(loadTimer);
+      if (loadPoll !== null) window.clearInterval(loadPoll);
+      callback(value);
+    };
+    const loadTimer = window.setTimeout(() => {
+      finish(reject, new Error(`Spine Player did not finish loading within ${options.loadTimeoutMs} ms.`));
+    }, options.loadTimeoutMs);
     runtime.player = new window.spine.SpinePlayer(container, {
       ...(source.runtimeLine === '4.3'
         ? { skeleton: source.skeletonUrl, atlas: source.atlasUrl }
@@ -134,20 +146,27 @@ function pageLoad(source, options) {
       success(player) {
         runtime.player = player;
         if (!runtime.source.motions.length) runtime.source.motions = player.skeleton.data.animations.map((animation) => ({ id: animation.name, name: animation.name, duration: animation.duration }));
-        if (!runtime.source.motions.length) return reject(new Error('Spine skeleton contains no animations.'));
+        if (!runtime.source.motions.length) return finish(reject, new Error('Spine skeleton contains no animations.'));
         runtime.state.motionId = runtime.source.motions[0].id;
         player.setAnimation(runtime.state.motionId, true);
         runtime.state.loaded = true;
         runtime.fit(runtime.state.motionId);
         if (options.playbackMode === 'manual') { player.pause(); player.stopRendering(); runtime.draw(); }
-        resolve({
+        finish(resolve, {
           state: { ...runtime.state },
           motions: runtime.source.motions.map((motion) => ({ ...motion })),
           slots: player.skeleton.slots.map((slot) => ({ id: `slot:${slot.data.name}`, name: slot.data.name, kind: 'slot' })),
         });
       },
-      error(_player, message) { reject(new Error(message || 'Spine Player failed to load the skeleton.')); },
+      error(_player, message) { finish(reject, new Error(message || 'Spine Player failed to load the skeleton.')); },
     });
+    // Spine Player completes asset initialization from requestAnimationFrame.
+    // Electron may suspend that callback for the hidden view used by library
+    // thumbnails, so explicitly advance a frame once every asset is ready.
+    if (!settled) loadPoll = window.setInterval(() => {
+      if (runtime.player?.skeleton || !runtime.player?.assetManager?.isLoadingComplete()) return;
+      try { runtime.player.drawFrame(false); } catch (error) { finish(reject, error); }
+    }, 25);
   });
 }
 
@@ -172,7 +191,7 @@ class SpinePlayerAdapter {
   constructor({ page, ...options } = {}) {
     if (!page?.evaluate) fail('INVALID_RENDERER_HOST', 'SpinePlayerAdapter requires an isolated browser page.');
     this.page = page;
-    this.options = { ...DEFAULT_OPTIONS, ...options, width: integer(options.width ?? DEFAULT_OPTIONS.width, 'Renderer width'), height: integer(options.height ?? DEFAULT_OPTIONS.height, 'Renderer height'), padding: finite(options.padding ?? DEFAULT_OPTIONS.padding, 'Renderer padding', 0, 0.5) };
+    this.options = { ...DEFAULT_OPTIONS, ...options, width: integer(options.width ?? DEFAULT_OPTIONS.width, 'Renderer width'), height: integer(options.height ?? DEFAULT_OPTIONS.height, 'Renderer height'), padding: finite(options.padding ?? DEFAULT_OPTIONS.padding, 'Renderer padding', 0, 0.5), loadTimeoutMs: finite(options.loadTimeoutMs ?? DEFAULT_OPTIONS.loadTimeoutMs, 'Spine load timeout', 1000, 120000) };
     this.source = null; this.state = { loaded: false, motionId: null, expressionId: null, time: 0, playing: false, loop: true, speed: 1 }; this.visualElements = [];
   }
   async evaluate(fn, ...args) { try { return await this.page.evaluate(fn, ...args); } catch (error) { if (error instanceof RendererContractError) throw error; fail('RENDERER_PAGE_ERROR', error?.message || String(error)); } }

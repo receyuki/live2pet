@@ -490,6 +490,52 @@ test('Spine manifest conversion and adapter reuse the shared renderer contract',
   await renderer.unload();
 });
 
+test('Spine adapter completes loading when requestAnimationFrame is suspended in a hidden view', async () => {
+  const originalWindow = global.window;
+  const originalDocument = global.document;
+  let drawCount = 0;
+  const container = { style: {} };
+  const animation = { name: 'idle', duration: 1, apply() {} };
+  class HiddenViewPlayer {
+    constructor(_container, config) {
+      this.config = config;
+      this.assetManager = { isLoadingComplete: () => true };
+      this.skeleton = null;
+      this.sceneRenderer = { skeletonRenderer: { clipper: {} } };
+      this.paused = true;
+      this.stopRequestAnimationFrame = true;
+    }
+    drawFrame() {
+      drawCount += 1;
+      if (this.skeleton) return;
+      this.skeleton = {
+        data: { animations: [animation], findAnimation: () => animation },
+        slots: [],
+        setToSetupPose() {},
+        updateWorldTransform() {},
+        getBounds(offset, size) { offset.x = 0; offset.y = 0; size.x = 100; size.y = 100; },
+      };
+      this.config.success(this);
+    }
+    setAnimation() {}
+    pause() {}
+    stopRendering() {}
+    dispose() {}
+  }
+  global.window = { spine: { SpinePlayer: HiddenViewPlayer, Vector2: class { constructor() { this.x = 0; this.y = 0; } } }, setTimeout, clearTimeout, setInterval, clearInterval };
+  global.document = { body: { innerHTML: '' }, getElementById: () => container };
+  try {
+    const page = { async evaluate(fn, ...args) { return fn(...args); } };
+    const renderer = new SpinePlayerAdapter({ page, width: 64, height: 64, loadTimeoutMs: 1000 });
+    const loaded = await renderer.load({ format: 'spine', runtimeLine: '4.1', binary: true, skeletonUrl: '/model/hero.skel', atlasUrl: '/model/hero.atlas', motions: [{ id: 'idle', name: 'Idle', duration: 1 }], slots: [] });
+    assert.equal(loaded.motionCount, 1);
+    assert.ok(drawCount > 0);
+  } finally {
+    global.window = originalWindow;
+    global.document = originalDocument;
+  }
+});
+
 test('renderer host helpers enforce sandbox defaults, CSP, and a narrow IPC surface', async () => {
   const options = createRendererWindowOptions({ preload: '/app/renderer-preload.cjs', width: 320, height: 240 });
   assert.equal(options.webPreferences.nodeIntegration, false);

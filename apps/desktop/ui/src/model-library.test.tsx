@@ -1,4 +1,4 @@
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SourceLibrary } from './app-host';
 
@@ -43,5 +43,13 @@ describe('ModelLibrary thumbnails', () => {
     expect(getLibraryThumbnail).not.toHaveBeenCalled();
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
     expect(getLibraryThumbnail).toHaveBeenCalledTimes(3);
+  });
+
+  it('labels unsupported Spine versions without trying to render them', async () => {
+    const unsupported: SourceLibrary = { ...library, candidates: [{ id: 'legacy', name: 'legacy', relativePath: 'legacy/legacy.skel', format: 'spine', version: '3.8.95', runtimeLine: '3.8', binary: true }] };
+    render(<ModelLibrary library={unsupported} locale="zh-CN" onUse={async () => {}} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(screen.getByText('暂不支持 Spine 3.8 预览')).toBeTruthy();
+    expect(getLibraryThumbnail).not.toHaveBeenCalled();
   });
 });

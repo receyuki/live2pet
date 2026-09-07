@@ -8,8 +8,9 @@ function ModelCard({ library, candidate, index, selected, onSelect, locale, paus
   const ref = useRef<HTMLDivElement>(null);
   const [cover, setCover] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const unsupportedSpine = candidate.format === 'spine' && Boolean(candidate.runtimeLine) && !['4.0', '4.1', '4.2', '4.3'].includes(candidate.runtimeLine!);
   useEffect(() => {
-    if (library.kind !== 'local' || paused || cover) return;
+    if (library.kind !== 'local' || paused || cover || unsupportedSpine) return;
     let active = true, requested = false;
     const load = () => {
       if (requested) return;
@@ -22,9 +23,9 @@ function ModelCard({ library, candidate, index, selected, onSelect, locale, paus
     if (observer && ref.current) observer.observe(ref.current); else load();
     const backgroundTimer = window.setTimeout(load, 500 + Math.min(index * 35, 1000));
     return () => { active = false; window.clearTimeout(backgroundTimer); observer?.disconnect(); };
-  }, [library.libraryId, library.kind, candidate.id, index, paused, cover]);
+  }, [library.libraryId, library.kind, candidate.id, index, paused, cover, unsupportedSpine]);
   return <div ref={ref}><Button className={`model-library-card${selected ? ' model-library-card-selected' : ''}`} variant="ghost" aria-pressed={selected} onPress={onSelect}>
-    <span className="model-library-cover">{cover ? <img src={cover} alt="" /> : <><Image size={24} /><small>{translate(locale, library.kind === 'github' ? 'libraryDownloadPreview' : failed ? 'libraryPreviewUnavailable' : 'libraryThumbnailLoading')}</small></>}</span>
+    <span className="model-library-cover">{cover ? <img src={cover} alt="" /> : <><Image size={24} /><small>{translate(locale, library.kind === 'github' ? 'libraryDownloadPreview' : unsupportedSpine ? 'librarySpineVersionUnsupported' : failed ? 'libraryPreviewUnavailable' : 'libraryThumbnailLoading', { value: candidate.runtimeLine || '?' })}</small></>}</span>
     <span className="grow-copy"><strong>{candidate.name}</strong><small title={candidate.relativePath}>{candidate.relativePath}</small><span className="model-library-meta">{candidate.format === 'spine' ? `Spine ${candidate.runtimeLine || ''}` : candidate.format === 'live2d-pck' ? 'PCK' : 'Live2D'}</span></span>
   </Button></div>;
 }
