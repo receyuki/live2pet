@@ -2,16 +2,17 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Turn your Live2D model into a desktop pet package—locally, visually, and without editing the original model.
+Turn your Live2D or Spine model into a desktop pet package—locally, visually, and without editing the original model.
 
-Live2Pet is a macOS desktop app for people who already have a permitted Live2D model and want to use its original animations in [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk) or Codex custom pets. Import a model, preview its motions, map them to pet states, hide unwanted visual elements, and build a validated ZIP from one project workspace.
+Live2Pet is a macOS desktop app for people who already have a permitted Live2D or Spine model and want to use its original animations in [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk) or Codex custom pets. Import a model, preview its motions, map them to pet states, hide unwanted visual elements, and build a validated ZIP from one project workspace.
 
 > [!IMPORTANT]
-> Live2Pet is currently a personal-use, unsigned macOS project. There is no public prebuilt release yet. The complete Live2D workflow is accepted; optional Spine support is the next milestone. Windows support is planned after V1.
+> Live2Pet is currently a personal-use, unsigned macOS project. There is no public prebuilt release yet. The complete Live2D workflow is accepted; the new optional Spine 4.3 path is implemented and awaiting final in-App acceptance. Windows support is planned after V1.
 
 ## Highlights
 
 - Import standard Cubism model folders and supported uncompressed, unencrypted Live2D PCK files.
+- Import standard Spine 4.3 folders containing JSON or binary skeleton data, an atlas, and its texture pages.
 - Save Cubism 2 and Cubism 3–5 runtimes once; Live2Pet selects the matching version automatically.
 - Preview motions and expressions with play, pause, restart, seek, loop, and preview-speed controls.
 - Map the selected motion directly to required and optional Clawd or Codex pet states.
@@ -30,7 +31,7 @@ Live2Pet is a macOS desktop app for people who already have a permitted Live2D m
 | Live2D PCK | Tested uncompressed and unencrypted layouts containing a supported Cubism model |
 | Clawd on Desk | Core states, optional states/reactions, transparent animated WebP assets, theme validation, preview, and installation |
 | Codex custom pets | V2 11-row atlas by default, including the nine required animation mappings and neutral look cells |
-| Spine | Not yet available; tracked as the next V1 renderer milestone |
+| Spine 4.3 | Standard folders containing one `.json` or `.skel` skeleton, a matching `.atlas`, and referenced texture pages; default skin and Slot visibility |
 | Windows | Not yet qualified; planned after V1 |
 
 PCK is a container, not a specific game's format and not a guarantee of compatibility. Encrypted, compressed, proprietary, or incomplete packages are rejected with an explanation.
@@ -45,7 +46,7 @@ There is no signed downloadable build yet. To try the current App, build the loc
 - Git
 - Node.js 22.12 or newer
 - pnpm 11 through Corepack
-- A legally obtained model and the matching Live2D runtime
+- A legally obtained model and the matching Live2D runtime, or the licenses required for your Spine use
 
 ### Build the App
 
@@ -63,8 +64,8 @@ The local App is unsigned. macOS may require you to approve it in **System Setti
 ## Using Live2Pet
 
 1. On first launch, add the Live2D runtime files you already own, or skip setup and inspect a model first.
-2. Import a Live2D folder or PCK file. You can also drag it into the App.
-3. In **Source**, review the detected Cubism generation, motions, expressions, and warnings.
+2. Import a Live2D or Spine folder, or a supported Live2D PCK file. You can also drag it into the App.
+3. In **Source**, review the detected model generation, motions, expressions, and warnings. A supported Spine source offers **Install Spine support** when needed.
 4. In **Map**, choose an animation, preview it, and assign it separately to Clawd or Codex states.
 5. Use **Visibility** when you need to inspect and hide a background, overlay, or other separable model element.
 6. Enter a package name in **Build**, choose a render preset, and build either target.
@@ -89,6 +90,12 @@ For modern models, download and extract the **Web SDK**, not the Editor, Unity S
 In first-time Setup or **Settings → Runtimes**, drag in the runtime JavaScript file or extracted SDK folder. Live2Pet validates it, detects the supported generation, and stores a private local copy. Both generations can coexist and are reused automatically after restart, even if the original download is moved.
 
 Only import runtime code from a source you trust. Removing a runtime from Live2Pet does not delete the original file. Inspection works without a runtime; playback and capture require a matching one. The in-App help button opens this section in the language currently selected in Live2Pet.
+
+### Optional Spine support
+
+Live2Pet recognizes standard Spine 4.3 folders before installing a renderer. When you explicitly choose **Install Spine support** in Source, Map, or **Settings → Runtimes**, the App downloads the exact official `@esotericsoftware/spine-player` 4.3.13 browser distribution, verifies pinned SHA-256 values, and saves it in private App storage for reuse. It is not bundled with this repository or downloaded during first-run setup. A binary `.skel` source may expose its complete animation and Slot catalog only after this pack loads.
+
+Spine runtimes are governed by the [Spine Runtime License](https://github.com/EsotericSoftware/spine-runtimes/blob/4.3/LICENSE). Live2Pet's Apache-2.0 license does not grant a Spine Editor license or relicense the runtime, models, or generated assets. Confirm that your Spine use satisfies the applicable terms before installing the pack or distributing output.
 
 ## Mapping and model visibility
 
@@ -132,7 +139,7 @@ Live2Pet does not grant rights to any model, texture, motion, game asset, runtim
 
 ### The model can be inspected but not previewed
 
-Add the matching runtime in **Settings → Runtimes**. A modern Cubism Core cannot render Cubism 2, and the legacy runtime cannot render modern `.moc3` models.
+Add the matching Live2D runtime in **Settings → Runtimes**, or install the optional Spine 4.3 pack for a supported Spine source. A modern Cubism Core cannot render Cubism 2, and the legacy runtime cannot render modern `.moc3` models.
 
 ### A PCK file is rejected
 
@@ -156,7 +163,7 @@ Use **Settings → Targets & Installation → Locate App** or select the package
 
 ## Project status and roadmap
 
-The Live2D-only desktop workflow through #12 is implemented and accepted. The next V1 task is one optional, version-pinned Spine renderer path. Final clean-profile macOS release qualification follows Spine. Windows x64, public signed/notarized binaries, auto-update, and Codex Skill automation are post-V1 work.
+The Live2D-only desktop workflow through #12 is implemented and accepted. The optional, version-pinned Spine 4.3 renderer path is implemented and has passed automated real-runtime preview, transparent capture, Slot visibility, and both-target build checks; final user acceptance in the packaged App remains. Clean-profile macOS release qualification follows that acceptance. Windows x64, public signed/notarized binaries, auto-update, and Codex Skill automation are post-V1 work.
 
 See the [V1 specification](docs/specs/live2pet-v1.md), [implementation plan](docs/plans/live2pet-v1-implementation-plan.md), and [GitHub Issues](https://github.com/receyuki/live2pet/issues) for normative scope and progress.
 

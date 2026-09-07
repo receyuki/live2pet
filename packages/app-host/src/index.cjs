@@ -61,6 +61,9 @@ const APP_IPC_METHODS = Object.freeze([
   'getRuntimeSettings',
   'configureRuntime',
   'clearRuntimeSettings',
+  'getSpinePackStatus',
+  'installSpinePack',
+  'removeSpinePack',
   'getCaptureCacheStatus',
   'putCaptureCache',
   'getBuildCacheStatus',
@@ -202,6 +205,20 @@ function normalizeRuntimeRequest(value) {
   if (unknown.length) fail('INVALID_RUNTIME_REQUEST', `App runtime configuration contains unsupported fields: ${unknown.join(', ')}.`);
   if (typeof value.inputPath !== 'string' || !value.inputPath.trim() || value.inputPath.length > 4096 || value.inputPath.includes('\0')) fail('INVALID_RUNTIME_REQUEST', 'App runtime configuration requires a valid local inputPath.');
   return { inputPath: value.inputPath.trim() };
+}
+
+function normalizeSpinePackInstallRequest(value) {
+  if (!isRecord(value) || Object.keys(value).some((key) => key !== 'confirmInstall') || value.confirmInstall !== true) {
+    fail('SPINE_PACK_CONSENT_REQUIRED', 'Installing the optional Spine renderer pack requires explicit confirmation.');
+  }
+  return { confirmInstall: true };
+}
+
+function summarizeSpinePackStatus(result) {
+  if (!isRecord(result) || result.schemaVersion !== 1 || result.id !== 'spine-player-4.3' || result.runtimeLine !== '4.3' || typeof result.version !== 'string' || typeof result.installed !== 'boolean') {
+    fail('INVALID_SPINE_PACK_RESULT', 'Spine renderer-pack status did not match the supported contract.');
+  }
+  return { schemaVersion: 1, id: result.id, runtimeLine: result.runtimeLine, version: result.version, installed: result.installed };
 }
 
 function normalizeCaptureCacheRecipe(value, index) {
@@ -573,11 +590,12 @@ function typedError(error) {
   };
 }
 
-function createAppIpcRouter({ projectWorkspaceService = null, projectSourceService = null, sourceInspectionService = null, runtimeSettingsService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, targetInstallationService = null, packageOutputService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
+function createAppIpcRouter({ projectWorkspaceService = null, projectSourceService = null, sourceInspectionService = null, runtimeSettingsService = null, spinePackService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, targetInstallationService = null, packageOutputService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
   if (projectWorkspaceService !== null && (!isRecord(projectWorkspaceService) || typeof projectWorkspaceService.getRecentProjects !== 'function' || typeof projectWorkspaceService.openProject !== 'function' || typeof projectWorkspaceService.saveProject !== 'function')) fail('INVALID_APP_ROUTER', 'projectWorkspaceService must expose getRecentProjects, openProject, and saveProject functions when provided.');
   if (projectSourceService !== null && (!isRecord(projectSourceService) || typeof projectSourceService.relink !== 'function' || typeof projectSourceService.acknowledgeReview !== 'function')) fail('INVALID_APP_ROUTER', 'projectSourceService must expose relink and acknowledgeReview functions when provided.');
   if (sourceInspectionService !== null && typeof sourceInspectionService !== 'function') fail('INVALID_APP_ROUTER', 'sourceInspectionService must be a function when provided.');
   if (runtimeSettingsService !== null && (!isRecord(runtimeSettingsService) || typeof runtimeSettingsService.get !== 'function' || typeof runtimeSettingsService.configure !== 'function' || typeof runtimeSettingsService.clear !== 'function')) fail('INVALID_APP_ROUTER', 'runtimeSettingsService must expose get, configure, and clear functions when provided.');
+  if (spinePackService !== null && (!isRecord(spinePackService) || typeof spinePackService.get !== 'function' || typeof spinePackService.install !== 'function' || typeof spinePackService.remove !== 'function')) fail('INVALID_APP_ROUTER', 'spinePackService must expose get, install, and remove functions when provided.');
   if (captureCacheService !== null && (!isRecord(captureCacheService) || typeof captureCacheService.status !== 'function')) fail('INVALID_APP_ROUTER', 'captureCacheService must expose a status function when provided.');
   if (buildProjectService !== null && typeof buildProjectService !== 'function') fail('INVALID_APP_ROUTER', 'buildProjectService must be a function when provided.');
   if (installPackageService !== null && typeof installPackageService !== 'function') fail('INVALID_APP_ROUTER', 'installPackageService must be a function when provided.');
@@ -652,6 +670,21 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
         if (!isRecord(input) || Object.keys(input).some((key) => key !== 'fingerprint')) fail('INVALID_RUNTIME_REQUEST', 'Runtime removal accepts only an optional fingerprint.');
         if (input.fingerprint !== undefined && (typeof input.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(input.fingerprint))) fail('INVALID_RUNTIME_REQUEST', 'A valid runtime fingerprint is required.');
         return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeRuntimeSettings(await runtimeSettingsService.clear(input.fingerprint)) };
+      }
+      if (normalized.method === 'getSpinePackStatus') {
+        if (!spinePackService) fail('APP_SPINE_PACK_UNAVAILABLE', 'Optional Spine support is not configured in this App.');
+        if (normalized.args.length) fail('INVALID_SPINE_PACK_REQUEST', 'Spine renderer-pack status does not accept arguments.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeSpinePackStatus(await spinePackService.get()) };
+      }
+      if (normalized.method === 'installSpinePack') {
+        if (!spinePackService) fail('APP_SPINE_PACK_UNAVAILABLE', 'Optional Spine support is not configured in this App.');
+        const input = normalizeSpinePackInstallRequest(normalized.args[0]);
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeSpinePackStatus(await spinePackService.install(input)) };
+      }
+      if (normalized.method === 'removeSpinePack') {
+        if (!spinePackService) fail('APP_SPINE_PACK_UNAVAILABLE', 'Optional Spine support is not configured in this App.');
+        if (normalized.args.length) fail('INVALID_SPINE_PACK_REQUEST', 'Removing Spine support does not accept arguments.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeSpinePackStatus(await spinePackService.remove()) };
       }
       if (normalized.method === 'getCaptureCacheStatus') {
         if (!captureCacheService) fail('APP_CAPTURE_CACHE_UNAVAILABLE', 'The App capture cache service is not configured.');
@@ -884,6 +917,9 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
     getRuntimeSettings: () => invoke('getRuntimeSettings'),
     configureRuntime: (input) => invoke('configureRuntime', input),
     clearRuntimeSettings: (input) => input === undefined ? invoke('clearRuntimeSettings') : invoke('clearRuntimeSettings', input),
+    getSpinePackStatus: () => invoke('getSpinePackStatus'),
+    installSpinePack: () => invoke('installSpinePack', { confirmInstall: true }),
+    removeSpinePack: () => invoke('removeSpinePack'),
     getCaptureCacheStatus: (input) => invoke('getCaptureCacheStatus', input),
     getBuildCacheStatus: () => invoke('getBuildCacheStatus'),
     clearBuildCache: (input) => invoke('clearBuildCache', input),
@@ -946,6 +982,7 @@ module.exports = {
   summarizeProjectOperation,
   normalizeInspectRequest,
   normalizeRuntimeRequest,
+  normalizeSpinePackInstallRequest,
   normalizeBuildCacheClearRequest,
   normalizeCaptureCacheStatusRequest,
   normalizeCaptureCacheWriteRequest,
@@ -961,6 +998,7 @@ module.exports = {
   collectBuildArtifacts,
   summarizeSourceInspection,
   summarizeRuntimeSettings,
+  summarizeSpinePackStatus,
   summarizeCaptureCacheStatus,
   summarizeCaptureCacheWrite,
   summarizeBuildCacheStatus,

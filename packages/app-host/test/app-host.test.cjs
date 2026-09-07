@@ -24,6 +24,7 @@ const {
   normalizeCaptureCacheStatusRequest,
   normalizeInspectRequest,
   normalizeRuntimeRequest,
+  normalizeSpinePackInstallRequest,
   normalizeInstallRequest,
   normalizeInstallRootRequest,
   normalizeBuildProgressEvent,
@@ -58,6 +59,9 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.equal(APP_IPC_METHODS.includes('installSkill'), false);
   assert.equal(APP_IPC_METHODS.includes('getBuildCacheStatus'), true);
   assert.equal(APP_IPC_METHODS.includes('clearBuildCache'), true);
+  assert.equal(APP_IPC_METHODS.includes('getSpinePackStatus'), true);
+  assert.equal(APP_IPC_METHODS.includes('installSpinePack'), true);
+  assert.equal(APP_IPC_METHODS.includes('removeSpinePack'), true);
   for (const method of ['startRendererPreview', 'loadRendererSource', 'rendererCommand', 'getRendererPreviewStatus', 'restartRendererPreview', 'closeRendererPreview']) {
     assert.equal(APP_IPC_METHODS.includes(method), false);
   }
@@ -65,6 +69,8 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.throws(() => normalizeInspectRequest({ inputPath: '/tmp/source', shell: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_INSPECT_REQUEST');
   assert.deepEqual(normalizeRuntimeRequest({ inputPath: '/tmp/live2d.min.js' }), { inputPath: '/tmp/live2d.min.js' });
   assert.throws(() => normalizeRuntimeRequest({ inputPath: '/tmp/runtime', shell: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_RUNTIME_REQUEST');
+  assert.deepEqual(normalizeSpinePackInstallRequest({ confirmInstall: true }), { confirmInstall: true });
+  assert.throws(() => normalizeSpinePackInstallRequest({}), (error) => error instanceof AppHostError && error.code === 'SPINE_PACK_CONSENT_REQUIRED');
   assert.deepEqual(normalizeRelinkSourceRequest({ project: { schemaVersion: 1 }, inputPath: '/tmp/replacement.pck' }), { project: { schemaVersion: 1 }, inputPath: '/tmp/replacement.pck' });
   assert.throws(() => normalizeRelinkSourceRequest({ project: {}, inputPath: '/tmp/source', path: '/tmp/leak' }), (error) => error instanceof AppHostError && error.code === 'INVALID_SOURCE_RELINK_REQUEST');
   assert.deepEqual(normalizeAcknowledgeSourceReviewRequest({ project: { schemaVersion: 1 } }), { project: { schemaVersion: 1 } });
@@ -127,6 +133,34 @@ test('output preload wrappers expose only artifact IDs and native setting action
     { protocolVersion: 1, method: 'getOutputSettings', args: [] },
     { protocolVersion: 1, method: 'configureOutputSettings', args: [{ action: 'ask-every-time' }] },
     { protocolVersion: 1, method: 'saveBuildArtifact', args: [{ artifactId: 'artifact' }] },
+  ]);
+});
+
+test('Spine pack IPC requires consent and exposes status without local paths', async () => {
+  let installed = false;
+  const status = () => ({ schemaVersion: 1, id: 'spine-player-4.3', runtimeLine: '4.3', version: '4.3.13', installed, directory: '/private/renderer-packs' });
+  const router = createAppIpcRouter({ spinePackService: {
+    get: async () => status(),
+    install: async ({ confirmInstall }) => { assert.equal(confirmInstall, true); installed = true; return status(); },
+    remove: async () => { installed = false; return status(); },
+  } });
+  const request = (method, ...args) => router({ protocolVersion: 1, method, args });
+  assert.deepEqual((await request('getSpinePackStatus')).result, { schemaVersion: 1, id: 'spine-player-4.3', runtimeLine: '4.3', version: '4.3.13', installed: false });
+  assert.equal((await request('installSpinePack', {})).error.code, 'SPINE_PACK_CONSENT_REQUIRED');
+  assert.equal((await request('installSpinePack', { confirmInstall: true })).result.installed, true);
+  assert.equal((await request('removeSpinePack')).result.installed, false);
+});
+
+test('Spine pack preload wrappers expose only fixed actions', async () => {
+  const calls = [];
+  const api = createAppPreloadApi({ ipcRenderer: { invoke: async (channel, request) => { calls.push({ channel, request }); return { ok: true }; } } });
+  await api.getSpinePackStatus();
+  await api.installSpinePack();
+  await api.removeSpinePack();
+  assert.deepEqual(calls.map((value) => value.request), [
+    { protocolVersion: 1, method: 'getSpinePackStatus', args: [] },
+    { protocolVersion: 1, method: 'installSpinePack', args: [{ confirmInstall: true }] },
+    { protocolVersion: 1, method: 'removeSpinePack', args: [] },
   ]);
 });
 

@@ -506,3 +506,25 @@ or verification of every user animation's captured pixels. Transparent canvas
 margins remain clickable. Explicit build metadata is preserved, and package
 validation rejects missing or invalid default rectangles. Existing ZIPs require
 rebuild/reinstallation; no installed theme is modified automatically.
+
+### Optional Spine 4.3 automated checkpoint — 2026-09-07
+
+The optional renderer-pack service pins the official Spine Player 4.3.13
+browser distribution, requires explicit consent, enforces a bounded download,
+verifies every file by SHA-256, stores it outside the App bundle, reuses it
+after restart, and supports explicit removal. Public tests use synthetic source
+metadata and injected download bytes; no Spine runtime or model is tracked.
+
+An opt-in local Electron run used an uncommitted permitted Spine 4.3 JSON
+fixture with 11 animations and 52 Slots. It verified the official runtime load,
+transparent RGBA capture, a pixel change after hiding one Slot, and valid,
+preview-ready Clawd and Codex package builds through the existing target
+builders. The run also caught and corrected a Retina backing-canvas capture
+error that had returned an all-transparent lower-left quadrant. A binary
+`.skel` fixture is covered synthetically for pre-pack inspection; its Motion
+catalog is hydrated from the renderer after the optional pack loads.
+
+This checkpoint proves the isolated renderer and build integration. It does not
+replace the remaining packaged-App user check: import a permitted Spine folder,
+install/reuse the pack, preview and map a Motion, hide a Slot, reopen the saved
+project, and build/save both targets without publishing any fixture or output.

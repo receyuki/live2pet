@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from './App';
-import type { Live2PetProject, VisualElement } from './app-host';
+import type { Live2PetProject, SourceInspection, VisualElement } from './app-host';
 import { CLAWD_PROFILE, CODEX_PROFILE } from './target-profiles';
 import { PROJECT_DRAFT_KEY, writeProjectDraft } from './project-draft';
 
@@ -22,7 +22,7 @@ const savedProject = {
 };
 
 function installDesktopApi({ runtimes = emptyRuntimes, preview = false, previewVisualElements = [], previewThumbnail, buildHost = false, recentProjects = [], openCancelled = false, saveCancelled = false, openedProject = savedProject }: { runtimes?: typeof emptyRuntimes | { schemaVersion: 2; configured: boolean; restartRequired: false; runtimes: Array<{ runtimeName: string; runtimeKind: 'legacy-cubism2'; cubismGenerations: number[]; fingerprint: string; available: boolean }> }; preview?: boolean; previewVisualElements?: VisualElement[]; previewThumbnail?: (input: { id: string }) => Promise<{ id: string; dataUrl: string | null }> | { id: string; dataUrl: string | null }; buildHost?: boolean; recentProjects?: Array<{ documentId: string; name: string; fileName: string; available: boolean }>; openCancelled?: boolean; saveCancelled?: boolean; openedProject?: Live2PetProject } = {}) {
-  const inspectSource = vi.fn(async () => ({
+  const inspectSource = vi.fn(async (): Promise<{ protocolVersion: 1; ok: true; result: SourceInspection }> => ({
     protocolVersion: 1 as const,
     ok: true,
     result: {
@@ -36,6 +36,10 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, previewV
     },
   }));
   const configureRuntime = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: runtimes }));
+  const spinePack = { schemaVersion: 1 as const, id: 'spine-player-4.3' as const, runtimeLine: '4.3' as const, version: '4.3.13', installed: false };
+  const getSpinePackStatus = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: spinePack }));
+  const installSpinePack = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { ...spinePack, installed: true } }));
+  const removeSpinePack = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: spinePack }));
   const relinkSource = vi.fn(async ({ project }: { project: Live2PetProject; inputPath: string }) => ({
     protocolVersion: 1 as const,
     ok: true,
@@ -79,6 +83,9 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, previewV
       getRuntimeSettings: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: runtimes })),
       configureRuntime,
       clearRuntimeSettings: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: emptyRuntimes })),
+      getSpinePackStatus,
+      installSpinePack,
+      removeSpinePack,
       getBuildCacheStatus: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { byteLength: 0, entryCount: 0, maxBytes: 1024 } })),
       clearBuildCache: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { removedEntries: 0, removedBytes: 0 } })),
       getFilePath: vi.fn((file: File) => `/Users/test/${file.name}`),
@@ -103,7 +110,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, previewV
       } : {}),
     },
   });
-  return { configureRuntime, inspectSource, relinkSource, acknowledgeSourceReview, openPreview, getPreviewVisualElements, getPreviewVisualElementThumbnail, openProject, saveProject, buildProject, emitAppCommand: (command: 'new' | 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => appCommandListener?.(command) };
+  return { configureRuntime, getSpinePackStatus, installSpinePack, removeSpinePack, inspectSource, relinkSource, acknowledgeSourceReview, openPreview, getPreviewVisualElements, getPreviewVisualElementThumbnail, openProject, saveProject, buildProject, emitAppCommand: (command: 'new' | 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => appCommandListener?.(command) };
 }
 
 function setSystemDarkMode(matches: boolean) {
@@ -641,7 +648,7 @@ describe('Live2Pet desktop shell', () => {
     render(<App />);
 
     await user.click(screen.getByRole('button', { name: 'Open project' }));
-    expect(await screen.findByRole('heading', { name: 'Turn Live2D motions into desktop pets.' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Turn animated models into desktop pets.' })).toBeVisible();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
@@ -672,13 +679,39 @@ describe('Live2Pet desktop shell', () => {
     expect(inspectSource).toHaveBeenCalledWith({ inputPath: '/Users/test/Vicious Khepri.pck', projectId: 'vicious-khepri' });
   });
 
+  it('recognizes a Spine 4.3 source and installs its optional renderer inline', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const api = installDesktopApi();
+    api.inspectSource.mockResolvedValue({
+      protocolVersion: 1,
+      ok: true,
+      result: {
+        schemaVersion: 1,
+        source: { kind: 'spine-directory', name: 'Spine Hero', fingerprint: 'spine-fixture', modelConfig: 'hero.json' },
+        model: { format: 'spine', configFile: 'hero.json', modelFile: 'hero.json', textures: ['hero.png'], atlasFile: 'hero.atlas', spineVersion: '4.3.75', runtimeLine: '4.3', binary: false },
+        motions: [{ id: 'idle', group: 'animation', index: 0, name: 'idle', sourceFile: 'hero.json', duration: 1.5 }],
+        expressions: [],
+        resources: [],
+        warnings: [],
+      },
+    });
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Spine Hero.pck'));
+
+    expect(await screen.findByText(/Spine 4\.3/)).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Install Spine support' }));
+    expect(api.installSpinePack).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(screen.queryByRole('button', { name: 'Install Spine support' })).not.toBeInTheDocument());
+  });
+
   it('routes a project with a missing runtime to Settings and preserves its Source destination', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const user = userEvent.setup();
     const { container } = render(<App />);
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
 
-    await user.click(await screen.findByRole('button', { name: 'Configure runtime' }));
+    await user.click(await screen.findByRole('button', { name: 'Configure renderer' }));
     expect(screen.getByRole('heading', { name: 'Runtimes' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Done' }));
     expect(screen.getByRole('heading', { name: 'Source Package' })).toBeVisible();
@@ -797,7 +830,7 @@ describe('Live2Pet desktop shell', () => {
     render(<App />);
     const pck = new File(['fixture'], 'Vicious Khepri.pck');
 
-    fireEvent.drop(screen.getByLabelText('Import Live2D source'), {
+    fireEvent.drop(screen.getByLabelText('Import model source'), {
       dataTransfer: {
         types: ['Files'],
         files: [pck],
@@ -815,7 +848,7 @@ describe('Live2Pet desktop shell', () => {
     const user = userEvent.setup();
     render(<App />);
     if (destination === 'settings') await user.click(screen.getByRole('button', { name: /^Settings$/ }));
-    fireEvent.drop(destination === 'welcome' ? screen.getByLabelText('Import Live2D source') : screen.getByRole('main'), { dataTransfer: { types: ['Files'], files: [new File(['{}'], 'My Pet.live2pet')] } });
+    fireEvent.drop(destination === 'welcome' ? screen.getByLabelText('Import model source') : screen.getByRole('main'), { dataTransfer: { types: ['Files'], files: [new File(['{}'], 'My Pet.live2pet')] } });
     await vi.waitFor(() => expect(openProject).toHaveBeenCalledWith({ inputPath: '/Users/test/My Pet.live2pet' }));
     expect(inspectSource).not.toHaveBeenCalled();
     expect(await screen.findByRole('heading', { name: 'Source Package' })).toBeVisible();
@@ -857,7 +890,7 @@ describe('Live2Pet desktop shell', () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const { inspectSource } = installDesktopApi();
     render(<App />);
-    fireEvent.drop(screen.getByLabelText('Import Live2D source'), {
+    fireEvent.drop(screen.getByLabelText('Import model source'), {
       dataTransfer: {
         types: ['Files'],
         files: [new File(['a'], 'one.pck'), new File(['b'], 'two.pck')],
@@ -885,7 +918,7 @@ describe('Live2Pet desktop shell', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Set up later' }));
 
-    expect(screen.getByRole('heading', { name: 'Turn Live2D motions into desktop pets.' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Turn animated models into desktop pets.' })).toBeVisible();
     expect(localStorage.getItem('live2pet.desktop.setup-completed')).toBe('true');
   });
 
@@ -905,7 +938,7 @@ describe('Live2Pet desktop shell', () => {
     await user.click(screen.getByRole('button', { name: 'Open design preview' }));
     await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
     expect(screen.getByRole('heading', { name: 'Motion & Expression' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Live2D Preview' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Model Preview' })).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Assignment' })).toBeVisible();
     expect(screen.getByText(/design preview is read-only/i)).toBeVisible();
     expect(screen.getByRole('button', { name: 'Use selected · Idle' })).toBeDisabled();
@@ -916,12 +949,12 @@ describe('Live2Pet desktop shell', () => {
 
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeVisible();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Live2D Preview' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Model Preview' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Storage/ }));
     expect(screen.getByRole('heading', { name: 'Storage' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Done' }));
 
-    expect(screen.getByRole('heading', { name: 'Live2D Preview' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Model Preview' })).toBeVisible();
     expect(screen.getAllByText('Touch Head').length).toBeGreaterThan(1);
   });
 

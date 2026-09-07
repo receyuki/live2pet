@@ -50,6 +50,9 @@ import {
   getCacheStatus,
   getRecentProjects,
   getRuntimeSettings,
+  getSpinePackStatus,
+  installSpinePack,
+  removeSpinePack,
   getDesktopFilePath,
   hasDesktopApi,
   hasPreviewApi,
@@ -75,6 +78,7 @@ import {
   VisualSettings,
   PreviewStatus,
   RuntimeSettings,
+  SpinePackStatus,
   RecentProject,
   saveProject,
   SourceInspection,
@@ -176,7 +180,7 @@ function PageHeading({ eyebrow, title, body }: { eyebrow: string; title: string;
   );
 }
 
-function RuntimePanel({ locale, compact = false, onSettingsChange }: { locale: Locale; compact?: boolean; onSettingsChange?: (settings: RuntimeSettings) => void }) {
+function RuntimePanel({ locale, compact = false, spinePack = null, onSettingsChange, onSpinePackChange }: { locale: Locale; compact?: boolean; spinePack?: SpinePackStatus | null; onSettingsChange?: (settings: RuntimeSettings) => void; onSpinePackChange?: (status: SpinePackStatus) => void }) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   const [settings, setSettings] = useState<RuntimeSettings | null>(null);
   const [busy, setBusy] = useState(false);
@@ -253,6 +257,20 @@ function RuntimePanel({ locale, compact = false, onSettingsChange }: { locale: L
     }
   }
 
+  async function changeSpinePack(action: 'install' | 'remove') {
+    if (action === 'remove' && !window.confirm(t('confirmRemoveSpinePack'))) return;
+    setBusy(true);
+    setError('');
+    try {
+      const next = action === 'install' ? await installSpinePack() : await removeSpinePack();
+      onSpinePackChange?.(next);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t('error'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const runtimes = settings?.runtimes ?? [];
   return (
     <Card
@@ -307,6 +325,13 @@ function RuntimePanel({ locale, compact = false, onSettingsChange }: { locale: L
             <Trash2 size={14} />{t("removeAll")}
           </Button>
         )}
+        {compact && <><div className="runtime-item spine-pack-item">
+          <span className="large-icon"><WandSparkles size={19} /></span>
+          <span className="grow-copy"><strong>{t('spinePackTitle')}</strong><small>{t('spinePackVersion', { value: spinePack?.version ?? '4.3.13' })}</small></span>
+          <Chip color={spinePack?.installed ? 'success' : 'default'} size="sm" variant="soft">{t(spinePack?.installed ? 'runtimeAvailable' : 'runtimeMissing')}</Chip>
+          <Button variant="secondary" size="sm" isDisabled={busy} onPress={() => void changeSpinePack(spinePack?.installed ? 'remove' : 'install')}>{t(spinePack?.installed ? 'removeSpinePack' : 'installSpinePack')}</Button>
+        </div>
+        <p className="drop-hint">{t('spinePackHint')}</p></>}
       </Card.Content>
     </Card>
   );
@@ -446,7 +471,7 @@ function SourceView({ locale, project, inspection, inspectionRequired, runtimeRe
       ? [["sourceModel", "—"], ["sourceTextures", "—"], ["sourceMotions", "—"], ["sourceExpressions", "—"]]
       : [["sourceModel", "model3.json"], ["sourceTextures", "4"], ["sourceMotions", "5"], ["sourceExpressions", "3"]];
   const summary = inspection
-    ? `Cubism ${inspection.model.cubism} · ${inspection.motions.length} ${t("sourceMotions")} · ${inspection.expressions.length} ${t("sourceExpressions")}`
+    ? `${inspection.model.format === 'spine' ? `Spine ${inspection.model.runtimeLine}` : `Cubism ${inspection.model.cubism}`} · ${inspection.motions.length} ${t("sourceMotions")} · ${inspection.expressions.length} ${t("sourceExpressions")}`
     : inspectionRequired ? t("sourceRelinkRequired") : t("sourceSummary");
   return (
     <main className="page">
@@ -465,7 +490,7 @@ function SourceView({ locale, project, inspection, inspectionRequired, runtimeRe
           <p className="drop-hint">{t("relinkSourceHint")}</p>
           {busy && <ProgressBar aria-label={t("loading")} isIndeterminate className="mt-4" />}
           {dragActive && <div className="drop-overlay" aria-hidden="true"><Upload size={20} />{t("dropSource")}</div>}
-          {!runtimeReady && <div className="runtime-required"><Gauge size={18} /><span><strong>{t("runtimeRequired")}</strong><small>{t("runtimeRequiredBody")}</small></span><Button size="sm" variant="secondary" onPress={onConfigureRuntime}>{t("configureRuntime")}</Button></div>}
+          {!runtimeReady && <div className="runtime-required"><Gauge size={18} /><span><strong>{t("runtimeRequired")}</strong><small>{t("runtimeRequiredBody")}</small></span><Button size="sm" variant="secondary" onPress={onConfigureRuntime}>{t(inspection?.model.format === 'spine' ? "installSpinePack" : "configureRuntime")}</Button></div>}
           {review && <section className="source-review-card" aria-label={t("sourceReviewRequired")}><AlertTriangle size={20} /><div className="grow-copy"><strong>{t("sourceReviewRequired")}</strong><p>{t("sourceReviewBody")}</p>{affectedRecipes.length > 0 && <ul>{affectedRecipes.map((recipe) => <li key={recipe.id}><span>{recipe.label || recipe.id}</span>{recipe.label && <small>{recipe.id}</small>}</li>)}</ul>}</div><Button variant="primary" size="sm" isDisabled={busy} onPress={() => void onAcknowledgeReview()}>{t("acknowledgeReview")}</Button></section>}
           <Button variant="primary" isDisabled={(inspectionRequired && !inspection) || Boolean(review)} onPress={onMap}>{t("map")}<ChevronRight size={16} /></Button></Card.Content></Card>
         <Card className="surface-card source-facts"><Card.Content>{facts.map(([key, value]) => <div className="fact" key={key}><span>{t(key as MessageKey)}</span><strong title={value}>{value}</strong></div>)}</Card.Content></Card>
@@ -518,8 +543,9 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
     catch (cause) { if (sequence === commandSequence.current) setPlaybackError(cause instanceof Error ? cause.message : t('previewFailed')); }
   };
   const [mappingTarget, setMappingTarget] = useState<MappingTargetId>("clawd");
+  const sourceMotions = inspection?.motions.length ? inspection.motions : (previewStatus?.catalog?.motions ?? []);
   const displayedMotions = inspection
-    ? inspection.motions.map((motion) => ({ id: motion.id, name: motion.name, seconds: motion.duration?.toFixed(1) ?? "—", tint: "" }))
+    ? sourceMotions.map((motion) => ({ id: motion.id, name: motion.name, seconds: motion.duration?.toFixed(1) ?? "—", tint: "" }))
     : motions.map((motion) => ({ ...motion, name: t(motion.nameKey) }));
   const displayedExpressions = inspection
     ? inspection.expressions.map((expression) => ({ id: expression.id, name: expression.name }))
@@ -527,7 +553,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   const selected = displayedMotions.find((motion) => motion.id === selectedMotionId) ?? displayedMotions[0];
   const selectedExpression = displayedExpressions.find((expression) => expression.id === selectedExpressionId);
   const selectedName = selected?.name ?? "—";
-  const selectedDuration = inspection?.motions.find((motion) => motion.id === selectedMotionId)?.duration ?? (Number(selected?.seconds) || 0);
+  const selectedDuration = sourceMotions.find((motion) => motion.id === selectedMotionId)?.duration ?? (Number(selected?.seconds) || 0);
   const nativePreview = Boolean(inspection && runtimeReady && hasPreviewApi());
   const canEditMappings = Boolean(projectDocument && inspection);
   const canAssign = canEditMappings && Boolean(selectedMotionId);
@@ -562,6 +588,10 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
     setVisualElementState({ sourceKey, elements: [] });
     setSoloSelection({ sourceKey, id: null });
   }, [sourceKey]);
+
+  useEffect(() => {
+    if (!selectedMotionId && previewStatus?.catalog?.motions[0]?.id) onSelectMotion(previewStatus.catalog.motions[0].id);
+  }, [selectedMotionId, previewStatus?.catalog, onSelectMotion]);
 
   useEffect(() => {
     if (!nativePreview || !inspection) return;
@@ -708,7 +738,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
       <section className="workspace-panel">
         <PanelHeading icon={<Sparkles size={16} />} title={t("preview")} body={t("previewHint")} />
         <div className="preview-caption"><Chip variant="soft">{selectedName} · {selectedExpression?.name ?? t("baseExpression")}</Chip><Button size="sm" variant="ghost" aria-label={t('resetPreview')} isDisabled={!nativePreview || previewStatus?.state === 'opening' || visibilityBusy || scanningParts} onPress={resetPreview}><RefreshCcw size={15} />{t('resetPreview')}</Button></div>
-        <div className="preview-stage"><i className="stage-grid" />{!runtimeReady ? <div className="preview-runtime-required"><Gauge size={28} /><strong>{t("runtimeRequired")}</strong><p>{t("runtimeRequiredBody")}</p><Button size="sm" variant="primary" onPress={onConfigureRuntime}>{t("configureRuntime")}</Button></div> : nativePreview ? <><div ref={previewSurface} className="preview-native-surface" />{previewStatus?.state === 'opening' && <div className="preview-message">{t('previewLoading')}</div>}{previewStatus?.state === 'failed' && <div className="preview-runtime-required"><strong>{t('previewFailed')}</strong><p>{previewStatus.error?.message}</p><Button size="sm" variant="primary" onPress={() => setPreviewRetry((value) => value + 1)}>{t('retry')}</Button></div>}</> : <div className="preview-runtime-required"><Box size={28} aria-hidden="true" /><strong>{t('previewEmptyTitle')}</strong><p>{t(projectDocument ? 'previewDesktopRequired' : 'previewImportHint')}</p></div>}</div>
+        <div className="preview-stage"><i className="stage-grid" />{!runtimeReady ? <div className="preview-runtime-required"><Gauge size={28} /><strong>{t("runtimeRequired")}</strong><p>{t("runtimeRequiredBody")}</p><Button size="sm" variant="primary" onPress={onConfigureRuntime}>{t(inspection?.model.format === 'spine' ? "installSpinePack" : "configureRuntime")}</Button></div> : nativePreview ? <><div ref={previewSurface} className="preview-native-surface" />{previewStatus?.state === 'opening' && <div className="preview-message">{t('previewLoading')}</div>}{previewStatus?.state === 'failed' && <div className="preview-runtime-required"><strong>{t('previewFailed')}</strong><p>{previewStatus.error?.message}</p><Button size="sm" variant="primary" onPress={() => setPreviewRetry((value) => value + 1)}>{t('retry')}</Button></div>}</> : <div className="preview-runtime-required"><Box size={28} aria-hidden="true" /><strong>{t('previewEmptyTitle')}</strong><p>{t(projectDocument ? 'previewDesktopRequired' : 'previewImportHint')}</p></div>}</div>
         <div className="playback"><Button isIconOnly aria-label={previewStatus?.playback?.playing ? t('pause') : t('play')} variant="primary" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={togglePlayback}>{previewStatus?.playback?.playing ? <Pause size={15} /> : <Play size={15} />}</Button><Button isIconOnly aria-label={t('restart')} variant="ghost" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={() => void runPlayback(() => controlLive2DPreview('restart'))}><RotateCcw size={15} /></Button><input className="timeline" type="range" aria-label={t('seekMotion')} min={0} max={selectedDuration} step={0.01} value={seekTime ?? previewStatus?.playback?.time ?? 0} disabled={previewStatus?.state !== 'ready' || !selectedDuration} onInput={(event) => setSeekTime(Number(event.currentTarget.value))} /><small>{(previewStatus?.playback?.time ?? 0).toFixed(1)} / {selected?.seconds ?? '—'} s</small></div>
         <div className="playback-options">
           <Button size="sm" variant={previewLoop ? 'secondary' : 'ghost'} aria-label={t('loopPreview')} aria-pressed={previewLoop} aria-describedby="preview-options-hint" isDisabled={previewStatus?.state !== 'ready' || !selectedMotionId} onPress={() => setPreviewLoop((value) => !value)}>{t('loopPreview')}</Button>
@@ -754,7 +784,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   );
 }
 
-function SettingsView({ locale, section, appearance, onSection, onLocale, onAppearance, onRuntimeSettingsChange, onClose }: { locale: Locale; section: SettingsSection; appearance: AppSettings["appearance"]; onSection: (section: SettingsSection) => void; onLocale: (locale: Locale) => void; onAppearance: (appearance: AppSettings["appearance"]) => void; onRuntimeSettingsChange: (settings: RuntimeSettings) => void; onClose: () => void }) {
+function SettingsView({ locale, section, appearance, spinePack, onSection, onLocale, onAppearance, onRuntimeSettingsChange, onSpinePackChange, onClose }: { locale: Locale; section: SettingsSection; appearance: AppSettings["appearance"]; spinePack: SpinePackStatus | null; onSection: (section: SettingsSection) => void; onLocale: (locale: Locale) => void; onAppearance: (appearance: AppSettings["appearance"]) => void; onRuntimeSettingsChange: (settings: RuntimeSettings) => void; onSpinePackChange: (status: SpinePackStatus) => void; onClose: () => void }) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   const [cache, setCache] = useState({ byteLength: 0, entryCount: 0, maxBytes: 0 });
   const nav: Array<[SettingsSection, MessageKey, ReactNode]> = [["general", "general", <SlidersHorizontal size={16} />], ["runtimes", "runtimes", <Gauge size={16} />], ["targets", "targets", <PackageCheck size={16} />], ["storage", "storage", <Database size={16} />]];
@@ -772,7 +802,7 @@ function SettingsView({ locale, section, appearance, onSection, onLocale, onAppe
       </aside>
       <section className="settings-content">
         {section === "general" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("general")} body={t("settingsBody")} /><Card className="surface-card"><Card.Content><div className="setting-row"><span className="large-icon"><Languages size={19} /></span><span className="grow-copy"><strong>{t("language")}</strong></span><ButtonGroup><Button variant={locale === "en" ? "primary" : "secondary"} onPress={() => onLocale("en")}>English</Button><Button variant={locale === "zh-CN" ? "primary" : "secondary"} onPress={() => onLocale("zh-CN")}>简体中文</Button></ButtonGroup></div></Card.Content></Card><Card className="surface-card"><Card.Content><div className="setting-row"><span className="large-icon">{appearance === "dark" ? <Moon size={19} /> : <Sun size={19} />}</span><span className="grow-copy"><strong>{t("appearance")}</strong></span><ButtonGroup>{(["system", "light", "dark"] as const).map((item) => <Button key={item} variant={appearance === item ? "primary" : "secondary"} onPress={() => onAppearance(item)}>{t(item)}</Button>)}</ButtonGroup></div></Card.Content></Card></div>}
-        {section === "runtimes" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("runtimes")} body={t("runtimeBody")} /><RuntimePanel locale={locale} compact onSettingsChange={onRuntimeSettingsChange} /></div>}
+        {section === "runtimes" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("runtimes")} body={t("runtimeBody")} /><RuntimePanel locale={locale} compact spinePack={spinePack} onSettingsChange={onRuntimeSettingsChange} onSpinePackChange={onSpinePackChange} /></div>}
         {section === "targets" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("targets")} body={t("targetBody")} /><TargetSettings locale={locale} /></div>}
         {section === "storage" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("storage")} body={t("storageBody")} /><OutputSettings locale={locale} /><Card className="surface-card"><Card.Content><div className="section-heading-row"><div><p className="eyebrow"><Database size={13} />{t("storageTitle")}</p><h2>{cache.entryCount ? t("cacheEntries", { count: cache.entryCount, size: `${Math.round(cache.byteLength / 1024 / 1024)} MiB` }) : t("cacheEmpty")}</h2></div><Button variant="secondary" onPress={clearBuildCache} isDisabled={!cache.entryCount}><Trash2 size={15} />{t("clearCache")}</Button></div></Card.Content></Card></div>}
       </section>
@@ -791,6 +821,7 @@ export function App() {
   const [importBusy, setImportBusy] = useState(false);
   const [importError, setImportError] = useState("");
   const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings | null>(null);
+  const [spinePack, setSpinePack] = useState<SpinePackStatus | null>(null);
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [actionFeedback, setActionFeedback] = useState("");
   const [projectDraft, setProjectDraft] = useState<ProjectDraft | null>(() => readProjectDraft());
@@ -809,6 +840,7 @@ export function App() {
   }, [appearance]);
   useEffect(() => { void getAppVersion().then(setAppVersion).catch(() => undefined); }, []);
   useEffect(() => { void getRuntimeSettings().then(setRuntimeSettings).catch(() => undefined); }, []);
+  useEffect(() => { void getSpinePackStatus().then(setSpinePack).catch(() => undefined); }, []);
   useEffect(() => { void getRecentProjects().then(setRecentProjects).catch(() => undefined); }, []);
   useEffect(() => onBuildProgress((event) => dispatchBuild({ type: "PROGRESS", event })), []);
   useEffect(() => {
@@ -1141,8 +1173,14 @@ export function App() {
   }), [state, locale, buildState]);
 
   const requiredCubism = state.project?.inspection?.model.cubism;
-  const runtimeReady = !requiredCubism || Boolean(runtimeSettings?.runtimes.some((runtime) => runtime.available && runtime.cubismGenerations.includes(requiredCubism)));
+  const requiredSpine = state.project?.inspection?.model.format === 'spine';
+  const runtimeReady = requiredSpine
+    ? Boolean(spinePack?.installed && spinePack.runtimeLine === state.project?.inspection?.model.runtimeLine)
+    : (!requiredCubism || Boolean(runtimeSettings?.runtimes.some((runtime) => runtime.available && runtime.cubismGenerations.includes(requiredCubism))));
   const openRuntimeSettings = () => dispatch({ type: "OPEN_SETTINGS", section: "runtimes" });
+  const configureRequiredRuntime = requiredSpine ? async () => {
+    try { setSpinePack(await installSpinePack()); } catch (cause) { setActionFeedback(cause instanceof Error ? cause.message : t('error')); }
+  } : openRuntimeSettings;
   const statusBar = <footer className="status-bar">
     <span className="save-status"><i className="status-dot" />{!hasDesktopApi() ? t("notConnected") : state.project?.dirty ? t("unsaved") : state.project?.documentId ? t("saved") : t("noSavedProject")}</span>
     <div className="footer-builds">{(['clawd', 'codex-pet'] as const).filter(target => buildState[target].status !== 'idle').map(target => {
@@ -1159,7 +1197,7 @@ export function App() {
   </footer>;
 
   if (state.destination === "setup") return <SetupView locale={locale} returning={state.setupReturnDestination !== null} onComplete={completeSetup} onRuntimeSettingsChange={setRuntimeSettings} />;
-  if (state.destination === "settings") return <div className="app-shell settings-shell"><SettingsView locale={locale} section={state.settingsSection} appearance={appearance} onSection={(section) => dispatch({ type: "SELECT_SETTINGS_SECTION", section })} onLocale={(language) => dispatch({ type: "UPDATE_LANGUAGE", language })} onAppearance={(value) => dispatch({ type: "UPDATE_APPEARANCE", appearance: value })} onRuntimeSettingsChange={setRuntimeSettings} onClose={() => dispatch({ type: "CLOSE_SETTINGS" })} />{statusBar}</div>;
+  if (state.destination === "settings") return <div className="app-shell settings-shell"><SettingsView locale={locale} section={state.settingsSection} appearance={appearance} spinePack={spinePack} onSection={(section) => dispatch({ type: "SELECT_SETTINGS_SECTION", section })} onLocale={(language) => dispatch({ type: "UPDATE_LANGUAGE", language })} onAppearance={(value) => dispatch({ type: "UPDATE_APPEARANCE", appearance: value })} onRuntimeSettingsChange={setRuntimeSettings} onSpinePackChange={setSpinePack} onClose={() => dispatch({ type: "CLOSE_SETTINGS" })} />{statusBar}</div>;
 
   const projectOpen = state.project !== null;
   const sourceReviewRequired = Boolean(state.project?.document?.sourceReview?.required);
@@ -1173,8 +1211,8 @@ export function App() {
       <div className="app-content">
         {actionFeedback && <div className="action-feedback" role="alert">{actionFeedback}</div>}
         {state.destination === "welcome" && <WelcomeView locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} draft={projectDraft} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onOpenPreview={openPreview} onRecoverDraft={() => void recoverProjectDraft()} onDiscardDraft={discardProjectDraft} />}
-        {state.destination === "source" && <SourceView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} inspectionRequired={Boolean(state.project?.document)} runtimeReady={runtimeReady} busy={importBusy} onConfigureRuntime={openRuntimeSettings} onRelink={relinkCurrentSource} onAcknowledgeReview={acknowledgeCurrentSourceReview} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
-        {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={openRuntimeSettings} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => dispatch({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => dispatch({ type: "CLEAR_ASSIGNMENT", destination })} onVisualSettings={(settings) => dispatch({ type: "SET_VISUAL_SETTINGS", settings })} />}
+        {state.destination === "source" && <SourceView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} inspectionRequired={Boolean(state.project?.document)} runtimeReady={runtimeReady} busy={importBusy} onConfigureRuntime={configureRequiredRuntime} onRelink={relinkCurrentSource} onAcknowledgeReview={acknowledgeCurrentSourceReview} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
+        {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={configureRequiredRuntime} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => dispatch({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => dispatch({ type: "CLEAR_ASSIGNMENT", destination })} onVisualSettings={(settings) => dispatch({ type: "SET_VISUAL_SETTINGS", settings })} />}
         {state.destination === "build" && <BuildView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} runtimeReady={runtimeReady} state={buildState} onName={(name) => dispatch({ type: "RENAME_PROJECT", name })} onPreset={(target, preset) => dispatch({ type: "SET_RENDER_PRESET", target, preset })} onCustomRender={(settings) => dispatch({ type: 'SET_CLAWD_RENDER', settings })} onBuild={buildProjectTarget} onCancel={(target) => void cancelProjectBuild(target)} />}
       </div>
       {statusBar}

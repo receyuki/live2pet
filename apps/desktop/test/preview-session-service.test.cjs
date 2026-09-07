@@ -21,7 +21,7 @@ function manifest(overrides = {}) {
   };
 }
 
-function fixture({ source = null, runtime = { runtimePath: '/private/runtime/Live2DCubismCore.js' }, loadError = null } = {}) {
+function fixture({ source = null, runtime = { runtimePath: '/private/runtime/Live2DCubismCore.js' }, loadError = null, spine = false } = {}) {
   const calls = [];
   const statuses = [];
   const webContents = new EventEmitter();
@@ -53,6 +53,7 @@ function fixture({ source = null, runtime = { runtimePath: '/private/runtime/Liv
     async restart() { playback.playing = true; calls.push(['restart']); },
     async resize(width, height) { calls.push(['resize', width, height]); },
     getState() { return { ...playback }; },
+    getMotions() { return spine ? [{ id: 'idle', group: 'animations', index: 0, name: 'idle', duration: 1 }] : resolvedSource.manifest.motions; },
     getVisualElements() { return [{ id: 'BG', name: 'Background', kind: 'part' }]; },
     async getVisualElementThumbnail(id) { calls.push(['thumbnail', id]); return { id, dataUrl: null }; },
     async scanVisualElements(motionId) { calls.push(['scan', motionId]); playback.playing = false; playback.time = 0; return { motionId, candidates: [] }; },
@@ -64,17 +65,24 @@ function fixture({ source = null, runtime = { runtimePath: '/private/runtime/Liv
     previewUrl: 'http://127.0.0.1:3210/preview',
     async close() { calls.push(['server.close']); },
   };
-  const resolvedSource = source || { inputPath: '/private/models/character', sourceFingerprint: FINGERPRINT, manifest: manifest() };
+  const resolvedSource = source || { inputPath: '/private/models/character', sourceFingerprint: FINGERPRINT, manifest: spine ? manifest({
+    source: { kind: 'spine-directory', fingerprint: FINGERPRINT, modelConfig: 'hero.json' },
+    model: { format: 'spine', runtimeLine: '4.3', modelFile: 'hero.json', atlasFile: 'hero.atlas', textures: ['hero.png'] },
+    motions: [], expressions: [], visualElements: [],
+  }) : manifest() };
   const service = createPreviewSessionService({
     ownerWindow,
     createView: async (input) => { calls.push(['createView', input]); return view; },
     resolveSource: async (input) => { calls.push(['resolveSource', input]); return resolvedSource; },
     resolveRuntime: async (generation) => { calls.push(['resolveRuntime', generation]); return runtime; },
+    resolveSpinePack: async (line) => { calls.push(['resolveSpinePack', line]); return { scriptPath: '/private/spine/spine-player.js', stylePath: '/private/spine/spine-player.css' }; },
     parsePck: async (...args) => { calls.push(['parsePck', ...args]); return { buffers: new Map([['model.json', Buffer.from('{}')]]) }; },
     createAssetServer: async (input) => { calls.push(['server', input]); return server; },
     createPage: async (input) => { calls.push(['page', input]); return { evaluate() {} }; },
     createAdapter: async (input) => { calls.push(['adapter', input]); return adapter; },
+    createSpineAdapter: async (input) => { calls.push(['spineAdapter', input]); return adapter; },
     createRendererSource: async (inputManifest, options) => { calls.push(['rendererSource', inputManifest, options]); return { modelUrl: `${options.baseUrl}/character.model3.json`, cubismVersion: 4, motions: inputManifest.motions, expressions: inputManifest.expressions }; },
+    createSpineRendererSource: async (inputManifest, options) => { calls.push(['spineRendererSource', inputManifest, options]); return { format: 'spine', runtimeLine: '4.3', skeletonUrl: `${options.baseUrl}/hero.json`, atlasUrl: `${options.baseUrl}/hero.atlas`, motions: inputManifest.motions, slots: inputManifest.visualElements }; },
     loadPage: async (input) => { calls.push(['loadPage', input.url]); if (loadError) throw loadError; },
     vendorPaths: { pixi: '/vendor/pixi.js', unsafeEval: '/vendor/unsafe-eval.js', live2dAdapter: '/vendor/adapter.js' },
     onStatus: (status) => statuses.push(status),
@@ -86,6 +94,19 @@ test('normalizes preview bounds to safe integer limits', () => {
   assert.deepEqual(normalizeBounds({ x: -10, y: 2.6, width: 12, height: 9000 }), { x: 0, y: 3, width: 64, height: 4096 });
   assert.deepEqual(normalizeBounds({ x: 'bad', y: Infinity, width: NaN, height: null }), { x: 0, y: 0, width: 64, height: 64 });
   assert.throws(() => normalizeBounds(null), (error) => error instanceof PreviewSessionError && error.code === 'INVALID_PREVIEW_BOUNDS');
+});
+
+test('opens Spine in its isolated renderer pack without resolving a Cubism runtime', async () => {
+  const { calls, service } = fixture({ spine: true });
+  const result = await service.open({ projectId: 'project-1', sourceFingerprint: FINGERPRINT, bounds: { x: 0, y: 0, width: 512, height: 512 } });
+  assert.equal(result.state, 'ready');
+  assert.deepEqual(result.catalog.motions.map((motion) => motion.id), ['idle']);
+  assert.equal(calls.some(([name]) => name === 'resolveRuntime'), false);
+  assert.deepEqual(calls.find(([name]) => name === 'resolveSpinePack'), ['resolveSpinePack', '4.3']);
+  assert.deepEqual(calls.find(([name]) => name === 'server')[1].spineAssets, { script: '/private/spine/spine-player.js', style: '/private/spine/spine-player.css' });
+  assert.equal(calls.some(([name]) => name === 'spineAdapter'), true);
+  assert.equal(calls.some(([name]) => name === 'spineRendererSource'), true);
+  await service.close();
 });
 
 test('opens with project visibility and serializes manual visibility edits', async () => {

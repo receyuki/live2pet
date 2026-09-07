@@ -13,6 +13,14 @@ export type RuntimeSettings = {
   runtimes: RuntimeDescriptor[];
 };
 
+export type SpinePackStatus = {
+  schemaVersion: 1;
+  id: 'spine-player-4.3';
+  runtimeLine: '4.3';
+  version: string;
+  installed: boolean;
+};
+
 export type SourceMotion = {
   id: string;
   group: string;
@@ -31,12 +39,13 @@ export type SourceExpression = {
 
 export type SourceInspection = {
   schemaVersion: 1;
-  source: { kind: 'standard-directory' | 'pck' | 'destiny-child-pck'; name: string; fingerprint: string; modelConfig: string };
-  model: { cubism: number; configFile: string; modelFile: string | null; textures: string[] };
+  source: { kind: 'standard-directory' | 'pck' | 'destiny-child-pck' | 'spine-directory'; name: string; fingerprint: string; modelConfig: string };
+  model: { format?: 'spine'; cubism?: number; configFile: string; modelFile: string | null; textures: string[]; atlasFile?: string; spineVersion?: string; runtimeLine?: string; binary?: boolean };
   motions: SourceMotion[];
   expressions: SourceExpression[];
   resources: Array<{ kind: string; path: string; required: boolean; exists: boolean }>;
   warnings: Array<{ code: string; resource?: string; kind?: string }>;
+  visualElements?: VisualElement[];
 };
 
 export type Live2PetProject = {
@@ -142,6 +151,7 @@ export type PreviewStatus = {
   visible: boolean;
   bounds: PreviewBounds | null;
   playback?: { motionId: string | null; expressionId: string | null; playing: boolean; loop: boolean; speed: number; time?: number };
+  catalog?: { motions: Array<{ id: string; name: string; duration: number }> };
   error?: { code: string; message: string };
 };
 
@@ -170,6 +180,9 @@ type Live2PetApi = {
   getRuntimeSettings(): Promise<AppResponse<RuntimeSettings>>;
   configureRuntime(input: { inputPath: string }): Promise<AppResponse<RuntimeSettings>>;
   clearRuntimeSettings(input?: { fingerprint: string }): Promise<AppResponse<RuntimeSettings>>;
+  getSpinePackStatus(): Promise<AppResponse<SpinePackStatus>>;
+  installSpinePack(): Promise<AppResponse<SpinePackStatus>>;
+  removeSpinePack(): Promise<AppResponse<SpinePackStatus>>;
   getBuildCacheStatus(): Promise<AppResponse<{ schemaVersion: 1; byteLength: number; entryCount: number; maxBytes: number }>>;
   clearBuildCache(input: { confirmClear: true }): Promise<AppResponse<{ removedEntries: number; removedBytes: number; schemaVersion: 1; byteLength: number; entryCount: number; maxBytes: number }>>;
   buildProject?(input: { project: Live2PetProject; targets: BuildTarget[]; optionsByTarget: Partial<Record<BuildTarget, { package: true; spriteVersionNumber?: 2 }>> }): Promise<AppResponse<BuildProjectResult>>;
@@ -254,6 +267,24 @@ export async function clearRuntimeSettings(fingerprint?: string): Promise<Runtim
   const api = desktopApi();
   if (!api) return { schemaVersion: 2, configured: false, restartRequired: false, runtimes: [] };
   return unwrap(api.clearRuntimeSettings(fingerprint ? { fingerprint } : undefined));
+}
+
+export async function getSpinePackStatus(): Promise<SpinePackStatus> {
+  const api = desktopApi();
+  if (!api?.getSpinePackStatus) return { schemaVersion: 1, id: 'spine-player-4.3', runtimeLine: '4.3', version: '4.3.13', installed: false };
+  return unwrap(api.getSpinePackStatus());
+}
+
+export async function installSpinePack(): Promise<SpinePackStatus> {
+  const api = desktopApi();
+  if (!api?.installSpinePack) throw new DesktopApiError('APP_SPINE_PACK_UNAVAILABLE', 'Optional Spine support requires the Desktop App.');
+  return unwrap(api.installSpinePack());
+}
+
+export async function removeSpinePack(): Promise<SpinePackStatus> {
+  const api = desktopApi();
+  if (!api?.removeSpinePack) throw new DesktopApiError('APP_SPINE_PACK_UNAVAILABLE', 'Optional Spine support requires the Desktop App.');
+  return unwrap(api.removeSpinePack());
 }
 
 export async function getCacheStatus() {

@@ -2,16 +2,17 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-把已有 Live2D 模型转换成桌面宠物包——完全在本地完成、可视化配置，并且不修改原始模型。
+把已有 Live2D 或 Spine 模型转换成桌面宠物包——完全在本地完成、可视化配置，并且不修改原始模型。
 
-Live2Pet 是一款 macOS 桌面应用，面向已经拥有合法可用 Live2D 模型、希望把模型原始动画用于 [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk) 或 Codex 自定义宠物的用户。你可以在一个项目工作区里导入模型、预览动作、关联宠物状态、隐藏不需要的元素，并构建经过验证的 ZIP 包。
+Live2Pet 是一款 macOS 桌面应用，面向已经拥有合法可用 Live2D 或 Spine 模型、希望把模型原始动画用于 [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk) 或 Codex 自定义宠物的用户。你可以在一个项目工作区里导入模型、预览动作、关联宠物状态、隐藏不需要的元素，并构建经过验证的 ZIP 包。
 
 > [!IMPORTANT]
-> Live2Pet 目前是供个人使用的未签名 macOS 项目，暂时没有公开的预构建安装包。Live2D 完整流程已经验收；可选 Spine 支持是下一个里程碑。Windows 支持计划放在 V1 之后。
+> Live2Pet 目前是供个人使用的未签名 macOS 项目，暂时没有公开的预构建安装包。Live2D 完整流程已经验收；新的可选 Spine 4.3 路径已经实现，等待 App 内最终验收。Windows 支持计划放在 V1 之后。
 
 ## 主要功能
 
 - 导入标准 Cubism 模型文件夹，以及受支持的未压缩、未加密 Live2D PCK 文件。
+- 导入包含 JSON 或二进制骨骼、图集和纹理页的标准 Spine 4.3 文件夹。
 - Cubism 2 与 Cubism 3–5 运行时只需保存一次，之后自动选择匹配版本。
 - 通过播放、暂停、重放、拖动进度、循环和预览倍速检查动作与表情。
 - 将当前动作直接关联到 Clawd 或 Codex 的必选、可选状态。
@@ -30,7 +31,7 @@ Live2Pet 是一款 macOS 桌面应用，面向已经拥有合法可用 Live2D �
 | Live2D PCK | 已测试包含受支持 Cubism 模型的未压缩、未加密结构 |
 | Clawd on Desk | 核心状态、可选状态/反应、透明动态 WebP、主题验证、预览与安装 |
 | Codex 自定义宠物 | 默认生成 V2 11 行图集，包含九个必选动画映射和中立方向姿势 |
-| Spine | 尚未提供；是下一项 V1 渲染里程碑 |
+| Spine 4.3 | 包含一个 `.json` 或 `.skel` 骨骼、匹配 `.atlas` 和引用纹理页的标准文件夹；支持默认 Skin 与 Slot 显隐 |
 | Windows | 尚未验证；计划在 V1 之后支持 |
 
 PCK 只是容器，并不属于某个特定游戏，也不代表一定兼容。加密、压缩、专有或资源不完整的包会被拒绝，并显示原因。
@@ -45,7 +46,7 @@ PCK 只是容器，并不属于某个特定游戏，也不代表一定兼容。�
 - Git
 - Node.js 22.12 或更新版本
 - 通过 Corepack 使用 pnpm 11
-- 合法取得的模型及其匹配 Live2D 运行时
+- 合法取得的模型及其匹配 Live2D 运行时，或 Spine 使用场景所需的许可
 
 ### 构建 App
 
@@ -63,8 +64,8 @@ open apps/desktop/out/Live2Pet-darwin-*/Live2Pet.app
 ## 使用流程
 
 1. 第一次启动时添加你已经拥有的 Live2D 运行时；也可以跳过设置，先检查模型资源。
-2. 导入 Live2D 文件夹或 PCK 文件，也可以直接拖入 App。
-3. 在“资源”页检查识别出的 Cubism 版本、动作、表情与警告。
+2. 导入 Live2D、Spine 文件夹或受支持的 Live2D PCK 文件，也可以直接拖入 App。
+3. 在“资源”页检查识别出的模型版本、动作、表情与警告。受支持的 Spine 资源缺少渲染包时会提供“安装 Spine 支持”。
 4. 在“映射”页选择并预览动画，分别关联到 Clawd 或 Codex 状态。
 5. 如果需要去掉背景、遮罩或特效，在“显示与隐藏”中检查并隐藏可分离元素。
 6. 在“构建”页输入包名称、选择渲染档位，然后构建目标包。
@@ -89,6 +90,12 @@ open apps/desktop/out/Live2Pet-darwin-*/Live2Pet.app
 在首次引导或“设置 → 运行时”中，拖入运行时 JavaScript 文件或解压后的 SDK 文件夹。Live2Pet 会检查文件、识别支持的版本，并保存一份私有本地副本。两个版本可以同时存在，重启后会自动复用，即使原下载文件已经移动也不需要重复选择。
 
 只导入可信来源的运行时代码。从 Live2Pet 删除运行时不会删除原始文件。没有运行时时仍可检查资源，但播放和捕获需要匹配版本。App 内的帮助按钮会根据当前语言打开本章节。
+
+### 可选 Spine 支持
+
+Live2Pet 可以在安装渲染器之前识别标准 Spine 4.3 文件夹。当你在“资源”“映射”或“设置 → 运行时”中明确点击“安装 Spine 支持”后，App 才会下载官方 `@esotericsoftware/spine-player` 4.3.13 浏览器发行文件，校验固定的 SHA-256，并保存到 App 私有目录供以后自动复用。它不会随本仓库分发，也不会在首次引导时自动下载。二进制 `.skel` 资源可能要等渲染包加载后，才会显示完整的动作和 Slot 清单。
+
+Spine 运行时受 [Spine Runtime License](https://github.com/EsotericSoftware/spine-runtimes/blob/4.3/LICENSE)约束。Live2Pet 的 Apache-2.0 许可不会授予 Spine Editor 许可，也不会重新许可该运行时、模型或生成资源。安装渲染包或分发生成结果前，请确认你的使用方式符合适用条款。
 
 ## 动作映射与模型显示
 
@@ -132,7 +139,7 @@ Live2Pet 不授予模型、纹理、动作、游戏资源、运行时或衍生�
 
 ### 可以检查模型，但无法预览
 
-在“设置 → 运行时”添加匹配版本。现代 Cubism Core 不能渲染 Cubism 2，旧版运行时也不能渲染现代 `.moc3` 模型。
+在“设置 → 运行时”添加匹配的 Live2D 运行时；受支持的 Spine 资源则安装可选 Spine 4.3 渲染包。现代 Cubism Core 不能渲染 Cubism 2，旧版运行时也不能渲染现代 `.moc3` 模型。
 
 ### PCK 文件被拒绝
 
@@ -156,7 +163,7 @@ Live2Pet 不授予模型、纹理、动作、游戏资源、运行时或衍生�
 
 ## 项目状态与路线图
 
-截至 #12 的 Live2D 桌面流程已经实现并完成验收。下一项 V1 工作是一个可选、固定版本的 Spine 渲染路径；完成后再进行全新用户环境下的 macOS 正式版验收。Windows x64、公开签名/公证安装包、自动更新和 Codex Skill 自动化属于 V1 之后的工作。
+截至 #12 的 Live2D 桌面流程已经实现并完成验收。可选、固定版本的 Spine 4.3 渲染路径已经实现，并通过真实运行时预览、透明捕获、Slot 显隐和双目标构建的自动化检查；仍需在打包 App 中进行最终用户验收。之后进行全新用户环境下的 macOS 正式版验收。Windows x64、公开签名/公证安装包、自动更新和 Codex Skill 自动化属于 V1 之后的工作。
 
 规范范围和进度请查看 [V1 规格](docs/specs/live2pet-v1.md)、[实施计划](docs/plans/live2pet-v1-implementation-plan.md)与 [GitHub Issues](https://github.com/receyuki/live2pet/issues)。
 

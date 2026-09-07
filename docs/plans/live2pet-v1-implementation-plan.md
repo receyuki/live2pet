@@ -1,6 +1,6 @@
 # Live2Pet Personal-Use V1 Implementation Plan
 
-Status: Updated on 2026-09-07 — Live2D implementation complete; target-host and Desktop acceptance are the final pre-Spine gates
+Status: Updated on 2026-09-07 — Live2D implementation accepted; optional Spine 4.3 implementation is awaiting packaged-App user acceptance
 
 ## Outcome and boundary
 
@@ -175,6 +175,14 @@ Acceptance gate:
 - one permitted real fixture passes center preview, mapping, Slot visibility, deterministic capture, and project reopen;
 - that project builds and validates at least one Clawd package and one Codex Pet package; and
 - an unsupported version and failed integrity check each provide actionable recovery without losing project state.
+
+Implementation checkpoint (2026-09-07): standard Spine 4.3 JSON and binary
+skeleton inspection, the explicit verified `spine-player` 4.3.13 pack, isolated
+preview/capture, Slot visibility, binary catalog hydration, and both existing
+target builders are implemented. Synthetic public tests and an opt-in permitted
+real-runtime test pass without committing the runtime, fixture, or generated
+packages. Project reopen and final packaged-App interaction remain the manual
+acceptance gate before #14 can close.
 
 ### P1 — Harden build, cache, progress, download, and installation
 

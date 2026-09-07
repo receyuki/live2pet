@@ -8,6 +8,7 @@ const MAX_PCK_ENTRIES = 4096;
 const PCK_RECORD_SIZE = 25;
 const SOURCE_CACHE_SCHEMA_VERSION = 1;
 const SOURCE_CACHE_HEADER_BYTES = 4 * 1024 * 1024;
+const SUPPORTED_SPINE_RUNTIME_LINE = '4.3';
 const SOURCE_CACHE_KEY = Object.freeze({
   runtimeVersion: 'source-inspector',
   rendererVersion: 'none',
@@ -209,9 +210,9 @@ function createSourceView({ files, buffers, configPath, source }) {
   const warnings = [];
   const resources = [];
 
-  function resolve(reference) {
+  function resolve(reference, baseDirectory = null) {
     const configDirectory = path.posix.dirname(configPath) === '.' ? '' : path.posix.dirname(configPath);
-    const relative = normalizeReference(reference, configDirectory);
+    const relative = normalizeReference(reference, baseDirectory == null ? configDirectory : baseDirectory);
     if (fileMap.has(relative) || bufferMap.has(relative)) return relative;
     const rootRelative = normalizeReference(reference);
     if (fileMap.has(rootRelative) || bufferMap.has(rootRelative)) return rootRelative;
@@ -228,8 +229,8 @@ function createSourceView({ files, buffers, configPath, source }) {
     return file ? fs.readFileSync(file.absolute) : null;
   }
 
-  function addResource(kind, reference, required = true) {
-    const relative = resolve(reference);
+  function addResource(kind, reference, required = true, baseDirectory = null) {
+    const relative = resolve(reference, baseDirectory);
     const exists = has(relative);
     const item = { kind, path: relative, required, exists };
     resources.push(item);
@@ -346,10 +347,121 @@ function inspectSettings(settings, view, cubism) {
   };
 }
 
+function spineRuntimeLine(version) {
+  const match = String(version || '').trim().match(/^(\d+)\.(\d+)(?:\.|$)/);
+  return match ? `${match[1]}.${match[2]}` : null;
+}
+
+function spineAnimationDuration(value) {
+  let duration = 0;
+  const visit = (entry) => {
+    if (Array.isArray(entry)) return entry.forEach(visit);
+    if (!entry || typeof entry !== 'object') return;
+    if (Number.isFinite(Number(entry.time))) duration = Math.max(duration, Number(entry.time));
+    Object.values(entry).forEach(visit);
+  };
+  visit(value);
+  return duration;
+}
+
+function spineAtlasPages(buffer) {
+  const pages = [];
+  let expectPage = true;
+  for (const rawLine of buffer.toString('utf8').split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) {
+      expectPage = true;
+      continue;
+    }
+    if (!expectPage) continue;
+    if (line.includes(':')) fail('INVALID_SPINE_ATLAS', 'Spine atlas begins with an invalid texture page name.');
+    pages.push(line);
+    expectPage = false;
+  }
+  if (!pages.length) fail('INVALID_SPINE_ATLAS', 'Spine atlas contains no texture pages.');
+  return [...new Set(pages)];
+}
+
+function readSpineBinaryString(buffer, cursor) {
+  let value = 0;
+  let shift = 0;
+  for (let count = 0; count < 5; count += 1) {
+    if (cursor.offset >= buffer.length) fail('INVALID_SPINE_SKELETON', 'Spine binary skeleton header is truncated.');
+    const byte = buffer[cursor.offset++];
+    value |= (byte & 0x7f) << shift;
+    if ((byte & 0x80) === 0) {
+      if (value === 0) return null;
+      const length = value - 1;
+      if (length < 0 || cursor.offset + length > buffer.length) fail('INVALID_SPINE_SKELETON', 'Spine binary skeleton contains an invalid header string.');
+      const result = buffer.subarray(cursor.offset, cursor.offset + length).toString('utf8');
+      cursor.offset += length;
+      return result;
+    }
+    shift += 7;
+  }
+  fail('INVALID_SPINE_SKELETON', 'Spine binary skeleton contains an invalid header length.');
+}
+
+function spineBinaryVersion(buffer) {
+  const cursor = { offset: 0 };
+  readSpineBinaryString(buffer, cursor);
+  return readSpineBinaryString(buffer, cursor);
+}
+
+function inspectSpineDirectory(root, sourceFiles, skeletonCandidate, atlasCandidate, fingerprint) {
+  const source = { kind: 'spine-directory', name: path.basename(root), fingerprint: fingerprint || hashFiles(sourceFiles), fileCount: sourceFiles.length };
+  const view = createSourceView({ files: sourceFiles, configPath: skeletonCandidate.relative, source });
+  const skeletonBuffer = fs.readFileSync(skeletonCandidate.absolute);
+  const isJson = /\.json$/i.test(skeletonCandidate.relative);
+  const skeleton = isJson ? parseJsonBuffer(skeletonBuffer, skeletonCandidate.relative) : null;
+  const version = isJson ? skeleton?.skeleton?.spine : spineBinaryVersion(skeletonBuffer);
+  const runtimeLine = spineRuntimeLine(version);
+  if (!runtimeLine) fail('INVALID_SPINE_VERSION', 'Spine skeleton does not declare a recognizable export version.');
+  if (runtimeLine !== SUPPORTED_SPINE_RUNTIME_LINE) {
+    fail('UNSUPPORTED_SPINE_VERSION', `Spine ${runtimeLine} is not supported by this build. Re-export with Spine ${SUPPORTED_SPINE_RUNTIME_LINE} or install a future matching renderer pack.`, { detected: runtimeLine, supported: SUPPORTED_SPINE_RUNTIME_LINE });
+  }
+  const atlasDirectory = path.posix.dirname(atlasCandidate.relative) === '.' ? '' : path.posix.dirname(atlasCandidate.relative);
+  const modelFile = view.addResource('skeleton', skeletonCandidate.relative, true, '').relative;
+  const atlasFile = view.addResource('atlas', atlasCandidate.relative, true, '').relative;
+  const textures = spineAtlasPages(fs.readFileSync(atlasCandidate.absolute)).map((reference) => view.addResource('texture', reference, true, atlasDirectory).relative);
+  const animations = isJson && skeleton.animations && typeof skeleton.animations === 'object' && !Array.isArray(skeleton.animations) ? Object.entries(skeleton.animations) : [];
+  return {
+    schemaVersion: 1,
+    source: { ...source, modelConfig: skeletonCandidate.relative },
+    model: { format: 'spine', configFile: skeletonCandidate.relative, modelFile, atlasFile, textures, spineVersion: String(version), runtimeLine, binary: !isJson },
+    motions: animations.map(([name, animation], index) => ({ id: name, group: 'animations', index, name, sourceFile: skeletonCandidate.relative, duration: spineAnimationDuration(animation) })),
+    expressions: [],
+    visualElements: isJson && Array.isArray(skeleton.slots) ? skeleton.slots.filter((slot) => slot && typeof slot.name === 'string' && slot.name).map((slot) => ({ id: `slot:${slot.name}`, name: slot.name, kind: 'slot' })) : [],
+    resources: view.resources,
+    warnings: view.warnings,
+  };
+}
+
 function inspectDirectory(root, { files = null, fingerprint = null, withResources = false } = {}) {
   const sourceFiles = files || walkSourceDirectory(root);
   const modelCandidates = sourceFiles.filter((file) => /\.model3\.json$/i.test(file.relative) || /(^|\/)model\.json$/i.test(file.relative));
-  if (!modelCandidates.length) fail('MODEL_CONFIG_NOT_FOUND', 'Source Package contains no model3.json or Cubism 2 model.json.');
+  const spineJsonCandidates = sourceFiles.filter((file) => {
+    if (!/\.json$/i.test(file.relative) || /\.(?:model3|motion3|exp3|physics3|pose3|userdata3)\.json$/i.test(file.relative) || /(^|\/)model\.json$/i.test(file.relative)) return false;
+    try {
+      const value = parseJsonBuffer(fs.readFileSync(file.absolute), file.relative);
+      return Boolean(value?.skeleton?.spine && value.animations && typeof value.animations === 'object');
+    } catch { return false; }
+  });
+  const spineCandidates = [...spineJsonCandidates, ...sourceFiles.filter((file) => /\.skel$/i.test(file.relative))];
+  if (modelCandidates.length && spineCandidates.length) fail('AMBIGUOUS_SOURCE_FORMAT', 'Source Package contains both Live2D and Spine model configurations.');
+  if (!modelCandidates.length && spineCandidates.length) {
+    if (spineCandidates.length > 1) fail('AMBIGUOUS_SPINE_SKELETON', 'Source Package contains more than one Spine skeleton.', { candidates: spineCandidates.map((file) => file.relative) });
+    const skeleton = spineCandidates[0];
+    const skeletonDirectory = path.posix.dirname(skeleton.relative);
+    const skeletonBase = basenameWithoutExtension(skeleton.relative, ['.json', '.skel']);
+    const atlasCandidates = sourceFiles.filter((file) => /\.atlas$/i.test(file.relative));
+    const atlas = atlasCandidates.find((file) => path.posix.dirname(file.relative) === skeletonDirectory && basenameWithoutExtension(file.relative, ['.atlas']) === skeletonBase)
+      || (atlasCandidates.length === 1 ? atlasCandidates[0] : null);
+    if (!atlas) fail(atlasCandidates.length ? 'AMBIGUOUS_SPINE_ATLAS' : 'SPINE_ATLAS_NOT_FOUND', atlasCandidates.length ? 'Spine Source Package contains multiple atlases and none matches the skeleton name.' : 'Spine Source Package contains no .atlas file.');
+    const manifest = inspectSpineDirectory(root, sourceFiles, skeleton, atlas, fingerprint);
+    return withResources ? { manifest, buffers: new Map() } : manifest;
+  }
+  if (!modelCandidates.length) fail('MODEL_CONFIG_NOT_FOUND', 'Source Package contains no Live2D model config or supported Spine skeleton.');
   if (modelCandidates.length > 1) fail('AMBIGUOUS_MODEL_CONFIG', 'Source Package contains more than one model configuration.', { candidates: modelCandidates.map((file) => file.relative) });
 
   const config = modelCandidates[0];

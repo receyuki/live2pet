@@ -11,6 +11,9 @@ const MIME_TYPES = Object.freeze({
   '.html': 'text/html; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.atlas': 'text/plain; charset=utf-8',
+  '.skel': 'application/octet-stream',
   '.moc': 'application/octet-stream',
   '.moc3': 'application/octet-stream',
   '.mtn': 'text/plain; charset=utf-8',
@@ -110,6 +113,17 @@ function previewDocument(runtimeName) {
 <html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:"><style>html,body{width:100%;height:100%;margin:0;overflow:hidden;background:transparent}canvas{width:100%;height:100%;display:block}</style></head><body><canvas id="live2pet-stage"></canvas><script src="./vendor/pixi.js"></script><script src="./vendor/unsafe-eval.js"></script><script src="${runtimeUrl}"></script><script src="./vendor/live2d-adapter.js"></script></body></html>`, 'utf8');
 }
 
+function spinePreviewDocument() {
+  return Buffer.from(`<!doctype html>
+<html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:"><link rel="stylesheet" href="./vendor/spine-player.css"><style>html,body,#live2pet-spine-stage{width:100%;height:100%;margin:0;overflow:hidden;background:transparent}.spine-player{background:transparent!important}</style></head><body><div id="live2pet-spine-stage"></div><script src="./vendor/spine-player.js"></script></body></html>`, 'utf8');
+}
+
+function normalizeSpineAssets(spineAssets) {
+  if (spineAssets == null) return null;
+  if (!spineAssets || typeof spineAssets !== 'object' || Array.isArray(spineAssets)) fail('INVALID_ASSET_SERVER', 'spineAssets must be an object.');
+  return Object.freeze({ script: existingFile(spineAssets.script, 'spineAssets.script'), style: existingFile(spineAssets.style, 'spineAssets.style') });
+}
+
 function normalizePreviewAssets(previewAssets) {
   if (previewAssets == null) return null;
   if (!previewAssets || typeof previewAssets !== 'object' || Array.isArray(previewAssets)) fail('INVALID_ASSET_SERVER', 'previewAssets must be an object.');
@@ -120,13 +134,14 @@ function normalizePreviewAssets(previewAssets) {
   });
 }
 
-function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, previewAssets, host = LOOPBACK_HOST, port = 0 } = {}) {
+function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, previewAssets, spineAssets, host = LOOPBACK_HOST, port = 0 } = {}) {
   if (host !== LOOPBACK_HOST) return Promise.reject(new RendererContractError('NON_LOOPBACK_BINDING', 'Renderer Asset Server can bind only to 127.0.0.1.'));
   if (!Number.isInteger(port) || port < 0 || port > 65535) return Promise.reject(new RendererContractError('INVALID_ASSET_SERVER_PORT', 'Renderer Asset Server port must be an integer between 0 and 65535.'));
   let root;
   let buffers;
   let runtime;
   let preview;
+  let spinePreview;
   const sessionToken = crypto.randomBytes(24).toString('hex');
   try {
     const hasSourceRoot = sourceRoot !== undefined && sourceRoot !== null;
@@ -134,8 +149,12 @@ function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, pre
     if (hasSourceRoot === hasSourceBuffers) fail('INVALID_ASSET_SERVER', 'Provide exactly one of sourceRoot or sourceBuffers.');
     root = hasSourceRoot ? existingDirectory(sourceRoot, 'sourceRoot') : null;
     buffers = hasSourceBuffers ? normalizeSourceBuffers(sourceBuffers) : null;
-    runtime = existingFile(runtimePath, 'runtimePath');
+    runtime = runtimePath == null ? null : existingFile(runtimePath, 'runtimePath');
     preview = normalizePreviewAssets(previewAssets);
+    spinePreview = normalizeSpineAssets(spineAssets);
+    if (spinePreview && (runtime || preview)) fail('INVALID_ASSET_SERVER', 'Spine preview assets cannot be mixed with Live2D runtime assets.');
+    if (preview && !runtime) fail('INVALID_ASSET_SERVER', 'Live2D preview assets require a Cubism runtime.');
+    if (!spinePreview && !runtime) fail('INVALID_ASSET_SERVER', 'A Cubism runtime or Spine preview assets are required.');
   } catch (error) {
     return Promise.reject(error);
   }
@@ -159,8 +178,8 @@ function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, pre
       let file = null;
       let buffer = null;
       let modelPath = null;
-      if (routePath === '/preview' && preview) {
-        buffer = previewDocument(path.basename(runtime));
+      if (routePath === '/preview' && (preview || spinePreview)) {
+        buffer = spinePreview ? spinePreviewDocument() : previewDocument(path.basename(runtime));
         modelPath = 'preview.html';
       } else if (routePath.startsWith('/model/')) {
         const relativePath = decodeURIComponent(routePath.slice('/model/'.length));
@@ -178,7 +197,7 @@ function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, pre
           file = realFile;
           modelPath = relativePath;
         }
-      } else if (routePath === `/runtime/${encodeURIComponent(path.basename(runtime))}`) {
+      } else if (runtime && routePath === `/runtime/${encodeURIComponent(path.basename(runtime))}`) {
         file = runtime;
       } else if (preview && routePath === '/vendor/pixi.js') {
         file = preview.pixi;
@@ -186,6 +205,10 @@ function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, pre
         file = preview.unsafeEval;
       } else if (preview && routePath === '/vendor/live2d-adapter.js') {
         file = preview.live2dAdapter;
+      } else if (spinePreview && routePath === '/vendor/spine-player.js') {
+        file = spinePreview.script;
+      } else if (spinePreview && routePath === '/vendor/spine-player.css') {
+        file = spinePreview.style;
       } else {
         response.writeHead(404);
         response.end();
@@ -220,9 +243,9 @@ function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, pre
         host,
         port: address.port,
         baseUrl,
-        previewUrl: preview ? `${baseUrl}/preview` : null,
+        previewUrl: preview || spinePreview ? `${baseUrl}/preview` : null,
         modelUrl: (modelConfig) => `${baseUrl}/model/${encodeRelativeUrl(modelConfig)}`,
-        runtimeUrl: `${baseUrl}/runtime/${encodeURIComponent(path.basename(runtime))}`,
+        runtimeUrl: runtime ? `${baseUrl}/runtime/${encodeURIComponent(path.basename(runtime))}` : null,
         close: () => new Promise((closeResolve) => server.close(() => closeResolve())),
       });
     });
@@ -236,7 +259,9 @@ module.exports = {
   encodeRelativeUrl,
   normalizeSourceBuffers,
   normalizePreviewAssets,
+  normalizeSpineAssets,
   previewDocument,
+  spinePreviewDocument,
   safeRelativePath,
   safeBufferPath,
 };

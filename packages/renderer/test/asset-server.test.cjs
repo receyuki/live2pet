@@ -119,3 +119,20 @@ test('renderer asset server hosts an optional same-origin preview document in de
     await server.close();
   }
 });
+
+test('renderer asset server hosts an isolated Spine preview without Cubism assets', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-spine-assets-'));
+  fs.writeFileSync(path.join(root, 'hero.json'), '{}');
+  fs.writeFileSync(path.join(root, 'hero.atlas'), 'hero.png\nsize: 1,1\n');
+  fs.writeFileSync(path.join(root, 'spine-player.js'), 'window.spine={};');
+  fs.writeFileSync(path.join(root, 'spine-player.css'), '.spine-player{}');
+  const server = await createRendererAssetServer({ sourceRoot: root, spineAssets: { script: path.join(root, 'spine-player.js'), style: path.join(root, 'spine-player.css') } });
+  try {
+    const html = await (await fetch(server.previewUrl)).text();
+    assert.match(html, /vendor\/spine-player\.css/);
+    assert.match(html, /vendor\/spine-player\.js/);
+    assert.doesNotMatch(html, /pixi|runtime\//i);
+    assert.equal(await (await fetch(`${server.baseUrl}/vendor/spine-player.js`)).text(), 'window.spine={};');
+    assert.equal((await fetch(`${server.baseUrl}/runtime/not-allowed.js`)).status, 404);
+  } finally { await server.close(); }
+});

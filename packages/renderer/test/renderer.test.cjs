@@ -12,6 +12,7 @@ const {
   RendererContractError,
   LegacyPixiLive2dAdapter,
   PixiLive2dAdapter,
+  SpinePlayerAdapter,
   createPixiLive2dAdapter,
   createRendererAdapter,
   SyntheticRenderer,
@@ -37,6 +38,7 @@ const {
   pageStep,
   pageUnload,
   pixiSourceFromManifest,
+  spineSourceFromManifest,
   selectPixiLive2dAdapter,
   selectRendererAdapter,
   sampleMotionCandidates,
@@ -448,11 +450,42 @@ test('adapter selection follows the inspected Cubism generation', () => {
   assert.equal(selectRendererAdapter(2).kind, 'legacy-cubism2');
   assert.equal(selectRendererAdapter(2).Adapter, LegacyPixiLive2dAdapter);
   assert.equal(selectRendererAdapter(5).kind, 'modern-cubism');
+  assert.equal(selectRendererAdapter({ format: 'spine', runtimeLine: '4.3' }).kind, 'spine-player-4.3');
+  assert.equal(selectRendererAdapter({ format: 'spine', runtimeLine: '4.3' }).Adapter, SpinePlayerAdapter);
+  assert.throws(() => selectRendererAdapter({ format: 'spine', runtimeLine: '4.2' }), { code: 'UNSUPPORTED_SPINE_VERSION' });
   assert.throws(
     () => selectRendererAdapter(6),
     (error) => error instanceof RendererContractError && error.code === 'UNSUPPORTED_CUBISM_VERSION',
   );
   assert.ok(createRendererAdapter({ cubismVersion: 4, page: new FakePixiPage() }) instanceof PixiLive2dAdapter);
+});
+
+test('Spine manifest conversion and adapter reuse the shared renderer contract', async () => {
+  const source = spineSourceFromManifest({
+    model: { format: 'spine', runtimeLine: '4.3', modelFile: 'hero.json', atlasFile: 'hero.atlas' },
+    motions: [{ id: 'idle', name: 'Idle', duration: 1 }],
+    visualElements: [{ id: 'slot:body', name: 'body', kind: 'slot' }],
+  }, { baseUrl: 'http://127.0.0.1/model' });
+  assert.equal(source.skeletonUrl, 'http://127.0.0.1/model/hero.json');
+  assert.equal(source.atlasUrl, 'http://127.0.0.1/model/hero.atlas');
+  const state = { loaded: true, motionId: 'idle', expressionId: null, time: 0, playing: false, loop: true, speed: 1 };
+  const page = { supportsBinaryResults: true, async evaluate(fn, ...args) {
+    if (fn.name === 'pageLoad') return { state, motions: source.motions, slots: source.slots };
+    if (fn.name === 'pagePlay') return { ...state, motionId: args[0], playing: true, loop: args[1], speed: args[2], time: args[3] };
+    if (fn.name === 'pageState') return state;
+    if (fn.name === 'pageVisualSettings') return args[0];
+    if (fn.name === 'pageCapture') return { width: args[2], height: args[3], motionId: args[0], time: args[1], rgba: new Uint8Array(args[2] * args[3] * 4) };
+    if (fn.name === 'pageUnload') return { loaded: false };
+    return { ...state };
+  } };
+  const renderer = new SpinePlayerAdapter({ page, width: 16, height: 16 });
+  await renderer.load(source);
+  assert.deepEqual(renderer.getMotions(), [{ id: 'idle', name: 'Idle', duration: 1 }]);
+  assert.deepEqual(renderer.getVisualElements(), [{ id: 'slot:body', name: 'body', kind: 'slot' }]);
+  assert.equal((await renderer.playMotion('idle')).playing, true);
+  assert.equal((await renderer.captureRgba({ width: 16, height: 16, motionId: 'idle', time: 0.5 })).rgba.byteLength, 1024);
+  await renderer.setVisualSettings({ hiddenElementIds: ['slot:body'] });
+  await renderer.unload();
 });
 
 test('renderer host helpers enforce sandbox defaults, CSP, and a narrow IPC surface', async () => {

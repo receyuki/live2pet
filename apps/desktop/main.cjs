@@ -21,6 +21,7 @@ const {
 const { CacheStore, SHARP_ENCODER_VERSION, buildProjectTargets } = require('@live2pet/package-build');
 const { installPackage } = require('@live2pet/installation');
 const { inspectSourcePackage } = require('@live2pet/source-inspector');
+const { getSpinePackStatus, installSpinePack, removeSpinePack, resolveSpinePack } = require('@live2pet/spine-pack');
 const { createPreviewSessionService } = require('./preview-session-service.cjs');
 const { createCaptureCacheService } = require('./capture-cache-service.cjs');
 const { createCaptureCacheBuildService } = require('./capture-cache-build.cjs');
@@ -100,6 +101,20 @@ const runtimeSettingsService = Object.freeze({
     if (previewSession) await previewSession.close();
     return redactRuntimeSettings(await clearRuntimeSettings(runtimeSettingsPath(), fingerprint));
   },
+});
+
+function spinePackRoot() {
+  return path.join(app.getPath('userData'), 'renderer-packs');
+}
+
+const spinePackService = Object.freeze({
+  get: async () => getSpinePackStatus(spinePackRoot()),
+  install: async ({ confirmInstall }) => installSpinePack(spinePackRoot(), { confirmInstall }),
+  remove: async () => {
+    if (previewSession) await previewSession.close();
+    return removeSpinePack(spinePackRoot());
+  },
+  resolve: (runtimeLine) => resolveSpinePack(spinePackRoot(), runtimeLine),
 });
 
 function previewVendorPaths(cubismVersion) {
@@ -303,6 +318,7 @@ function registerIpc() {
     projectSourceService: getProjectSourceService(),
     sourceInspectionService,
     runtimeSettingsService,
+    spinePackService,
     captureCacheService: getCaptureCacheService(),
     buildProjectService: buildProjectWithHostedRenderer,
     installPackageService: installPackage,
@@ -367,6 +383,7 @@ async function createMainWindow() {
       return record && record.sourceFingerprint === sourceFingerprint ? record : null;
     },
     resolveRuntime: (cubismVersion) => loadRuntimeForGeneration(runtimeSettingsPath(), cubismVersion),
+    resolveSpinePack: (runtimeLine) => spinePackService.resolve(runtimeLine),
     vendorPaths: previewVendorPaths,
     onStatus: (status) => {
       if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;

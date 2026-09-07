@@ -30,13 +30,23 @@ The legacy `packages/live2d-exporter/export.cjs` script may use a locally
 installed Puppeteer for an opt-in smoke path; Puppeteer is not part of the
 public App or CI dependency contract.
 
+## Optional downloaded renderer pack
+
+Spine support is not part of the installed App or repository. After an explicit
+user action, Live2Pet downloads the exact official
+`@esotericsoftware/spine-player` 4.3.13 IIFE/CSS/license files from fixed HTTPS
+URLs, enforces an 8 MiB aggregate limit, verifies pinned SHA-256 values, and
+stores the pack in private App data. The pack is reused automatically and can
+be removed in Settings. It is governed by the Spine Runtime License and is not
+relicensed by Live2Pet's Apache-2.0 license.
+
 ## User-provided runtime inputs
 
-Modern Cubism Core and the legacy Cubism 2 JavaScript runtime are deliberately
-not dependencies of this repository. Users select copies they are separately
-licensed to run. Live2Pet validates and stores them in private local App or
-browser-profile storage; it never commits, stages, packages, or publishes
-those files.
+Modern Cubism Core, the legacy Cubism 2 JavaScript runtime, and the optional
+Spine renderer pack are deliberately not dependencies committed to this
+repository. Users must have the licenses required for their use. Live2Pet
+validates and stores runtime files in private local App or browser-profile
+storage; it never commits, stages, packages, or publishes those files.
 
 Models, textures, Motion/Expression files, PCK/LPK archives, rendered frames,
 and generated character packages follow the same user-provided boundary.
@@ -51,8 +61,8 @@ and generated character packages follow the same user-provided boundary.
 - `sharp` resolves a platform-specific prebuilt libvips package when available;
   the Package Build service does not shell out to ImageMagick, FFmpeg,
   `libwebp`, or a system ZIP executable.
-- No Cubism runtime, model, texture, generated WebP, or example package is a
-  release asset.
+- No Cubism runtime, Spine renderer pack, model, texture, generated WebP, or
+  example package is a release asset.
 
 See [`apps/desktop/THIRD-PARTY-NOTICES.md`](../apps/desktop/THIRD-PARTY-NOTICES.md)
 for the notices shipped with the staged browser bundle.

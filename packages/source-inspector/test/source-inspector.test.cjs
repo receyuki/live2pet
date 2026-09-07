@@ -55,6 +55,48 @@ function legacyFixture() {
   return { root, model: path.join(root, 'model.json') };
 }
 
+function spineFixture({ version = '4.3.12', missingTexture = false } = {}) {
+  const root = temporaryDirectory();
+  writeFixture(root, 'hero.json', JSON.stringify({
+    skeleton: { hash: 'fixture', spine: version, width: 512, height: 768 },
+    slots: [
+      { name: 'body', bone: 'root', attachment: 'body' },
+      { name: 'background', bone: 'root', attachment: 'background' },
+    ],
+    skins: [{ name: 'default', attachments: {} }],
+    animations: {
+      idle: { slots: { body: { color: [{ time: 0, color: 'ffffffff' }, { time: 1.5, color: 'ffffffff' }] } } },
+      wave: { bones: { root: { rotate: [{ time: 0 }, { time: 0.75, value: 10 }] } } },
+    },
+  }));
+  writeFixture(root, 'hero.atlas', [
+    'hero.png',
+    'size: 1024,1024',
+    'filter: Linear,Linear',
+    'body',
+    'bounds: 0,0,256,512',
+    '',
+    'effects.png',
+    'size: 512,512',
+    'filter: Linear,Linear',
+    'background',
+    'bounds: 0,0,512,512',
+    '',
+  ].join('\n'));
+  writeFixture(root, 'hero.png', Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  if (!missingTexture) writeFixture(root, 'effects.png', Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  return { root };
+}
+
+function spineBinaryString(value) {
+  const bytes = Buffer.from(value, 'utf8');
+  let length = bytes.length + 1;
+  const prefix = [];
+  while (length > 0x7f) { prefix.push((length & 0x7f) | 0x80); length >>>= 7; }
+  prefix.push(length);
+  return Buffer.concat([Buffer.from(prefix), bytes]);
+}
+
 function pckFixture({ flags = 0, overlap = false, collision = false, extraMotion = false } = {}) {
   const root = temporaryDirectory();
   const model = JSON.stringify({
@@ -130,6 +172,54 @@ test('inspects a Cubism 2 Source Package and derives motion duration', () => {
   assert.equal(manifest.motions[0].id, 'idle:0');
   assert.equal(manifest.motions[0].duration, 0.1);
   assert.equal(manifest.expressions[0].sourceFile, 'smile.exp.json');
+});
+
+test('inspects a Spine 4.3 folder without requiring a renderer pack', () => {
+  const fixture = spineFixture();
+  const manifest = inspectSourcePackage(fixture.root);
+
+  assert.equal(manifest.source.kind, 'spine-directory');
+  assert.equal(manifest.model.format, 'spine');
+  assert.equal(manifest.model.spineVersion, '4.3.12');
+  assert.equal(manifest.model.runtimeLine, '4.3');
+  assert.equal(manifest.model.modelFile, 'hero.json');
+  assert.equal(manifest.model.atlasFile, 'hero.atlas');
+  assert.deepEqual(manifest.model.textures, ['hero.png', 'effects.png']);
+  assert.deepEqual(manifest.motions.map(({ id, name, duration }) => ({ id, name, duration })), [
+    { id: 'idle', name: 'idle', duration: 1.5 },
+    { id: 'wave', name: 'wave', duration: 0.75 },
+  ]);
+  assert.deepEqual(manifest.visualElements, [
+    { id: 'slot:body', name: 'body', kind: 'slot' },
+    { id: 'slot:background', name: 'background', kind: 'slot' },
+  ]);
+  assert.deepEqual(manifest.expressions, []);
+  assert.equal(manifest.warnings.length, 0);
+});
+
+test('reports missing Spine atlas pages and rejects unsupported Spine lines actionably', () => {
+  const missing = inspectSourcePackage(spineFixture({ missingTexture: true }).root);
+  assert.deepEqual(missing.warnings, [{ code: 'MISSING_RESOURCE', resource: 'effects.png', kind: 'texture' }]);
+
+  assert.throws(
+    () => inspectSourcePackage(spineFixture({ version: '4.2.99' }).root),
+    (error) => error instanceof SourceInspectionError
+      && error.code === 'UNSUPPORTED_SPINE_VERSION'
+      && /4\.3/.test(error.message),
+  );
+});
+
+test('identifies a Spine 4.3 binary skeleton before the renderer pack supplies its catalog', () => {
+  const root = temporaryDirectory();
+  writeFixture(root, 'hero.skel', Buffer.concat([spineBinaryString('fixture-hash'), spineBinaryString('4.3.75')]));
+  writeFixture(root, 'hero.atlas', 'hero.png\nsize: 8,8\nfilter: Linear,Linear\nbody\nbounds: 0,0,8,8\n');
+  writeFixture(root, 'hero.png', Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+  const manifest = inspectSourcePackage(root);
+  assert.equal(manifest.model.binary, true);
+  assert.equal(manifest.model.runtimeLine, '4.3');
+  assert.deepEqual(manifest.motions, []);
+  assert.deepEqual(manifest.visualElements, []);
 });
 
 test('reports missing referenced resources without hiding the rest of the manifest', () => {

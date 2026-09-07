@@ -16,7 +16,7 @@ export function targetReadiness(project: Live2PetProject | null, inspection: Sou
   if (!project || !inspection) return { ready: false, missing: ["source"] };
   const commonMissing = [
     ...(!project.name.trim() ? ["package name"] : []),
-    ...(!runtimeReady ? ["matching Cubism runtime"] : []),
+    ...(!runtimeReady ? [inspection.model.format === 'spine' ? "Spine renderer pack" : "matching Cubism runtime"] : []),
     ...(project.sourceReview?.required ? ["source review"] : []),
   ];
   const mappings = project.targets[target].mappings;

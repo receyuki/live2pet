@@ -37,6 +37,9 @@ importers:
       '@live2pet/source-inspector':
         specifier: workspace:*
         version: link:../../packages/source-inspector
+      '@live2pet/spine-pack':
+        specifier: workspace:*
+        version: link:../../packages/spine-pack
       '@zip.js/zip.js':
         specifier: 2.7.57
         version: 2.7.57
@@ -173,6 +176,8 @@ importers:
   packages/runtime: {}
 
   packages/source-inspector: {}
+
+  packages/spine-pack: {}
 
 packages:
 

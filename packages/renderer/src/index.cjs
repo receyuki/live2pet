@@ -340,4 +340,5 @@ module.exports = {
   ...require('./host.cjs'),
   ...require('./asset-server.cjs'),
   ...require('./visual-settings.cjs'),
+  ...require('./spine-player-adapter.cjs'),
 };

@@ -32,6 +32,7 @@
     "@live2pet/renderer": "workspace:*",
     "@live2pet/runtime": "workspace:*",
     "@live2pet/source-inspector": "workspace:*",
+    "@live2pet/spine-pack": "workspace:*",
     "@zip.js/zip.js": "2.7.57"
   },
   "devDependencies": {

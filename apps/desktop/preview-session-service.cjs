@@ -5,6 +5,8 @@ const {
   createPixiLive2dAdapter,
   createRendererAssetServer,
   pixiSourceFromManifest,
+  SpinePlayerAdapter,
+  spineSourceFromManifest,
   normalizeVisualSettings,
 } = require('@live2pet/renderer');
 const { parsePck: defaultParsePck } = require('@live2pet/source-inspector');
@@ -102,11 +104,14 @@ function createPreviewSessionService({
   createView,
   resolveSource,
   resolveRuntime,
+  resolveSpinePack = null,
   parsePck = defaultParsePck,
   createAssetServer = createRendererAssetServer,
   createPage = createElectronWebContentsPage,
   createAdapter = createPixiLive2dAdapter,
   createRendererSource = pixiSourceFromManifest,
+  createSpineRendererSource = spineSourceFromManifest,
+  createSpineAdapter = (options) => new SpinePlayerAdapter(options),
   loadPage = async ({ webContents, url }) => webContents.loadURL(url),
   vendorPaths = null,
   onStatus = null,
@@ -115,7 +120,7 @@ function createPreviewSessionService({
   if (typeof createView !== 'function') fail('INVALID_PREVIEW_SERVICE', 'Preview session requires a view factory.');
   if (typeof resolveSource !== 'function') fail('INVALID_PREVIEW_SERVICE', 'Preview session requires a Source registry resolver.');
   if (typeof resolveRuntime !== 'function') fail('INVALID_PREVIEW_SERVICE', 'Preview session requires a runtime resolver.');
-  for (const [label, dependency] of Object.entries({ parsePck, createAssetServer, createPage, createAdapter, createRendererSource, loadPage })) {
+  for (const [label, dependency] of Object.entries({ parsePck, createAssetServer, createPage, createAdapter, createRendererSource, createSpineRendererSource, createSpineAdapter, loadPage })) {
     if (typeof dependency !== 'function') fail('INVALID_PREVIEW_SERVICE', `Preview session ${label} must be a function.`);
   }
   if (onStatus !== null && typeof onStatus !== 'function') fail('INVALID_PREVIEW_SERVICE', 'Preview session onStatus must be a function when provided.');
@@ -129,6 +134,7 @@ function createPreviewSessionService({
   let view = null;
   let adapter = null;
   let assetServer = null;
+  let exposeHydratedCatalog = false;
   let generation = 0;
   let cleanupPromise = null;
   let operationQueue = Promise.resolve();
@@ -142,8 +148,13 @@ function createPreviewSessionService({
 
   function getStatus() {
     let playback = null;
+    let catalog = null;
     if (state === SESSION_STATES.ready && adapter && typeof adapter.getState === 'function') {
       try { playback = adapter.getState(); } catch {}
+      try {
+        const motions = typeof adapter.getMotions === 'function' ? adapter.getMotions() : null;
+        if (exposeHydratedCatalog && Array.isArray(motions)) catalog = { motions };
+      } catch {}
     }
     return {
       schemaVersion: 1,
@@ -153,6 +164,7 @@ function createPreviewSessionService({
       visible,
       bounds: bounds ? { ...bounds } : null,
       ...(playback ? { playback } : {}),
+      ...(catalog ? { catalog } : {}),
       ...(error ? { error: { ...error } } : {}),
     };
   }
@@ -273,6 +285,7 @@ function createPreviewSessionService({
     bounds = null;
     visible = false;
     error = null;
+    exposeHydratedCatalog = false;
     emitStatus();
     return getStatus();
   }
@@ -295,9 +308,13 @@ function createPreviewSessionService({
       if (!record || typeof record !== 'object' || !record.manifest) fail('PREVIEW_SOURCE_NOT_FOUND', 'The project Source Package is no longer available.');
       const recordFingerprint = String(record.sourceFingerprint || record.manifest.source?.fingerprint || '').toLowerCase();
       if (recordFingerprint !== requestedFingerprint) fail('PREVIEW_SOURCE_MISMATCH', 'The project Source Package does not match the requested fingerprint.');
+      const isSpine = record.manifest.model?.format === 'spine';
+      exposeHydratedCatalog = isSpine && record.manifest.motions?.length === 0;
       const cubismVersion = Number(record.manifest.model?.cubism);
-      if (![2, 3, 4, 5].includes(cubismVersion)) fail('UNSUPPORTED_CUBISM_VERSION', 'The Source Package has an unsupported Cubism generation.');
-      const runtimePath = normalizeRuntime(await resolveRuntime(cubismVersion));
+      if (!isSpine && ![2, 3, 4, 5].includes(cubismVersion)) fail('UNSUPPORTED_CUBISM_VERSION', 'The Source Package has an unsupported Cubism generation.');
+      if (isSpine && typeof resolveSpinePack !== 'function') fail('SPINE_PACK_REQUIRED', 'Install matching Spine support before opening this preview.');
+      const spinePack = isSpine ? await resolveSpinePack(record.manifest.model.runtimeLine) : null;
+      const runtimePath = isSpine ? null : normalizeRuntime(await resolveRuntime(cubismVersion));
       const kind = sourceKind(record);
       const inputPath = record.inputPath || record.sourceRoot || record.pckPath;
       let sourceOptions;
@@ -311,8 +328,8 @@ function createPreviewSessionService({
         if (typeof sourceRoot !== 'string' || !sourceRoot.trim()) fail('PREVIEW_SOURCE_NOT_FOUND', 'The Source Package directory is no longer available.');
         sourceOptions = { sourceRoot };
       }
-      const previewAssets = typeof vendorPaths === 'function' ? await vendorPaths(cubismVersion) : vendorPaths;
-      assetServer = await createAssetServer({ ...sourceOptions, runtimePath, previewAssets });
+      const previewAssets = isSpine ? null : (typeof vendorPaths === 'function' ? await vendorPaths(cubismVersion) : vendorPaths);
+      assetServer = await createAssetServer({ ...sourceOptions, runtimePath, previewAssets, ...(isSpine ? { spineAssets: { script: spinePack.scriptPath, style: spinePack.stylePath } } : {}) });
       if (token !== generation) return getStatus();
       const previewUrl = assetServer.previewUrl || (assetServer.baseUrl ? `${assetServer.baseUrl}/preview` : null);
       if (!previewUrl) fail('INVALID_PREVIEW_SERVER', 'Preview asset server did not provide a preview URL.');
@@ -332,9 +349,11 @@ function createPreviewSessionService({
       if (token !== generation) return getStatus();
       if (state === SESSION_STATES.failed) throw new PreviewSessionError(error.code, error.message);
       const page = await createPage({ webContents, view });
-      adapter = await createAdapter({ page, cubismVersion, width: requestedBounds.width, height: requestedBounds.height, playbackMode: 'realtime' });
+      adapter = isSpine
+        ? await createSpineAdapter({ page, width: requestedBounds.width, height: requestedBounds.height, playbackMode: 'realtime' })
+        : await createAdapter({ page, cubismVersion, width: requestedBounds.width, height: requestedBounds.height, playbackMode: 'realtime' });
       if (!adapter || typeof adapter.load !== 'function') fail('INVALID_PREVIEW_ADAPTER', 'Preview adapter factory returned an invalid adapter.');
-      const rendererSource = await createRendererSource(record.manifest, { baseUrl: `${assetServer.baseUrl}/model` });
+      const rendererSource = await (isSpine ? createSpineRendererSource : createRendererSource)(record.manifest, { baseUrl: `${assetServer.baseUrl}/model` });
       await adapter.load(rendererSource);
       if (input.visualSettings) await adapter.setVisualSettings(normalizeVisualSettings(input.visualSettings));
       if (token !== generation) return getStatus();
