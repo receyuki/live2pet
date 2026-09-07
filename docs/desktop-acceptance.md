@@ -597,3 +597,11 @@ Spine and Source Library scope in #14.
 Public redistribution of Spine renderer packs remains a separate installer
 release gate. No model, runtime, thumbnail, or generated package is added to the
 repository by this acceptance.
+
+### Neutral-focus capture — 2026-09-08
+
+Live2D capture disables Pixi pointer interaction and resets the focus controller,
+including its velocity, to a neutral center for every exported frame. The prior
+focus and preview interaction state are restored afterward. This prevents a
+pointer position or residual focus movement from introducing build-only jitter
+while retaining mouse following in the interactive preview.

@@ -433,28 +433,42 @@ function pageCapture(motionId, time, width, height, priority, binary = false) {
     if (!runtime) throw new Error('Renderer is not loaded.');
     const motion = runtime.source.motions.find((item) => item.id === motionId);
     if (!motion) throw new Error(`Motion is not available: ${motionId}`);
-    await runtime.prepareVisualCapture?.(motionId);
-    runtime.app.stop();
-    const captureTime = Math.min(Math.max(0, time), motion.duration);
-    const restart = runtime.state.motionId !== motionId || captureTime <= runtime.state.time;
-    const previousTime = restart ? 0 : runtime.state.time;
-    if (restart) await runtime.resetMotion(motion, priority, true);
-    runtime.state.motionId = motion.id;
-    runtime.state.time = captureTime;
-    runtime.state.playing = true;
-    if (width !== runtime.app.renderer.width || height !== runtime.app.renderer.height) {
-      runtime.app.renderer.resize(width, height);
-      runtime.fit();
+    const model = runtime.model;
+    const focus = model.internalModel?.focusController;
+    const focusSnapshot = focus ? Object.fromEntries(['targetX', 'targetY', 'x', 'y', 'vx', 'vy'].map((key) => [key, focus[key]])) : null;
+    const autoInteract = model.autoInteract;
+    model.autoInteract = false;
+    model.unregisterInteraction?.();
+    if (focus) for (const key of ['targetX', 'targetY', 'x', 'y', 'vx', 'vy']) focus[key] = 0;
+    try {
+      await runtime.prepareVisualCapture?.(motionId);
+      runtime.app.stop();
+      const captureTime = Math.min(Math.max(0, time), motion.duration);
+      const restart = runtime.state.motionId !== motionId || captureTime <= runtime.state.time;
+      const previousTime = restart ? 0 : runtime.state.time;
+      if (restart) await runtime.resetMotion(motion, priority, true);
+      runtime.state.motionId = motion.id;
+      runtime.state.time = captureTime;
+      runtime.state.playing = true;
+      if (width !== runtime.app.renderer.width || height !== runtime.app.renderer.height) {
+        runtime.app.renderer.resize(width, height);
+        runtime.fit();
+      }
+      // Capture uses source time and a neutral focus, independent of preview
+      // speed, wall time, and the user's latest pointer position.
+      runtime.model.update(Math.max(0.001, (captureTime - previousTime) * 1000));
+      runtime.render();
+      const pixels = runtime.readPixels();
+      // Electron preserves typed arrays across executeJavaScript. Expanding
+      // millions of channels into JS numbers makes capture serialization far
+      // more expensive than the render itself. Browser-only hosts retain the
+      // serializable-array path unless they explicitly support binary results.
+      return { width, height, motionId: motion.id, time: captureTime, rgba: binary ? pixels : Array.from(pixels) };
+    } finally {
+      if (focusSnapshot) for (const [key, value] of Object.entries(focusSnapshot)) focus[key] = value;
+      model.autoInteract = autoInteract;
+      if (autoInteract) model.registerInteraction?.(runtime.app.renderer.plugins?.interaction);
     }
-    // Capture uses source time, independent of preview speed and wall time.
-    runtime.model.update(Math.max(0.001, (captureTime - previousTime) * 1000));
-    runtime.render();
-    const pixels = runtime.readPixels();
-    // Electron preserves typed arrays across executeJavaScript. Expanding
-    // millions of channels into JS numbers makes capture serialization far
-    // more expensive than the render itself. Browser-only hosts retain the
-    // serializable-array path unless they explicitly support binary results.
-    return { width, height, motionId: motion.id, time: captureTime, rgba: binary ? pixels : Array.from(pixels) };
   })();
 }
 

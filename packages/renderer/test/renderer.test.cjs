@@ -278,6 +278,8 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
   let captureObservedPhysicsVelocity = null;
   let physicsVelocity = 1000;
   let physicsSteps = 0;
+  let interactionRestores = 0;
+  const focusController = { targetX: 0.8, targetY: -0.7, x: 0.6, y: -0.5, vx: 0.4, vy: -0.3 };
   const ticker = {
     callbacks: [],
     deltaMS: 0,
@@ -291,12 +293,14 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     },
   };
   const model = {
+    autoInteract: true,
     elapsedTime: 100,
     scale: { set() {} },
     x: 0,
     y: 0,
     getLocalBounds: () => ({ x: 0, y: 0, width: 100, height: 200 }),
     internalModel: Object.assign(new EventEmitter(), {
+      focusController,
       motionManager: { stopAllMotions() { updates.push('reset'); } },
       coreModel: { loadParameters() {} },
       physics: {
@@ -306,6 +310,8 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     }),
     motion: async () => undefined,
     update: (deltaMilliseconds) => updates.push(deltaMilliseconds),
+    unregisterInteraction() { this.interactionManager = null; },
+    registerInteraction(manager) { this.interactionManager = manager; interactionRestores += 1; },
   };
   class Application {
     constructor(options) {
@@ -322,6 +328,8 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
         extract: {
           pixels: (target) => {
             assert.equal(target, undefined, 'capture must read the viewport, not a bounds-shifted stage texture');
+            assert.equal(model.autoInteract, false, 'capture disables pointer interaction');
+            assert.deepEqual(focusController, { targetX: 0, targetY: 0, x: 0, y: 0, vx: 0, vy: 0 }, 'capture uses a stable neutral focus');
             captureObservedTicker = ticker.started;
             captureObservedPhysicsVelocity = physicsVelocity;
             const pixels = new Uint8Array(this.renderer.width * this.renderer.height * 4);
@@ -380,6 +388,9 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     assert.ok(captureObservedPhysicsVelocity < 0.001, 'capture restart must settle physics left by bounds sampling before extracting its first frame');
     assert.equal(physicsSteps, 120, 'settling is bounded and does not advance the Motion clock');
     assert.equal(ticker.started, false, 'capture must not resume the realtime clock between frames');
+    assert.equal(model.autoInteract, true, 'preview pointer interaction is restored after capture');
+    assert.deepEqual(focusController, { targetX: 0.8, targetY: -0.7, x: 0.6, y: -0.5, vx: 0.4, vy: -0.3 });
+    assert.equal(interactionRestores, 1);
     updates.length = 0;
     await pageCapture('Base:wave', 0.6, 8, 4, 3);
     assert.equal(physicsSteps, 120, 'sequential capture frames must not restart physics');
