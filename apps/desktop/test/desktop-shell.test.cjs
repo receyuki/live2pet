@@ -52,7 +52,7 @@ test('desktop shell pins the HeroUI entrypoint and keeps navigation and IPC narr
   for (const method of ['getVersion', 'inspectSource', 'relinkSource', 'acknowledgeSourceReview', 'getRuntimeSettings', 'configureRuntime', 'clearRuntimeSettings', 'buildProject', 'cancelBuild', 'getBuildArtifact', 'chooseInstallRoot', 'installArtifact', 'getCaptureCacheStatus', 'putCaptureCache', 'getBuildCacheStatus', 'clearBuildCache']) {
     assert.match(preload, new RegExp(`invoke\\('${method}'`));
   }
-  for (const method of ['getRecentProjects', 'openProject', 'saveProject']) assert.match(preload, new RegExp(`invoke\\('${method}'`));
+  for (const method of ['getRecentProjects', 'clearRecentProjects', 'openProject', 'saveProject']) assert.match(preload, new RegExp(`invoke\\('${method}'`));
   for (const method of ['getOutputSettings', 'configureOutputSettings', 'saveBuildArtifact']) assert.match(preload, new RegExp(`invoke\\('${method}'`));
   assert.match(main, /packageOutputService: getPackageOutputService\(\)/);
   assert.match(main, /dialog\.showSaveDialog\(mainWindow/);

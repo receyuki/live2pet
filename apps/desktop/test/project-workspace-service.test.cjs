@@ -65,6 +65,12 @@ test('project workspace opens, saves, and persists opaque recent documents', asy
 
   const restored = createProjectWorkspaceService({ stateFile, showOpenDialog: async () => openResult, showSaveDialog: async () => saveResult });
   assert.equal((await restored.getRecentProjects())[0].documentId, savedAs.documentId);
+
+  assert.deepEqual(await restored.clearRecentProjects(), []);
+  assert.equal(fs.existsSync(originalPath), true);
+  assert.equal(fs.existsSync(`${savedAsPath}.live2pet`), true);
+  const cleared = createProjectWorkspaceService({ stateFile, showOpenDialog: async () => openResult, showSaveDialog: async () => saveResult });
+  assert.deepEqual(await cleared.getRecentProjects(), []);
 });
 
 test('project workspace handles cancellation, unknown ids, missing files, and corrupt bounded state', async (t) => {

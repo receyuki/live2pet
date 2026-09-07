@@ -53,6 +53,7 @@ const BUILD_PROGRESS_FIELDS = Object.freeze([
 const APP_IPC_METHODS = Object.freeze([
   'getVersion',
   'getRecentProjects',
+  'clearRecentProjects',
   'openProject',
   'saveProject',
   'openSourceLibrary',
@@ -654,7 +655,7 @@ function typedError(error) {
 }
 
 function createAppIpcRouter({ projectWorkspaceService = null, projectSourceService = null, sourceInspectionService = null, sourceLibraryService = null, runtimeSettingsService = null, spinePackService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, targetInstallationService = null, packageOutputService = null, onBuildProgress = null, appVersion = '0.1.0' } = {}) {
-  if (projectWorkspaceService !== null && (!isRecord(projectWorkspaceService) || typeof projectWorkspaceService.getRecentProjects !== 'function' || typeof projectWorkspaceService.openProject !== 'function' || typeof projectWorkspaceService.saveProject !== 'function')) fail('INVALID_APP_ROUTER', 'projectWorkspaceService must expose getRecentProjects, openProject, and saveProject functions when provided.');
+  if (projectWorkspaceService !== null && (!isRecord(projectWorkspaceService) || typeof projectWorkspaceService.getRecentProjects !== 'function' || typeof projectWorkspaceService.clearRecentProjects !== 'function' || typeof projectWorkspaceService.openProject !== 'function' || typeof projectWorkspaceService.saveProject !== 'function')) fail('INVALID_APP_ROUTER', 'projectWorkspaceService must expose getRecentProjects, clearRecentProjects, openProject, and saveProject functions when provided.');
   if (projectSourceService !== null && (!isRecord(projectSourceService) || typeof projectSourceService.relink !== 'function' || typeof projectSourceService.acknowledgeReview !== 'function')) fail('INVALID_APP_ROUTER', 'projectSourceService must expose relink and acknowledgeReview functions when provided.');
   if (sourceInspectionService !== null && typeof sourceInspectionService !== 'function') fail('INVALID_APP_ROUTER', 'sourceInspectionService must be a function when provided.');
   if (sourceLibraryService !== null && (!isRecord(sourceLibraryService) || !['openLocal', 'openGitHub', 'inspect', 'getCacheStatus', 'configureCache', 'clearCache'].every((method) => typeof sourceLibraryService[method] === 'function'))) fail('INVALID_APP_ROUTER', 'sourceLibraryService must expose model library and cache functions when provided.');
@@ -688,6 +689,12 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
         if (!projectWorkspaceService) fail('APP_PROJECT_WORKSPACE_UNAVAILABLE', 'The project workspace service is not configured.');
         if (normalized.args.length) fail('INVALID_PROJECT_REQUEST', 'getRecentProjects does not accept arguments.');
         return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: { recentProjects: normalizeRecentProjects(await projectWorkspaceService.getRecentProjects()) } };
+      }
+      if (normalized.method === 'clearRecentProjects') {
+        if (!projectWorkspaceService) fail('APP_PROJECT_WORKSPACE_UNAVAILABLE', 'The project workspace service is not configured.');
+        const input = normalized.args[0];
+        if (normalized.args.length !== 1 || !isRecord(input) || Object.keys(input).some((key) => key !== 'confirmClear') || input.confirmClear !== true) fail('RECENT_PROJECTS_CLEAR_AUTHORIZATION_REQUIRED', 'Clearing recent projects requires explicit confirmation.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: { recentProjects: normalizeRecentProjects(await projectWorkspaceService.clearRecentProjects()) } };
       }
       if (normalized.method === 'openProject') {
         if (!projectWorkspaceService) fail('APP_PROJECT_WORKSPACE_UNAVAILABLE', 'The project workspace service is not configured.');
@@ -1010,6 +1017,7 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
   return Object.freeze({
     getVersion: () => invoke('getVersion'),
     getRecentProjects: () => invoke('getRecentProjects'),
+    clearRecentProjects: () => invoke('clearRecentProjects', { confirmClear: true }),
     openProject: (input = {}) => invoke('openProject', input),
     saveProject: (input) => invoke('saveProject', input),
     openSourceLibrary: (inputPath) => inputPath ? invoke('openSourceLibrary', { inputPath }) : invoke('openSourceLibrary'),

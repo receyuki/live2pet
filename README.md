@@ -71,7 +71,7 @@ The local App is unsigned. macOS may require you to approve it in **System Setti
 5. Use **Visibility** when you need to inspect and hide a background, overlay, or other separable model element.
 6. Enter a package name in **Build**, choose a render preset, and build either target.
 7. Preview the generated result, then choose **Save ZIP**, **Install**, or **Build & Install**.
-8. Save the `.live2pet` project if you want to reopen or revise the mapping later.
+8. Save the `.live2pet` project if you want to reopen or revise the mapping later. You can clear the recent-project list from **Models** without deleting any project files.
 
 Global runtime, output, cache, language, and installation-location preferences live in **Settings**. Model choices and mappings stay in the project.
 

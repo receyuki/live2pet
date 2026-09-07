@@ -53,6 +53,7 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.equal(APP_IPC_METHODS.includes('relinkSource'), true);
   assert.equal(APP_IPC_METHODS.includes('acknowledgeSourceReview'), true);
   assert.equal(APP_IPC_METHODS.includes('getRecentProjects'), true);
+  assert.equal(APP_IPC_METHODS.includes('clearRecentProjects'), true);
   assert.equal(APP_IPC_METHODS.includes('openProject'), true);
   assert.equal(APP_IPC_METHODS.includes('saveProject'), true);
   assert.equal(APP_IPC_METHODS.includes('openSourceLibrary'), true);
@@ -243,11 +244,14 @@ test('routes project workspace operations without exposing project file paths', 
   const router = createAppIpcRouter({
     projectWorkspaceService: {
       getRecentProjects: async () => recent,
+      clearRecentProjects: async () => [],
       openProject: async () => ({ cancelled: false, documentId: 'document_123', fileName: 'cat.live2pet', project, recentProjects: recent, path: '/private/cat.live2pet' }),
       saveProject: async () => ({ cancelled: true, recentProjects: recent, path: '/private/cat.live2pet' }),
     },
   });
   assert.deepEqual((await router({ protocolVersion: 1, method: 'getRecentProjects', args: [] })).result, { recentProjects: [{ documentId: 'document_123', name: 'Cat', fileName: 'cat.live2pet', available: true }] });
+  assert.equal((await router({ protocolVersion: 1, method: 'clearRecentProjects', args: [{}] })).error.code, 'RECENT_PROJECTS_CLEAR_AUTHORIZATION_REQUIRED');
+  assert.deepEqual((await router({ protocolVersion: 1, method: 'clearRecentProjects', args: [{ confirmClear: true }] })).result, { recentProjects: [] });
   const opened = await router({ protocolVersion: 1, method: 'openProject', args: [{}] });
   assert.equal(opened.ok, true);
   assert.equal(Object.hasOwn(opened.result, 'path'), false);
@@ -886,6 +890,7 @@ test('preload exposes only typed methods and the window options keep Electron sa
   assert.equal(api.getFilePath({ name: 'model3.json' }), '/tmp/source/model3.json');
   await api.getVersion();
   await api.getRecentProjects();
+  await api.clearRecentProjects();
   await api.openProject({ documentId: 'document_123' });
   await api.saveProject({ documentId: 'document_123', project: { schemaVersion: 1 } });
   await api.buildProject({ project: { projectId: 'app-fixture' } });
@@ -903,20 +908,21 @@ test('preload exposes only typed methods and the window options keep Electron sa
   assert.equal(calls[0][0], APP_IPC_CHANNEL);
   assert.deepEqual(calls[0][1], { protocolVersion: 1, method: 'getVersion', args: [] });
   assert.deepEqual(calls[1][1], { protocolVersion: 1, method: 'getRecentProjects', args: [] });
-  assert.deepEqual(calls[2][1], { protocolVersion: 1, method: 'openProject', args: [{ documentId: 'document_123' }] });
-  assert.deepEqual(calls[3][1], { protocolVersion: 1, method: 'saveProject', args: [{ documentId: 'document_123', project: { schemaVersion: 1 } }] });
-  assert.deepEqual(calls[4][1], { protocolVersion: 1, method: 'buildProject', args: [{ project: { projectId: 'app-fixture' } }] });
-  assert.deepEqual(calls[5][1], { protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'fixture-artifact', offset: 0 }] });
-  assert.deepEqual(calls[6][1], { protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'fixture-artifact', offset: 1024 }] });
-  assert.deepEqual(calls[7][1], { protocolVersion: 1, method: 'installArtifact', args: [{ artifactId: 'fixture-artifact', target: 'codex-pet', confirmInstall: true }] });
-  assert.deepEqual(calls[8][1], { protocolVersion: 1, method: 'inspectSource', args: [{ inputPath: '/tmp/source' }] });
-  assert.deepEqual(calls[9][1], { protocolVersion: 1, method: 'relinkSource', args: [{ project: { schemaVersion: 1 }, inputPath: '/tmp/replacement' }] });
-  assert.deepEqual(calls[10][1], { protocolVersion: 1, method: 'acknowledgeSourceReview', args: [{ project: { schemaVersion: 1 } }] });
-  assert.deepEqual(calls[11][1], { protocolVersion: 1, method: 'getRuntimeSettings', args: [] });
-  assert.deepEqual(calls[12][1], { protocolVersion: 1, method: 'configureRuntime', args: [{ inputPath: '/tmp/live2d.min.js' }] });
-  assert.deepEqual(calls[13][1], { protocolVersion: 1, method: 'clearRuntimeSettings', args: [] });
-  assert.deepEqual(calls[14][1], { protocolVersion: 1, method: 'chooseInstallRoot', args: [{ target: 'clawd' }] });
-  assert.deepEqual(calls[15][1], { protocolVersion: 1, method: 'cancelBuild', args: [{ buildId: 'build_1234' }] });
+  assert.deepEqual(calls[2][1], { protocolVersion: 1, method: 'clearRecentProjects', args: [{ confirmClear: true }] });
+  assert.deepEqual(calls[3][1], { protocolVersion: 1, method: 'openProject', args: [{ documentId: 'document_123' }] });
+  assert.deepEqual(calls[4][1], { protocolVersion: 1, method: 'saveProject', args: [{ documentId: 'document_123', project: { schemaVersion: 1 } }] });
+  assert.deepEqual(calls[5][1], { protocolVersion: 1, method: 'buildProject', args: [{ project: { projectId: 'app-fixture' } }] });
+  assert.deepEqual(calls[6][1], { protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'fixture-artifact', offset: 0 }] });
+  assert.deepEqual(calls[7][1], { protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: 'fixture-artifact', offset: 1024 }] });
+  assert.deepEqual(calls[8][1], { protocolVersion: 1, method: 'installArtifact', args: [{ artifactId: 'fixture-artifact', target: 'codex-pet', confirmInstall: true }] });
+  assert.deepEqual(calls[9][1], { protocolVersion: 1, method: 'inspectSource', args: [{ inputPath: '/tmp/source' }] });
+  assert.deepEqual(calls[10][1], { protocolVersion: 1, method: 'relinkSource', args: [{ project: { schemaVersion: 1 }, inputPath: '/tmp/replacement' }] });
+  assert.deepEqual(calls[11][1], { protocolVersion: 1, method: 'acknowledgeSourceReview', args: [{ project: { schemaVersion: 1 } }] });
+  assert.deepEqual(calls[12][1], { protocolVersion: 1, method: 'getRuntimeSettings', args: [] });
+  assert.deepEqual(calls[13][1], { protocolVersion: 1, method: 'configureRuntime', args: [{ inputPath: '/tmp/live2d.min.js' }] });
+  assert.deepEqual(calls[14][1], { protocolVersion: 1, method: 'clearRuntimeSettings', args: [] });
+  assert.deepEqual(calls[15][1], { protocolVersion: 1, method: 'chooseInstallRoot', args: [{ target: 'clawd' }] });
+  assert.deepEqual(calls[16][1], { protocolVersion: 1, method: 'cancelBuild', args: [{ buildId: 'build_1234' }] });
   for (const method of ['getSkillStatus', 'installSkill', 'startMapperSession', 'getMapperProject', 'updateMapperProject', 'closeMapperSession', 'startRendererPreview', 'loadRendererSource', 'rendererCommand', 'getRendererPreviewStatus', 'restartRendererPreview', 'closeRendererPreview']) {
     assert.equal(Object.hasOwn(api, method), false);
   }

@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SourceLibrary } from './app-host';
 
@@ -51,5 +51,13 @@ describe('ModelLibrary thumbnails', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
     expect(screen.getByText('暂不支持 Spine 3.8 预览')).toBeTruthy();
     expect(getLibraryThumbnail).not.toHaveBeenCalled();
+  });
+
+  it('groups model and Source Package guidance in the selected preview sidebar', () => {
+    render(<ModelLibrary library={library} locale="en" onUse={async () => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: /one/i }));
+    expect(screen.getByRole('heading', { name: 'Source Package' })).toBeTruthy();
+    expect(screen.getByText('Review model compatibility, included motions, expressions, and textures before mapping.')).toBeTruthy();
+    expect(screen.getByText(/Browse and preview models without changing your current project/)).toBeTruthy();
   });
 });

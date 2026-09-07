@@ -69,6 +69,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, previewV
   const getPreviewVisualElementThumbnail = vi.fn(async (input: { id: string }) => ({ protocolVersion: 1 as const, ok: true, result: await (previewThumbnail?.(input) ?? { id: input.id, dataUrl: `data:image/png;base64,${input.id}` }) }));
   const openProject = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: openCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-document', fileName: 'saved.live2pet', project: openedProject, recentProjects } }));
   const saveProject = vi.fn(async (input: { project: Live2PetProject }) => ({ protocolVersion: 1 as const, ok: true, result: saveCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-saved-document', fileName: `${input.project.name}.live2pet`, project: input.project, recentProjects } }));
+  const clearRecentProjects = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { recentProjects: [] } }));
   let appCommandListener: ((command: 'new' | 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => void) | undefined;
   let buildProgressListener: ((event: { protocolVersion: 1; buildId: string; sequence: number; target: 'clawd'; stage: string; status: string; fraction: number }) => void) | undefined;
   const buildProject = vi.fn(async () => {
@@ -83,6 +84,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, previewV
       relinkSource,
       acknowledgeSourceReview,
       getRecentProjects: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { recentProjects } })),
+      clearRecentProjects,
       openProject,
       saveProject,
       onAppCommand: vi.fn((listener) => { appCommandListener = listener; return () => { appCommandListener = undefined; }; }),
@@ -122,7 +124,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, previewV
       } : {}),
     },
   });
-  return { configureRuntime, getSpinePackStatus, installSpinePack, removeSpinePack, openSourceLibrary, inspectLibrarySource, getSourceLibraryCacheStatus, configureSourceLibraryCache, clearSourceLibraryCache, inspectSource, relinkSource, acknowledgeSourceReview, openPreview, getPreviewVisualElements, getPreviewVisualElementThumbnail, openProject, saveProject, buildProject, emitAppCommand: (command: 'new' | 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => appCommandListener?.(command) };
+  return { configureRuntime, getSpinePackStatus, installSpinePack, removeSpinePack, openSourceLibrary, inspectLibrarySource, getSourceLibraryCacheStatus, configureSourceLibraryCache, clearSourceLibraryCache, inspectSource, relinkSource, acknowledgeSourceReview, openPreview, getPreviewVisualElements, getPreviewVisualElementThumbnail, openProject, saveProject, clearRecentProjects, buildProject, emitAppCommand: (command: 'new' | 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => appCommandListener?.(command) };
 }
 
 function setSystemDarkMode(matches: boolean) {
@@ -710,6 +712,21 @@ describe('Live2Pet desktop shell', () => {
     await user.click(await screen.findByRole('button', { name: /Missing Project/ }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Restore or move the .live2pet file back');
     expect(openProject).not.toHaveBeenCalled();
+  });
+
+  it('clears recent-project history without removing project files', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const recent = [{ documentId: 'opaque-document', name: 'Saved Project', fileName: 'saved.live2pet', available: true }];
+    const { clearRecentProjects } = installDesktopApi({ recentProjects: recent });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: 'Clear' }));
+    await vi.waitFor(() => expect(clearRecentProjects).toHaveBeenCalledOnce());
+    expect(confirm).toHaveBeenCalledWith('Clear the recent-project list? Your .live2pet files will not be deleted.');
+    expect(await screen.findByText('Your recent projects will appear here.')).toBeVisible();
+    expect(screen.queryByText('Saved Project')).not.toBeInTheDocument();
   });
 
   it('imports a PCK through the Desktop inspection service and shows its real inventory', async () => {

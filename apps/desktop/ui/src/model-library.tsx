@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button, ProgressBar } from '@heroui/react';
+import { Button, Chip, ProgressBar } from '@heroui/react';
 import { Image } from 'lucide-react';
 import { hasPreviewApi, getLibraryThumbnail, inspectLibrarySource, openLive2DPreview, layoutLive2DPreview, playLive2DPreview, type SourceLibrary, type SourceLibraryCandidate, type SourceLibrarySelection } from './app-host';
 import { translate, type Locale } from './i18n';
@@ -38,6 +38,10 @@ function ModelPreview({ library, candidate, locale, onUse, onClose }: { library:
   const [error, setError] = useState('');
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
+  const inspection = selection?.inspection;
+  const format = inspection?.model.format === 'spine'
+    ? `Spine ${inspection.model.runtimeLine}`
+    : inspection?.model.cubism ? `Cubism ${inspection.model.cubism}` : candidate.format === 'spine' ? `Spine ${candidate.runtimeLine || ''}`.trim() : candidate.format === 'live2d-pck' ? 'PCK' : 'Live2D';
   useEffect(() => {
     let active = true, opened = false;
     const bounds = () => { const rect = surface.current!.getBoundingClientRect(); return { x: rect.x, y: rect.y, width: Math.max(64, rect.width), height: Math.max(64, rect.height) }; };
@@ -63,13 +67,17 @@ function ModelPreview({ library, candidate, locale, onUse, onClose }: { library:
     return () => { active = false; observer?.disconnect(); window.removeEventListener('resize', update); window.removeEventListener('scroll', update, true); if (hasPreviewApi()) void layoutLive2DPreview({ visible: false }).catch(() => {}); };
   }, [library.libraryId, candidate.id, locale]);
   return <aside className="library-detail" aria-label={candidate.name}>
-    <div className="section-heading-row"><h3>{candidate.name}</h3><Button size="sm" variant="ghost" onPress={onClose}>{translate(locale, 'close')}</Button></div>
+    <header className="library-detail-header"><div><p className="eyebrow">{translate(locale, 'source')}</p><h3>{candidate.name}</h3><small title={candidate.relativePath}>{candidate.relativePath}</small></div><Button size="sm" variant="ghost" onPress={onClose}>{translate(locale, 'close')}</Button></header>
+    <section className="library-package-summary" aria-labelledby="library-package-title">
+      <div><h4 id="library-package-title">{translate(locale, 'sourceTitle')}</h4><Chip size="sm" variant="soft">{format}</Chip></div>
+      <p>{translate(locale, 'sourceBody')}</p>
+      {inspection && <small>{inspection.model.textures.length} {translate(locale, 'sourceTextures')} · {inspection.motions.length} {translate(locale, 'sourceMotions')} · {inspection.expressions.length} {translate(locale, 'sourceExpressions')}</small>}
+    </section>
     <div className="library-live-surface" ref={surface} />
     {!ready && !error && <ProgressBar aria-label={translate(locale, 'loading')} isIndeterminate />}
     {error && <p className="inline-error" role="alert">{error}</p>}
     {ready && <label>{translate(locale, 'sourceMotions')}<select aria-label={translate(locale, 'sourceMotions')} value={motion} onChange={event => { const id = event.target.value; setMotion(id); void playLive2DPreview({ motionId: id, loop: true }).catch(cause => setError(String(cause))); }}>{motions.map(item => <option key={item.id} value={item.id}>{item.name || item.id}</option>)}</select></label>}
-    <Button variant="primary" isDisabled={!selection || busy} onPress={() => { setBusy(true); void onUse().finally(() => setBusy(false)); }}>{translate(locale, 'libraryUseModel')}</Button>
-    <p>{translate(locale, 'libraryPreviewOnly')}</p>
+    <footer className="library-detail-actions"><Button variant="primary" isDisabled={!selection || busy} onPress={() => { setBusy(true); void onUse().finally(() => setBusy(false)); }}>{translate(locale, 'libraryUseModel')}</Button><small>{translate(locale, 'libraryPreviewOnly')}</small></footer>
   </aside>;
 }
 

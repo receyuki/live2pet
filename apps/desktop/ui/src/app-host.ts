@@ -191,6 +191,7 @@ type Live2PetApi = {
   relinkSource(input: { project: Live2PetProject; inputPath: string }): Promise<AppResponse<SourceRelinkResult>>;
   acknowledgeSourceReview(input: { project: Live2PetProject }): Promise<AppResponse<{ project: Live2PetProject }>>;
   getRecentProjects(): Promise<AppResponse<{ recentProjects: RecentProject[] }>>;
+  clearRecentProjects(): Promise<AppResponse<{ recentProjects: RecentProject[] }>>;
   openProject(input?: { documentId?: string; inputPath?: string }): Promise<AppResponse<ProjectFileResult>>;
   saveProject(input: { documentId?: string; project: Live2PetProject; saveAs?: boolean }): Promise<AppResponse<ProjectFileResult>>;
   onAppCommand?(listener: (command: AppCommand) => void): () => void;
@@ -402,6 +403,12 @@ export async function getRecentProjects(): Promise<RecentProject[]> {
   const api = desktopApi();
   if (!api) return [];
   return (await unwrap(api.getRecentProjects())).recentProjects;
+}
+
+export async function clearRecentProjects(): Promise<RecentProject[]> {
+  const api = desktopApi();
+  if (!api) return [];
+  return (await unwrap(api.clearRecentProjects())).recentProjects;
 }
 
 export async function openProject(documentId?: string, inputPath?: string): Promise<ProjectFileResult> {

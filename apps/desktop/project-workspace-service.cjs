@@ -122,6 +122,11 @@ function createProjectWorkspaceService({ stateFile, showOpenDialog, showSaveDial
 
   return Object.freeze({
     getRecentProjects: async () => publicRecent(),
+    clearRecentProjects: async () => {
+      recent = [];
+      persist();
+      return publicRecent();
+    },
     openProject: async ({ documentId, inputPath } = {}) => {
       let filePath;
       let existingId = null;
