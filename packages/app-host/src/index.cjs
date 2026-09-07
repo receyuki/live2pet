@@ -233,7 +233,8 @@ function summarizeLibrarySource(result) {
   if (!isRecord(result) || !isRecord(result.candidate)) fail('INVALID_SOURCE_LIBRARY_RESULT', 'Selected model did not return a candidate and inspection.');
   const candidate = sanitizeInspectionValue(result.candidate);
   if (typeof candidate.id !== 'string' || typeof candidate.name !== 'string' || typeof candidate.relativePath !== 'string' || !['live2d', 'live2d-pck', 'spine'].includes(candidate.format)) fail('INVALID_SOURCE_LIBRARY_RESULT', 'Selected model candidate is invalid.');
-  return { candidate, inspection: summarizeSourceInspection(result.inspection) };
+  if (typeof result.sourcePath !== 'string' || !result.sourcePath.trim() || result.sourcePath.includes('\0')) fail('INVALID_SOURCE_LIBRARY_RESULT', 'Selected model did not return a local source path.');
+  return { sourcePath: result.sourcePath, candidate, inspection: summarizeSourceInspection(result.inspection) };
 }
 
 function summarizeSourceLibraryCache(result, clearing = false) {

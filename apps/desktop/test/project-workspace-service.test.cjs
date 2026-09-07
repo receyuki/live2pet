@@ -131,7 +131,7 @@ test('project Source service relinks inspected manifests, retains host paths pri
   });
 
   const result = await service.relink({ project, inputPath: '/private/new-source.pck' });
-  assert.deepEqual(calls, [{ inputPath: '/private/new-source.pck' }]);
+  assert.deepEqual(calls, [{ inputPath: '/private/new-source.pck', modelConfig: 'old.model3.json' }]);
   assert.equal(result.status, 'source-changed');
   assert.equal(result.reviewRequired, true);
   assert.deepEqual(result.affectedRecipeIds, ['smile-recipe']);

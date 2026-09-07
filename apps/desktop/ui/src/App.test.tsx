@@ -42,7 +42,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, previewV
   const removeSpinePack = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: spinePack }));
   const sourceLibrary = { schemaVersion: 1 as const, libraryId: 'library-1', name: 'Models', kind: 'local' as const, maxDepth: 2, candidates: [{ id: 'source-1', name: 'Spine Hero', relativePath: 'heroes/hero.json', format: 'spine' as const, version: null, runtimeLine: null, binary: false }] };
   const openSourceLibrary = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { cancelled: false as const, library: sourceLibrary } }));
-  const inspectLibrarySource = vi.fn(async ({ sourceId }: { sourceId: string }) => ({ protocolVersion: 1 as const, ok: true, result: { candidate: sourceLibrary.candidates.find((candidate) => candidate.id === sourceId)!, inspection: (await inspectSource()).result } }));
+  const inspectLibrarySource = vi.fn(async ({ sourceId }: { sourceId: string }) => ({ protocolVersion: 1 as const, ok: true, result: { sourcePath: '/Users/test/Models/hero', candidate: sourceLibrary.candidates.find((candidate) => candidate.id === sourceId)!, inspection: (await inspectSource()).result } }));
   const getSourceLibraryCacheStatus = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, maxBytes: 1024 ** 3, byteLength: 64 * 1024 ** 2, entryCount: 2 } }));
   const configureSourceLibraryCache = vi.fn(async (maxBytes: number) => ({ protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, maxBytes, byteLength: 64 * 1024 ** 2, entryCount: 2 } }));
   const clearSourceLibraryCache = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, maxBytes: 1024 ** 3, byteLength: 0, entryCount: 0, removedEntries: 2, removedBytes: 64 * 1024 ** 2 } }));
@@ -201,6 +201,9 @@ describe('Live2Pet desktop shell', () => {
     await user.click(screen.getByRole('button', { name: /Spine Hero/ }));
     expect(api.inspectLibrarySource).toHaveBeenCalledWith({ libraryId: 'library-1', sourceId: 'source-1', projectId: 'spine-hero' });
     expect(await screen.findByRole('heading', { name: 'Source Package' })).toBeVisible();
+    api.emitAppCommand('save');
+    await vi.waitFor(() => expect(api.saveProject).toHaveBeenCalled());
+    expect(api.saveProject.mock.calls[0][0].project.source.path).toBe('/Users/test/Models/hero');
   });
 
   it('lets the user change and clear the bounded GitHub model cache', async () => {

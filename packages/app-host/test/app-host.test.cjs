@@ -176,7 +176,7 @@ test('Source Library IPC browses metadata, inspects opaque selections, and confi
   const router = createAppIpcRouter({ sourceLibraryService: {
     openLocal: async () => ({ cancelled: false, library: { ...library, kind: 'local' } }),
     openGitHub: async input => { calls.push(input); return { cancelled: false, library }; },
-    inspect: async input => { calls.push(input); return { candidate, inspection }; },
+    inspect: async input => { calls.push(input); return { sourcePath: '/private/models/hero', candidate, inspection }; },
     getCacheStatus: async () => cache,
     configureCache: async input => { calls.push(input); return { ...cache, maxBytes: input.maxBytes }; },
     clearCache: async input => { calls.push(input); return { ...cache, removedEntries: 0, removedBytes: 0 }; },

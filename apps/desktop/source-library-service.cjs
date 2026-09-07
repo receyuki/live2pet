@@ -71,10 +71,16 @@ function githubCacheEntries(root) {
 
 function pruneGithubCache(root, requiredBytes, protectedPath = null, maxBytes = DEFAULT_GITHUB_CACHE_BYTES) {
   const snapshot = githubCacheEntries(root);
+  const protectedPaths = (Array.isArray(protectedPath) ? protectedPath : [protectedPath]).filter(Boolean);
+  const isProtected = (entry) => protectedPaths.some((source) => {
+    const relative = path.relative(entry.absolute, source);
+    return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
+  });
+  if (snapshot.entries.filter(isProtected).reduce((total, entry) => total + entry.bytes, requiredBytes) > maxBytes) fail('GITHUB_CACHE_FULL', 'Loaded models do not fit within this cache limit. Close and reopen the App to release them, or increase the limit.');
   let total = snapshot.byteLength;
   for (const entry of snapshot.entries.sort((left, right) => left.accessedAt - right.accessedAt)) {
     if (total + requiredBytes <= maxBytes) break;
-    if (protectedPath && path.resolve(entry.absolute) === path.resolve(protectedPath)) continue;
+    if (isProtected(entry)) continue;
     fs.rmSync(entry.absolute, { recursive: true, force: true });
     total -= entry.bytes;
   }
@@ -182,12 +188,18 @@ async function fetchJson(fetchImpl, url) {
   return response.json();
 }
 
-function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSource, githubCacheRoot, cacheSettingsFile = path.join(githubCacheRoot || '', 'cache-settings.json'), fetchImpl = globalThis.fetch, maxDepth = 2 } = {}) {
+function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSource, githubCacheRoot, cacheSettingsFile = path.join(githubCacheRoot || '', 'cache-settings.json'), fetchImpl = globalThis.fetch, maxDepth = 2, getProtectedSourcePaths = () => [] } = {}) {
   if (typeof showOpenDialog !== 'function' || typeof discoverSources !== 'function' || typeof inspectSource !== 'function') throw new TypeError('Source library service requires dialog, discovery, and inspection dependencies.');
   if (typeof githubCacheRoot !== 'string' || !path.isAbsolute(githubCacheRoot)) throw new TypeError('Source library GitHub cache root must be absolute.');
   if (typeof cacheSettingsFile !== 'string' || !path.isAbsolute(cacheSettingsFile)) throw new TypeError('Source library cache settings path must be absolute.');
   const libraries = new Map();
   let maxCacheBytes = loadCacheLimit(cacheSettingsFile);
+  let cacheOperation = Promise.resolve();
+  const withCacheLock = (operation) => {
+    const result = cacheOperation.then(operation);
+    cacheOperation = result.catch(() => {});
+    return result;
+  };
   const cacheStatus = () => {
     const snapshot = githubCacheEntries(githubCacheRoot);
     return { schemaVersion: CACHE_SETTINGS_SCHEMA_VERSION, maxBytes: maxCacheBytes, byteLength: snapshot.byteLength, entryCount: snapshot.entries.length };
@@ -252,7 +264,7 @@ function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSo
     const modelLimit = Math.min(maxCacheBytes, MAX_REMOTE_MODEL_BYTES);
     if (declaredBytes > modelLimit) fail('REMOTE_SOURCE_TOO_LARGE', 'The selected model exceeds the configured cache limit or the 4 GiB per-model safety limit.');
     fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 });
-    pruneGithubCache(githubCacheRoot, declaredBytes, destination, maxCacheBytes);
+    pruneGithubCache(githubCacheRoot, declaredBytes, [...getProtectedSourcePaths(), destination], maxCacheBytes);
     if (fs.existsSync(destination)) fs.rmSync(destination, { recursive: true, force: true });
     const staging = `${destination}.${process.pid}.${crypto.randomUUID()}.tmp`;
     fs.mkdirSync(staging, { mode: 0o700 });
@@ -272,6 +284,7 @@ function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSo
         fs.writeFileSync(target, bytes, { mode: 0o600, flag: 'wx' });
       }
       fs.writeFileSync(path.join(staging, '.live2pet-source-ready'), `${library.owner}/${library.repo}@${library.ref}\n`, { mode: 0o600, flag: 'wx' });
+      pruneGithubCache(githubCacheRoot, directoryBytes(staging), [...getProtectedSourcePaths(), destination], maxCacheBytes);
       fs.renameSync(staging, destination);
     } catch (error) {
       try { fs.rmSync(staging, { recursive: true, force: true }); } catch {}
@@ -291,28 +304,34 @@ function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSo
       const record = { id: crypto.randomUUID(), kind: 'github', name: `${remote.owner}/${remote.repo}${remote.folder ? `/${remote.folder}` : ''}`, candidates, ...remote };
       return { cancelled: false, library: register(record) };
     },
-    inspect: async ({ libraryId, sourceId, projectId } = {}) => {
+    inspect: ({ libraryId, sourceId, projectId } = {}) => withCacheLock(async () => {
       const library = libraries.get(libraryId);
       if (!library) fail('SOURCE_LIBRARY_EXPIRED', 'Reopen the model library before selecting a model.');
       const candidate = library.candidates.find((entry) => entry.id === sourceId);
       if (!candidate) fail('SOURCE_LIBRARY_ITEM_NOT_FOUND', 'The selected model is no longer present in this library.');
       const inputPath = library.kind === 'github' ? await materializeRemote(library, candidate) : candidate.inputPath;
       const manifest = await inspectSource({ inputPath, projectId, ...(candidate.modelConfig ? { modelConfig: candidate.modelConfig } : {}) });
-      return { candidate: publicCandidate({ ...candidate, version: manifest.model?.spineVersion || candidate.version, runtimeLine: manifest.model?.runtimeLine || candidate.runtimeLine }), inspection: manifest };
-    },
+      return { sourcePath: inputPath, candidate: publicCandidate({ ...candidate, version: manifest.model?.spineVersion || candidate.version, runtimeLine: manifest.model?.runtimeLine || candidate.runtimeLine }), inspection: manifest };
+    }),
     getCacheStatus: async () => cacheStatus(),
-    configureCache: async ({ maxBytes } = {}) => {
-      maxCacheBytes = normalizeCacheLimit(maxBytes);
-      saveCacheLimit(cacheSettingsFile, maxCacheBytes);
-      pruneGithubCache(githubCacheRoot, 0, null, maxCacheBytes);
+    configureCache: ({ maxBytes } = {}) => withCacheLock(async () => {
+      const nextLimit = normalizeCacheLimit(maxBytes);
+      pruneGithubCache(githubCacheRoot, 0, getProtectedSourcePaths(), nextLimit);
+      saveCacheLimit(cacheSettingsFile, nextLimit);
+      maxCacheBytes = nextLimit;
       return cacheStatus();
-    },
-    clearCache: async ({ confirmClear } = {}) => {
+    }),
+    clearCache: ({ confirmClear } = {}) => withCacheLock(async () => {
       if (confirmClear !== true) fail('CACHE_CLEAR_AUTHORIZATION_REQUIRED', 'Clearing downloaded GitHub models requires explicit confirmation.');
       const before = cacheStatus();
-      fs.rmSync(githubCacheRoot, { recursive: true, force: true });
-      return { ...cacheStatus(), removedEntries: before.entryCount, removedBytes: before.byteLength };
-    },
+      const protectedPaths = getProtectedSourcePaths();
+      for (const entry of githubCacheEntries(githubCacheRoot).entries) {
+        const protectedEntry = protectedPaths.some((source) => source === entry.absolute || source.startsWith(`${entry.absolute}${path.sep}`));
+        if (!protectedEntry) fs.rmSync(entry.absolute, { recursive: true, force: true });
+      }
+      const after = cacheStatus();
+      return { ...after, removedEntries: before.entryCount - after.entryCount, removedBytes: before.byteLength - after.byteLength };
+    }),
   });
 }
 

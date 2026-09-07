@@ -1137,21 +1137,21 @@ export function App() {
     setImportError("");
     try {
       const projectId = projectIdFromSourceName(candidate.name);
-      const { inspection } = await inspectLibrarySource(library.libraryId, candidate.id, projectId);
+      const { inspection, sourcePath } = await inspectLibrarySource(library.libraryId, candidate.id, projectId);
       const document: Live2PetProject = {
         schemaVersion: 2,
         visualSettings: { hiddenElementIds: [] },
         projectId,
         appVersion,
         name: inspection.source.name,
-        source: { kind: inspection.source.kind, name: inspection.source.name, fingerprint: inspection.source.fingerprint, modelConfig: inspection.source.modelConfig },
+        source: { kind: inspection.source.kind, name: inspection.source.name, path: sourcePath, fingerprint: inspection.source.fingerprint, modelConfig: inspection.source.modelConfig },
         recipes: [],
         targets: {
           clawd: { profile: "clawd", mappings: {}, reactions: {}, options: {} },
           "codex-pet": { profile: "codex-pet", mappings: {}, reactions: {}, options: {} },
         },
       };
-      dispatch({ type: "OPEN_PROJECT", project: { id: projectId, name: inspection.source.name, document, dirty: true, inspection, selectedMotionId: inspection.motions[0]?.id ?? null, selectedExpressionId: null } });
+      dispatch({ type: "OPEN_PROJECT", project: { id: projectId, name: inspection.source.name, sourcePath, document, dirty: true, inspection, selectedMotionId: inspection.motions[0]?.id ?? null, selectedExpressionId: null } });
     } catch (cause) {
       setImportError(cause instanceof Error ? cause.message : t("error"));
     } finally {

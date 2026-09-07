@@ -188,7 +188,7 @@ function createProjectSourceService({ inspectSource, sourceRegistry, maxSources 
       const previousManifest = previousRecord?.sourceFingerprint === current.source.fingerprint
         ? previousRecord.manifest
         : undefined;
-      const inspection = await inspectSource({ inputPath });
+      const inspection = await inspectSource({ inputPath, ...(current.source.modelConfig ? { modelConfig: current.source.modelConfig } : {}) });
       const relinked = relinkProjectSource(current, {
         kind: inspection.source.kind,
         name: inspection.source.name,

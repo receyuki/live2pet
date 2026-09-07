@@ -35,7 +35,7 @@ export type SourceLibraryCandidate = {
 };
 export type SourceLibrary = { schemaVersion: 1; libraryId: string; name: string; kind: 'local' | 'github'; maxDepth: number; candidates: SourceLibraryCandidate[] };
 export type SourceLibraryOperation = { cancelled: true } | { cancelled: false; library: SourceLibrary };
-export type SourceLibrarySelection = { candidate: SourceLibraryCandidate; inspection: SourceInspection };
+export type SourceLibrarySelection = { sourcePath: string; candidate: SourceLibraryCandidate; inspection: SourceInspection };
 export type SourceLibraryCacheStatus = { schemaVersion: 1; maxBytes: number; byteLength: number; entryCount: number; removedEntries?: number; removedBytes?: number };
 
 export type SourceMotion = {

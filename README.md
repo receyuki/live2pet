@@ -98,6 +98,10 @@ Live2Pet recognizes Spine export versions before installing a renderer. For Spin
 
 ### Model libraries and GitHub cache
 
+Projects created from a model library retain the selected local source location and model configuration for reopening. GitHub model locations are cache entries, not permanent project assets: if an entry is cleared or evicted, select the model again and relink its source. Saving a `.live2pet` project does not embed the model files.
+
+Cache cleanup preserves sources still registered in the current App session, including loaded PCK files. If these prevent lowering the limit, restart the App to release them or choose a higher limit. Downloads and cleanup run sequentially, and downloaded size is checked again before committing a cache entry.
+
 Local Electron integration checks cover Spine 4.1 binary and 4.3 JSON rendering, Slot hiding, and both target exports. Spine 4.0/4.2 and the packaged-App workflow still need real-model acceptance; version detection alone is not a compatibility guarantee.
 
 **Browse model folder** discovers Live2D and Spine Source Packages up to two folder levels below a selected local folder. A public GitHub repository or `/tree/<branch>/<folder>` URL is browsed from metadata without cloning; Live2Pet downloads only the model card you select. Downloaded models use a 1 GiB cache by default. Change the limit (256 MiB–20 GiB), inspect its current usage, or clear it in **Settings → Storage**. Least-recently-used models are removed automatically when the configured limit is reached.

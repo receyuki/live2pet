@@ -33,6 +33,7 @@ test('opens a local folder as a two-level model library without exposing its pat
   assert.equal(JSON.stringify(opened.library).includes(root), false);
   const selected = await service.inspect({ libraryId: opened.library.libraryId, sourceId: 'source-1' });
   assert.equal(selected.inspection.model.modelConfig, 'hero.model3.json');
+  assert.equal(selected.sourcePath, root);
 });
 
 test('browses GitHub tree metadata then downloads only the selected model folder', async () => {
@@ -64,7 +65,8 @@ test('browses GitHub tree metadata then downloads only the selected model folder
   });
   const opened = await service.openGitHub({ url: 'https://github.com/example/models/tree/main/live2d' });
   assert.deepEqual(opened.library.candidates.map((item) => item.relativePath), ['hero/hero.model3.json', 'other/other.model3.json']);
-  await service.inspect({ libraryId: opened.library.libraryId, sourceId: opened.library.candidates[0].id, projectId: 'hero' });
+  const selection = { libraryId: opened.library.libraryId, sourceId: opened.library.candidates[0].id, projectId: 'hero' };
+  await Promise.all([service.inspect(selection), service.inspect(selection)]);
   assert.equal(requests.some((url) => url.includes('/other/')), false);
   assert.equal(requests.filter((url) => url.includes('raw.githubusercontent.com')).length, 3);
   assert.equal(inspected[0].modelConfig, 'hero.model3.json');
@@ -111,4 +113,33 @@ test('evicts the least recently used GitHub model cache before exceeding the tot
   pruneGithubCache(root, 300 * 1024 * 1024, null, 1024 * 1024 * 1024);
   assert.equal(fs.existsSync(older), false);
   assert.equal(fs.existsSync(newer), true);
+});
+
+test('protects loaded model files and preserves cache settings when clearing', async () => {
+  const root = temporaryDirectory();
+  const active = path.join(root, 'repo', 'active');
+  const unused = path.join(root, 'repo', 'unused');
+  for (const directory of [active, unused]) {
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(path.join(directory, 'model.pck'), 'model');
+  }
+  const service = createSourceLibraryService({
+    githubCacheRoot: root,
+    getProtectedSourcePaths: () => [path.join(active, 'model.pck')],
+    showOpenDialog: async () => ({ canceled: true }),
+    discoverSources: () => ({}),
+    inspectSource: async () => ({}),
+  });
+  await service.configureCache({ maxBytes: 512 * 1024 * 1024 });
+  const result = await service.clearCache({ confirmClear: true });
+  assert.equal(result.removedEntries, 1);
+  assert.equal(result.entryCount, 1);
+  assert.ok(fs.existsSync(path.join(active, 'model.pck')));
+  assert.equal(fs.existsSync(unused), false);
+  assert.ok(fs.existsSync(path.join(root, 'cache-settings.json')));
+  assert.throws(() => pruneGithubCache(root, 10, [path.join(active, 'model.pck')], 12), { code: 'GITHUB_CACHE_FULL' });
+  assert.ok(fs.existsSync(active));
+  fs.truncateSync(path.join(active, 'model.pck'), 300 * 1024 * 1024);
+  await assert.rejects(service.configureCache({ maxBytes: 256 * 1024 * 1024 }), { code: 'GITHUB_CACHE_FULL' });
+  assert.equal((await service.getCacheStatus()).maxBytes, 512 * 1024 * 1024);
 });
