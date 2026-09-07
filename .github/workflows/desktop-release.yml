@@ -63,7 +63,7 @@ jobs:
         run: pnpm --filter @live2pet/desktop smoke:mac
       - name: Preserve App bundle metadata
         run: tar -czf "Live2Pet-macOS-${{ matrix.arch }}.tar.gz" -C apps/desktop/out "Live2Pet-darwin-${{ matrix.arch }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: macos-${{ matrix.arch }}-slice
           path: Live2Pet-macOS-${{ matrix.arch }}.tar.gz
@@ -84,7 +84,7 @@ jobs:
         run: corepack enable && corepack prepare pnpm@11.19.0 --activate
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: macos-*-slice
           path: slices
@@ -100,7 +100,7 @@ jobs:
           case "$architectures" in *x86_64*arm64*|*arm64*x86_64*) ;; *) echo "Unexpected architectures: $architectures"; exit 1;; esac
       - name: Create downloadable ZIP
         run: ditto -c -k --sequesterRsrc --keepParent apps/desktop/out/Live2Pet-darwin-universal/Live2Pet.app Live2Pet-macOS-universal.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: live2pet-macos-universal
           path: Live2Pet-macOS-universal.zip
@@ -127,7 +127,7 @@ jobs:
       - name: Create downloadable ZIP
         shell: pwsh
         run: Compress-Archive -Path apps/desktop/out/Live2Pet-win32-x64 -DestinationPath Live2Pet-Windows-x64.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: live2pet-windows-x64
           path: Live2Pet-Windows-x64.zip
@@ -142,7 +142,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: live2pet-*
           path: release-assets

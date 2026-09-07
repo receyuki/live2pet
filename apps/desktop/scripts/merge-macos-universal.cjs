@@ -41,8 +41,6 @@ async function mergeMacUniversal(root = outputRoot) {
   await makeUniversalApp({
     ...paths,
     force: true,
-    mergeASARs: true,
-    singleArchFiles: 'node_modules/@img/**',
   });
   execFileSync('/usr/bin/codesign', ['--deep', '--force', '--sign', '-', paths.outAppPath], { stdio: 'inherit' });
   execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', paths.outAppPath], { stdio: 'inherit' });
