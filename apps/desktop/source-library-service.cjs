@@ -24,6 +24,18 @@ class SourceLibraryError extends Error {
 function fail(code, message, details = {}) { throw new SourceLibraryError(code, message, details); }
 function digest(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
 function isRecord(value) { return Boolean(value && typeof value === 'object' && !Array.isArray(value)); }
+function createTaskPool(limit) {
+  let active = 0;
+  const queue = [];
+  const drain = () => {
+    while (active < limit && queue.length) {
+      const entry = queue.shift();
+      active += 1;
+      Promise.resolve().then(entry.operation).then(entry.resolve, entry.reject).finally(() => { active -= 1; drain(); });
+    }
+  };
+  return operation => new Promise((resolve, reject) => { queue.push({ operation, resolve, reject }); drain(); });
+}
 function safeSegment(value, label) {
   if (typeof value !== 'string' || !/^[A-Za-z0-9._-]+$/.test(value) || value === '.' || value === '..') fail('INVALID_GITHUB_URL', `GitHub ${label} is invalid.`);
   return value;
@@ -189,12 +201,13 @@ async function fetchJson(fetchImpl, url) {
   return response.json();
 }
 
-function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSource, githubCacheRoot, cacheSettingsFile = path.join(githubCacheRoot || '', 'cache-settings.json'), fetchImpl = globalThis.fetch, maxDepth = 2, getProtectedSourcePaths = () => [], renderThumbnail, thumbnailTimeoutMs = DEFAULT_THUMBNAIL_TIMEOUT_MS } = {}) {
+function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSource, githubCacheRoot, cacheSettingsFile = path.join(githubCacheRoot || '', 'cache-settings.json'), fetchImpl = globalThis.fetch, maxDepth = 2, getProtectedSourcePaths = () => [], renderThumbnail, thumbnailTimeoutMs = DEFAULT_THUMBNAIL_TIMEOUT_MS, thumbnailConcurrency = 2 } = {}) {
   if (typeof showOpenDialog !== 'function' || typeof discoverSources !== 'function' || typeof inspectSource !== 'function') throw new TypeError('Source library service requires dialog, discovery, and inspection dependencies.');
   if (typeof githubCacheRoot !== 'string' || !path.isAbsolute(githubCacheRoot)) throw new TypeError('Source library GitHub cache root must be absolute.');
   if (typeof cacheSettingsFile !== 'string' || !path.isAbsolute(cacheSettingsFile)) throw new TypeError('Source library cache settings path must be absolute.');
   const libraries = new Map();
   const thumbnails = new Map();
+  const thumbnailOperations = new Map();
   let thumbnailBytes = 0;
   let maxCacheBytes = loadCacheLimit(cacheSettingsFile);
   let cacheOperation = Promise.resolve();
@@ -211,6 +224,7 @@ function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSo
     const timer = setTimeout(() => reject(new SourceLibraryError('THUMBNAIL_TIMEOUT', 'Model thumbnail rendering timed out.')), thumbnailTimeoutMs);
     Promise.resolve().then(() => renderThumbnail(candidate)).then(resolve, reject).finally(() => clearTimeout(timer));
   });
+  const runThumbnail = createTaskPool(thumbnailConcurrency);
   const register = (record) => {
     libraries.set(record.id, record);
     while (libraries.size > MAX_LIBRARIES) libraries.delete(libraries.keys().next().value);
@@ -300,30 +314,45 @@ function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSo
     return candidate.format === 'live2d-pck' ? path.join(destination, path.posix.basename(candidate.relativePath)) : destination;
   };
   return Object.freeze({
-    thumbnail: ({ libraryId, sourceId } = {}) => withCacheLock(async () => {
+    thumbnail: async ({ libraryId, sourceId } = {}) => {
       const library = libraries.get(libraryId);
       const candidate = library?.candidates.find((entry) => entry.id === sourceId);
       if (!candidate || library.kind !== 'local') return { dataUrl: null };
       const key = `${libraryId}:${sourceId}`;
       if (thumbnails.has(key)) return thumbnails.get(key);
       if (!renderThumbnail) return { dataUrl: null };
-      const result = await renderThumbnailWithTimeout(candidate);
-      if (result.dataUrl) {
-        const size = Buffer.byteLength(result.dataUrl);
-        if (size > 1024 * 1024) return { dataUrl: null };
-        while (thumbnailBytes + size > 16 * 1024 * 1024 && thumbnails.size) {
-          const oldest = thumbnails.keys().next().value;
-          thumbnailBytes -= Buffer.byteLength(thumbnails.get(oldest).dataUrl);
-          thumbnails.delete(oldest);
-        }
-        thumbnails.set(key, result); thumbnailBytes += size;
+      if (!thumbnailOperations.has(key)) {
+        const operation = runThumbnail(async () => {
+          if (thumbnails.has(key)) return thumbnails.get(key);
+          const result = await renderThumbnailWithTimeout(candidate);
+          if (result.dataUrl) {
+            const size = Buffer.byteLength(result.dataUrl);
+            if (size > 1024 * 1024) return { dataUrl: null };
+            while (thumbnailBytes + size > 16 * 1024 * 1024 && thumbnails.size) {
+              const oldest = thumbnails.keys().next().value;
+              thumbnailBytes -= Buffer.byteLength(thumbnails.get(oldest).dataUrl);
+              thumbnails.delete(oldest);
+            }
+            thumbnails.set(key, result); thumbnailBytes += size;
+          }
+          return result;
+        });
+        thumbnailOperations.set(key, operation);
+        operation.finally(() => { if (thumbnailOperations.get(key) === operation) thumbnailOperations.delete(key); }).catch(() => {});
       }
-      return result;
-    }),
-    openLocal: async () => {
-      const selected = await showOpenDialog({ title: 'Choose model library folder', properties: ['openDirectory'] });
-      if (selected?.canceled || !selected?.filePaths?.[0]) return { cancelled: true };
-      return { cancelled: false, library: register(localRecord(selected.filePaths[0])) };
+      return thumbnailOperations.get(key);
+    },
+    openLocal: async ({ inputPath } = {}) => {
+      let root = inputPath;
+      if (root === undefined) {
+        const selected = await showOpenDialog({ title: 'Choose model library folder', properties: ['openDirectory'] });
+        if (selected?.canceled || !selected?.filePaths?.[0]) return { cancelled: true };
+        root = selected.filePaths[0];
+      }
+      let isDirectory = false;
+      try { isDirectory = typeof root === 'string' && path.isAbsolute(root) && fs.statSync(root).isDirectory(); } catch {}
+      if (!isDirectory) fail('INVALID_LOCAL_LIBRARY', 'Choose a local model library folder.');
+      return { cancelled: false, library: register(localRecord(root)) };
     },
     openGitHub: async ({ url } = {}) => {
       const remote = await githubTree(url);

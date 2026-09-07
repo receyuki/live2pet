@@ -10,6 +10,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 app.whenReady().then(async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-library-ui-'));
+  const thumbnailLimit = Math.max(1, Math.min(64, Number(process.env.LIVE2PET_LIBRARY_LIMIT) || 4));
   const window = new BrowserWindow({ show: false, width: 1200, height: 1000, webPreferences: { preload: path.resolve(__dirname, '../preload.cjs'), partition: 'library-ui-check', sandbox: true, contextIsolation: true } });
   let previewSource;
   const previewOptions = {
@@ -26,7 +27,7 @@ app.whenReady().then(async () => {
   const library = createSourceLibraryService({
     githubCacheRoot: path.join(root, 'cache'),
     showOpenDialog: async () => ({ filePaths: [process.env.LIVE2PET_LIBRARY_ROOT] }),
-    discoverSources: input => { const result = discoverSourcePackages(input); result.candidates = result.candidates.filter(item => item.format === 'live2d').slice(0, 4); return result; },
+    discoverSources: input => { const result = discoverSourcePackages(input); result.candidates = result.candidates.filter(item => item.format === 'live2d').slice(0, thumbnailLimit); return result; },
     inspectSource: ({ inputPath, modelConfig }) => { const manifest = inspectSourcePackage(inputPath, { modelConfig }); previewSource = { inputPath, manifest, sourceFingerprint: manifest.source.fingerprint }; return manifest; },
     renderThumbnail: createLibraryThumbnailRenderer({
       ownerWindow: window,
@@ -53,7 +54,7 @@ app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`localStorage.setItem('live2pet.desktop.setup-completed','true');localStorage.setItem('live2pet.desktop.locale','en')`);
     await window.reload();
     await window.webContents.executeJavaScript(`new Promise((resolve,reject)=>{const end=Date.now()+10000;const check=()=>{const button=[...document.querySelectorAll('button')].find(item=>item.textContent.includes('Browse model folder'));if(button){button.click();resolve(true)}else if(Date.now()>end)reject(new Error('Missing library action'));else setTimeout(check,50)};check()})`);
-    await window.webContents.executeJavaScript(`new Promise((resolve,reject)=>{const end=Date.now()+60000;const check=()=>{if(document.querySelectorAll('.model-library-cover img').length===4)resolve(true);else if(Date.now()>end)reject(new Error('Four model thumbnails did not load'));else setTimeout(check,100)};check()})`);
+    await window.webContents.executeJavaScript(`new Promise((resolve,reject)=>{const end=Date.now()+120000;const check=()=>{if(document.querySelectorAll('.model-library-cover img').length===${thumbnailLimit})resolve(true);else if(Date.now()>end)reject(new Error('${thumbnailLimit} model thumbnails did not load'));else setTimeout(check,100)};check()})`);
     fs.writeFileSync(process.env.LIVE2PET_LIBRARY_SCREENSHOT, (await window.webContents.capturePage()).toPNG());
     window.show();
     await window.webContents.executeJavaScript(`document.querySelector('.model-library-card').click()`);

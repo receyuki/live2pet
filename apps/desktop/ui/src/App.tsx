@@ -103,7 +103,7 @@ import {
 import { Locale, MessageKey, translate, translateBehavior } from "./i18n";
 import runtimeHelpLinks from "../../runtime-help-links.json";
 import { isSingleSourceSelection, projectIdFromSourceName, sourcePathFromSelection } from "./source-selection";
-import { hasDraggedFiles, isProjectFile, sourceFilesFromDrop } from "./file-drop";
+import { hasDraggedFiles, isProjectFile, isSourceDirectoryDrop, sourceFilesFromDrop } from "./file-drop";
 import { CLAWD_PROFILE, CODEX_PROFILE, MappingDestination } from "./target-profiles";
 import { BuildView } from "./BuildView";
 import { TargetSettings } from "./TargetSettings";
@@ -371,11 +371,18 @@ function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onL
     setDragActive(false);
     const files = sourceFilesFromDrop(event.dataTransfer);
     if (files.some(isProjectFile)) return;
-    if (files.length) onImport(files, true);
+    if (!files.length) return;
+    if (isSourceDirectoryDrop(event.dataTransfer)) {
+      const inputPath = sourcePathFromSelection(files, getDesktopFilePath, true);
+      if (inputPath) void browseLocalLibrary(inputPath);
+      else setLibraryError(t("sourcePathUnavailable"));
+      return;
+    }
+    onImport(files, true);
   }
-  async function browseLocalLibrary() {
+  async function browseLocalLibrary(inputPath?: string) {
     setLibraryBusy(true); setLibraryError("");
-    try { const result = await openSourceLibrary(); if (!result.cancelled) setLibrary(result.library); }
+    try { const result = await openSourceLibrary(inputPath); if (!result.cancelled) setLibrary(result.library); }
     catch (cause) { setLibraryError(cause instanceof Error ? cause.message : t("error")); }
     finally { setLibraryBusy(false); }
   }

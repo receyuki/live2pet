@@ -174,7 +174,7 @@ test('Source Library IPC browses metadata, inspects opaque selections, and confi
   const inspection = { schemaVersion: 1, source: { kind: 'standard-directory', name: 'Hero', fingerprint: 'a'.repeat(64), modelConfig: 'hero.model3.json' }, model: { cubism: 3, configFile: 'hero.model3.json', modelFile: 'hero.moc3', textures: [] }, motions: [], expressions: [], resources: [], warnings: [] };
   const cache = { schemaVersion: 1, maxBytes: 1024 ** 3, byteLength: 0, entryCount: 0 };
   const router = createAppIpcRouter({ sourceLibraryService: {
-    openLocal: async () => ({ cancelled: false, library: { ...library, kind: 'local' } }),
+    openLocal: async input => { calls.push({ local: input }); return { cancelled: false, library: { ...library, kind: 'local' } }; },
     openGitHub: async input => { calls.push(input); return { cancelled: false, library }; },
     inspect: async input => { calls.push(input); return { sourcePath: '/private/models/hero', candidate, inspection }; },
     getCacheStatus: async () => cache,
@@ -183,12 +183,16 @@ test('Source Library IPC browses metadata, inspects opaque selections, and confi
   } });
   const request = (method, ...args) => router({ protocolVersion: 1, method, args });
   assert.equal((await request('openSourceLibrary')).result.library.kind, 'local');
+  assert.equal((await request('openSourceLibrary', { inputPath: '/private/models' })).result.library.kind, 'local');
+  assert.equal((await request('openSourceLibrary', { inputPath: 'relative/models' })).error.code, 'INVALID_SOURCE_LIBRARY_REQUEST');
   assert.equal((await request('openGitHubLibrary', { url: 'https://github.com/owner/repo/tree/main/models' })).result.library.candidates[0].relativePath, candidate.relativePath);
   assert.equal((await request('inspectLibrarySource', { libraryId: library.libraryId, sourceId: candidate.id, projectId: 'hero' })).result.inspection.source.name, 'Hero');
   assert.equal((await request('configureSourceLibraryCache', { maxBytes: 2 * 1024 ** 3 })).result.maxBytes, 2 * 1024 ** 3);
   assert.equal((await request('clearSourceLibraryCache', { confirmClear: true })).ok, true);
   assert.equal((await request('clearSourceLibraryCache', {})).error.code, 'CACHE_CLEAR_AUTHORIZATION_REQUIRED');
   assert.deepEqual(calls, [
+    { local: {} },
+    { local: { inputPath: '/private/models' } },
     { url: 'https://github.com/owner/repo/tree/main/models' },
     { libraryId: library.libraryId, sourceId: candidate.id, projectId: 'hero' },
     { maxBytes: 2 * 1024 ** 3 },

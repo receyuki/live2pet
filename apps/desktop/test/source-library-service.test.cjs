@@ -36,6 +36,20 @@ test('opens a local folder as a two-level model library without exposing its pat
   assert.equal(selected.sourcePath, root);
 });
 
+test('opens a dropped local folder without showing the directory picker', async () => {
+  const root = temporaryDirectory();
+  const service = createSourceLibraryService({
+    showOpenDialog: async () => assert.fail('a dropped folder must not reopen the picker'),
+    discoverSources: inputPath => ({ name: 'models', candidates: [], inputPath }),
+    inspectSource: async () => assert.fail('browsing a collection must not inspect it as one Source Package'),
+    githubCacheRoot: path.join(root, 'github-cache'),
+  });
+  const result = await service.openLocal({ inputPath: root });
+  assert.equal(result.library.kind, 'local');
+  assert.equal(result.library.name, 'models');
+  await assert.rejects(service.openLocal({ inputPath: path.join(root, 'missing') }), { code: 'INVALID_LOCAL_LIBRARY' });
+});
+
 test('serializes and reuses local thumbnails without registering a project source', async () => {
   const root = temporaryDirectory();
   let renders = 0;
@@ -72,6 +86,29 @@ test('times out a stuck thumbnail and continues rendering the remaining library'
   await assert.rejects(service.thumbnail({ libraryId: library.libraryId, sourceId: 'stuck' }), { code: 'THUMBNAIL_TIMEOUT' });
   const result = await service.thumbnail({ libraryId: library.libraryId, sourceId: 'ready' });
   assert.equal(result.dataUrl, 'data:image/png;base64,YQ==');
+});
+
+test('renders two thumbnails concurrently while keeping the remaining work bounded', async () => {
+  const root = temporaryDirectory();
+  const started = [];
+  const releases = new Map();
+  const service = createSourceLibraryService({
+    githubCacheRoot: path.join(root, 'cache'),
+    showOpenDialog: async () => ({ filePaths: [root] }),
+    discoverSources: () => ({ name: 'models', candidates: ['one', 'two', 'three'].map(id => ({ id, name: id, relativePath: `${id}.model3.json`, format: 'live2d', inputPath: root })) }),
+    inspectSource: () => assert.fail('thumbnail must not register a project source'),
+    renderThumbnail: candidate => new Promise(resolve => { started.push(candidate.id); releases.set(candidate.id, resolve); }),
+  });
+  const { library } = await service.openLocal();
+  const requests = library.candidates.map(candidate => service.thumbnail({ libraryId: library.libraryId, sourceId: candidate.id }));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(started, ['one', 'two']);
+  releases.get('one')({ dataUrl: null });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(started, ['one', 'two', 'three']);
+  releases.get('two')({ dataUrl: null });
+  releases.get('three')({ dataUrl: null });
+  await Promise.all(requests);
 });
 
 test('browses GitHub tree metadata then downloads only the selected model folder', async () => {

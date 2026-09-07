@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hasDraggedFiles, sourceFilesFromDrop } from './file-drop';
+import { hasDraggedFiles, isSourceDirectoryDrop, sourceFilesFromDrop } from './file-drop';
 
 describe('file drop helpers', () => {
   it('recognizes file drags without treating text as a file', () => {
@@ -12,5 +12,6 @@ describe('file drop helpers', () => {
     const nested = new File(['{}'], 'model3.json');
     const item = { kind: 'file', webkitGetAsEntry: () => ({ isDirectory: true }), getAsFile: () => directory };
     expect(sourceFilesFromDrop({ files: [nested] as unknown as FileList, items: [item] as unknown as DataTransferItemList })).toEqual([directory]);
+    expect(isSourceDirectoryDrop({ files: [nested] as unknown as FileList, items: [item] as unknown as DataTransferItemList })).toBe(true);
   });
 });

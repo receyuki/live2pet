@@ -200,7 +200,7 @@ type Live2PetApi = {
   getSpinePackStatus(): Promise<AppResponse<SpinePackStatus>>;
   installSpinePack(runtimeLine: string): Promise<AppResponse<SpinePackStatus>>;
   removeSpinePack(runtimeLine: string): Promise<AppResponse<SpinePackStatus>>;
-  openSourceLibrary?(): Promise<AppResponse<SourceLibraryOperation>>;
+  openSourceLibrary?(inputPath?: string): Promise<AppResponse<SourceLibraryOperation>>;
   openGitHubLibrary?(url: string): Promise<AppResponse<SourceLibraryOperation>>;
   inspectLibrarySource?(input: { libraryId: string; sourceId: string; projectId: string }): Promise<AppResponse<SourceLibrarySelection>>;
   getLibraryThumbnail?(input: { libraryId: string; sourceId: string; projectId: string }): Promise<AppResponse<{ dataUrl: string | null }>>;
@@ -311,10 +311,10 @@ export async function removeSpinePack(runtimeLine: string): Promise<SpinePackSta
   return unwrap(api.removeSpinePack(runtimeLine));
 }
 
-export async function openSourceLibrary(): Promise<SourceLibraryOperation> {
+export async function openSourceLibrary(inputPath?: string): Promise<SourceLibraryOperation> {
   const api = desktopApi();
   if (!api?.openSourceLibrary) throw new DesktopApiError('APP_SOURCE_LIBRARY_UNAVAILABLE', 'Model libraries require the Desktop App.');
-  return unwrap(api.openSourceLibrary());
+  return unwrap(api.openSourceLibrary(inputPath));
 }
 
 export async function openGitHubLibrary(url: string): Promise<SourceLibraryOperation> {

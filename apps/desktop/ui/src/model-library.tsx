@@ -4,9 +4,7 @@ import { Image } from 'lucide-react';
 import { hasPreviewApi, getLibraryThumbnail, inspectLibrarySource, openLive2DPreview, layoutLive2DPreview, playLive2DPreview, type SourceLibrary, type SourceLibraryCandidate, type SourceLibrarySelection } from './app-host';
 import { translate, type Locale } from './i18n';
 
-let thumbnailQueue = Promise.resolve();
-
-function ModelCard({ library, candidate, selected, onSelect, locale, paused }: { library: SourceLibrary; candidate: SourceLibraryCandidate; selected: boolean; onSelect: () => void; locale: Locale; paused: boolean }) {
+function ModelCard({ library, candidate, index, selected, onSelect, locale, paused }: { library: SourceLibrary; candidate: SourceLibraryCandidate; index: number; selected: boolean; onSelect: () => void; locale: Locale; paused: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const [cover, setCover] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -16,16 +14,15 @@ function ModelCard({ library, candidate, selected, onSelect, locale, paused }: {
     const load = () => {
       if (requested) return;
       requested = true;
-      thumbnailQueue = thumbnailQueue.then(async () => {
-        if (!active) return;
-        try { const result = await getLibraryThumbnail(library.libraryId, candidate.id); if (active) { setCover(result.dataUrl); setFailed(!result.dataUrl); } }
-        catch { if (active) setFailed(true); }
-      });
+      void getLibraryThumbnail(library.libraryId, candidate.id)
+        .then(result => { if (active) { setCover(result.dataUrl); setFailed(!result.dataUrl); } })
+        .catch(() => { if (active) setFailed(true); });
     };
     const observer = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) { load(); observer?.disconnect(); } }) : null;
     if (observer && ref.current) observer.observe(ref.current); else load();
-    return () => { active = false; observer?.disconnect(); };
-  }, [library.libraryId, library.kind, candidate.id, paused, cover]);
+    const backgroundTimer = window.setTimeout(load, 500 + Math.min(index * 35, 1000));
+    return () => { active = false; window.clearTimeout(backgroundTimer); observer?.disconnect(); };
+  }, [library.libraryId, library.kind, candidate.id, index, paused, cover]);
   return <div ref={ref}><Button className={`model-library-card${selected ? ' model-library-card-selected' : ''}`} variant="ghost" aria-pressed={selected} onPress={onSelect}>
     <span className="model-library-cover">{cover ? <img src={cover} alt="" /> : <><Image size={24} /><small>{translate(locale, library.kind === 'github' ? 'libraryDownloadPreview' : failed ? 'libraryPreviewUnavailable' : 'libraryThumbnailLoading')}</small></>}</span>
     <span className="grow-copy"><strong>{candidate.name}</strong><small title={candidate.relativePath}>{candidate.relativePath}</small><span className="model-library-meta">{candidate.format === 'spine' ? `Spine ${candidate.runtimeLine || ''}` : candidate.format === 'live2d-pck' ? 'PCK' : 'Live2D'}</span></span>
@@ -78,7 +75,7 @@ function ModelPreview({ library, candidate, locale, onUse, onClose }: { library:
 export function ModelLibrary({ library, locale, onUse }: { library: SourceLibrary; locale: Locale; onUse: (library: SourceLibrary, candidate: SourceLibraryCandidate) => Promise<void> }) {
   const [selected, setSelected] = useState<SourceLibraryCandidate | null>(null);
   return <div className={`library-browser${selected ? ' library-browser-selected' : ''}`}>
-    <div className="model-library-grid">{library.candidates.map(candidate => <ModelCard paused={Boolean(selected)} key={candidate.id} library={library} candidate={candidate} selected={candidate.id === selected?.id} onSelect={() => setSelected(candidate)} locale={locale} />)}</div>
+    <div className="model-library-grid">{library.candidates.map((candidate, index) => <ModelCard paused={Boolean(selected)} key={candidate.id} library={library} candidate={candidate} index={index} selected={candidate.id === selected?.id} onSelect={() => setSelected(candidate)} locale={locale} />)}</div>
     {selected && <ModelPreview onClose={() => setSelected(null)} key={`${library.libraryId}:${selected.id}`} library={library} candidate={selected} locale={locale} onUse={async () => { await onUse(library, selected); setSelected(null); }} />}
   </div>;
 }

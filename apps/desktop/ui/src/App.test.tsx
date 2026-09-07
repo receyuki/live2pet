@@ -41,7 +41,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, previewV
   const installSpinePack = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { ...spinePack, packs: spinePack.packs.map((pack) => ({ ...pack, installed: true })) } }));
   const removeSpinePack = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: spinePack }));
   const sourceLibrary = { schemaVersion: 1 as const, libraryId: 'library-1', name: 'Models', kind: 'local' as const, maxDepth: 2, candidates: [{ id: 'source-1', name: 'Spine Hero', relativePath: 'heroes/hero.json', format: 'spine' as const, version: null, runtimeLine: null, binary: false }] };
-  const openSourceLibrary = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { cancelled: false as const, library: sourceLibrary } }));
+  const openSourceLibrary = vi.fn(async (_inputPath?: string) => ({ protocolVersion: 1 as const, ok: true, result: { cancelled: false as const, library: sourceLibrary } }));
   const inspectLibrarySource = vi.fn(async ({ sourceId }: { sourceId: string }) => ({ protocolVersion: 1 as const, ok: true, result: { sourcePath: '/Users/test/Models/hero', candidate: sourceLibrary.candidates.find((candidate) => candidate.id === sourceId)!, inspection: (await inspectSource()).result } }));
   const getSourceLibraryCacheStatus = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, maxBytes: 1024 ** 3, byteLength: 64 * 1024 ** 2, entryCount: 2 } }));
   const configureSourceLibraryCache = vi.fn(async (maxBytes: number) => ({ protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, maxBytes, byteLength: 64 * 1024 ** 2, entryCount: 2 } }));
@@ -890,9 +890,9 @@ describe('Live2Pet desktop shell', () => {
     expect(inspectSource).toHaveBeenCalledOnce();
   });
 
-  it('imports a dropped folder when Electron exposes its nested files', async () => {
+  it('opens a dropped model collection as a library instead of one Source Package', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
-    const { inspectSource } = installDesktopApi();
+    const { inspectSource, openSourceLibrary } = installDesktopApi();
     render(<App />);
     const model = new File(['{}'], 'model3.json');
     const texture = new File(['png'], 'texture.png');
@@ -908,7 +908,9 @@ describe('Live2Pet desktop shell', () => {
       },
     });
 
-    await vi.waitFor(() => expect(inspectSource).toHaveBeenCalledWith({ inputPath: '/Users/test/live2d', projectId: 'live2d' }));
+    await vi.waitFor(() => expect(openSourceLibrary).toHaveBeenCalledWith('/Users/test/live2d'));
+    expect(inspectSource).not.toHaveBeenCalled();
+    expect(await screen.findByRole('heading', { name: 'Models', level: 2 })).toBeVisible();
   });
 
   it.each(['welcome', 'settings'])('opens a dropped project from %s without inspecting it as a model', async (destination) => {

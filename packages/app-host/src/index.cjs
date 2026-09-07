@@ -210,6 +210,11 @@ function normalizeGitHubLibraryRequest(value) {
   return { url: value.url.trim() };
 }
 
+function normalizeLocalLibraryRequest(value) {
+  if (!isRecord(value) || Object.keys(value).some((key) => key !== 'inputPath') || typeof value.inputPath !== 'string' || value.inputPath.includes('\0') || !path.isAbsolute(value.inputPath)) fail('INVALID_SOURCE_LIBRARY_REQUEST', 'A dropped model library requires one absolute local folder path.');
+  return { inputPath: value.inputPath };
+}
+
 function normalizeLibrarySourceRequest(value) {
   if (!isRecord(value)) fail('INVALID_SOURCE_LIBRARY_REQUEST', 'Model library selection must be an object.');
   const allowed = new Set(['libraryId', 'sourceId', 'projectId']);
@@ -694,8 +699,9 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
       }
       if (normalized.method === 'openSourceLibrary') {
         if (!sourceLibraryService) fail('APP_SOURCE_LIBRARY_UNAVAILABLE', 'Model library browsing is not configured in this App.');
-        if (normalized.args.length) fail('INVALID_SOURCE_LIBRARY_REQUEST', 'Opening a local model library does not accept arguments.');
-        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeSourceLibraryOperation(await sourceLibraryService.openLocal()) };
+        if (normalized.args.length > 1) fail('INVALID_SOURCE_LIBRARY_REQUEST', 'Opening a local model library accepts at most one folder.');
+        const input = normalized.args.length ? normalizeLocalLibraryRequest(normalized.args[0]) : {};
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeSourceLibraryOperation(await sourceLibraryService.openLocal(input)) };
       }
       if (normalized.method === 'openGitHubLibrary') {
         if (!sourceLibraryService) fail('APP_SOURCE_LIBRARY_UNAVAILABLE', 'GitHub model library browsing is not configured in this App.');
@@ -1006,7 +1012,7 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
     getRecentProjects: () => invoke('getRecentProjects'),
     openProject: (input = {}) => invoke('openProject', input),
     saveProject: (input) => invoke('saveProject', input),
-    openSourceLibrary: () => invoke('openSourceLibrary'),
+    openSourceLibrary: (inputPath) => inputPath ? invoke('openSourceLibrary', { inputPath }) : invoke('openSourceLibrary'),
     openGitHubLibrary: (input) => invoke('openGitHubLibrary', input),
     inspectLibrarySource: (input) => invoke('inspectLibrarySource', input),
     getLibraryThumbnail: (input) => invoke('getLibraryThumbnail', input),

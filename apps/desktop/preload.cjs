@@ -99,7 +99,7 @@ contextBridge.exposeInMainWorld('live2pet', Object.freeze({
   getRecentProjects: () => invoke('getRecentProjects'),
   openProject: (input = {}) => invoke('openProject', input),
   saveProject: (input) => invoke('saveProject', input),
-  openSourceLibrary: () => invoke('openSourceLibrary'),
+  openSourceLibrary: (inputPath) => inputPath ? invoke('openSourceLibrary', { inputPath }) : invoke('openSourceLibrary'),
   openGitHubLibrary: (url) => invoke('openGitHubLibrary', { url }),
   inspectLibrarySource: (input) => invoke('inspectLibrarySource', input),
   getLibraryThumbnail: (input) => invoke('getLibraryThumbnail', input),
