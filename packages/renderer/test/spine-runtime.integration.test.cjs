@@ -29,9 +29,9 @@ function runElectron(environment) {
 }
 
 test('opt-in official Spine Player renders, hides a Slot, and builds both target packages', { skip: skipReason }, async () => {
-  const manifest = inspectSourcePackage(sourceRoot);
+  const manifest = inspectSourcePackage(sourceRoot, { modelConfig: process.env.LIVE2PET_SPINE_MODEL_CONFIG || null });
   assert.equal(manifest.model.format, 'spine');
-  assert.equal(manifest.model.runtimeLine, '4.3');
+  assert.ok(['4.0', '4.1', '4.2', '4.3'].includes(manifest.model.runtimeLine));
   const server = await createRendererAssetServer({ sourceRoot, spineAssets: { script, style } });
   try {
     const source = spineSourceFromManifest(manifest, { baseUrl: `${server.baseUrl}/model` });

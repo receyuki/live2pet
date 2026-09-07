@@ -24,6 +24,7 @@ function spineSourceFromManifest(manifest, { baseUrl = '' } = {}) {
   return {
     format: 'spine',
     runtimeLine: manifest.model.runtimeLine,
+    binary: manifest.model.binary === true,
     skeletonUrl: `${prefix}/${encodeRelativeUrl(manifest.model.modelFile)}`,
     atlasUrl: `${prefix}/${encodeRelativeUrl(manifest.model.atlasFile)}`,
     motions: manifest.motions.map((motion) => ({ id: motion.id, name: motion.name || motion.id, duration: Number(motion.duration) || 0 })),
@@ -44,12 +45,17 @@ function pageLoad(source, options) {
       player: null, source, state, hidden: [], options, container,
       applyHidden() {
         const hidden = new Set(this.hidden);
-        for (const slot of this.player.skeleton.slots) if (hidden.has(`slot:${slot.data.name}`)) slot.pose.setAttachment(null);
+        for (const slot of this.player.skeleton.slots) if (hidden.has(`slot:${slot.data.name}`)) {
+          if (source.runtimeLine === '4.3') slot.pose.setAttachment(null);
+          else slot.setAttachment(null);
+        }
       },
       motion(id = this.state.motionId) { return this.player.skeleton.data.findAnimation(id); },
+      track() { const state = this.player.animationState; return source.runtimeLine === '4.3' ? state.getTrack(0) : state.getCurrent(0); },
       pose(time) {
         const animation = this.motion();
-        this.player.skeleton.setupPose();
+        if (source.runtimeLine === '4.3') this.player.skeleton.setupPose();
+        else this.player.skeleton.setToSetupPose();
         if (animation) animation.apply(this.player.skeleton, time, time, this.state.loop, [], 1, 1, false, false, false);
         this.applyHidden();
         this.player.skeleton.updateWorldTransform(2);
@@ -66,7 +72,8 @@ function pageLoad(source, options) {
       },
       readBounds() {
         const offset = new window.spine.Vector2(), size = new window.spine.Vector2();
-        this.player.skeleton.getBounds(offset, size, [0, 0], this.player.sceneRenderer.skeletonRenderer.getSkeletonClipping());
+        const renderer = this.player.sceneRenderer.skeletonRenderer;
+        this.player.skeleton.getBounds(offset, size, [0, 0], renderer.getSkeletonClipping ? renderer.getSkeletonClipping() : renderer.clipper);
         return Number.isFinite(size.x) && Number.isFinite(size.y) && size.x > 0 && size.y > 0 ? { x: offset.x, y: offset.y, width: size.x, height: size.y } : null;
       },
       fit(motionId) {
@@ -90,12 +97,22 @@ function pageLoad(source, options) {
         this.pose(this.state.time);
         return { motionId, samples, x: left, y: bottom, width, height, normalized: false };
       },
-      draw() { this.player.drawFrame(false); },
+      draw() {
+        const paused = this.player.paused;
+        this.player.paused = true;
+        try { this.player.drawFrame(false); } finally { this.player.paused = paused; }
+      },
+      startRendering() {
+        if (!this.player.stopRequestAnimationFrame) return;
+        if (this.player.startRendering) this.player.startRendering();
+        else { this.player.stopRequestAnimationFrame = false; this.player.drawFrame(); }
+      },
     };
     window.__live2petSpine = runtime;
     runtime.player = new window.spine.SpinePlayer(container, {
-      skeleton: source.skeletonUrl,
-      atlas: source.atlasUrl,
+      ...(source.runtimeLine === '4.3'
+        ? { skeleton: source.skeletonUrl, atlas: source.atlasUrl }
+        : { [source.binary ? 'binaryUrl' : 'jsonUrl']: source.skeletonUrl, atlasUrl: source.atlasUrl }),
       animation: source.motions[0]?.id,
       showControls: false,
       showLoading: false,
@@ -104,6 +121,7 @@ function pageLoad(source, options) {
       backgroundColor: '#00000000',
       viewport: { transitionTime: 0, padLeft: 0, padRight: 0, padTop: 0, padBottom: 0 },
       updateWorldTransform(player) { runtime.applyHidden(); player.skeleton.updateWorldTransform(2); },
+      update() { runtime.applyHidden(); },
       frame(_player, delta) {
         if (!runtime.state.playing) return;
         const motion = runtime.source.motions.find((item) => item.id === runtime.state.motionId);
@@ -135,11 +153,11 @@ function pageLoad(source, options) {
 
 function pageUnload() { const runtime = window.__live2petSpine; runtime?.player?.dispose(); delete window.__live2petSpine; document.body.innerHTML = ''; return { loaded: false }; }
 function pageState() { const runtime = window.__live2petSpine; if (!runtime) throw new Error('Renderer is not loaded.'); return { ...runtime.state }; }
-function pagePlay(id, loop, speed, start) { const runtime = window.__live2petSpine; const motion = runtime.source.motions.find((item) => item.id === id); if (!motion) throw new Error(`Animation is not available: ${id}`); runtime.player.setAnimation(id, loop); try { const entry = runtime.player.animationState?.getCurrent?.(0); if (entry) entry.trackTime = start; } catch {} runtime.state = { ...runtime.state, motionId: id, loop, speed, time: start, playing: true }; runtime.player.speed = speed; runtime.player.paused = false; runtime.pose(start); runtime.fit(id); runtime.draw(); if (runtime.options.playbackMode === 'realtime') runtime.player.startRendering(); return { ...runtime.state }; }
+function pagePlay(id, loop, speed, start) { const runtime = window.__live2petSpine; const motion = runtime.source.motions.find((item) => item.id === id); if (!motion) throw new Error(`Animation is not available: ${id}`); runtime.player.setAnimation(id, loop); const entry = runtime.track(); if (entry) entry.trackTime = start; runtime.state = { ...runtime.state, motionId: id, loop, speed, time: start, playing: true }; runtime.player.speed = speed; runtime.player.paused = false; runtime.pose(start); runtime.fit(id); runtime.draw(); if (runtime.options.playbackMode === 'realtime') runtime.startRendering(); return { ...runtime.state }; }
 function pagePause() { const runtime = window.__live2petSpine; runtime.state.playing = false; runtime.player.pause(); return { ...runtime.state }; }
 function pageResume() { const runtime = window.__live2petSpine; runtime.state.playing = true; runtime.player.speed = runtime.state.speed; runtime.player.play(); return { ...runtime.state }; }
-function pageRestart() { const runtime = window.__live2petSpine; const id = runtime.state.motionId; runtime.player.setAnimation(id, runtime.state.loop); runtime.state.time = 0; runtime.state.playing = true; runtime.player.speed = runtime.state.speed; runtime.player.paused = false; runtime.pose(0); runtime.fit(id); runtime.draw(); if (runtime.options.playbackMode === 'realtime') runtime.player.startRendering(); return { ...runtime.state }; }
-function pagePlayback(loop, speed) { const runtime = window.__live2petSpine; if (loop !== null) { runtime.state.loop = loop; const entry = runtime.player.animationState.getCurrent(0); if (entry) entry.loop = loop; } if (speed !== null) { runtime.state.speed = speed; runtime.player.speed = speed; } return { ...runtime.state }; }
+function pageRestart() { const runtime = window.__live2petSpine; const id = runtime.state.motionId; runtime.player.setAnimation(id, runtime.state.loop); runtime.state.time = 0; runtime.state.playing = true; runtime.player.speed = runtime.state.speed; runtime.player.paused = false; runtime.pose(0); runtime.fit(id); runtime.draw(); if (runtime.options.playbackMode === 'realtime') runtime.startRendering(); return { ...runtime.state }; }
+function pagePlayback(loop, speed) { const runtime = window.__live2petSpine; if (loop !== null) { runtime.state.loop = loop; const entry = runtime.track(); if (entry) entry.loop = loop; } if (speed !== null) { runtime.state.speed = speed; runtime.player.speed = speed; } return { ...runtime.state }; }
 function pageSeek(time) { const runtime = window.__live2petSpine; runtime.state.time = time; runtime.pose(time); runtime.draw(); return { ...runtime.state }; }
 function pageStep(delta) { const runtime = window.__live2petSpine; if (!runtime.state.playing) return { ...runtime.state }; const motion = runtime.source.motions.find((item) => item.id === runtime.state.motionId); let next = runtime.state.time + delta * runtime.state.speed; if (motion.duration > 0 && next >= motion.duration) { if (runtime.state.loop) next %= motion.duration; else { next = motion.duration; runtime.state.playing = false; } } runtime.state.time = next; runtime.pose(next); runtime.draw(); return { ...runtime.state }; }
 function pageResize(width, height) { const runtime = window.__live2petSpine; runtime.container.style.width = `${width}px`; runtime.container.style.height = `${height}px`; runtime.draw(); return { width, height }; }

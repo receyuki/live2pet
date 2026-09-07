@@ -98,6 +98,8 @@ Live2Pet 会在安装渲染器前识别 Spine 导出版本。对于 Spine 4.0–
 
 ### 模型库与 GitHub 缓存
 
+本地 Electron 集成测试已覆盖 Spine 4.1 二进制和 4.3 JSON 模型的渲染、部件隐藏及两种目标包导出。Spine 4.0/4.2 和打包后 App 的完整流程仍待真实模型验收；能够识别版本不代表已经验证所有兼容性。
+
 “浏览模型文件夹”会在所选本地文件夹下最多扫描两层，找出 Live2D 和 Spine 资源包。公开 GitHub 仓库或 `/tree/<branch>/<folder>` 地址只读取目录元数据，不会 clone 仓库；只有点击某个模型卡片后才会下载该模型。下载缓存默认上限为 1 GiB，可在“设置 → 存储”中查看占用、修改上限（256 MiB–20 GiB）或清空。达到上限时会自动移除最久未使用的模型。
 
 Spine 运行时受 [Spine Runtime License](https://github.com/EsotericSoftware/spine-runtimes/blob/4.3/LICENSE)约束。Live2Pet 的 Apache-2.0 许可不会授予 Spine Editor 许可，也不会重新许可该运行时、模型或生成资源。安装渲染包或分发生成结果前，请确认你的使用方式符合适用条款。

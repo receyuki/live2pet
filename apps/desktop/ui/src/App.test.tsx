@@ -743,7 +743,7 @@ describe('Live2Pet desktop shell', () => {
 
     expect(await screen.findByText(/Spine 4\.3/)).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Install' }));
-    expect(api.installSpinePack).toHaveBeenCalledWith({ confirmInstall: true, runtimeLine: '4.3' });
+    expect(api.installSpinePack).toHaveBeenCalledWith('4.3');
     await vi.waitFor(() => expect(screen.queryByRole('button', { name: 'Install' })).not.toBeInTheDocument());
   });
 

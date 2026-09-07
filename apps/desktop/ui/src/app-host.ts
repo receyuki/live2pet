@@ -198,8 +198,8 @@ type Live2PetApi = {
   configureRuntime(input: { inputPath: string }): Promise<AppResponse<RuntimeSettings>>;
   clearRuntimeSettings(input?: { fingerprint: string }): Promise<AppResponse<RuntimeSettings>>;
   getSpinePackStatus(): Promise<AppResponse<SpinePackStatus>>;
-  installSpinePack(input: { confirmInstall: true; runtimeLine: string }): Promise<AppResponse<SpinePackStatus>>;
-  removeSpinePack(input: { runtimeLine: string }): Promise<AppResponse<SpinePackStatus>>;
+  installSpinePack(runtimeLine: string): Promise<AppResponse<SpinePackStatus>>;
+  removeSpinePack(runtimeLine: string): Promise<AppResponse<SpinePackStatus>>;
   openSourceLibrary?(): Promise<AppResponse<SourceLibraryOperation>>;
   openGitHubLibrary?(url: string): Promise<AppResponse<SourceLibraryOperation>>;
   inspectLibrarySource?(input: { libraryId: string; sourceId: string; projectId: string }): Promise<AppResponse<SourceLibrarySelection>>;
@@ -301,13 +301,13 @@ export async function getSpinePackStatus(): Promise<SpinePackStatus> {
 export async function installSpinePack(runtimeLine: string): Promise<SpinePackStatus> {
   const api = desktopApi();
   if (!api?.installSpinePack) throw new DesktopApiError('APP_SPINE_PACK_UNAVAILABLE', 'Optional Spine support requires the Desktop App.');
-  return unwrap(api.installSpinePack({ confirmInstall: true, runtimeLine }));
+  return unwrap(api.installSpinePack(runtimeLine));
 }
 
 export async function removeSpinePack(runtimeLine: string): Promise<SpinePackStatus> {
   const api = desktopApi();
   if (!api?.removeSpinePack) throw new DesktopApiError('APP_SPINE_PACK_UNAVAILABLE', 'Optional Spine support requires the Desktop App.');
-  return unwrap(api.removeSpinePack({ runtimeLine }));
+  return unwrap(api.removeSpinePack(runtimeLine));
 }
 
 export async function openSourceLibrary(): Promise<SourceLibraryOperation> {

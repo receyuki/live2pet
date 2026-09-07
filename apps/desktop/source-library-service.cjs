@@ -215,10 +215,11 @@ function createSourceLibraryService({ showOpenDialog, discoverSources, inspectSo
       ref = safeSegment(repository.default_branch, 'default branch');
     }
     let treeSha = ref;
-    if (parsed.folder) {
-      const content = await fetchJson(fetchImpl, `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/contents/${parsed.folder.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(ref)}`);
-      if (!isRecord(content) || content.type !== 'dir' || typeof content.sha !== 'string') fail('GITHUB_FOLDER_NOT_FOUND', 'The GitHub URL does not point to a repository folder.');
-      treeSha = content.sha;
+    for (const segment of parsed.folder.split('/').filter(Boolean)) {
+      const parent = await fetchJson(fetchImpl, `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/trees/${encodeURIComponent(treeSha)}`);
+      const directory = parent?.tree?.find((entry) => entry.type === 'tree' && entry.path === segment);
+      if (!directory || typeof directory.sha !== 'string') fail('GITHUB_FOLDER_NOT_FOUND', 'The GitHub URL does not point to a repository folder.');
+      treeSha = directory.sha;
     }
     const tree = await fetchJson(fetchImpl, `https://api.github.com/repos/${parsed.owner}/${parsed.repo}/git/trees/${encodeURIComponent(treeSha)}?recursive=1`);
     if (!isRecord(tree) || !Array.isArray(tree.tree)) fail('INVALID_GITHUB_TREE', 'GitHub returned an invalid repository tree.');

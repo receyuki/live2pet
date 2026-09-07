@@ -47,7 +47,7 @@ test('browses GitHub tree metadata then downloads only the selected model folder
   ];
   const fetchImpl = async (url) => {
     requests.push(url);
-    if (url.includes('/contents/live2d?')) return { ok: true, json: async () => ({ type: 'dir', sha: 'tree-sha' }) };
+    if (url.endsWith('/git/trees/main')) return { ok: true, json: async () => ({ tree: [{ type: 'tree', path: 'live2d', sha: 'tree-sha' }] }) };
     if (url.includes('/git/trees/')) return { ok: true, json: async () => ({ sha: 'tree-sha', truncated: false, tree: entries }) };
     return { ok: true, arrayBuffer: async () => Buffer.from(url.includes('.json') ? '{"Version":3}' : 'data') };
   };
@@ -69,6 +69,30 @@ test('browses GitHub tree metadata then downloads only the selected model folder
   assert.equal(requests.filter((url) => url.includes('raw.githubusercontent.com')).length, 3);
   assert.equal(inspected[0].modelConfig, 'hero.model3.json');
   assert.equal(fs.existsSync(path.join(inspected[0].inputPath, 'other.model3.json')), false);
+});
+
+test('resolves nested GitHub folders through non-recursive trees without downloading assets', async () => {
+  const requests = [];
+  const trees = {
+    main: [{ type: 'tree', path: 'src', sha: 'src-sha' }],
+    'src-sha': [{ type: 'tree', path: 'assets', sha: 'assets-sha' }],
+    'assets-sha': [{ type: 'tree', path: 'spines', sha: 'spines-sha' }],
+    'spines-sha?recursive=1': [{ type: 'blob', path: 'hero/hero.skel', size: 16 }],
+  };
+  const service = createSourceLibraryService({
+    githubCacheRoot: temporaryDirectory(),
+    showOpenDialog: async () => assert.fail('remote browsing must not open a local dialog'),
+    discoverSources: () => assert.fail('remote browsing must not scan local files'),
+    inspectSource: async () => assert.fail('browsing must not download or inspect a model'),
+    fetchImpl: async (url) => {
+      requests.push(url);
+      const key = url.split('/git/trees/')[1];
+      assert.ok(Object.hasOwn(trees, key), `Unexpected request: ${url}`);
+      return { ok: true, json: async () => ({ tree: trees[key], truncated: false }) };
+    },
+  });
+  await service.openGitHub({ url: 'https://github.com/example/models/tree/main/src/assets/spines' });
+  assert.equal(requests.length, 4);
 });
 
 test('evicts the least recently used GitHub model cache before exceeding the total limit', () => {
