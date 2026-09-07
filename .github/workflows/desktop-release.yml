@@ -61,49 +61,12 @@ jobs:
         run: pnpm --filter @live2pet/desktop package:mac
       - name: Verify package layout and startup
         run: pnpm --filter @live2pet/desktop smoke:mac
-      - name: Preserve App bundle metadata
-        run: tar -czf "Live2Pet-macOS-${{ matrix.arch }}.tar.gz" -C apps/desktop/out "Live2Pet-darwin-${{ matrix.arch }}"
+      - name: Create downloadable DMG
+        run: hdiutil create -volname Live2Pet -srcfolder "apps/desktop/out/Live2Pet-darwin-${{ matrix.arch }}/Live2Pet.app" -ov -format UDZO "Live2Pet-macOS-${{ matrix.arch }}.dmg"
       - uses: actions/upload-artifact@v6
         with:
-          name: macos-${{ matrix.arch }}-slice
-          path: Live2Pet-macOS-${{ matrix.arch }}.tar.gz
-          compression-level: 0
-          retention-days: 2
-
-  mac-universal:
-    name: macOS Universal preview
-    if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
-    needs: mac-slices
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-      - name: Enable pnpm
-        run: corepack enable && corepack prepare pnpm@11.19.0 --activate
-      - name: Install locked dependencies
-        run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@v7
-        with:
-          pattern: macos-*-slice
-          path: slices
-      - name: Restore native App slices
-        run: |
-          mkdir -p apps/desktop/out
-          tar -xzf slices/macos-x64-slice/Live2Pet-macOS-x64.tar.gz -C apps/desktop/out
-          tar -xzf slices/macos-arm64-slice/Live2Pet-macOS-arm64.tar.gz -C apps/desktop/out
-      - name: Merge and verify Universal App
-        run: |
-          pnpm --filter @live2pet/desktop package:mac:universal
-          architectures="$(lipo -archs apps/desktop/out/Live2Pet-darwin-universal/Live2Pet.app/Contents/MacOS/Live2Pet)"
-          case "$architectures" in *x86_64*arm64*|*arm64*x86_64*) ;; *) echo "Unexpected architectures: $architectures"; exit 1;; esac
-      - name: Create downloadable ZIP
-        run: ditto -c -k --sequesterRsrc --keepParent apps/desktop/out/Live2Pet-darwin-universal/Live2Pet.app Live2Pet-macOS-universal.zip
-      - uses: actions/upload-artifact@v6
-        with:
-          name: live2pet-macos-universal
-          path: Live2Pet-macOS-universal.zip
+          name: live2pet-macos-${{ matrix.arch }}
+          path: Live2Pet-macOS-${{ matrix.arch }}.dmg
           compression-level: 0
           retention-days: 14
 
@@ -137,7 +100,7 @@ jobs:
   prerelease:
     name: Publish tagged preview
     if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
-    needs: [mac-universal, windows]
+    needs: [mac-slices, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write

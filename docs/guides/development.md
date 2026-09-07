@@ -35,7 +35,7 @@ Windows x64 must be packaged on Windows:
 pnpm --filter @live2pet/desktop package:win
 ```
 
-The `Desktop CI and preview release` GitHub Actions workflow runs verification on pushes and pull requests. A manual run builds a Windows x64 ZIP plus native Intel and Apple Silicon macOS slices, verifies each slice, and merges them into one Universal App ZIP. A `v*` tag publishes those ZIPs as a GitHub prerelease. It does not create signed installers.
+The `Desktop CI and preview release` GitHub Actions workflow runs verification on pushes and pull requests. A manual run builds a Windows x64 ZIP plus separate Intel and Apple Silicon macOS DMGs, verifying each native App before packaging. A `v*` tag publishes those files as a GitHub prerelease. It does not create signed installers.
 
 ## Repository map
 

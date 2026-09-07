@@ -142,9 +142,9 @@ Windows x64 builds must run on Windows:
 pnpm --filter @live2pet/desktop run package:win
 ```
 
-GitHub Actions can build both native macOS slices, smoke-test them, merge them
-into a Universal App, and build the Windows x64 folder. Manual workflow runs
-retain both downloadable ZIPs as preview artifacts; a `v*` tag publishes them
+GitHub Actions can build and smoke-test separate Intel and Apple Silicon macOS
+Apps, package each as a DMG, and build the Windows x64 folder. Manual workflow
+runs retain all three downloads as preview artifacts; a `v*` tag publishes them
 as a prerelease. These are deliberately unsigned App archives, not signed
 installers: there is no maker, Developer ID, notarization, or update channel.
 See the repository README for platform security prompts and the release

@@ -61,10 +61,11 @@
 
 打开最近一次成功的 [Desktop CI and preview release](https://github.com/receyuki/live2pet/actions/workflows/desktop-release.yml)，下载对应的 Artifact 并解压：
 
-- `Live2Pet-macOS-universal.zip` 同时支持 Intel 和 Apple Silicon Mac。
+- `Live2Pet-macOS-x64.dmg` 支持 Intel Mac。
+- `Live2Pet-macOS-arm64.dmg` 支持 Apple Silicon Mac。
 - `Live2Pet-Windows-x64.zip` 支持 64 位 Windows。
 
-这些预览包尚未使用受信任的开发者证书签名。如果 macOS 提示 Live2Pet“已损坏”或“无法打开”，请先确认 ZIP 来自本仓库，将 `Live2Pet.app` 移到“应用程序”文件夹，再运行：
+这些预览包尚未使用受信任的开发者证书签名。如果 macOS 提示 Live2Pet“已损坏”或“无法打开”，请先确认 DMG 来自本仓库，将 `Live2Pet.app` 移到“应用程序”文件夹，再运行：
 
 ```sh
 xattr -r -d com.apple.quarantine /Applications/Live2Pet.app

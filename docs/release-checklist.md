@@ -41,11 +41,12 @@ macOS or Windows release.
 
 ## Cross-architecture binary validation gate
 
-- [ ] The GitHub Actions preview workflow produces downloadable Windows x64 and
-      macOS Universal ZIPs from a clean locked install, without bundled user
+- [ ] The GitHub Actions preview workflow produces a downloadable Windows x64
+      ZIP plus Intel and Apple Silicon macOS DMGs from a clean locked install,
+      without bundled user
       models or separately licensed runtimes.
-- [ ] Both native macOS slices pass the packaged-App smoke test before merging,
-      and the merged executable reports both `x86_64` and `arm64`.
+- [ ] Both native macOS builds pass the packaged-App smoke test before their
+      architecture-specific DMGs are uploaded.
 
 - [ ] A clean arm64 account can select a permitted local runtime and model,
       inspect and preview it, save and recover a project, build both targets,

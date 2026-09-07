@@ -61,10 +61,11 @@ Pointer tracking is preview-only; exported Live2D frames use a stable neutral fo
 
 Open the latest successful [Desktop CI and preview release](https://github.com/receyuki/live2pet/actions/workflows/desktop-release.yml), download its artifact, and unzip it:
 
-- `Live2Pet-macOS-universal.zip` supports Intel and Apple Silicon Macs.
+- `Live2Pet-macOS-x64.dmg` supports Intel Macs.
+- `Live2Pet-macOS-arm64.dmg` supports Apple Silicon Macs.
 - `Live2Pet-Windows-x64.zip` supports 64-bit Windows.
 
-These preview builds are not signed with trusted developer certificates. On macOS, if Finder says Live2Pet is damaged or cannot be opened, first make sure the ZIP came from this repository, move `Live2Pet.app` to Applications, then run:
+These preview builds are not signed with trusted developer certificates. On macOS, if Finder says Live2Pet is damaged or cannot be opened, first make sure the DMG came from this repository, move `Live2Pet.app` to Applications, then run:
 
 ```sh
 xattr -r -d com.apple.quarantine /Applications/Live2Pet.app
