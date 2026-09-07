@@ -76,7 +76,7 @@ it('requests only intersecting rows and releases them when leaving the panel', (
   const disconnect = vi.fn(), onVisible = vi.fn();
   vi.stubGlobal('IntersectionObserver', class { constructor(callback: IntersectionObserverCallback) { notify = callback; } observe() {} disconnect = disconnect; });
   const { container, unmount } = render(<VisibilityPanel locale="en" elements={elements} settings={{ hiddenElementIds: [] }} soloId={null} thumbnail={null} thumbnails={{}} busy={false} onSettings={vi.fn()} onSolo={vi.fn()} onInspect={vi.fn()} onVisible={onVisible} />);
-  const row = container.querySelector('[data-part-id="BODY"]')!;
+  const row = container.querySelector('[data-element-id="BODY"]')!;
   expect(onVisible).not.toHaveBeenCalled();
   notify([{ target: row, isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
   expect(onVisible).toHaveBeenLastCalledWith(['BODY']);
@@ -92,7 +92,7 @@ it('ranks detected elements, uses their sampled images, and still requires an ex
   const { container, rerender } = render(<VisibilityPanel {...props} />);
   await userEvent.click(screen.getByRole('button', { name: 'Detect large elements' }));
   expect(await screen.findByText('Large element · 2.5s')).toBeVisible();
-  expect(container.querySelector('[data-part-id]')).toHaveAttribute('data-part-id', 'BG');
+  expect(container.querySelector('[data-element-id]')).toHaveAttribute('data-element-id', 'BG');
   expect(onSettings).not.toHaveBeenCalled();
   await userEvent.click(screen.getByRole('button', { name: 'Solo · Background' }));
   expect(props.onSolo).toHaveBeenLastCalledWith('BG', 2.5);
@@ -102,7 +102,7 @@ it('ranks detected elements, uses their sampled images, and still requires an ex
   expect(onSettings).toHaveBeenCalledWith({ hiddenElementIds: ['BG'] });
   rerender(<VisibilityPanel {...props} scanScope="motion-two" />);
   expect(screen.queryByText('Large element · 2.5s')).toBeNull();
-  expect(container.querySelector('[data-part-id]')).toHaveAttribute('data-part-id', 'BODY');
+  expect(container.querySelector('[data-element-id]')).toHaveAttribute('data-element-id', 'BODY');
 });
 
 it('shows a recoverable scan error without changing visibility', async () => {
@@ -121,4 +121,44 @@ it('labels and hides a modern Cubism Drawable that has no parent Part', async ()
   expect(screen.getByText('Unattached mesh')).toBeVisible();
   await userEvent.click(screen.getByRole('button', { name: 'Hide · ArtMesh27' }));
   expect(onSettings).toHaveBeenCalledWith({ hiddenElementIds: ['drawable:ArtMesh27'] });
+});
+
+it('shows Part ancestry, collapses branches, and keeps ancestors visible while searching', async () => {
+  const user = userEvent.setup();
+  const tree = [
+    { id: 'BODY', name: 'Body', kind: 'part' as const },
+    { id: 'FACE', name: 'Face', parentId: 'BODY', kind: 'part' as const },
+    { id: 'EYES', name: 'Eyes', parentId: 'FACE', kind: 'part' as const },
+    { id: 'ARM', name: 'Arm', parentId: 'BODY', kind: 'part' as const },
+  ];
+  render(<VisibilityPanel locale="en" elements={tree} settings={{ hiddenElementIds: [] }} soloId={null} thumbnail={null} thumbnails={{}} busy={false} onSettings={vi.fn()} onSolo={vi.fn()} onInspect={vi.fn()} onVisible={vi.fn()} />);
+  expect(screen.getByText('2 children')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: 'Collapse · Body' }));
+  expect(screen.queryByText('Face')).toBeNull();
+  await user.type(screen.getByRole('textbox'), 'eyes');
+  expect(screen.getByText('Body')).toBeVisible();
+  expect(screen.getByText('Face')).toBeVisible();
+  expect(screen.getByText('Eyes')).toBeVisible();
+  expect(screen.queryByText('Arm')).toBeNull();
+});
+
+it('groups unattached meshes and can hide the group together', async () => {
+  const onSettings = vi.fn();
+  const drawables = [
+    { id: 'drawable:ArtMesh27', name: 'ArtMesh27', kind: 'drawable' as const },
+    { id: 'drawable:ArtMesh28', name: 'ArtMesh28', kind: 'drawable' as const },
+  ];
+  render(<VisibilityPanel locale="en" elements={drawables} settings={{ hiddenElementIds: [] }} soloId={null} thumbnail={null} thumbnails={{}} busy={false} onSettings={onSettings} onSolo={vi.fn()} onInspect={vi.fn()} onVisible={vi.fn()} />);
+  expect(screen.getByText('Unattached meshes')).toBeVisible();
+  await userEvent.click(screen.getByRole('button', { name: 'Hide · Unattached meshes' }));
+  expect(onSettings).toHaveBeenCalledWith({ hiddenElementIds: ['drawable:ArtMesh27', 'drawable:ArtMesh28'] });
+});
+
+it('shows the selected element ancestry in the large preview', () => {
+  const tree = [
+    { id: 'BODY', name: 'Body', kind: 'part' as const },
+    { id: 'FACE', name: 'Face', parentId: 'BODY', kind: 'part' as const },
+  ];
+  render(<VisibilityPanel locale="en" elements={tree} settings={{ hiddenElementIds: [] }} soloId={null} thumbnail={{ id: 'FACE', dataUrl: null, loading: false }} thumbnails={{}} busy={false} onSettings={vi.fn()} onSolo={vi.fn()} onInspect={vi.fn()} onVisible={vi.fn()} />);
+  expect(screen.getByText('Body › Face')).toBeVisible();
 });

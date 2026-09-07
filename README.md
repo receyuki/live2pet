@@ -85,20 +85,23 @@ rebuild for compatibility. Archive extraction safety limits remain enforced.
 ### Hide model backgrounds manually
 
 In **Map**, switch between the **Animations** and **Visibility** tabs.
-Under Visibility, search the model's Parts and choose **Hide / Show**.
-Use **Solo** to identify a Part temporarily, or **Restore all** to undo hiding.
-Small isolated Part images appear beside their names as rows enter the visible
+Under Visibility, search the model's elements and choose **Hide / Show**.
+Parts follow the model's collapsible parent/child hierarchy; search results keep
+their ancestor path visible. Root ArtMeshes that belong to no Part appear in one
+**Unattached meshes** group, which can also be hidden or shown together. Use
+**Solo** to identify an element temporarily, or **Restore all** to undo hiding.
+Small isolated element images appear beside their names as rows enter the visible
 list. Select an image to enlarge it in the preview above. Images are generated
 one at a time and reused across tab switches; changing the source, Motion, or
-Expression resets them. Empty Parts and failed previews are labeled; select a
+Expression resets them. Empty elements and failed previews are labeled; select a
 failed image to retry. These are pose snapshots, not original atlas tiles.
 Live2Pet never hides an element automatically based on its name. Friendly names
 are used when the model supplies them; otherwise original IDs are shown. Modern
-Cubism models also expose root ArtMeshes that belong to no Part as **Unattached
-mesh** rows, so backgrounds authored outside the Part hierarchy remain hideable.
+Cubism models therefore keep backgrounds authored outside the Part hierarchy
+hideable without inventing a false parent relationship.
 
-For modern Cubism models, **Detect large Parts** samples nine poses in the
-selected Motion and puts up to eight large visible Parts first. Their images
+For modern Cubism models, **Detect large elements** samples nine poses in the
+selected Motion and puts up to eight large visible elements first. Their images
 come from the sampled pose, so overlays absent at the start can be identified.
 **Solo** on a detected Part jumps to that sampled time. Detection does not hide
 anything; inspect each candidate before choosing **Hide**. It pauses at the
@@ -106,7 +109,7 @@ Motion's start when finished. This geometry-based aid can miss brief effects
 and cannot classify a Part as background or foreground. Cubism 2 retains manual
 inspection. Thumbnail checkerboards make translucent overlays easier to see.
 
-The project saves your hidden Parts and applies them to preview and both target
+The project saves your hidden elements and applies them to preview and both target
 builds. Toggling visibility updates the current pose immediately; sampled
 animation framing runs only when capture is needed, independently per Motion
 so a large effect in another Motion cannot shrink the whole package. Solo is not saved. Older
@@ -120,6 +123,11 @@ without dropping opening frames. Rebuild older packages to remove captured
 startup jolts. If only some Motions look tiny, preview those Motions under
 Visibility: a large overlay may appear only during playback and still control
 framing until you explicitly hide its Part.
+
+Use **Reset preview** beside the current Motion name to recreate the Live2D
+preview when its pose or renderer state looks wrong. It returns the current
+Motion to the beginning, clears temporary Solo inspection, and reapplies the
+project's saved visibility; it does not alter mappings or saved hidden elements.
 
 Use **New project** in the toolbar or **File → New Project** (`⌘N` / `Ctrl+N`)
 to return to import without restarting Live2Pet. Unsaved work receives the same

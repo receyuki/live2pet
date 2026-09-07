@@ -26,6 +26,7 @@ import {
   Pause,
   Play,
   Plus,
+  RefreshCcw,
   RotateCcw,
   Save,
   Settings as SettingsIcon,
@@ -661,6 +662,16 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
     if (previewStatus?.state !== 'ready') return;
     void runPlayback(() => controlLive2DPreview(previewStatus.playback?.playing ? 'pause' : 'resume'));
   };
+  const resetPreview = () => {
+    if (!nativePreview || previewStatus?.state === 'opening') return;
+    commandSequence.current += 1;
+    setSoloId(null);
+    setSeekTime(null);
+    setPlaybackError(null);
+    setVisualElementState({ sourceKey, elements: [] });
+    setPreviewStatus(current => current ? { ...current, state: 'opening', visible: false, playback: undefined, error: undefined } : current);
+    setPreviewRetry(value => value + 1);
+  };
   return (
     <main className="map-workspace">
       <Tabs className="workspace-panel library-tabs" selectedKey={visibilityOpen ? 'visibility' : 'motions'} onSelectionChange={key => { if (key !== 'visibility') setSoloId(null); setVisibilityOpen(key === 'visibility'); }}>
@@ -696,7 +707,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
       </Tabs>
       <section className="workspace-panel">
         <PanelHeading icon={<Sparkles size={16} />} title={t("preview")} body={t("previewHint")} />
-        <div className="preview-caption"><Chip variant="soft">{selectedName} · {selectedExpression?.name ?? t("baseExpression")}</Chip></div>
+        <div className="preview-caption"><Chip variant="soft">{selectedName} · {selectedExpression?.name ?? t("baseExpression")}</Chip><Button size="sm" variant="ghost" aria-label={t('resetPreview')} isDisabled={!nativePreview || previewStatus?.state === 'opening' || visibilityBusy || scanningParts} onPress={resetPreview}><RefreshCcw size={15} />{t('resetPreview')}</Button></div>
         <div className="preview-stage"><i className="stage-grid" />{!runtimeReady ? <div className="preview-runtime-required"><Gauge size={28} /><strong>{t("runtimeRequired")}</strong><p>{t("runtimeRequiredBody")}</p><Button size="sm" variant="primary" onPress={onConfigureRuntime}>{t("configureRuntime")}</Button></div> : nativePreview ? <><div ref={previewSurface} className="preview-native-surface" />{previewStatus?.state === 'opening' && <div className="preview-message">{t('previewLoading')}</div>}{previewStatus?.state === 'failed' && <div className="preview-runtime-required"><strong>{t('previewFailed')}</strong><p>{previewStatus.error?.message}</p><Button size="sm" variant="primary" onPress={() => setPreviewRetry((value) => value + 1)}>{t('retry')}</Button></div>}</> : <div className="preview-runtime-required"><Box size={28} aria-hidden="true" /><strong>{t('previewEmptyTitle')}</strong><p>{t(projectDocument ? 'previewDesktopRequired' : 'previewImportHint')}</p></div>}</div>
         <div className="playback"><Button isIconOnly aria-label={previewStatus?.playback?.playing ? t('pause') : t('play')} variant="primary" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={togglePlayback}>{previewStatus?.playback?.playing ? <Pause size={15} /> : <Play size={15} />}</Button><Button isIconOnly aria-label={t('restart')} variant="ghost" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={() => void runPlayback(() => controlLive2DPreview('restart'))}><RotateCcw size={15} /></Button><input className="timeline" type="range" aria-label={t('seekMotion')} min={0} max={selectedDuration} step={0.01} value={seekTime ?? previewStatus?.playback?.time ?? 0} disabled={previewStatus?.state !== 'ready' || !selectedDuration} onInput={(event) => setSeekTime(Number(event.currentTarget.value))} /><small>{(previewStatus?.playback?.time ?? 0).toFixed(1)} / {selected?.seconds ?? '—'} s</small></div>
         <div className="playback-options">

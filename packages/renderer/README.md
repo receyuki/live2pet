@@ -87,7 +87,8 @@ identities, optional parent identities and display-info names. Modern Cubism
 also exposes root Drawables without a parent Part as prefixed `drawable:`
 identities, and
 `setVisualSettings({ hiddenElementIds })`. The Desktop Map lets users select
-these manually; names never trigger automatic hiding. Solo is temporary and
+these manually; the UI renders Part ancestry as a collapsible tree and groups
+root Drawables without assigning them a fictional parent. Names never trigger automatic hiding. Solo is temporary and
 preserves the selected Part's ancestor/descendant chain. It is never saved.
 
 Hidden opacity is applied after animation/pose and before Core updates its

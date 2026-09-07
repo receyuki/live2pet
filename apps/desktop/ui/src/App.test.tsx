@@ -729,6 +729,9 @@ describe('Live2Pet desktop shell', () => {
     fireEvent.change(slider, { target: { value: '0.07' } });
     await vi.waitFor(() => expect(window.live2pet!.controlPreview).toHaveBeenCalledWith({ action: 'seek', time: 0.5 }));
     expect(window.live2pet!.controlPreview).not.toHaveBeenCalledWith({ action: 'seek', time: 0.07 });
+    await user.click(screen.getByRole('button', { name: 'Reset preview' }));
+    await vi.waitFor(() => expect(openPreview).toHaveBeenCalledTimes(2));
+    expect(openPreview).toHaveBeenLastCalledWith({ projectId: 'vicious-khepri', sourceFingerprint: 'fixture', bounds: { x: 280, y: 90, width: 640, height: 520 }, visualSettings: { hiddenElementIds: [] } });
   });
 
   it('loads inline thumbnails serially, keeps the selected large preview, and reuses them across tabs', async () => {
@@ -766,6 +769,7 @@ describe('Live2Pet desktop shell', () => {
     await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Inspect · Background' })).toBeEnabled());
 
     await user.click(screen.getByRole('button', { name: 'Inspect · Background' }));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Inspect · Background' })).toHaveAttribute('aria-pressed', 'true'));
     expect(await screen.findByRole('progressbar', { name: 'Loading…' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Inspect · Body' }));
     expect(api.getPreviewVisualElementThumbnail).toHaveBeenNthCalledWith(1, { id: 'BG' });
