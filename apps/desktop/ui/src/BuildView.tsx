@@ -6,7 +6,7 @@ import { chooseInstallRoot, DesktopApiError, hasBuildApi, installArtifact, getTa
 import { downloadBuildArtifact } from "./build-artifact";
 import type { BuildState } from "./build-state";
 import { GeneratedPreview } from "./generated-preview";
-import { Locale, MessageKey, translate } from "./i18n";
+import { Locale, MessageKey, translate, translateBehavior } from "./i18n";
 import { CLAWD_PROFILE, CODEX_PROFILE } from "./target-profiles";
 import { formatBytes } from './format-bytes';
 
@@ -50,6 +50,14 @@ const presets: RenderPreset[] = ["compact", "balanced", "high"];
 
 export function BuildView({ locale, project, inspection, runtimeReady, state, onPreset, onBuild, onCancel, onName, onCustomRender }: Props) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
+  const readinessLabel = (value: string) => {
+    if (value === 'source') return t('sourceTitle');
+    if (value === 'package name') return t('packageName');
+    if (value === 'Spine renderer pack') return t('spinePackTitle');
+    if (value === 'matching Cubism runtime') return t('runtimeRequired');
+    if (value === 'source review') return t('sourceReviewRequired');
+    return translateBehavior(locale, value);
+  };
   const [locations, setLocations] = useState<Partial<Record<BuildTarget, Extract<InstallRootResult, { cancelled: false }>>>>({});
   const [feedback, setFeedback] = useState<Partial<Record<BuildTarget, string>>>({});
   const [installations, setInstallations] = useState<TargetInstallations | null>(null);
@@ -140,7 +148,7 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
                 <div className="build-top"><span className="large-icon"><PackageCheck size={20} /></span><Chip variant="soft">{readiness.ready ? t("ready") : t("notReady")}</Chip></div>
                 <h2>{title}</h2>
                 {(locations[target]?.displayPath || installations?.targets.find(record => record.target === target)) && <p className="install-destination">{t('targetRoot')} · {locations[target]?.displayPath ?? installations?.targets.find(record => record.target === target)?.root.path}</p>}
-                {!readiness.ready && <p>{t("targetMissing", { value: readiness.missing.join(", ") })}</p>}
+                {!readiness.ready && <p>{t("targetMissing", { value: readiness.missing.map(readinessLabel).join(locale === 'zh-CN' ? '、' : ', ') })}</p>}
                 {target === 'clawd' && readiness.ready && <p>{t('targetReadyBody')}</p>}
                 <div className="preset-row"><strong>{t("renderPreset")}</strong><ButtonGroup aria-label={`${title} ${t("renderPreset")}`}>{presets.map((value) => <Button size="sm" key={value} isDisabled={current.status === 'building'} variant={!custom && preset === value ? "primary" : "secondary"} onPress={() => onPreset(target, value)}>{t(value)}</Button>)}{target === 'clawd' && onCustomRender && <Button size="sm" variant={custom ? 'primary' : 'secondary'} isDisabled={!project || current.status === 'building'} onPress={() => onCustomRender(settings)}>{t('customRender')}</Button>}</ButtonGroup></div>
                 {target === 'clawd' && <small>{settings.width} × {settings.height} px · {settings.fps} FPS · {t('webpQuality')} {settings.quality}</small>}

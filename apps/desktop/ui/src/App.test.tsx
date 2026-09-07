@@ -1037,7 +1037,7 @@ describe('Live2Pet desktop shell', () => {
     render(<App />);
 
     await user.click(screen.getByRole('button', { name: '打开设计预览' }));
-    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: '映射' }));
+    await user.click(within(screen.getByRole('navigation', { name: '项目' })).getByRole('button', { name: '映射' }));
     expect(screen.getByRole('button', { name: /触摸头部/ })).toBeVisible();
     expect(screen.getByRole('button', { name: '微笑' })).toBeVisible();
     expect(screen.getByText('思考中')).toBeVisible();

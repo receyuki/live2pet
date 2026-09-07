@@ -213,7 +213,7 @@ export function GeneratedPreview({ artifact, locale }: Props) {
     setLoading(true);
     setError(null);
     setPreview(null);
-    void loadGeneratedPreview(artifact).then((value) => { if (active) { setPreview(value); setSelected(0); setFrame(0); setPlaying(true); } }).catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : t("generatedPreviewUnavailable")); }).finally(() => { if (active) setLoading(false); });
+    void loadGeneratedPreview(artifact).then((value) => { if (active) { setPreview(value); setSelected(0); setFrame(0); setPlaying(true); } }).catch(() => { if (active) setError(t("generatedPreviewInvalidPackage")); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [artifact.artifactId]);
 
@@ -227,7 +227,7 @@ export function GeneratedPreview({ artifact, locale }: Props) {
       return () => { active = false; };
     }
     const asset = preview.assets[selected];
-    if (asset) void readGeneratedPreviewAsset(preview.archive, asset.path).then((value) => { if (active) setImageBytes(value); }).catch((cause) => { if (active) setImageError(cause instanceof Error ? cause.message : t("generatedPreviewUnavailable")); });
+    if (asset) void readGeneratedPreviewAsset(preview.archive, asset.path).then((value) => { if (active) setImageBytes(value); }).catch(() => { if (active) setImageError(t("generatedPreviewInvalidPackage")); });
     return () => { active = false; };
   }, [preview, selected]);
 
@@ -251,7 +251,7 @@ export function GeneratedPreview({ artifact, locale }: Props) {
     if (!imageUrl || preview?.target !== "codex-pet") return;
     const image = new Image();
     image.onload = () => { decodedImageRef.current = image; setImageReady(true); };
-    image.onerror = () => setImageError(t("generatedPreviewUnavailable"));
+    image.onerror = () => setImageError(t("generatedPreviewInvalidPackage"));
     image.src = imageUrl;
     return () => { image.onload = null; image.onerror = null; image.src = ""; decodedImageRef.current = null; };
   }, [imageUrl, preview?.target]);

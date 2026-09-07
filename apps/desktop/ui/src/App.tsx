@@ -100,7 +100,7 @@ import {
   initialAppState,
   SettingsSection,
 } from "./app-state";
-import { Locale, MessageKey, translate } from "./i18n";
+import { Locale, MessageKey, translate, translateBehavior } from "./i18n";
 import runtimeHelpLinks from "../../runtime-help-links.json";
 import { projectIdFromSourceName, sourcePathFromSelection } from "./source-selection";
 import { hasDraggedFiles, isProjectFile } from "./file-drop";
@@ -123,14 +123,6 @@ const SETUP_KEY = "live2pet.desktop.setup-completed";
 const LOCALE_KEY = "live2pet.desktop.locale";
 const APPEARANCE_KEY = "live2pet.desktop.appearance";
 
-const SLOT_MESSAGE_KEYS: Partial<Record<string, MessageKey>> = {
-  idle: "assignmentIdle",
-  thinking: "assignmentThinking",
-  working: "assignmentWorking",
-  attention: "assignmentAttention",
-  error: "assignmentError",
-};
-
 const motions = [
   { id: "main-1", nameKey: "motionMainOne", seconds: "4.2", tint: "" },
   { id: "main-2", nameKey: "motionMainTwo", seconds: "3.6", tint: "tint-blue" },
@@ -151,13 +143,6 @@ type MappingChannel = "mappings" | "reactions";
 function mappingDestination(target: MappingTargetId, channel: MappingChannel, slot: string): MappingDestination {
   if (target === "codex-pet") return { target, category: "rows", slot };
   return { target, category: channel === "reactions" ? "reactions" : "states", slot };
-}
-
-function slotLabel(slot: string): string {
-  return slot
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/[-_]+/g, " ")
-    .replace(/^./, (value) => value.toUpperCase());
 }
 
 function storedLocale(): Locale {
@@ -594,7 +579,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   const canEditMappings = Boolean(projectDocument && inspection);
   const canAssign = canEditMappings && Boolean(selectedMotionId);
   const targetDocument = projectDocument?.targets[mappingTarget];
-  const mappingSlotLabel = (slot: string) => SLOT_MESSAGE_KEYS[slot] ? t(SLOT_MESSAGE_KEYS[slot]!) : slotLabel(slot);
+  const mappingSlotLabel = (slot: string) => translateBehavior(locale, slot);
 
   function assignmentLabel(slot: string, channel: MappingChannel): string {
     const value = targetDocument?.[channel]?.[slot] ?? "";
@@ -1290,7 +1275,7 @@ export function App() {
     <div className="app-shell">
       <header className="app-toolbar">
         <div className="toolbar-brand">{projectOpen ? <><span>Live2Pet</span><i /><strong title={state.project?.name}>{state.project?.name}</strong></> : <strong>Live2Pet</strong>}</div>
-        {projectOpen ? <nav aria-label="Project"><ButtonGroup>{(["source", "map", "build"] as const).map((destination) => <Button key={destination} isDisabled={sourceReviewRequired && destination !== "source"} variant={state.destination === destination ? "primary" : "ghost"} onPress={() => dispatch({ type: "NAVIGATE", destination })}>{t(destination)}</Button>)}</ButtonGroup></nav> : <span />}
+        {projectOpen ? <nav aria-label={t('projectNavigation')}><ButtonGroup>{(["source", "map", "build"] as const).map((destination) => <Button key={destination} isDisabled={sourceReviewRequired && destination !== "source"} variant={state.destination === destination ? "primary" : "ghost"} onPress={() => dispatch({ type: "NAVIGATE", destination })}>{t(destination)}</Button>)}</ButtonGroup></nav> : <span />}
         <div className="toolbar-actions">{!state.project?.inspection && <Chip className="chip" size="sm" variant="soft"><span className="status-dot" />{t("designPreview")}</Chip>}{projectOpen && <Button aria-label={t("newProject")} variant="ghost" isDisabled={Object.values(buildState).some(build => build.status === 'building')} onPress={() => void startNewProject()}><Plus size={17} />{t("newProject")}</Button>}{projectOpen && <Button aria-label={t("saveProject")} variant="ghost" onPress={() => void saveProjectDocument()}><Save size={17} />{t("save")}</Button>}<Button isIconOnly aria-label={t("settings")} variant="ghost" onPress={() => dispatch({ type: "OPEN_SETTINGS" })}><SettingsIcon size={18} /></Button></div>
       </header>
       <div className="app-content">

@@ -103,6 +103,6 @@ describe("generated package preview", () => {
     vi.mocked(readCompleteBuildArtifact).mockRejectedValue(new Error("broken package"));
     render(<GeneratedPreview artifact={{ artifactId: "artifact-2", target: "clawd", filename: "theme.zip", byteLength: 10 }} locale="en" />);
     expect(await screen.findByText(/download and install are still available/i)).toBeVisible();
-    expect(screen.getByText("broken package")).toBeVisible();
+    expect(screen.getByText(/invalid or incomplete/i)).toBeVisible();
   });
 });

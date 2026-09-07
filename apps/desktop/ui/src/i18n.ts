@@ -1,6 +1,6 @@
 export type Locale = 'en' | 'zh-CN';
 
-const messages = {
+export const messages = {
   en: {
     libraryUseModel: 'Use this model', libraryPreviewOnly: 'Browse and preview models without changing your current project. Choose “Use this model” when ready.', libraryDownloadPreview: 'Click to download preview', libraryThumbnailLoading: 'Preparing preview', libraryPreviewUnavailable: 'Preview unavailable · check runtime',
     newProject: 'New project', newProjectBuildBusy: 'Finish or cancel the active build before creating a new project.', unownedDrawable: 'Unattached mesh', unownedDrawableGroup: 'Unattached meshes', elementChildren: '{value} children', expandElement: 'Expand', collapseElement: 'Collapse', hiddenByParent: 'Hidden by its parent element', resetPreview: 'Reset preview', customRender: 'Custom', renderResolution: 'Resolution', renderFps: 'Frame rate', webpQuality: 'WebP quality', customRenderHint: 'Lower values usually reduce ZIP size. Frame rate changes smoothness, not playback speed. Selecting a preset restores its defaults.', clawdSizeWarning: '{size} ZIP exceeds Clawd’s {limit} import limit. You can save it, but Clawd may refuse to import it. Lower resolution, frame rate or quality and rebuild.',
@@ -54,66 +54,82 @@ const messages = {
     chosenMotion: 'Chosen motion', chosenExpression: 'Chosen expression', assignmentEmpty: 'No behavior linked yet',
     targetAssignments: 'Planned target behaviors', targetIdle: 'Idle', targetWork: 'Working', targetTouch: 'Touch reaction',
     buildSummary: 'Build summary', buildSummaryBody: 'This shell keeps package generation explicit and app-like. The next migration step is wiring these panels to the existing mapper and build services.',
-    cacheRefresh: 'Refresh cache state',
+    cacheRefresh: 'Refresh cache state', projectNavigation: 'Project', generatedPreviewInvalidPackage: 'The generated package is invalid or incomplete. Rebuild it and try again.',
   },
   'zh-CN': {
     libraryUseModel: '使用这个模型', libraryPreviewOnly: '浏览和预览不会修改当前项目，选好后点击“使用这个模型”。', libraryDownloadPreview: '点击下载并预览', libraryThumbnailLoading: '正在生成预览', libraryPreviewUnavailable: '预览不可用 · 请检查运行时',
     newProject: '新建项目', newProjectBuildBusy: '请先完成或取消正在进行的构建，再新建项目。', unownedDrawable: '未归属网格', unownedDrawableGroup: '未归属网格', elementChildren: '{value} 个子元素', expandElement: '展开', collapseElement: '收起', hiddenByParent: '已随父元素隐藏', resetPreview: '重置预览', customRender: '自定义', renderResolution: '分辨率', renderFps: '帧率', webpQuality: 'WebP 质量', customRenderHint: '调低参数通常能减小体积。帧率影响流畅度，不改变播放速度。点击任一默认档位可恢复该档位参数。', clawdSizeWarning: 'ZIP 为 {size}，超过 Clawd 的 {limit} 导入限制。仍可保存，但 Clawd 可能拒绝导入。可降低分辨率、帧率或质量后重新构建。',
     scanVisualElements: '检测大范围元素', scanVisualElementsBusy: '正在检测动作…', scanVisualElementsHint: '采样当前动作的大范围可见元素，不代表一定是背景，也可能漏掉短暂特效。结束后回到开头并暂停。', scanVisualElementsFound: '可疑元素已置顶，请查看后再隐藏。', scanVisualElementsEmpty: '采样姿势中未发现大范围元素。', largeVisualElement: '大范围元素',
-    outputSettingsTitle: '打包输出', outputSettingsHint: '保存 ZIP 包，不会安装到目标 App。可设置默认输出目录，或每次选择保存位置；默认目录中的同名文件会保留，新文件自动编号。', outputAskEveryTime: '每次询问保存位置', outputUseFolder: '使用默认输出目录', outputChooseFolder: '选择输出目录', outputFolderUnavailable: '输出目录不可用，请重新选择目录或改为每次询问保存位置。', packageSaved: '已保存到 {path}', savePackage: '保存 ZIP',
+    outputSettingsTitle: '打包输出', outputSettingsHint: '保存 ZIP 包，不会安装到目标应用。可设置默认输出目录，或每次选择保存位置；默认目录中的同名文件会保留，新文件自动编号。', outputAskEveryTime: '每次询问保存位置', outputUseFolder: '使用默认输出目录', outputChooseFolder: '选择输出目录', outputFolderUnavailable: '输出目录不可用，请重新选择目录或改为每次询问保存位置。', packageSaved: '已保存到 {path}', savePackage: '保存 ZIP',
     modelTools: '模型工具', motionsAndExpressions: '动作与表情', thumbnailEmptyShort: '暂无内容', thumbnailRetry: '重试',
     visibility: '显示与隐藏', visibilityHint: '隐藏模型元素，同时用于预览和生成包，不修改源文件。', searchVisualElements: '搜索模型元素', restoreVisibility: '全部恢复', showElement: '显示', hideElement: '隐藏', inspectElement: '查看', visualElementPreview: '元素预览', thumbnailSelectHint: '元素小图自动显示在名称旁，点击可在这里放大查看。', thumbnailEmpty: '当前姿势下，这个元素没有可见像素。', thumbnailUnavailable: '暂时无法预览这个元素，点击小图可重试。', visibilityResetForNewSource: '资源包已更换，原有显示与隐藏选择已重置。', soloElement: '单独查看', endSolo: '结束单独查看', soloHint: '仅临时查看 · 不保存、不用于导出', noVisualMatches: '没有匹配的元素。', noVisualElements: '此模型未提供可分离的元素。', inseparableElements: '若背景和角色属于同一个网格，无法在这里分离。',
-    targetRefresh: '重新检测', targetApp: '宿主应用', targetApp_found: '已找到 App', 'targetApp_not-found': '未在检查位置找到', targetApp_unavailable: '无法检查 App', targetApp_unsupported: '此平台暂不支持检测',
+    targetRefresh: '重新检测', targetApp: '宿主应用', targetApp_found: '已找到应用', 'targetApp_not-found': '未在检查位置找到', targetApp_unavailable: '无法检查应用', targetApp_unsupported: '此平台暂不支持检测',
     targetRoot: '宠物包安装目录', targetRoot_ready: '目录可写', 'targetRoot_will-create': '确认安装时创建', 'targetRoot_not-directory': '路径不是文件夹', targetRoot_unavailable: '无法访问或写入',
-    targetChooseApp: '手动定位 App', targetAutoApp: '恢复自动检测', targetChooseRoot: '选择安装目录', targetDefaultRoot: '恢复默认目录', targetSource_manual: '自定义位置 · 已在本机保存', targetSource_default: '宿主默认位置', targetSource_environment: '由环境变量指定',
-    targetSearchHint: 'macOS 会检查 /Applications、~/Applications 或你指定的 App。“未找到”不代表没有安装，可手动定位其他位置。其他平台暂不检测 App。', targetSettingsHint: '检测不会启动或安装应用。目录在本机保存，构建页安装时复用。选择 App 不会改变其数据目录；如需自定义宠物包位置，请另外选择。找到 App 不代表已验证格式兼容，实际安装仍需确认。',
-    confirmInstallAt: '将 {filename} 安装到：\n{path}\n\n不会覆盖已有宠物包。', confirmReplaceInstall: '{filename} 已经安装。是否安全替换？如果安装失败，原有宠物包会自动恢复。', installAppMissing: '未检测到宿主 App。仍可安装宠物包，但宿主可用后才可能显示。',
-    previewEmptyTitle: '暂无模型预览', previewImportHint: '导入资源包后，即可在这里预览模型动作。界面预览不包含真实模型。', previewDesktopRequired: '请在桌面 App 中打开此项目来预览模型。',
-    runtimeHelp: '为什么要单独下载运行时？下载指南 ↗', spinePackTitle: 'Spine 渲染包', spinePackLine: 'Spine {value} 渲染器', spinePackVersion: '官方 Spine Player {value}', spinePackHint: '可选组件。每个版本仅在点击安装后下载；校验完成后保存在 App 私有目录。你的使用方式需要符合 Spine Runtime License。', installSpinePack: '安装', removeSpinePack: '移除', confirmRemoveSpinePack: '从 Live2Pet 移除这个 Spine 渲染包吗？',
+    targetChooseApp: '手动选择应用', targetAutoApp: '恢复自动检测', targetChooseRoot: '选择安装目录', targetDefaultRoot: '恢复默认目录', targetSource_manual: '自定义位置 · 已在本机保存', targetSource_default: '宿主默认位置', targetSource_environment: '由环境变量指定',
+    targetSearchHint: 'macOS 会检查 /Applications、~/Applications 或你指定的应用。“未找到”不代表没有安装，可手动选择其他位置。其他平台暂不检测应用。', targetSettingsHint: '检测不会启动或安装应用。目录会保存在本机，并在构建页安装时复用。选择应用不会改变其数据目录；如需自定义宠物包位置，请另外选择。找到应用不代表已验证格式兼容，实际安装仍需确认。',
+    confirmInstallAt: '将 {filename} 安装到：\n{path}\n\n不会覆盖已有宠物包。', confirmReplaceInstall: '{filename} 已经安装。是否安全替换？如果安装失败，原有宠物包会自动恢复。', installAppMissing: '未检测到宿主应用。仍可安装宠物包，但宿主应用可用后才可能显示。',
+    previewEmptyTitle: '暂无模型预览', previewImportHint: '导入资源包后，即可在这里预览模型动作。界面预览不包含真实模型。', previewDesktopRequired: '请在桌面应用中打开此项目来预览模型。',
+    runtimeHelp: '为什么要单独下载运行时？下载指南 ↗', spinePackTitle: 'Spine 渲染包', spinePackLine: 'Spine {value} 渲染器', spinePackVersion: '官方 Spine Player {value}', spinePackHint: '可选组件。每个版本仅在点击安装后下载；校验完成后保存在应用专用目录中。你的使用方式需要符合《Spine 运行时许可协议》。', installSpinePack: '安装', removeSpinePack: '移除', confirmRemoveSpinePack: '从 Live2Pet 移除这个 Spine 渲染包吗？',
     codexV2Hint: 'Codex V2 · 11 行图集。16 个方向格使用 idle 的中立姿势，暂不生成方向跟随；沿用现有九个动作映射。', codexNeutralLook: '中立姿势（静态）',
-    projectDropDesktop: '请在桌面 App 中拖入本地 .live2pet 项目文件。', buildStatus_queued: '排队中', buildQueuedHint: '正在等待其他构建释放共享渲染器，轮到后会自动开始。', buildPreparing: '正在准备渲染器和资源包…',
+    projectDropDesktop: '请在桌面应用中拖入本地 .live2pet 项目文件。', buildStatus_queued: '排队中', buildQueuedHint: '正在等待其他构建释放共享渲染器，轮到后会自动开始。', buildPreparing: '正在准备渲染器和资源包…',
     mappingRequired: '必选', mappingOptional: '可选', mappingRequiredHint: '构建前需要完成本组全部状态的映射。', mappingOptionalHint: '可以留空，不影响构建。', mappingFullSleepRequired: '已启用完整睡眠模式，四个状态均为必选。', mappingFullSleepOptional: '仅完整睡眠模式需要；其他情况可以留空。',
     codexFormatDetails: '格式说明',
     codexTimingHint: 'Codex 使用固定少量帧的短循环。将按宿主节奏采样动作开头，而非把完整动作加速压缩。需要完整长动作请使用 Clawd。',
-    packageName: '宠物 / 主题名称', packageNameHint: '用于两个主题包及其文件名。修改名称可生成不同的宠物。',
-    confirmRemoveRuntime: '从 Live2Pet 删除这个已保存的运行时？不会改动原始文件。', removeRuntime: '删除 {name}',
+    packageName: '宠物／主题名称', packageNameHint: '用于两个宠物包及其文件名。修改名称可生成不同的宠物。',
+    confirmRemoveRuntime: '从 Live2Pet 移除这个已保存的运行时吗？不会改动原始文件。', removeRuntime: '移除 {name}',
     sourcePreviewHint: '进入“映射”即可选择并预览模型动作。', noExpressions: '此模型没有独立表情，直接使用动作即可。', seekMotion: '动作播放位置',
     loopPreview: '循环预览', previewSpeed: '预览速度：{value}×', previewOptionsHint: '仅影响预览 · 切换后重新播放',
     appName: 'Live2Pet',
-    setupEyebrow: '首次设置', setupTitle: '让你的模型真正动起来。', setupBody: '添加你已经拥有的 Live2D 运行时。Live2Pet 会在本地私密保存副本，之后自动选择匹配的 Cubism 版本。',
+    setupEyebrow: '首次设置', setupTitle: '让你的模型真正动起来。', setupBody: '添加你已经拥有的 Live2D 运行时。Live2Pet 会将副本保存在应用的本地专用目录中，之后自动选择匹配的 Cubism 版本。',
     setupRuntime: '运行时资源库', setupEmpty: '尚未保存 Live2D 运行时', setupSkip: '稍后设置', setupContinue: '进入 Live2Pet', setupDone: '返回工作区', addRuntime: '添加运行时', addRuntimeFolder: '选择 SDK 文件夹', replaceRuntime: '添加或替换', removeAll: '全部移除', dropRuntime: '将 Live2D 运行时文件或 SDK 文件夹拖到这里', dropOne: '每次只能拖入一个文件或文件夹。',
     welcomeEyebrow: '你的动画工作区', welcomeTitle: '把动画模型变成桌面宠物。', welcomeBody: '导入一次，逐个预览动作，确认动作映射，然后构建可直接安装的宠物包。', importSource: '导入模型资源', importFolder: '模型文件夹', importPck: 'Live2D PCK 文件', importHint: '选择或拖入 Live2D、Spine 文件夹，或受支持的 Live2D PCK 文件。', dropSource: '拖入 Live2D、Spine 文件夹或 Live2D PCK 文件', sourcePathUnavailable: 'Live2Pet 无法读取所选的本地路径。', openProject: '打开项目', sampleProject: '打开设计预览', recent: '最近项目', noRecent: '打开过的项目会显示在这里。', draftRecoveryTitle: '恢复未保存项目', draftRecoveryBody: '{name} · 已于 {savedAt} 保存在本机', recoverDraft: '恢复', discardDraft: '丢弃', confirmReplaceDirtyProject: '要替换当前项目吗？未保存的更改仍会保留在本地恢复草稿中，直到你保存或丢弃它。', petPackage: '宠物包', clawdPackage: 'Clawd 主题包', codexPackage: 'Codex 宠物包',
     source: '模型', map: '映射', build: '构建', settings: '设置', close: '完成', project: 'Saint Louis · 预览项目', save: '保存', saveProject: '保存项目', saved: '已保存', unsaved: '有未保存的更改', noSavedProject: '尚无项目文档',
     motions: '动作与表情', expressions: '表情', preview: '模型预览', assignment: '目标配置', motionsHint: '选择一个动画进行预览和配置。', previewHint: '当前选择的动作会显示在这里。', assignmentHint: '选择目标后，再明确应用当前动作与表情。', selected: '已选择', play: '播放动作', pause: '暂停动作', restart: '重新播放', previewLoading: '正在加载模型预览…', previewFailed: '模型预览无法启动', previewReady: '预览已就绪', previewWaiting: '等待预览', assigned: '已关联行为', assign: '关联当前动作', search: '搜索', searchMotions: '搜索动作',
-    mappingTarget: '映射目标', selectedMotionExpression: '已选动作 + 表情', mappingPreviewOnly: '请先导入或打开真实资源包再编辑映射；当前设计预览为只读。', assignmentFallback: '回退 · {value}', clawdCoreStates: 'Clawd 核心状态', clawdOptionalStates: 'Clawd 可选状态', clawdFullSleepStates: 'Clawd 完整睡眠状态', clawdReactions: 'Clawd 互动反应', codexRows: 'Codex Pet 行为', useSelected: '使用已选', clearAssignment: '清除',
+    mappingTarget: '映射目标', selectedMotionExpression: '已选动作与表情', mappingPreviewOnly: '请先导入或打开真实资源包再编辑映射；当前设计预览为只读。', assignmentFallback: '备用 · {value}', clawdCoreStates: 'Clawd 核心状态', clawdOptionalStates: 'Clawd 可选状态', clawdFullSleepStates: 'Clawd 完整睡眠状态', clawdReactions: 'Clawd 互动反应', codexRows: 'Codex 宠物行为', useSelected: '使用已选', clearAssignment: '清除',
     motionMainOne: '主动作 1', motionMainTwo: '主动作 2', motionTouchHead: '触摸头部', motionAttention: '注意', motionError: '错误', motionDuration: '动作 · {value} 秒', sourceUnavailable: '需要重新关联资源包',
     expressionDefault: '默认', expressionSmile: '微笑', expressionSerious: '严肃', assignmentIdle: '待机', assignmentThinking: '思考中', assignmentWorking: '工作中', assignmentAttention: '注意', assignmentError: '错误',
-    sourceTitle: '资源包', sourceBody: '在开始映射前检查模型兼容性以及包含的动作、表情和纹理。', sourceReady: '可以开始映射', sourceSummary: 'Cubism 4 · 5 个动作 · 3 个表情', sourceModel: '模型', sourceTextures: '纹理', sourceMotions: '动作', sourceExpressions: '表情', relinkFolder: '选择模型文件夹', relinkPck: '选择 PCK 文件', relinkSourceHint: '也可以将 Live2D、Spine 文件夹或 Live2D PCK 文件拖到这里。', sourceReviewRequired: '检查已变更的资源包', sourceReviewBody: '资源包内容已变化。继续映射或构建前，请检查受影响的动作配方。', acknowledgeReview: '我已检查这些配方', buildTitle: '包构建', buildBody: '检查目标配置并生成可安装的宠物包。', ready: '已就绪', buildTheme: '构建主题', buildPackage: '构建宠物包',
-    notReady: '未就绪', targetReadyBody: '所有必需行为均已映射，可以构建。', targetMissing: '请先映射这些必需行为：{value}', renderPreset: '渲染预设', compact: '精简', balanced: '平衡', high: '高质量', buildProgress: '构建进度', buildWaiting: '可随时开始。', buildStage: '阶段：{value}', buildStatus_idle: '尚未构建', buildStatus_building: '构建中', buildStatus_succeeded: '构建成功', buildStatus_failed: '构建失败', buildStatus_cancelled: '已取消', cancelBuild: '取消构建', buildCancelled: '构建已取消', buildFailed: '宠物包构建失败', buildHostUnavailable: '桌面构建主机未连接，无法构建宠物包；不会回退到浏览器流程。', artifactMissing: '构建已完成，但没有可下载的生成包。', artifactSize: '{value} KiB ZIP', download: '下载', downloadReady: '已下载 {filename}', chooseFolder: '选择文件夹', install: '安装', buildAndInstall: '构建并安装', installFolderChosen: '已选择安装文件夹', confirmInstallArtifact: '安装 {filename}？这会将宠物包写入选定目标。', installSucceeded: '宠物包已安装', previewSummary: '预览：{value}', validationSummary: '验证：{value}', passed: '通过', failed: '失败', generatedPreview: '生成结果预览', generatedPreviewLoading: '正在打开生成包预览…', generatedPreviewUnavailable: '生成结果预览不可用，仍可继续下载或安装。', generatedAssets: '{value} 个 WebP 动画', generatedRows: '{value} 行精灵动画', generatedPreviewSelection: '选择生成结果预览', generatedPlayback: '生成结果播放控制',
-    general: '通用', runtimes: '运行时', targets: '目标与安装', storage: '存储', settingsTitle: '设置', settingsBody: '应用通用配置与每个 Live2Pet 项目保持分离。', appearance: '外观', language: '语言', system: '跟随系统', light: '浅色', dark: '深色', reopenLastProject: '启动时恢复上次项目',
-    runtimeTitle: '渲染器资源库', runtimeBody: 'Live2D 运行时和可选渲染包保存在本地，并自动选择匹配版本。', runtimeAvailable: '可用', runtimeMissing: '未配置', runtimeRequired: '需要匹配的渲染器', runtimeRequiredBody: '只需添加一次匹配的 Live2D 运行时或安装 Spine 支持，之后会自动复用。', configureRuntime: '配置渲染器', baseExpression: '基础表情', generations: 'Cubism {value}',
-    targetBody: '检测宿主 App，并配置生成宠物包的安装位置。普通构建和下载绝不会自动安装。',
+    sourceTitle: '资源包', sourceBody: '在开始映射前检查模型兼容性以及包含的动作、表情和纹理。', sourceReady: '可以开始映射', sourceSummary: 'Cubism 4 · 5 个动作 · 3 个表情', sourceModel: '模型', sourceTextures: '纹理', sourceMotions: '动作', sourceExpressions: '表情', relinkFolder: '选择模型文件夹', relinkPck: '选择 PCK 文件', relinkSourceHint: '也可以将 Live2D、Spine 文件夹或 Live2D PCK 文件拖到这里。', sourceReviewRequired: '检查已变更的资源包', sourceReviewBody: '资源包内容已变化。继续映射或构建前，请检查受影响的动作配置。', acknowledgeReview: '我已检查这些配置', buildTitle: '构建宠物包', buildBody: '检查目标配置并生成可安装的宠物包。', ready: '已就绪', buildTheme: '构建主题', buildPackage: '构建宠物包',
+    notReady: '未就绪', targetReadyBody: '所有必需行为均已映射，可以构建。', targetMissing: '请先完成这些必需项目：{value}', renderPreset: '渲染预设', compact: '精简', balanced: '平衡', high: '高质量', buildProgress: '构建进度', buildWaiting: '可随时开始。', buildStage: '阶段：{value}', buildStatus_idle: '尚未构建', buildStatus_building: '构建中', buildStatus_succeeded: '构建成功', buildStatus_failed: '构建失败', buildStatus_cancelled: '已取消', cancelBuild: '取消构建', buildCancelled: '构建已取消', buildFailed: '宠物包构建失败', buildHostUnavailable: '桌面应用的构建服务不可用，暂时无法构建宠物包。不会改用浏览器构建。', artifactMissing: '构建已完成，但没有可下载的生成包。', artifactSize: '{value} KiB ZIP', download: '下载', downloadReady: '已保存 {filename}', chooseFolder: '选择文件夹', install: '安装', buildAndInstall: '构建并安装', installFolderChosen: '已选择安装文件夹', confirmInstallArtifact: '安装 {filename}？这会将宠物包写入选定目标。', installSucceeded: '宠物包已安装', previewSummary: '预览：{value}', validationSummary: '验证：{value}', passed: '通过', failed: '失败', generatedPreview: '生成结果预览', generatedPreviewLoading: '正在打开生成包预览…', generatedPreviewUnavailable: '生成结果预览不可用，仍可继续保存或安装。', generatedAssets: '{value} 个 WebP 动画', generatedRows: '{value} 行精灵动画', generatedPreviewSelection: '选择生成结果预览', generatedPlayback: '播放生成结果',
+    general: '通用', runtimes: '运行时', targets: '目标与安装', storage: '存储', settingsTitle: '设置', settingsBody: '这里的设置适用于整个应用，不会写入单个 Live2Pet 项目。', appearance: '外观', language: '语言', system: '跟随系统', light: '浅色', dark: '深色', reopenLastProject: '启动时恢复上次项目',
+    runtimeTitle: '渲染器与运行时', runtimeBody: 'Live2D 运行时和可选渲染包保存在本地，并自动选择匹配版本。', runtimeAvailable: '可用', runtimeMissing: '未配置', runtimeRequired: '需要匹配的渲染器', runtimeRequiredBody: '只需添加一次匹配的 Live2D 运行时或安装 Spine 支持，之后会自动复用。', configureRuntime: '配置渲染器', baseExpression: '基础表情', generations: 'Cubism {value}',
+    targetBody: '检测宿主应用，并配置生成宠物包的安装位置。普通构建和保存绝不会自动安装。',
     storageTitle: '构建缓存', storageBody: '捕获帧和已选 GitHub 模型会保存在本地，以加快重复操作。', cacheEmpty: '缓存为空', cacheEntries: '{count} 个缓存项目 · {size}', clearCache: '清除缓存', githubCacheTitle: 'GitHub 模型缓存', githubCacheUsage: '已下载 {count} 个模型 · {size}', githubCacheHint: '只下载你选中的模型；达到上限后会自动删除最久未使用的模型。', githubCacheLimit: 'GitHub 模型缓存上限', saveCacheLimit: '保存上限', confirmClearLibraryCache: '清除所有从 GitHub 下载的模型吗？',
     browseLocalLibrary: '浏览模型文件夹', browseGitHubLibrary: '浏览 GitHub', githubLibraryUrl: '公开 GitHub 仓库或文件夹地址', modelLibraryTitle: '模型库', modelLibraryCount: '发现 {count} 个模型 · 最多扫描 {depth} 层文件夹', modelLibraryEmpty: '两层文件夹内没有发现 Live2D 或 Spine 项目。', localFolder: '本地文件夹',
     designPreview: '界面预览', notConnected: '桌面服务不可用', loading: '正在加载…', error: '出现问题', retry: '重试', available: '可用', unavailable: '文件缺失', recentUnavailable: '这个最近项目已不可用。请恢复 .live2pet 文件或将其移回原位置后重试。', sourceRelinkRequired: '项目已打开，但无法检查其资源包。请重新关联资源后再预览或构建。', saveRequiresProject: '请先导入或打开 Live2Pet 项目，再进行保存。', buildRequiresProject: '请先导入或打开 Live2Pet 项目，再进行构建。', confirmRemoveRuntimes: '确定移除所有已保存的 Live2D 运行时吗？', confirmClearCache: '确定清除全部构建缓存吗？',
-    shellLabel: '桌面应用外壳预览', shellBody: '这个预览优先实现首次引导、完整设置页，以及更像 App 的 Source / Map / Build 工作区。',
-    setupReview: '你依然可以先跳过 runtime 设置，先进行资源检查。等后面真正缺少 runtime 时，Live2Pet 应该把你直接带回对应的设置区，而不是让你再次手动判断版本。',
+    shellLabel: '桌面应用外壳预览', shellBody: '这个预览重点展示首次引导、完整设置页，以及更接近桌面应用的“模型／映射／构建”工作区。',
+    setupReview: '你仍可先跳过运行时设置并检查资源。之后缺少运行时，Live2Pet 会直接打开对应的设置区域，无需再次手动判断版本。',
     recentPreview: '在外壳迁移阶段，最近项目先使用安全占位内容展示。',
-    summaryOne: 'Welcome、首次引导、Settings 现在都是完整页面。',
-    summaryTwo: 'runtime 和缓存管理已经移出那张很长的 mapper 文档。',
-    summaryThree: 'Source、Map、Build 已经被拆成同一项目下的独立任务。',
+    summaryOne: '欢迎页、首次引导和设置现在都是完整页面。',
+    summaryTwo: '运行时和缓存管理已经移入独立设置页面。',
+    summaryThree: '模型、映射和构建已拆分为同一项目下的独立任务。',
     sourcePreviewTitle: '资源检查', sourcePreviewBody: '先确认兼容性、资源引用和模型结构，再进入映射。', mapPreviewTitle: '动作映射', mapPreviewBody: '使用规划中的左 / 中 / 右工作区，把动作关联到目标行为。', buildPreviewTitle: '构建与安装', buildPreviewBody: '把构建进度、生成预览、下载和安装收敛在一个目标页里。',
-    bridgeTitle: '桥接状态', bridgeBody: '最终版本会逐步替换旧 mapper，而不是一次性重写整个工作流。',
+    bridgeTitle: '迁移状态', bridgeBody: '桌面应用会逐步接入现有功能，确保每一步都可以使用。',
     sampleMotionOne: '主待机循环', sampleMotionTwo: '工作姿态', sampleMotionThree: '触摸反应',
     sampleExpressionOne: '基础表情', sampleExpressionTwo: '微笑', sampleExpressionThree: '严肃',
     chosenMotion: '当前动作', chosenExpression: '当前表情', assignmentEmpty: '还没有关联行为',
     targetAssignments: '计划中的目标行为', targetIdle: '待机', targetWork: '工作中', targetTouch: '触摸反应',
-    buildSummary: '构建概览', buildSummaryBody: '这一版外壳先把生成包流程做得更像应用。下一步就是把这些面板真正接到现有 mapper 和 build service 上。',
-    cacheRefresh: '刷新缓存状态',
+    buildSummary: '构建概览', buildSummaryBody: '在这里查看构建进度、检查生成结果，并选择保存或安装宠物包。',
+    cacheRefresh: '刷新缓存状态', projectNavigation: '项目', generatedPreviewInvalidPackage: '生成包无效或内容不完整，请重新构建后再试。',
   },
 } as const;
 
 export type MessageKey = keyof typeof messages.en;
+
+const behaviorLabels: Record<Locale, Record<string, string>> = {
+  en: {
+    idle: 'Idle', thinking: 'Thinking', working: 'Working', sleeping: 'Sleeping', error: 'Error', attention: 'Attention', notification: 'Notification', sweeping: 'Sweeping', carrying: 'Carrying', juggling: 'Juggling', roam: 'Roaming', yawning: 'Yawning', dozing: 'Dozing', collapsing: 'Falling asleep', waking: 'Waking up', drag: 'Drag', clickLeft: 'Left click', clickRight: 'Right click', annoyed: 'Annoyed', double: 'Double click', 'running-right': 'Running right', 'running-left': 'Running left', waving: 'Waving', jumping: 'Jumping', failed: 'Failed', waiting: 'Waiting', running: 'Running', review: 'Review',
+  },
+  'zh-CN': {
+    idle: '待机', thinking: '思考中', working: '工作中', sleeping: '睡眠', error: '错误', attention: '注意', notification: '通知', sweeping: '清扫', carrying: '搬运', juggling: '多任务', roam: '漫步', yawning: '打哈欠', dozing: '打瞌睡', collapsing: '入睡', waking: '醒来', drag: '拖动', clickLeft: '左键点击', clickRight: '右键点击', annoyed: '不耐烦', double: '双击', 'running-right': '向右移动', 'running-left': '向左移动', waving: '挥手', jumping: '跳跃', failed: '失败', waiting: '等待中', running: '运行中', review: '等待审批',
+  },
+};
+
+export function translateBehavior(locale: Locale, id: string): string {
+  return behaviorLabels[locale][id] ?? id
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[-_]+/g, ' ')
+    .replace(/^./, (value) => value.toUpperCase());
+}
 
 export function translate(locale: Locale, key: MessageKey, values: Record<string, string | number> = {}): string {
   let value: string = messages[locale][key];

@@ -28,7 +28,7 @@ it.each(['en', 'zh-CN'] as const)('shows real detection states and native config
   expect(configureTargetInstallation).toHaveBeenLastCalledWith('clawd', 'choose-root');
   await user.click(clawd.getByRole('button', {name:locale === 'en' ? 'Use default folder' : '恢复默认目录'}));
   expect(configureTargetInstallation).toHaveBeenLastCalledWith('clawd', 'reset-root');
-  await user.click(clawd.getByRole('button', {name:locale === 'en' ? 'Locate App' : '手动定位 App'}));
+  await user.click(clawd.getByRole('button', {name:locale === 'en' ? 'Locate App' : '手动选择应用'}));
   expect(configureTargetInstallation).toHaveBeenLastCalledWith('clawd', 'choose-app');
 });
 
