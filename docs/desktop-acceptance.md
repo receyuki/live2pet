@@ -528,3 +528,20 @@ This checkpoint proves the isolated renderer and build integration. It does not
 replace the remaining packaged-App user check: import a permitted Spine folder,
 install/reuse the pack, preview and map a Motion, hide a Slot, reopen the saved
 project, and build/save both targets without publishing any fixture or output.
+
+### Versioned Spine and library packaged checkpoint — 2026-09-07
+
+The macOS x64 personal-use App was rebuilt with the versioned Spine adapter,
+library project reopening, and protected bounded GitHub cache fixes. A disposable
+clean profile passed the packaged HeroUI mount check and actual preload/IPC calls
+for Spine pack status and library cache status (default limit: 1 GiB). ASAR service
+resolution and native Sharp loading passed; no user models, downloaded runtimes,
+or generated packages were found in the bundle.
+
+Earlier local integration checks passed rendering, Slot hiding, and both exports
+for a real Spine 4.1 binary source and the Spine 4.3 JSON fixture. The multi-model
+4.1 source also reopened with the same selected skeleton and fingerprint. These
+are not packaged interactive acceptance: the user still needs to exercise model
+library selection, runtime installation/reuse, playback, saving/reopening, and
+both target exports in the rebuilt App. Spine 3.8 is not supported; real-model
+acceptance for 4.0 and 4.2 remains outstanding. Issue #14 stays open.

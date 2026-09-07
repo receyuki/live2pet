@@ -31,7 +31,8 @@ function runNodeSmoke(appPath) {
     if (bad.length) throw new Error('Forbidden bundled source entries: ' + bad.join(', '));
     const sharp = require(path.join(root, 'node_modules', 'sharp'));
     // Resolve the real main-process services from ASAR, not from checkout-relative paths.
-    for (const service of ['preview-session-service', 'hosted-build-service', 'project-workspace-service', 'capture-cache-build', 'capture-cache-service']) require(path.join(root, service + '.cjs'));
+    for (const service of ['preview-session-service', 'hosted-build-service', 'project-workspace-service', 'capture-cache-build', 'capture-cache-service', 'source-library-service']) require(path.join(root, service + '.cjs'));
+    require('node:module').createRequire(path.join(root, 'main.cjs'))('@live2pet/spine-pack');
     const info = { sharp: sharp.versions.sharp, libvips: sharp.versions.vips, sourceFiles: files.length, forbiddenAssetCount: 0 };
     process.stdout.write(JSON.stringify(info));
   `;
@@ -55,6 +56,7 @@ function runWindowSmoke(appPath) {
   if (!marker) throw new Error('The packaged App exited without reaching the HeroUI ready state.');
   const ready = JSON.parse(marker.slice('LIVE2PET_BUNDLE_READY '.length));
   if (ready.packaged !== true || ready.renderer !== 'heroui' || ready.mounted !== true || ready.document !== 'index.html') throw new Error('The packaged App reported an invalid HeroUI ready state.');
+  if (ready.services?.spine !== true || ready.services?.cache !== true || ready.services?.cacheLimit !== 1024 ** 3) throw new Error('The packaged App failed the clean-profile Spine/library IPC checks.');
   return ready;
 }
 

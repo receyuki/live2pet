@@ -468,7 +468,14 @@ async function createMainWindow() {
       check();
     })`);
     if (!mounted) { console.error('LIVE2PET_BUNDLE_FAILED HeroUI did not mount.'); app.exit(1); return mainWindow; }
-    process.stdout.write(`LIVE2PET_BUNDLE_READY ${JSON.stringify({ packaged: app.isPackaged, renderer: 'heroui', mounted, document: path.basename(documentPath) })}\n`);
+    const services = await mainWindow.webContents.executeJavaScript(`(async () => {
+      const api = window.live2pet;
+      const spine = await api.getSpinePackStatus();
+      const cache = await api.getSourceLibraryCacheStatus();
+      return { spine: spine.ok === true, cache: cache.ok === true, cacheLimit: cache.result?.maxBytes };
+    })()`);
+    if (!services.spine || !services.cache) { console.error('LIVE2PET_BUNDLE_FAILED Library or Spine IPC unavailable.'); app.exit(1); return mainWindow; }
+    process.stdout.write(`LIVE2PET_BUNDLE_READY ${JSON.stringify({ packaged: app.isPackaged, renderer: 'heroui', mounted, document: path.basename(documentPath), services })}\n`);
     setTimeout(() => app.quit(), 100);
   }
   return mainWindow;
