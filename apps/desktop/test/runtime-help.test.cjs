@@ -21,6 +21,7 @@ test('both help links resolve to maintained local README anchors and cross-langu
     const readme = fs.readFileSync(path.resolve(__dirname, '../../..', file), 'utf8');
     assert.equal(parsed.hash, '#runtime-setup');
     assert.ok(readme.includes('<a id="runtime-setup"></a>'));
-    assert.ok(readme.includes(locale === 'en' ? '(README.zh-CN.md)' : '(README.md)'));
+    const counterpart = locale === 'en' ? 'README.zh-CN.md' : 'README.md';
+    assert.match(readme, new RegExp(`(?:href=["']|\\()${counterpart.replace('.', '\\.')}(?:["']|\\))`));
   }
 });

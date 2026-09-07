@@ -564,3 +564,23 @@ Unit/UI checks cover thumbnail reuse without project registration and the
 preview-before-use/save boundary. Fixtures and screenshots remain untracked.
 User acceptance of the rebuilt App and the remaining Spine version gates is
 still pending; this checkpoint does not close #14.
+
+### Spine packaged-App pre-acceptance revalidation — 2026-09-08
+
+The current main-branch macOS x64 App was rebuilt after the model-browser and
+README changes. Its packaged smoke check passed the HeroUI mount, Spine and
+cache service availability, native Sharp/libvips loading, and forbidden-asset
+scan. The full public regression passed 314 Node tests with three opt-in tests
+skipped, 148 UI tests, type checking, and the source-release scan.
+
+Separate opt-in runs used a permitted local Spine 4.1 binary source and one
+previously selected GitHub-cached Spine 4.1 source. Both loaded the saved
+version-matched official player, produced non-empty transparent captures,
+changed pixels after hiding a Slot, and built valid preview-ready Clawd and
+Codex packages. The local model-library thumbnail renderer also produced and
+decoded a non-empty 256-by-256 preview. No source, runtime, thumbnail, or
+generated package was added to the repository.
+
+Issue #14 now requires only the packaged interactive confirmation of local and
+GitHub library selection, playback and mapping, restart reuse, and cache-limit
+behavior before closure. Any failure found there remains a scoped product fix.
