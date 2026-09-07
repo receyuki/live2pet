@@ -720,6 +720,10 @@ function clawdThemeBindings(target, assetsByMotion) {
   }
   const reactions = {};
   for (const [slot, value] of Object.entries(target.reactions || {})) if (value && value.startsWith('motion:')) reactions[slot] = { file: assetsByMotion[value.slice(7)] };
+  const idleFile = Array.isArray(states.idle) ? states.idle[0] : null;
+  if (idleFile) {
+    for (const slot of ['drag', 'clickLeft', 'clickRight']) reactions[slot] ||= { file: idleFile };
+  }
   return { states, reactions };
 }
 

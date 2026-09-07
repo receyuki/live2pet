@@ -102,6 +102,7 @@ The center column of the Mapper is the only user-visible Source Package preview.
 - Generate transparent static or animated WebP assets plus a guide-shaped `theme.json` and portable ZIP.
 - Use fixed Compact, Balanced, and High Render Presets and fixed Small, Standard, and Large display presets; Large remains the default display size.
 - Preview generated output rather than only replaying the source model.
+- Keep generated pets interactive by falling back unmapped `drag`, `clickLeft`, and `clickRight` reactions to the mapped Idle asset; explicit reaction mappings take precedence.
 - Validate required states, referenced assets, metadata, canvas, alpha, WebP shape, package root, and the current 83,886,080-byte ZIP limit.
 - A locally generated package must import into the pinned installed Clawd version.
 - Already implemented sleep transitions, fallbacks, reactions, idle pools, tiers, and roam configuration remain available as advanced capabilities, but they do not block V1 unless they break the core theme path.

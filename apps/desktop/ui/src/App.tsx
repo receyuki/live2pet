@@ -865,7 +865,11 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
         <div className="assignment-list mapping-assignment-list">
           {mappingGroups.map((group) => {
             const required = group.id === 'core' || group.id === 'rows' || (group.id === 'full-sleep' && targetDocument?.options.sleepMode === 'full');
-            const hint = group.id === 'full-sleep' ? (required ? 'mappingFullSleepRequired' : 'mappingFullSleepOptional') : required ? 'mappingRequiredHint' : 'mappingOptionalHint';
+            const hint = group.id === 'full-sleep'
+              ? (required ? 'mappingFullSleepRequired' : 'mappingFullSleepOptional')
+              : group.id === 'reactions'
+                ? 'mappingClawdReactionsHint'
+                : required ? 'mappingRequiredHint' : 'mappingOptionalHint';
             return (
             <section className="mapping-group" key={group.id} aria-labelledby={`mapping-group-${group.id}`}>
               <h3 id={`mapping-group-${group.id}`} className="mapping-group-heading"><span>{group.title}</span><Chip size="sm" variant="soft" className={required ? 'mapping-required' : ''}>{t(required ? 'mappingRequired' : 'mappingOptional')}</Chip></h3>

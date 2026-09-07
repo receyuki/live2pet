@@ -135,6 +135,8 @@ test('builds a guide-shaped Clawd theme package from captured Motion frames', as
   assert.deepEqual(result.manifest.states.idle, ['demo-theme-idle.webp']);
   assert.deepEqual(result.manifest.states.sleeping, { fallbackTo: 'idle' });
   assert.deepEqual(result.manifest.reactions.drag, { file: 'demo-theme-error.webp' });
+  assert.deepEqual(result.manifest.reactions.clickLeft, { file: 'demo-theme-idle.webp' });
+  assert.deepEqual(result.manifest.reactions.clickRight, { file: 'demo-theme-idle.webp' });
   assert.equal(result.assets.length, 5);
   assert.equal(result.encoding.assetCount, 5);
   assert.equal(result.validation.ok, true);
@@ -174,6 +176,20 @@ test('builds a guide-shaped Clawd theme package from captured Motion frames', as
     'demo-theme/assets/demo-theme-working.webp',
   ]);
   await reader.close();
+});
+
+test('keeps Clawd interactive when optional reactions are left unmapped', async () => {
+  const mapping = clawdMapping();
+  mapping.reactions = {};
+  const result = await buildClawdTheme({ mapping, framesByMotion: clawdFrames(), metadata: { id: 'interactive-default', name: 'Interactive Default' } }, { sharpFactory: clawdSharpFactory() });
+  const idleReaction = { file: 'interactive-default-idle.webp' };
+  assert.deepEqual(result.manifest.reactions, {
+    drag: idleReaction,
+    clickLeft: idleReaction,
+    clickRight: idleReaction,
+  });
+  assert.equal(result.preview.ready, true);
+  assert.deepEqual(result.preview.reactions.drag.files, ['assets/interactive-default-idle.webp']);
 });
 
 test('derives the default click box from custom canvas geometry and preserves explicit host geometry', async () => {

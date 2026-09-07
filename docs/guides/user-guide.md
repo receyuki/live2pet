@@ -65,7 +65,7 @@ The three panels are **Animations**, **Model Preview**, and **Assignment**. Drag
 | Detect large elements | Find broad geometry in modern Cubism motions |
 | Reset preview | Recreate the model preview |
 
-Map Clawd and Codex independently. Required states must be filled; optional states may remain empty. Background and character pixels in the same mesh cannot be separated here.
+Map Clawd and Codex independently. Required states must be filled; optional states may remain empty. When Clawd Drag or double-click reactions are not mapped, generated themes reuse Idle so the pet remains interactive. Explicit reaction mappings always take precedence. Background and character pixels in the same mesh cannot be separated here.
 
 ## Build, save, install
 
@@ -99,7 +99,7 @@ Installation asks for confirmation. Replacing an installed package requires expl
 | Model inspected but preview unavailable | Add the matching runtime; modern Core and Cubism 2 runtimes are not interchangeable |
 | PCK rejected | Check that it contains a supported, complete, uncompressed, unencrypted model |
 | Pet too small or cropped | Inspect large animated elements, hide separable clutter, and rebuild with the current App |
-| Clawd pet cannot be clicked | Rebuild and reinstall; current themes include a default hit box |
+| Clawd pet cannot be clicked | Rebuild and reinstall with the current Live2Pet. It generates a hit box and Idle fallbacks for Drag and double-click reactions. Clawd click reactions use double-click, not single-click. |
 | ZIP too large | Use Compact or lower Custom settings |
 | Host App not detected | Settings → Targets → Locate App, or choose its package folder manually |
 
