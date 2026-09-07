@@ -38,10 +38,10 @@ The center column of the Mapper is the only user-visible Source Package preview.
 - The packaged Desktop App, not the browser-loadable Mapper document, is the V1 product surface.
 - A skippable first-run Setup Assistant explains local runtime requirements, detects already saved runtimes, and reuses the same runtime controls as Settings.
 - Welcome provides recent projects, Open Project, and Import Source Package without showing project-only controls before a project exists.
-- One project window provides Source, Map, and Build destinations through a compact application toolbar and preserves project state when switching between them.
+- One project window provides Source, Map, and Build destinations through a compact application toolbar and preserves project state when switching between them. New Project returns to import without restarting, after protecting unsaved work and refusing to interrupt an active build.
 - Source owns inspection and resource compatibility, Map owns source playback and semantic Assignment, and Build owns readiness, progress, generated preview, download, and installation.
 - Settings is a full in-window destination with General, Runtimes, Targets & Installation, and Storage sections. It is not a modal, sheet, or separate window, and leaving it restores the previous project destination and state.
-- The App provides standard application menus and keyboard shortcuts for Open, Save, Undo, Redo, Settings, and Build.
+- The App provides standard application menus and keyboard shortcuts for New Project, Open, Save, Undo, Redo, Settings, and Build.
 - The production interface uses React, TypeScript, Vite, HeroUI v3, and HeroUI's Tailwind CSS v4 foundation. HeroUI is the only general-purpose component system in the production renderer.
 - Standard controls use HeroUI components and semantic theme variables. Custom presentation is limited to the App shell, three-column workspace, Live2D canvas and timeline, and restrained Live2Pet branding.
 - The window uses system typography, neutral surfaces with one violet-blue brand accent, semantic light/dark tokens, desktop control density, clear focus, and restrained motion. Large-area glass, persistent glow, website hero copy, marketing footers, and dashboard card grids are not part of the App shell.
@@ -73,7 +73,7 @@ The center column of the Mapper is the only user-visible Source Package preview.
 - The App chooses the renderer family and supported version from source inspection; it must not ask the user to make that technical choice for every model.
 - The center column is the only visible source preview and supports Motion play, pause, restart, loop, speed control, and Expression apply/clear when the renderer exposes Expressions. Spine skins are not labeled as Expressions; V1 may use the default Spine skin.
 - Preview fits the visible animated model bounds instead of silently cropping it.
-- A searchable Visibility drawer beside the preview lists Live2D Parts or Spine Slots as renderer-neutral Visual Elements. It provides show/hide, temporary Solo, and Restore all actions.
+- A searchable Visibility drawer beside the preview lists Live2D Parts, modern Cubism root Drawables without a parent Part, or Spine Slots as renderer-neutral Visual Elements. It provides show/hide, temporary Solo, and Restore all actions.
 - Project-hidden Visual Elements are reapplied after animation updates and produce the same visible result in preview, bounds analysis, cache identity, and every Package Build. Solo is transient and is not persisted.
 - If a character and background share one Live2D ArtMesh or Spine Attachment, the App explains that they cannot be separated through V1 visibility controls.
 - A separate preview window, renderer selector, and duplicate playback controls are excluded from the V1 user workflow.

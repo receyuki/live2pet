@@ -25,7 +25,7 @@ it('searches friendly names/IDs and keeps Solo separate from saved hidden identi
 it('provides Chinese recovery and an inseparable-model explanation', async () => {
   const onSettings = vi.fn();
   render(<VisibilityPanel locale="zh-CN" elements={[]} settings={{ hiddenElementIds: ['old-part'] }} soloId={null} thumbnail={null} busy={false} onSettings={onSettings} onSolo={vi.fn()} onInspect={vi.fn()} thumbnails={{}} onVisible={vi.fn()} />);
-  expect(screen.getByText('此模型未提供可分离的部件。')).toBeVisible();
+  expect(screen.getByText('此模型未提供可分离的元素。')).toBeVisible();
   await userEvent.click(screen.getByRole('button', { name: '全部恢复' }));
   expect(onSettings).toHaveBeenCalledWith({ hiddenElementIds: [] });
 });
@@ -52,7 +52,7 @@ it('shows loading and current-pose empty states for the selected Part thumbnail'
   expect(screen.getAllByText('BG')[0]).toBeVisible();
 
   rerender(<VisibilityPanel locale="en" elements={elements} settings={{ hiddenElementIds: [] }} soloId={null} thumbnail={{ id: 'BG', dataUrl: null, loading: false }} busy={false} onSettings={vi.fn()} onSolo={vi.fn()} onInspect={vi.fn()} thumbnails={{}} onVisible={vi.fn()} />);
-  expect(screen.getByText('This Part has no visible pixels in the current pose.')).toBeVisible();
+  expect(screen.getByText('This element has no visible pixels in the current pose.')).toBeVisible();
 });
 
 it('renders the isolated thumbnail returned for the selected Part', () => {
@@ -66,7 +66,7 @@ it('shows inline images before selection and leaves the large preview unselected
   const button = screen.getByRole('button', { name: 'Inspect · Background' });
   expect(within(button).getByRole('img', { name: 'Background · BG' })).toBeVisible();
   expect(onInspect).not.toHaveBeenCalled();
-  expect(within(screen.getByRole('region', { name: 'Part preview' })).queryByRole('img')).toBeNull();
+  expect(within(screen.getByRole('region', { name: 'Element preview' })).queryByRole('img')).toBeNull();
   await userEvent.click(button);
   expect(onInspect).toHaveBeenCalledWith('BG');
 });
@@ -86,30 +86,39 @@ it('requests only intersecting rows and releases them when leaving the panel', (
   expect(disconnect).toHaveBeenCalled();
 });
 
-it('ranks detected Parts, uses their sampled images, and still requires an explicit hide', async () => {
+it('ranks detected elements, uses their sampled images, and still requires an explicit hide', async () => {
   const onSettings = vi.fn();
   const props = { locale: 'en' as const, elements: [...elements].reverse(), settings: { hiddenElementIds: [] }, soloId: null, thumbnail: null, thumbnails: {}, busy: false, onSettings, onSolo: vi.fn(), onInspect: vi.fn(), onVisible: vi.fn(), scanScope: 'motion-one', onScan: vi.fn().mockResolvedValue({ motionId: 'one', candidates: [{ id: 'BG', dataUrl: 'data:image/png;base64,sampled', time: 2.5, areaRatio: 4 }] }) };
   const { container, rerender } = render(<VisibilityPanel {...props} />);
-  await userEvent.click(screen.getByRole('button', { name: 'Detect large Parts' }));
-  expect(await screen.findByText('Large Part · 2.5s')).toBeVisible();
+  await userEvent.click(screen.getByRole('button', { name: 'Detect large elements' }));
+  expect(await screen.findByText('Large element · 2.5s')).toBeVisible();
   expect(container.querySelector('[data-part-id]')).toHaveAttribute('data-part-id', 'BG');
   expect(onSettings).not.toHaveBeenCalled();
   await userEvent.click(screen.getByRole('button', { name: 'Solo · Background' }));
   expect(props.onSolo).toHaveBeenLastCalledWith('BG', 2.5);
   await userEvent.click(screen.getByRole('button', { name: 'Inspect · Background' }));
-  expect(within(screen.getByRole('region', { name: 'Part preview' })).getByRole('img')).toHaveAttribute('src', 'data:image/png;base64,sampled');
+  expect(within(screen.getByRole('region', { name: 'Element preview' })).getByRole('img')).toHaveAttribute('src', 'data:image/png;base64,sampled');
   await userEvent.click(screen.getByRole('button', { name: 'Hide · Background' }));
   expect(onSettings).toHaveBeenCalledWith({ hiddenElementIds: ['BG'] });
   rerender(<VisibilityPanel {...props} scanScope="motion-two" />);
-  expect(screen.queryByText('Large Part · 2.5s')).toBeNull();
+  expect(screen.queryByText('Large element · 2.5s')).toBeNull();
   expect(container.querySelector('[data-part-id]')).toHaveAttribute('data-part-id', 'BODY');
 });
 
 it('shows a recoverable scan error without changing visibility', async () => {
   const onSettings = vi.fn();
   render(<VisibilityPanel locale="en" elements={elements} settings={{ hiddenElementIds: [] }} soloId={null} thumbnail={null} thumbnails={{}} busy={false} onSettings={onSettings} onSolo={vi.fn()} onInspect={vi.fn()} onVisible={vi.fn()} onScan={vi.fn().mockRejectedValue(new Error('scan failed'))} />);
-  await userEvent.click(screen.getByRole('button', { name: 'Detect large Parts' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Detect large elements' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('scan failed');
-  expect(screen.getByRole('button', { name: 'Detect large Parts' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Detect large elements' })).toBeEnabled();
   expect(onSettings).not.toHaveBeenCalled();
+});
+
+it('labels and hides a modern Cubism Drawable that has no parent Part', async () => {
+  const onSettings = vi.fn();
+  const drawable = { id: 'drawable:ArtMesh27', name: 'ArtMesh27', kind: 'drawable' as const };
+  render(<VisibilityPanel locale="en" elements={[drawable]} settings={{ hiddenElementIds: [] }} soloId={null} thumbnail={null} thumbnails={{}} busy={false} onSettings={onSettings} onSolo={vi.fn()} onInspect={vi.fn()} onVisible={vi.fn()} />);
+  expect(screen.getByText('Unattached mesh')).toBeVisible();
+  await userEvent.click(screen.getByRole('button', { name: 'Hide · ArtMesh27' }));
+  expect(onSettings).toHaveBeenCalledWith({ hiddenElementIds: ['drawable:ArtMesh27'] });
 });

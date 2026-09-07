@@ -271,6 +271,7 @@ function installApplicationMenu() {
     {
       label: 'File',
       submenu: [
+        { label: 'New Project', accelerator: 'CommandOrControl+N', click: () => sendAppCommand('new') },
         { label: 'Open', accelerator: 'CommandOrControl+O', click: () => sendAppCommand('open') },
         { label: 'Save', accelerator: 'CommandOrControl+S', click: () => sendAppCommand('save') },
         { type: 'separator' },

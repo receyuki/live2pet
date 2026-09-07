@@ -83,7 +83,9 @@ used by the desktop host.
 ### Project visibility
 
 Both production Pixi adapters expose `getVisualElements()` with stable Part
-identities, optional parent identities and display-info names, and
+identities, optional parent identities and display-info names. Modern Cubism
+also exposes root Drawables without a parent Part as prefixed `drawable:`
+identities, and
 `setVisualSettings({ hiddenElementIds })`. The Desktop Map lets users select
 these manually; names never trigger automatic hiding. Solo is temporary and
 preserves the selected Part's ancestor/descendant chain. It is never saved.

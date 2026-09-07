@@ -45,7 +45,7 @@ test('desktop shell pins the HeroUI entrypoint and keeps navigation and IPC narr
   assert.match(preload, /const APP_IPC_PROTOCOL_VERSION = 1;/);
   assert.match(preload, /const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';/);
   assert.match(preload, /const APP_COMMAND_CHANNEL = 'live2pet:command';/);
-  assert.match(preload, /new Set\(\['open', 'save', 'settings', 'build', 'setup', 'undo', 'redo'\]\)/);
+  assert.match(preload, /new Set\(\['new', 'open', 'save', 'settings', 'build', 'setup', 'undo', 'redo'\]\)/);
   assert.match(preload, /webUtils\.getPathForFile/);
   assert.match(preload, /getFilePath,/);
   for (const method of ['getVersion', 'inspectSource', 'relinkSource', 'acknowledgeSourceReview', 'getRuntimeSettings', 'configureRuntime', 'clearRuntimeSettings', 'buildProject', 'cancelBuild', 'getBuildArtifact', 'chooseInstallRoot', 'installArtifact', 'getCaptureCacheStatus', 'putCaptureCache', 'getBuildCacheStatus', 'clearBuildCache']) {
@@ -59,6 +59,7 @@ test('desktop shell pins the HeroUI entrypoint and keeps navigation and IPC narr
   assert.match(preload, /onAppCommand,/);
   assert.match(main, /Menu\.setApplicationMenu\(Menu\.buildFromTemplate\(template\)\)/);
   assert.match(main, /accelerator: 'CommandOrControl\+O'/);
+  assert.match(main, /accelerator: 'CommandOrControl\+N'/);
   assert.match(main, /accelerator: 'CommandOrControl\+S'/);
   assert.match(main, /sendAppCommand\('settings'\)/);
   assert.match(main, /sendAppCommand\('build'\)/);

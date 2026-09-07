@@ -59,7 +59,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, previewV
   const getPreviewVisualElementThumbnail = vi.fn(async (input: { id: string }) => ({ protocolVersion: 1 as const, ok: true, result: await (previewThumbnail?.(input) ?? { id: input.id, dataUrl: `data:image/png;base64,${input.id}` }) }));
   const openProject = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: openCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-document', fileName: 'saved.live2pet', project: openedProject, recentProjects } }));
   const saveProject = vi.fn(async (input: { project: Live2PetProject }) => ({ protocolVersion: 1 as const, ok: true, result: saveCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-saved-document', fileName: `${input.project.name}.live2pet`, project: input.project, recentProjects } }));
-  let appCommandListener: ((command: 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => void) | undefined;
+  let appCommandListener: ((command: 'new' | 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => void) | undefined;
   let buildProgressListener: ((event: { protocolVersion: 1; buildId: string; sequence: number; target: 'clawd'; stage: string; status: string; fraction: number }) => void) | undefined;
   const buildProject = vi.fn(async () => {
     buildProgressListener?.({ protocolVersion: 1, buildId: 'build_12345678', sequence: 1, target: 'clawd', stage: 'package', status: 'completed', fraction: 1 });
@@ -103,7 +103,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = false, previewV
       } : {}),
     },
   });
-  return { configureRuntime, inspectSource, relinkSource, acknowledgeSourceReview, openPreview, getPreviewVisualElements, getPreviewVisualElementThumbnail, openProject, saveProject, buildProject, emitAppCommand: (command: 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => appCommandListener?.(command) };
+  return { configureRuntime, inspectSource, relinkSource, acknowledgeSourceReview, openPreview, getPreviewVisualElements, getPreviewVisualElementThumbnail, openProject, saveProject, buildProject, emitAppCommand: (command: 'new' | 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => appCommandListener?.(command) };
 }
 
 function setSystemDarkMode(matches: boolean) {
@@ -249,6 +249,21 @@ describe('Live2Pet desktop shell', () => {
     expect(saveProject.mock.calls[0][0]).toMatchObject({ project: { schemaVersion: 2, visualSettings: { hiddenElementIds: [] }, projectId: 'vicious-khepri', source: { path: '/Users/test/Vicious Khepri.pck' }, recipes: [] } });
     expect(await screen.findByText('Saved')).toBeVisible();
     expect(screen.getByText('Vicious Khepri.live2pet')).toBeVisible();
+  });
+
+  it('starts a new project from the toolbar without restarting the App', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const api = installDesktopApi();
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    expect(await screen.findByRole('button', { name: 'New project' })).toBeVisible();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
+    await user.click(screen.getByRole('button', { name: 'New project' }));
+    expect(await screen.findByRole('button', { name: 'Open project' })).toBeVisible();
+    expect(screen.queryByRole('navigation', { name: 'Project' })).not.toBeInTheDocument();
+    expect(confirm).toHaveBeenCalled();
+    expect(api.inspectSource).toHaveBeenCalledOnce();
   });
 
   it('autosaves only the project document and clears the draft after a successful Save', async () => {
@@ -765,7 +780,7 @@ describe('Live2Pet desktop shell', () => {
     resolveBody({ id: 'BODY', dataUrl: 'data:image/png;base64,body' });
     await vi.waitFor(() => expect(screen.getAllByRole('img', { name: 'Body · BODY' })).toHaveLength(2));
     await user.click(screen.getByRole('tab', { name: 'Animations' }));
-    expect(screen.queryByRole('region', { name: 'Part preview' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Element preview' })).not.toBeInTheDocument();
     await user.keyboard('{ArrowRight}');
     await vi.waitFor(() => expect(screen.getByRole('tab', { name: 'Visibility' })).toHaveAttribute('aria-selected', 'true'));
     expect(screen.getAllByRole('img', { name: 'Body · BODY' })).toHaveLength(2);

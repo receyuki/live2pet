@@ -210,6 +210,7 @@
 .build-result {
   display: grid;
   gap: 8px;
+  margin-block: 8px;
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 12px;

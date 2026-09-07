@@ -92,8 +92,10 @@ list. Select an image to enlarge it in the preview above. Images are generated
 one at a time and reused across tab switches; changing the source, Motion, or
 Expression resets them. Empty Parts and failed previews are labeled; select a
 failed image to retry. These are pose snapshots, not original atlas tiles.
-Live2Pet never hides a Part automatically based on its name. Friendly names are
-used when the model supplies them; otherwise the original Part IDs are shown.
+Live2Pet never hides an element automatically based on its name. Friendly names
+are used when the model supplies them; otherwise original IDs are shown. Modern
+Cubism models also expose root ArtMeshes that belong to no Part as **Unattached
+mesh** rows, so backgrounds authored outside the Part hierarchy remain hideable.
 
 For modern Cubism models, **Detect large Parts** samples nine poses in the
 selected Motion and puts up to eight large visible Parts first. Their images
@@ -118,6 +120,11 @@ without dropping opening frames. Rebuild older packages to remove captured
 startup jolts. If only some Motions look tiny, preview those Motions under
 Visibility: a large overlay may appear only during playback and still control
 framing until you explicitly hide its Part.
+
+Use **New project** in the toolbar or **File → New Project** (`⌘N` / `Ctrl+N`)
+to return to import without restarting Live2Pet. Unsaved work receives the same
+recovery confirmation as opening another project; active builds must finish or
+be cancelled first.
 
 The bounded disk cache automatically evicts the least recently used entries
 when space is needed. An individual entry larger than the entire cache budget

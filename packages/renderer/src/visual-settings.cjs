@@ -15,7 +15,7 @@ async function pageInitializeVisualElements() {
   const internal = runtime.model.internalModel;
   const core = internal.coreModel;
   const modern = runtime.source.cubismVersion !== 2;
-  const ids = modern ? Array.from(core._model?.parts?.ids || []) : [];
+  const partIds = modern ? Array.from(core._model?.parts?.ids || []) : [];
   if (!modern) {
     // Cubism 2 exposes Part lookup, but not enumeration. Its model-context
     // tables contain stable ID objects; validate candidates with the public
@@ -27,7 +27,7 @@ async function pageInitializeVisualElements() {
         if (!entry || typeof entry !== 'object') continue;
         for (const value of Object.values(entry)) {
           const id = value && typeof value === 'object' ? value.id : null;
-          if (typeof id === 'string' && !ids.includes(id) && core.getPartsDataIndex(id) >= 0) ids.push(id);
+          if (typeof id === 'string' && !partIds.includes(id) && core.getPartsDataIndex(id) >= 0) partIds.push(id);
         }
       }
     }
@@ -40,10 +40,20 @@ async function pageInitializeVisualElements() {
       names = new Map((metadata?.Parts || []).filter(part => typeof part.Id === 'string' && typeof part.Name === 'string').map(part => [part.Id, part.Name]));
     } catch { /* Display names are optional; stable model identities remain usable. */ }
   }
-  const elements = ids.map((id, index) => {
-    const parentId = modern ? ids[core._model.parts.parentIndices?.[index]] : null;
+  const elements = partIds.map((id, index) => {
+    const parentId = modern ? partIds[core._model.parts.parentIndices?.[index]] : null;
     return { id, name: names.get(id) || id, kind: 'part', ...(parentId ? { parentId } : {}) };
   });
+  const drawables = modern ? core._model?.drawables : null;
+  const drawableIndexByElementId = new Map();
+  if (drawables) for (let index = 0; index < drawables.ids.length; index++) {
+    if (drawables.parentPartIndices[index] >= 0) continue;
+    const rawId = String(drawables.ids[index]);
+    const id = `drawable:${rawId}`;
+    drawableIndexByElementId.set(id, index);
+    elements.push({ id, name: rawId, kind: 'drawable' });
+  }
+  const elementIds = elements.map(element => element.id);
   const getOpacity = id => modern ? core.getPartOpacityById(id) : core.getPartsOpacity(id);
   const setOpacity = (id, opacity) => modern ? core.setPartOpacityById(id, opacity) : core.setPartsOpacity(id, opacity);
   const getParameter = index => modern ? core.getParameterValueByIndex(index) : core.getParamFloat(index);
@@ -58,6 +68,11 @@ async function pageInitializeVisualElements() {
   const writeParameters = values => values.forEach((value, index) => setParameter(index, value));
   let posedParameters = readParameters();
   let hidden = new Set();
+  const originalGetDrawableOpacity = modern && typeof core.getDrawableOpacity === 'function' ? core.getDrawableOpacity.bind(core) : null;
+  if (originalGetDrawableOpacity) core.getDrawableOpacity = index => {
+    const elementId = `drawable:${String(drawables.ids[index])}`;
+    return hidden.has(elementId) ? 0 : originalGetDrawableOpacity(index);
+  };
   const captureBounds = new Map();
   let captureKey = null;
   const authored = new Map();
@@ -67,6 +82,7 @@ async function pageInitializeVisualElements() {
   };
   const applyHidden = () => {
     for (const id of hidden) {
+      if (drawableIndexByElementId.has(id)) continue;
       authored.set(id, getOpacity(id));
       setOpacity(id, 0);
     }
@@ -159,7 +175,7 @@ async function pageInitializeVisualElements() {
     captureKey = key;
   };
   runtime.setVisualSettings = async settings => {
-    const known = new Set(ids);
+    const known = new Set(elementIds);
     const unknown = settings.hiddenElementIds.filter(id => !known.has(id));
     if (unknown.length) throw new Error(`Visual Elements are no longer available: ${unknown.join(', ')}. Restore visibility or relink the matching Source Package.`);
     if (JSON.stringify(runtime.visualSettings) === JSON.stringify(settings)) return { elements, settings: runtime.visualSettings, empty: hidden.size > 0 && !runtime.visualBounds };
@@ -182,7 +198,7 @@ async function pageInitializeVisualElements() {
     return { elements, settings: runtime.visualSettings, empty: hidden.size > 0 && !runtime.visualBounds };
   };
   runtime.getVisualElementThumbnail = id => {
-    if (!ids.includes(id)) throw new Error('Visual Element is not available in this Source Package.');
+    if (!elementIds.includes(id)) throw new Error('Visual Element is not available in this Source Package.');
     const byId = new Map(elements.map(element => [element.id, element]));
     const keep = new Set([id]);
     let parent = byId.get(id)?.parentId;
@@ -200,7 +216,7 @@ async function pageInitializeVisualElements() {
     runtime.app.stop();
     try {
       restoreAuthored();
-      hidden = new Set(ids.filter(candidate => !keep.has(candidate)));
+      hidden = new Set(elementIds.filter(candidate => !keep.has(candidate)));
       runtime.visualBounds = null;
       runtime.fit();
       updateVisibility();
@@ -250,8 +266,8 @@ async function pageInitializeVisualElements() {
         const drawables = core._model.drawables;
         const areas = new Map();
         for (let index = 0; index < drawables.ids.length; index++) {
-          const id = ids[drawables.parentPartIndices[index]];
-          if (!id || hidden.has(id) || drawables.opacities[index] <= 0) continue;
+          const id = partIds[drawables.parentPartIndices[index]] || `drawable:${String(drawables.ids[index])}`;
+          if (hidden.has(id) || drawables.opacities[index] <= 0) continue;
           const vertices = internal.getDrawableVertices(index);
           let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
           for (let v = 0; v < vertices.length; v += 2) {
@@ -266,7 +282,7 @@ async function pageInitializeVisualElements() {
         let pose;
         for (const [id, areaRatio] of areas) {
           if (areaRatio <= (candidates.get(id)?.areaRatio || 0)) continue;
-          pose ||= { parameters: [...posedParameters], opacity: ids.map(getOpacity) };
+          pose ||= { parameters: [...posedParameters], opacity: partIds.map(getOpacity) };
           candidates.set(id, { id, time: motion.duration * sample / 8, areaRatio, pose });
         }
       }
@@ -274,7 +290,7 @@ async function pageInitializeVisualElements() {
       for (const candidate of [...candidates.values()].sort((a, b) => b.areaRatio - a.areaRatio).slice(0, 8)) {
         restoreAuthored();
         posedParameters = candidate.pose.parameters;
-        ids.forEach((id, index) => setOpacity(id, candidate.pose.opacity[index]));
+        partIds.forEach((id, index) => setOpacity(id, candidate.pose.opacity[index]));
         updateVisibility(); runtime.render();
         const thumbnail = runtime.getVisualElementThumbnail(candidate.id);
         if (thumbnail.dataUrl) result.push({ ...thumbnail, time: candidate.time, areaRatio: candidate.areaRatio });

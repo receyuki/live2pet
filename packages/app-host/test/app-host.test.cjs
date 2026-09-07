@@ -895,8 +895,8 @@ test('preload onAppCommand forwards only allowlisted menu commands', () => {
   const commands = [];
   const unsubscribe = api.onAppCommand((command) => commands.push(command));
   const handler = listeners.get(APP_COMMAND_CHANNEL);
-  for (const command of ['open', 'save', 'settings', 'build', 'setup', 'shell', '/private/project']) handler({}, command);
-  assert.deepEqual(commands, ['open', 'save', 'settings', 'build', 'setup']);
+  for (const command of ['new', 'open', 'save', 'settings', 'build', 'setup', 'shell', '/private/project']) handler({}, command);
+  assert.deepEqual(commands, ['new', 'open', 'save', 'settings', 'build', 'setup']);
   unsubscribe();
   unsubscribe();
   assert.equal(removed.length, 1);

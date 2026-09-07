@@ -83,7 +83,7 @@ export type SourceRelinkResult = {
   reviewRequired: boolean;
   affectedRecipeIds: string[];
 };
-export type AppCommand = 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo';
+export type AppCommand = 'new' | 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo';
 export type BuildTarget = 'clawd' | 'codex-pet';
 export type RenderPreset = 'compact' | 'balanced' | 'high';
 
@@ -131,7 +131,7 @@ export type InstallResult = { protocolVersion?: number; target: BuildTarget; pac
 
 export type PreviewBounds = { x: number; y: number; width: number; height: number };
 export type VisualSettings = { hiddenElementIds: string[] };
-export type VisualElement = { id: string; name: string; kind: 'part' | 'slot'; parentId?: string };
+export type VisualElement = { id: string; name: string; kind: 'part' | 'drawable' | 'slot'; parentId?: string };
 export type VisualElementThumbnail = { id: string; dataUrl: string | null };
 export type VisualElementScan = { motionId: string; candidates: (VisualElementThumbnail & { time: number; areaRatio: number })[] };
 export type PreviewStatus = {
@@ -444,7 +444,7 @@ export function getPreviewVisualElementThumbnail(id: string): Promise<VisualElem
 
 export function scanPreviewVisualElements(motionId: string): Promise<VisualElementScan> {
   const api = previewApi();
-  if (!api.scanPreviewVisualElements) throw new DesktopApiError('PREVIEW_UNAVAILABLE', 'Large Part detection requires the current Desktop App.');
+  if (!api.scanPreviewVisualElements) throw new DesktopApiError('PREVIEW_UNAVAILABLE', 'Large element detection requires the current Desktop App.');
   return unwrap(api.scanPreviewVisualElements({ motionId }));
 }
 

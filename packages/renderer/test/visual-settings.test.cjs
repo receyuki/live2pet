@@ -17,12 +17,13 @@ for (const cubismVersion of [2, 4]) test(`Cubism ${cubismVersion}: hides after p
   let renderedParameter = parameters[0];
   const internal = new EventEmitter();
   internal.coreModel = {
-    _model: { parts: { ids: ['BG', 'Body'] } },
+    _model: { parts: { ids: ['BG', 'Body'] }, ...(cubismVersion === 4 ? { drawables: { ids: ['LooseMesh'], parentPartIndices: [-1] } } : {}) },
     getPartOpacityById: id => opacity[id], setPartOpacityById: (id, value) => { opacity[id] = value; },
     getPartsOpacity: id => opacity[id], setPartsOpacity: (id, value) => { opacity[id] = value; },
     getPartsDataIndex: id => ['BG', 'Body'].indexOf(id),
     getModelContext: () => ({ arbitraryRuntimeTableName: [{ opaqueField: { id: 'BG' } }, { opaqueField: { id: 'Body' } }, { unrelated: { id: 'Parameter' } }] }),
     getParameterCount: () => parameters.length,
+    getDrawableOpacity: () => 0.75,
     getParameterValueByIndex: index => parameters[index], setParameterValueByIndex: (index, value) => { parameters[index] = value; },
     getParamFloat: index => parameters[index], setParamFloat: (index, value) => { parameters[index] = value; },
     update() { rendered = { ...opacity }; renderedParameter = parameters[0]; },
@@ -59,7 +60,13 @@ for (const cubismVersion of [2, 4]) test(`Cubism ${cubismVersion}: hides after p
   };
   global.window = { __live2petPixiLive2D: runtime, PIXI: { Rectangle: class {} } };
   try {
-    assert.deepEqual((await pageInitializeVisualElements()).map(element => element.id), ['BG', 'Body']);
+    assert.deepEqual((await pageInitializeVisualElements()).map(element => element.id), cubismVersion === 4 ? ['BG', 'Body', 'drawable:LooseMesh'] : ['BG', 'Body']);
+    if (cubismVersion === 4) {
+      await pageSetVisualSettings({ hiddenElementIds: ['drawable:LooseMesh'] });
+      assert.equal(internal.coreModel.getDrawableOpacity(0), 0, 'an unattached Drawable is suppressed at render time');
+      await pageSetVisualSettings({ hiddenElementIds: [] });
+      assert.equal(internal.coreModel.getDrawableOpacity(0), 0.75, 'restoring visibility exposes authored Drawable opacity');
+    }
     await pageSetVisualSettings({ hiddenElementIds: ['BG'] });
     assert.equal(advances, 0, 'hiding only recalculates drawables, without advancing the pose');
     assert.equal(rendered.BG, 0);

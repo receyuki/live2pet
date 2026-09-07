@@ -26,6 +26,7 @@ const emptyTarget = (): TargetBuildState => ({ status: "idle", buildId: null, se
 export const initialBuildState = (): BuildState => ({ clawd: emptyTarget(), "codex-pet": emptyTarget() });
 
 export type BuildAction =
+  | { type: "RESET" }
   | { type: "START"; target: BuildTarget }
   | { type: "PROGRESS"; event: BuildProgressEvent }
   | { type: "SUCCEED"; target: BuildTarget; artifact: BuildArtifact; summary: BuildSummary }
@@ -33,6 +34,7 @@ export type BuildAction =
   | { type: "CANCEL"; target: BuildTarget; message?: string };
 
 export function buildReducer(state: BuildState, action: BuildAction): BuildState {
+  if (action.type === "RESET") return initialBuildState();
   const current = state[action.type === "PROGRESS" ? action.event.target : action.target];
   if (action.type === "START") return { ...state, [action.target]: { ...current, status: "building", buildId: null, sequence: 0, progress: 0, stage: null, message: null, error: null } };
   if (action.type === "PROGRESS") {

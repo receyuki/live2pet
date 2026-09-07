@@ -65,6 +65,7 @@ import {
   readLive2DPreviewStatus,
   playLive2DPreview,
   controlLive2DPreview,
+  closeLive2DPreview,
   setLive2DPreviewExpression,
   getPreviewVisualElements,
   scanPreviewVisualElements,
@@ -872,6 +873,16 @@ export function App() {
     dispatch({ type: "OPEN_PROJECT", project: { id: "design-preview", name: t("project"), selectedMotionId: motions[0].id } });
   }
 
+  async function startNewProject() {
+    if (Object.values(buildState).some(build => build.status === 'building')) { setActionFeedback(t('newProjectBuildBusy')); return; }
+    if (!confirmProjectReplacement()) return;
+    try { if (hasPreviewApi()) await closeLive2DPreview(); } catch { /* Closing an unavailable preview must not trap the current project. */ }
+    dispatchBuild({ type: 'RESET' });
+    setActionFeedback('');
+    setImportError('');
+    dispatch({ type: 'CLOSE_PROJECT' });
+  }
+
   async function openProjectDocument(documentId?: string, inputPath?: string) {
     if (!confirmProjectReplacement()) return;
     setImportBusy(true);
@@ -1102,7 +1113,8 @@ export function App() {
   }
 
   useEffect(() => onAppCommand((command) => {
-    if (command === "open") void openProjectDocument();
+    if (command === "new") void startNewProject();
+    else if (command === "open") void openProjectDocument();
     else if (command === "save") void saveProjectDocument();
     else if (command === "settings") dispatch({ type: "OPEN_SETTINGS" });
     else if (command === "setup") dispatch({ type: "OPEN_SETUP" });
@@ -1113,7 +1125,7 @@ export function App() {
     } else if (command === "undo" || command === "redo") {
       if (!preserveTextEditingHistory(command)) dispatch({ type: command === "undo" ? "UNDO_PROJECT_EDIT" : "REDO_PROJECT_EDIT" });
     }
-  }), [state, locale]);
+  }), [state, locale, buildState]);
 
   const requiredCubism = state.project?.inspection?.model.cubism;
   const runtimeReady = !requiredCubism || Boolean(runtimeSettings?.runtimes.some((runtime) => runtime.available && runtime.cubismGenerations.includes(requiredCubism)));
@@ -1143,7 +1155,7 @@ export function App() {
       <header className="app-toolbar">
         <div className="toolbar-brand">{projectOpen ? <><span>Live2Pet</span><i /><strong title={state.project?.name}>{state.project?.name}</strong></> : <strong>Live2Pet</strong>}</div>
         {projectOpen ? <nav aria-label="Project"><ButtonGroup>{(["source", "map", "build"] as const).map((destination) => <Button key={destination} isDisabled={sourceReviewRequired && destination !== "source"} variant={state.destination === destination ? "primary" : "ghost"} onPress={() => dispatch({ type: "NAVIGATE", destination })}>{t(destination)}</Button>)}</ButtonGroup></nav> : <span />}
-        <div className="toolbar-actions">{!state.project?.inspection && <Chip className="chip" size="sm" variant="soft"><span className="status-dot" />{t("designPreview")}</Chip>}{projectOpen && <Button aria-label={t("saveProject")} variant="ghost" onPress={() => void saveProjectDocument()}><Save size={17} />{t("save")}</Button>}<Button isIconOnly aria-label={t("settings")} variant="ghost" onPress={() => dispatch({ type: "OPEN_SETTINGS" })}><SettingsIcon size={18} /></Button></div>
+        <div className="toolbar-actions">{!state.project?.inspection && <Chip className="chip" size="sm" variant="soft"><span className="status-dot" />{t("designPreview")}</Chip>}{projectOpen && <Button aria-label={t("newProject")} variant="ghost" isDisabled={Object.values(buildState).some(build => build.status === 'building')} onPress={() => void startNewProject()}><Plus size={17} />{t("newProject")}</Button>}{projectOpen && <Button aria-label={t("saveProject")} variant="ghost" onPress={() => void saveProjectDocument()}><Save size={17} />{t("save")}</Button>}<Button isIconOnly aria-label={t("settings")} variant="ghost" onPress={() => dispatch({ type: "OPEN_SETTINGS" })}><SettingsIcon size={18} /></Button></div>
       </header>
       <div className="app-content">
         {actionFeedback && <div className="action-feedback" role="alert">{actionFeedback}</div>}
