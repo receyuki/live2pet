@@ -7,7 +7,7 @@
   <a href="https://github.com/receyuki/live2pet/releases/latest"><img src="https://img.shields.io/github/v/release/receyuki/live2pet?style=flat-square&color=9087ff" alt="Latest release"></a>
   <a href="https://github.com/receyuki/live2pet/stargazers"><img src="https://img.shields.io/github/stars/receyuki/live2pet?style=flat-square&color=9087ff" alt="GitHub stars"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-111118?style=flat-square&logo=electron&logoColor=white" alt="Platforms: macOS and Windows">
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/receyuki/live2pet?style=flat-square&color=9087ff" alt="License: Apache-2.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-9087ff?style=flat-square" alt="License: Apache-2.0"></a>
 </p>
 <p align="center">
   <img src="https://img.shields.io/badge/Electron-111118?style=flat-square&logo=electron&logoColor=9feaf9" alt="Electron">
