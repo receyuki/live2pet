@@ -58,8 +58,8 @@ automatically generated notes, and the three platform downloads plus
 new patch version for a correction.
 
 ```sh
-git tag -a v0.1.0 -m "Live2Pet 0.1.0"
-git push origin v0.1.0
+git tag -a vX.Y.Z -m "Live2Pet X.Y.Z"
+git push origin vX.Y.Z
 ```
 
 ## Repository map
