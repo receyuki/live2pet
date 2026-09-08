@@ -27,4 +27,4 @@ This boundary keeps the public source release free of proprietary runtime bytes 
 - The CLI accepts a local runtime file or SDK directory through `runtime-diagnose`.
 - The exporter requires `--runtime` for Cubism 2 and never falls back to a CDN.
 - The browser Mapper loads the modern Pixi adapter without requiring Cubism 2, then loads the legacy Pixi adapter only after a user-selected Cubism 2 runtime passes validation.
-- Runtime paths and bytes remain outside `.live2pet` projects, diagnostics, caches intended for export, packages, and Git history.
+- Runtime paths and bytes remain outside `.l2p` and `.l2pack` projects, diagnostics, caches intended for export, packages, and Git history.

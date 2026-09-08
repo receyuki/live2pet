@@ -100,7 +100,7 @@ On first launch, add your runtime and choose a model. [Setup help and troublesho
 - **[Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk)** — themes with transparent animated WebP
 - **Codex custom pets** — V2 sprite atlases
 
-Save your work as a **.live2pet** project to continue editing later.
+Save a lightweight **.l2p** project for local work, or a portable **.l2pack** project that includes a copy of the selected model. Legacy `.live2pet` projects remain supported.
 
 Spine and Windows support are in preview. PCK support depends on its contents and packaging. [Detailed support and limitations →](docs/guides/user-guide.md#compatibility)
 

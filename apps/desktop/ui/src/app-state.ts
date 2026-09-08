@@ -131,7 +131,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       if (!state.project?.document) return state;
       const settings = { hiddenElementIds: [...new Set(action.settings.hiddenElementIds)].sort() };
       if (JSON.stringify(settings) === JSON.stringify(state.project.document.visualSettings)) return state;
-      return applyDocumentEdit(state, { ...state.project.document, schemaVersion: 2, visualSettings: settings });
+      return applyDocumentEdit(state, { ...state.project.document, format: 'live2pet-project', schemaVersion: 3, visualSettings: settings });
     }
     case "RENAME_PROJECT":
       return state.project?.document ? applyDocumentEdit(state, { ...state.project.document, name: action.name }) : state;

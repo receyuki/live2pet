@@ -13,7 +13,7 @@ The center column of the Mapper is the only user-visible Source Package preview.
 ## Primary workflow
 
 1. Open the macOS Desktop App and complete or skip the first-run Setup Assistant.
-2. From Welcome, open a `.live2pet` project, browse a local or public GitHub Source Library, or select a supported Live2D PCK file.
+2. From Welcome, open an `.l2p`, `.l2pack`, or legacy `.live2pet` project, browse a local or public GitHub Source Library, or select a supported Live2D PCK file.
 3. Let Live2Pet identify the source format and required renderer. Reuse saved Live2D runtimes automatically; when a Spine source needs its optional renderer pack, explicitly download it from the inline prompt or install it beforehand in Settings.
 4. Review normalized model and resource results in Source.
 5. In Map, browse Motions and any available Expressions, play them in the center-column preview, hide unwanted Visual Elements, and create a Motion-plus-optional-Expression Animation Recipe.
@@ -91,10 +91,10 @@ The center column of the Mapper is the only user-visible Source Package preview.
 - Clawd and Codex mappings are separate.
 - Required slots and blocking validation update immediately.
 - Semantic mappings are always user-confirmed; Live2Pet does not auto-assign them.
-- A versioned `.live2pet` project stores references, recipes, hidden Visual Element identities, target mappings, metadata, and Render Presets without embedding model or runtime bytes. The schema migration preserves existing projects with no hidden elements.
+- A versioned `.l2p` project stores references, recipes, hidden Visual Element identities, target mappings, metadata, and Render Presets without embedding model or runtime bytes. An optional `.l2pack` carries the same project and selected model source. Schema migration preserves existing projects with no hidden elements.
 - Saving, reopening, autosave recovery, source relinking, and changed-source review preserve work safely.
 - The mapping and build workflow is keyboard operable; drag and drop is optional.
-- App Settings, window state, recent projects, runtime descriptors, installation destinations, and cache status are not stored in `.live2pet` project documents.
+- App Settings, window state, recent projects, runtime descriptors, installation destinations, and cache status are not stored in `.l2p` or `.l2pack` project documents.
 
 ### Clawd Target Profile
 
@@ -150,7 +150,7 @@ Import permitted Spine folders for supported 4.x runtime lines on a profile with
 
 ### Both-target project path
 
-Save one `.live2pet` project with separate Clawd and Codex mappings. Reopen it, build both targets, confirm progress reaches a terminal state, confirm generated previews work, and validate both ZIPs. Use the separate Install action for each generated package and confirm that each loads in its pinned target host; confirm that building or downloading alone does not install either package.
+Save one `.l2p` project with separate Clawd and Codex mappings and one `.l2pack` copy. Move the portable project away from its original model, reopen it, and confirm the packaged source remains usable. Build both targets, confirm progress reaches a terminal state, confirm generated previews work, and validate both ZIPs. Use the separate Install action for each generated package and confirm that each loads in its pinned target host; confirm that building or downloading alone does not install either package.
 
 ### Failure and privacy path
 

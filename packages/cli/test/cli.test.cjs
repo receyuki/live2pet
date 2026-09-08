@@ -102,7 +102,7 @@ test('runtime-diagnose operation redacts the selected absolute path', () => {
 
 test('project-validate returns a normalized project without echoing its source path', () => {
   const root = temporaryDirectory();
-  const projectPath = path.join(root, 'pet.live2pet');
+  const projectPath = path.join(root, 'pet.l2p');
   const sourcePath = path.join(root, 'private-model');
   const project = createProject({
     projectId: 'cli-fixture',
@@ -119,7 +119,7 @@ test('project-validate returns a normalized project without echoing its source p
   assert.equal(output.includes(sourcePath), false);
 });
 
-test('package-build invokes the shared builders and exports versioned artifacts without leaking paths', () => {
+test('package-build invokes the shared builders and exports stable artifact names without leaking paths', () => {
   const root = temporaryDirectory();
   const specPath = path.join(root, 'build-spec.json');
   const exportDir = path.join(root, 'exports');
@@ -128,19 +128,19 @@ test('package-build invokes the shared builders and exports versioned artifacts 
   const response = JSON.parse(output);
   assert.equal(response.ok, true);
   assert.equal(response.result.targets[0], 'clawd');
-  assert.equal(response.result.builds.clawd.artifactName, 'cli-build-clawd-1.0.0.zip');
-  assert.equal(response.result.builds.clawd.package.artifactName, 'cli-build-clawd-1.0.0.zip');
+  assert.equal(response.result.builds.clawd.artifactName, 'cli-build-clawd.zip');
+  assert.equal(response.result.builds.clawd.package.artifactName, 'cli-build-clawd.zip');
   assert.equal(response.result.exports[0].path, '<selected-output>');
   assert.equal(response.result.builds.clawd.report.cache.enabled, false);
   assert.ok(response.progress.some((event) => event.target === 'clawd' && event.stage === 'preview' && event.status === 'completed'));
   assert.ok(response.progress.some((event) => event.target === 'clawd' && event.stage === 'report' && event.status === 'completed'));
   assert.equal(output.includes(root), false);
-  assert.equal(fs.existsSync(path.join(exportDir, 'cli-build-clawd-1.0.0.zip')), true);
+  assert.equal(fs.existsSync(path.join(exportDir, 'cli-build-clawd.zip')), true);
 });
 
 test('project-recover reports a newer autosave without exposing local paths', () => {
   const root = temporaryDirectory();
-  const projectPath = path.join(root, 'project.live2pet');
+  const projectPath = path.join(root, 'project.l2p');
   const sourcePath = path.join(root, 'private-model');
   const project = createProject({
     projectId: 'recover-fixture',

@@ -68,7 +68,8 @@ export type SourceInspection = {
 };
 
 export type Live2PetProject = {
-  schemaVersion: 1 | 2;
+  format?: 'live2pet-project';
+  schemaVersion: 1 | 2 | 3;
   projectId: string;
   appVersion: string;
   name: string;
@@ -77,6 +78,7 @@ export type Live2PetProject = {
     name: string;
     fingerprint: string;
     path?: string;
+    location?: { type: 'relative' | 'absolute'; path: string };
     modelConfig?: string;
   };
   recipes: Array<{ id: string; motionId: string; expressionId: string | null; label?: string }>;
@@ -205,7 +207,7 @@ type Live2PetApi = {
   getRecentProjects(): Promise<AppResponse<{ recentProjects: RecentProject[] }>>;
   clearRecentProjects(): Promise<AppResponse<{ recentProjects: RecentProject[] }>>;
   openProject(input?: { documentId?: string; inputPath?: string }): Promise<AppResponse<ProjectFileResult>>;
-  saveProject(input: { documentId?: string; project: Live2PetProject; saveAs?: boolean }): Promise<AppResponse<ProjectFileResult>>;
+  saveProject(input: { documentId?: string; project: Live2PetProject; saveAs?: boolean; portable?: boolean }): Promise<AppResponse<ProjectFileResult>>;
   onAppCommand?(listener: (command: AppCommand) => void): () => void;
   getRuntimeSettings(): Promise<AppResponse<RuntimeSettings>>;
   configureRuntime(input: { inputPath: string }): Promise<AppResponse<RuntimeSettings>>;
@@ -453,7 +455,7 @@ export async function openProject(documentId?: string, inputPath?: string): Prom
   return unwrap(api.openProject(inputPath ? { inputPath } : documentId ? { documentId } : {}));
 }
 
-export async function saveProject(input: { documentId?: string; project: Live2PetProject; saveAs?: boolean }): Promise<ProjectFileResult> {
+export async function saveProject(input: { documentId?: string; project: Live2PetProject; saveAs?: boolean; portable?: boolean }): Promise<ProjectFileResult> {
   const api = desktopApi();
   if (!api) throw new DesktopApiError('DESKTOP_REQUIRED', 'Projects can only be saved from the Desktop App.');
   return unwrap(api.saveProject(input));

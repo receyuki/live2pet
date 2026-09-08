@@ -9,12 +9,16 @@ const {
   saveProjectFile,
   validateProject,
 } = require('@live2pet/project');
+const { openPortableProject, savePortableProject } = require('./portable-project.cjs');
 
 const PROJECT_STATE_VERSION = 1;
 const WINDOW_STATE_VERSION = 1;
 const MAX_RECENT_PROJECTS = 10;
 const DOCUMENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
-const PROJECT_EXTENSION = '.live2pet';
+const PROJECT_EXTENSION = '.l2p';
+const PORTABLE_PROJECT_EXTENSION = '.l2pack';
+const LEGACY_PROJECT_EXTENSION = '.live2pet';
+const PROJECT_EXTENSIONS = new Set([PROJECT_EXTENSION, PORTABLE_PROJECT_EXTENSION, LEGACY_PROJECT_EXTENSION]);
 
 function isRecord(value) {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
@@ -68,23 +72,27 @@ function readRecentState(stateFile) {
   }
 }
 
-function projectDialogOptions(kind, defaultPath) {
+function projectDialogOptions(kind, defaultPath, portable = false) {
   if (kind === 'open') {
     return {
       title: 'Open Live2Pet Project',
       properties: ['openFile'],
-      filters: [{ name: 'Live2Pet Project', extensions: ['live2pet', 'json'] }],
+      filters: [{ name: 'Live2Pet Project', extensions: ['l2p', 'l2pack', 'live2pet', 'json'] }],
     };
   }
   return {
     title: 'Save Live2Pet Project',
     ...(defaultPath ? { defaultPath } : {}),
-    filters: [{ name: 'Live2Pet Project', extensions: ['live2pet'] }],
+    filters: [{ name: portable ? 'Live2Pet Portable Project' : 'Live2Pet Project', extensions: [portable ? 'l2pack' : 'l2p'] }],
   };
 }
 
-function ensureProjectExtension(filePath) {
-  return path.extname(filePath) ? filePath : `${filePath}${PROJECT_EXTENSION}`;
+function ensureProjectExtension(filePath, extension = PROJECT_EXTENSION) {
+  const current = path.extname(filePath).toLowerCase();
+  if (!current) return `${filePath}${extension}`;
+  if (current === extension || (extension === PROJECT_EXTENSION && current === LEGACY_PROJECT_EXTENSION)) return filePath;
+  if (PROJECT_EXTENSIONS.has(current)) return `${filePath.slice(0, -current.length)}${extension}`;
+  return `${filePath}${extension}`;
 }
 
 function rethrowProjectError(error, code, message) {
@@ -92,8 +100,10 @@ function rethrowProjectError(error, code, message) {
   throw Object.assign(new Error(message), { code });
 }
 
-function createProjectWorkspaceService({ stateFile, showOpenDialog, showSaveDialog } = {}) {
+function createProjectWorkspaceService({ stateFile, portableRoot, showOpenDialog, showSaveDialog } = {}) {
   if (typeof stateFile !== 'string' || !path.isAbsolute(stateFile)) throw new TypeError('Project workspace stateFile must be an absolute path.');
+  portableRoot ||= path.join(path.dirname(stateFile), 'portable-projects');
+  if (typeof portableRoot !== 'string' || !path.isAbsolute(portableRoot)) throw new TypeError('Project workspace portableRoot must be an absolute path.');
   if (typeof showOpenDialog !== 'function' || typeof showSaveDialog !== 'function') throw new TypeError('Project workspace dialogs must be functions.');
   let recent = readRecentState(stateFile);
 
@@ -143,25 +153,30 @@ function createProjectWorkspaceService({ stateFile, showOpenDialog, showSaveDial
         filePath = selected.filePaths[0];
       }
       try {
-        const project = loadProjectFile(filePath);
+        const extension = path.extname(filePath).toLowerCase();
+        const project = extension === PORTABLE_PROJECT_EXTENSION
+          ? await openPortableProject(filePath, portableRoot)
+          : loadProjectFile(filePath);
         const entry = register(filePath, project, existingId);
         return { cancelled: false, documentId: entry.documentId, fileName: entry.fileName, project, recentProjects: publicRecent() };
       } catch (error) {
         rethrowProjectError(error, 'PROJECT_OPEN_FAILED', 'The selected Live2Pet project could not be opened.');
       }
     },
-    saveProject: async ({ documentId, project, saveAs = false } = {}) => {
+    saveProject: async ({ documentId, project, saveAs = false, portable = false } = {}) => {
       const validated = validateProject(project);
       const current = documentId === undefined ? null : recent.find((item) => item.documentId === documentId) || null;
-      let filePath = !saveAs && current ? current.path : null;
+      let filePath = !saveAs && !portable && current ? current.path : null;
       if (!filePath) {
-        const suggestedName = `${safeLabel(validated.name, 'Untitled')}${PROJECT_EXTENSION}`;
-        const selected = await showSaveDialog(projectDialogOptions('save', current?.path || suggestedName));
+        const extension = portable ? PORTABLE_PROJECT_EXTENSION : PROJECT_EXTENSION;
+        const suggestedName = `${safeLabel(validated.name, 'Untitled')}${extension}`;
+        const selected = await showSaveDialog(projectDialogOptions('save', portable ? suggestedName : current?.path || suggestedName, portable));
         if (selected?.canceled || !selected?.filePath) return { cancelled: true, recentProjects: publicRecent() };
-        filePath = ensureProjectExtension(selected.filePath);
+        filePath = ensureProjectExtension(selected.filePath, extension);
       }
       try {
-        saveProjectFile(filePath, validated);
+        if (path.extname(filePath).toLowerCase() === PORTABLE_PROJECT_EXTENSION) await savePortableProject(filePath, validated);
+        else saveProjectFile(filePath, validated);
         const entry = register(filePath, validated, saveAs ? null : current?.documentId || null);
         return { cancelled: false, documentId: entry.documentId, fileName: entry.fileName, project: validated, recentProjects: publicRecent() };
       } catch (error) {
@@ -260,6 +275,8 @@ function createWindowStateWriter({ stateFile, getBounds, debounceMs = 250 } = {}
 
 module.exports = {
   MAX_RECENT_PROJECTS,
+  PROJECT_EXTENSION,
+  PORTABLE_PROJECT_EXTENSION,
   createProjectSourceService,
   createProjectWorkspaceService,
   createWindowStateWriter,

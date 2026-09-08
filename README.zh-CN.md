@@ -100,7 +100,7 @@ open apps/desktop/out/Live2Pet-darwin-*/Live2Pet.app
 - **[Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk)** — 包含透明 WebP 动画的主题
 - **Codex 自定义宠物** — V2 动画图集
 
-也可以保存为 **.live2pet** 项目，方便以后继续编辑。
+可以保存轻量的 **.l2p** 本地项目，也可以将所选模型一起保存为便携的 **.l2pack** 项目；旧 `.live2pet` 项目仍可继续打开。
 
 Spine 与 Windows 支持仍在预览阶段。PCK 是否可用取决于其内容和封装方式。[详细兼容性与限制 →](docs/guides/user-guide.zh-CN.md#compatibility)
 

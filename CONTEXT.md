@@ -49,8 +49,12 @@ One execution that transforms a Source Package and Motion Mapping into a validat
 _Avoid_: Conversion, export job
 
 **Live2Pet Project**:
-A `.live2pet` JSON document that reconnects a Source Package to its Animation Recipes, Visual Settings, Motion Mappings, Target Profiles, Render Presets, and package metadata without containing the source assets themselves. Generated Pet Packages are not editable project sources.
+A `.l2p` JSON document that reconnects a Source Package to its Animation Recipes, Visual Settings, Motion Mappings, Target Profiles, Render Presets, and package metadata without containing the source assets themselves. Legacy `.live2pet` files remain readable.
 _Avoid_: Mapping file, project bundle
+
+**Portable Project**:
+An `.l2pack` ZIP container holding one `project.l2p` document and a copy of its selected Source Package. It excludes runtimes, caches, and generated Pet Packages.
+_Avoid_: Pet Package, runtime bundle
 
 **Pet Package**:
 A portable artifact containing rendered animations, target metadata, and the files required by a supported agent-pet host.

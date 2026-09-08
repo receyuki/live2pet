@@ -86,8 +86,10 @@ Live2Pet checks the public GitHub Releases page shortly after launch, at most on
 
 ## Projects and storage
 
-- Save a `.live2pet` project to keep mappings, render options, visibility, and source references.
-- Model and runtime files are **not embedded**. Keep source files available when reopening or sharing projects.
+- Save a lightweight `.l2p` project to keep mappings, render options, visibility, and a relative or absolute source reference. Keep the referenced model available when reopening it.
+- Use **Portable project** to save an `.l2pack` containing the same project and a copy of its selected model. It can be moved to another computer, where the matching runtime must still be configured separately.
+- Legacy `.live2pet` projects remain readable and are saved in place unless you choose a new filename.
+- Neither project format includes runtimes, build caches, generated Clawd/Codex packages, or an entire model library.
 - Unsaved edits are retained locally for recovery on the next launch.
 - Clear recent history without deleting project files.
 - GitHub downloads use a **1 GiB** default cache. Change it between **256 MiB and 20 GiB** in Settings → Storage.

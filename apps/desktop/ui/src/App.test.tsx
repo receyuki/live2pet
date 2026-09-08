@@ -68,7 +68,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = true, previewVi
   const getPreviewVisualElements = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: previewVisualElements }));
   const getPreviewVisualElementThumbnail = vi.fn(async (input: { id: string }) => ({ protocolVersion: 1 as const, ok: true, result: await (previewThumbnail?.(input) ?? { id: input.id, dataUrl: `data:image/png;base64,${input.id}` }) }));
   const openProject = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: openCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-document', fileName: 'saved.live2pet', project: openedProject, recentProjects } }));
-  const saveProject = vi.fn(async (input: { project: Live2PetProject }) => ({ protocolVersion: 1 as const, ok: true, result: saveCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-saved-document', fileName: `${input.project.name}.live2pet`, project: input.project, recentProjects } }));
+  const saveProject = vi.fn(async (input: { project: Live2PetProject; portable?: boolean }) => ({ protocolVersion: 1 as const, ok: true, result: saveCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-saved-document', fileName: `${input.project.name}${input.portable ? '.l2pack' : '.l2p'}`, project: input.project, recentProjects } }));
   const clearRecentProjects = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { recentProjects: [] } }));
   const checkForUpdates = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, state: 'available' as const, currentVersion: '0.1.0', latestVersion: '0.1.1', releaseUrl: 'https://github.com/receyuki/live2pet/releases/tag/v0.1.1' } }));
   const openReleasePage = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { opened: true as const } }));
@@ -332,7 +332,7 @@ describe('Live2Pet desktop shell', () => {
     expect(screen.getByText(/This model has no Expressions/)).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Smile' })).not.toBeInTheDocument();
   });
-  it('creates an unsaved schema-2 project on import and saves it through the opaque document API', async () => {
+  it('creates an unsaved schema-3 project on import and saves it through the opaque document API', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const { saveProject } = installDesktopApi();
     const user = userEvent.setup();
@@ -346,9 +346,14 @@ describe('Live2Pet desktop shell', () => {
     await user.click(screen.getByRole('button', { name: 'Save project' }));
 
     await vi.waitFor(() => expect(saveProject).toHaveBeenCalledOnce());
-    expect(saveProject.mock.calls[0][0]).toMatchObject({ project: { schemaVersion: 2, visualSettings: { hiddenElementIds: [] }, projectId: 'vicious-khepri', source: { path: '/Users/test/Vicious Khepri.pck' }, recipes: [] } });
+    expect(saveProject.mock.calls[0][0]).toMatchObject({ project: { format: 'live2pet-project', schemaVersion: 3, visualSettings: { hiddenElementIds: [] }, projectId: 'vicious-khepri', source: { path: '/Users/test/Vicious Khepri.pck' }, recipes: [] } });
     expect(await screen.findByText('Saved')).toBeVisible();
-    expect(screen.getByText('Vicious Khepri.live2pet')).toBeVisible();
+    expect(screen.getByText('Vicious Khepri.l2p')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Save a portable project with model files' }));
+    await vi.waitFor(() => expect(saveProject).toHaveBeenCalledTimes(2));
+    expect(saveProject.mock.calls[1][0]).toMatchObject({ saveAs: true, portable: true });
+    expect(await screen.findByText('Vicious Khepri.l2pack')).toBeVisible();
   });
 
   it('starts a new project from the toolbar without restarting the App', async () => {
@@ -775,7 +780,7 @@ describe('Live2Pet desktop shell', () => {
     render(<App />);
 
     await user.click(await screen.findByRole('button', { name: /Missing Project/ }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Restore or move the .live2pet file back');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Restore or move its project file back');
     expect(openProject).not.toHaveBeenCalled();
   });
 
@@ -789,7 +794,7 @@ describe('Live2Pet desktop shell', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Clear' }));
     await vi.waitFor(() => expect(clearRecentProjects).toHaveBeenCalledOnce());
-    expect(confirm).toHaveBeenCalledWith('Clear the recent-project list? Your .live2pet files will not be deleted.');
+    expect(confirm).toHaveBeenCalledWith('Clear the recent-project list? Your project files will not be deleted.');
     expect(await screen.findByText('Your recent projects will appear here.')).toBeVisible();
     expect(screen.queryByText('Saved Project')).not.toBeInTheDocument();
   });

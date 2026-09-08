@@ -20,5 +20,5 @@ export function isSourceDirectoryDrop(dataTransfer: Pick<DataTransfer, 'files' |
 }
 
 export function isProjectFile(file: Pick<File, 'name'>): boolean {
-  return /\.live2pet$/i.test(file.name);
+  return /\.(?:l2p|l2pack|live2pet)$/i.test(file.name);
 }

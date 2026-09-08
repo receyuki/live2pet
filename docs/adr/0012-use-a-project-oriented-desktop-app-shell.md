@@ -28,7 +28,7 @@ Live2Pet V1 will use a project-oriented desktop application shell with four
 top-level states:
 
 1. a skippable Setup Assistant shown on first launch;
-2. a Welcome surface for recent projects, opening a `.live2pet` document, or
+2. a Welcome surface for recent projects, opening an `.l2p`, `.l2pack`, or legacy `.live2pet` document, or
    importing a Source Package;
 3. one project workspace with Source, Map, and Build destinations; and
 4. an App-global, full-page Settings destination opened from the application

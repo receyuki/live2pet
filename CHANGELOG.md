@@ -6,6 +6,13 @@ GitHub Releases.
 
 ## [Unreleased]
 
+- Save new reference projects as `.l2p` with schema v3 relative or absolute
+  source locations; continue opening and saving legacy `.live2pet` projects.
+- Save `.l2pack` portable projects containing the project document and selected
+  model source, with checksums and safe extraction. Runtimes remain separate.
+- Keep target package versions in their manifests while omitting `-1.0.0` from
+  generated Clawd and Codex Pet ZIP filenames.
+
 ## [0.1.0] - 2026-09-08
 
 ### Highlights

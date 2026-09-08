@@ -58,7 +58,7 @@ Work:
 3. Provide Source, Map, and Build destinations that preserve one project and renderer session while changing the visible task surface.
 4. Add a full in-window Settings destination with General, Runtimes, Targets & Installation, and Storage section navigation. Move the existing runtime, optional renderer-pack, and cache controls out of the project document and restore the previous project context when Settings closes.
 5. Add a skippable full-page Setup Assistant that reuses Live2D runtime Settings, detects existing runtimes, supports one or both Cubism families, and remains available from Help. Do not download optional Spine support during first-run setup.
-6. Persist locale, appearance, recent projects, reopen behavior, installation destinations, and window bounds as App settings; do not put them in `.live2pet`.
+6. Persist locale, appearance, recent projects, reopen behavior, installation destinations, and window bounds as App settings; do not put them in `.l2p` or `.l2pack`.
 7. Add native Open, Save, Undo, Redo, Settings, and Build menu commands and shortcuts.
 8. Replace hand-written standard controls with HeroUI components; keep custom presentation limited to the shell, three-column workspace, Live2D canvas and timeline, and restrained brand surfaces.
 9. Remove landing-page headings, explanatory banners, duplicate global bars, and footer content from the packaged App navigation.
@@ -118,7 +118,7 @@ Work:
 1. Extend the renderer contract with capability discovery, Visual Element listing, and atomic Visual Settings application without exposing Cubism-specific APIs to project or build packages.
 2. Map Live2D Parts to stable Visual Element identities and reapply project-hidden Parts after animation and pose updates.
 3. Add a searchable Visibility panel opened beside the center preview, temporarily replacing the Motion library to retain the three-column layout, with manual show/hide, transient Solo, and Restore all actions. Never hide elements based on naming heuristics.
-4. Store hidden identities in the next `.live2pet` schema revision and migrate existing projects to an empty hidden set.
+4. Store hidden identities in the next project schema revision and migrate existing projects to an empty hidden set.
 5. Keep hide/show responsive by reframing only the current pose during interaction. Prepare the sampled animated export bounds (nine poses per source Motion) once before actual capture, not on every toggle or cache hit. Provide on-demand isolated Part thumbnails for identification. Explain inseparable ArtMesh content; sampling does not prove containment for every physics pose.
 6. Include a canonical Visual Settings digest in capture-cache identity and pass the same settings through Clawd and Codex builds.
 

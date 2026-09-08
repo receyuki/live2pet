@@ -263,6 +263,7 @@ test('normalizes project requests and strips private paths from recent results',
   assert.deepEqual(normalizeOpenProjectRequest(undefined), {});
   assert.deepEqual(normalizeOpenProjectRequest({ documentId: 'document_123' }), { documentId: 'document_123' });
   assert.deepEqual(normalizeSaveProjectRequest({ documentId: 'document_123', project: { schemaVersion: 1 }, saveAs: true }), { documentId: 'document_123', project: { schemaVersion: 1 }, saveAs: true });
+  assert.deepEqual(normalizeSaveProjectRequest({ project: { schemaVersion: 3 }, portable: true }), { project: { schemaVersion: 3 }, saveAs: false, portable: true });
   assert.throws(() => normalizeOpenProjectRequest({ path: '/private/project.live2pet' }), (error) => error instanceof AppHostError && error.code === 'INVALID_PROJECT_REQUEST');
   assert.throws(() => normalizeSaveProjectRequest({ project: {}, path: '/private/project.live2pet' }), (error) => error instanceof AppHostError && error.code === 'INVALID_PROJECT_REQUEST');
   assert.deepEqual(normalizeRecentProjects([{ documentId: 'document_123', name: 'Cat', fileName: 'cat.live2pet', available: true, path: '/private/project.live2pet' }]), [{ documentId: 'document_123', name: 'Cat', fileName: 'cat.live2pet', available: true }]);
@@ -289,8 +290,8 @@ test('routes project workspace operations without exposing project file paths', 
 });
 
 test('accepts a single dropped project path and rejects ambiguous or non-project paths', () => {
-  const inputPath = path.resolve('My Pet.live2pet');
-  assert.deepEqual(normalizeOpenProjectRequest({ inputPath }), { inputPath });
+  const inputPath = path.resolve('My Pet.l2p');
+  for (const projectPath of [inputPath, path.resolve('My Pet.l2pack'), path.resolve('My Pet.live2pet')]) assert.deepEqual(normalizeOpenProjectRequest({ inputPath: projectPath }), { inputPath: projectPath });
   for (const input of [{ inputPath: 'relative.live2pet' }, { inputPath: path.resolve('model.json') }, { inputPath, documentId: 'document_123' }, { inputPath: `${inputPath}\0` }, { inputPath: 42 }]) {
     assert.throws(() => normalizeOpenProjectRequest(input), error => error.code === 'INVALID_PROJECT_REQUEST');
   }
@@ -742,7 +743,7 @@ test('routes a real synthetic Codex build through the App seam and returns a dow
   const artifact = await router({ protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: response.result.artifacts[0].artifactId }] });
   assert.equal(artifact.ok, true);
   assert.ok(artifact.result.bytes.byteLength > 0);
-  assert.equal(artifact.result.filename, 'app-real-build-codex-pet-1.0.0.zip');
+  assert.equal(artifact.result.filename, 'app-real-build-codex-pet.zip');
 });
 
 test('routes a real synthetic Clawd build through the App seam and returns a downloadable theme artifact', async () => {
@@ -795,7 +796,7 @@ test('routes a real synthetic Clawd build through the App seam and returns a dow
   const artifact = await router({ protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: response.result.artifacts[0].artifactId }] });
   assert.equal(artifact.ok, true);
   assert.ok(artifact.result.bytes.byteLength > 0);
-  assert.equal(artifact.result.filename, 'app-real-clawd-build-clawd-1.0.0.zip');
+  assert.equal(artifact.result.filename, 'app-real-clawd-build-clawd.zip');
 });
 
 test('installs only a current artifact after explicit confirmation and redacts target paths', async () => {

@@ -1,22 +1,26 @@
 # Live2Pet Project Workflow
 
-The `.live2pet` document is the editable source of truth for a mapping session. It is a small, reference-only JSON document: it may record the selected Source Package path, source fingerprint, Animation Recipes, target mappings, Render Presets, package metadata, and rights notes, but it must never embed model bytes, textures, Motion or Expression files, Cubism runtimes, rendered frames, or built packages.
+The `.l2p` document is the editable source of truth for a mapping session. It is a small, reference-only JSON document: it records the selected Source Package location and fingerprint, Animation Recipes, target mappings, Render Presets, package metadata, and rights notes without embedding model bytes. Schema v3 stores `format: "live2pet-project"` and a typed relative or absolute `source.location`; the App resolves that location into the in-memory `source.path`. Schema v1/v2 and legacy `.live2pet` filenames remain readable.
+
+An `.l2pack` Portable Project is a standard ZIP container with `manifest.json`, `project.l2p`, and one `source/` tree. The manifest uses its own `containerVersion`, lists the packaged files, and records their sizes and SHA-256 digests. `project.l2p` points to the packaged source with a relative location. Portable Projects include the selected model source but exclude Cubism runtimes, Spine renderer packs, caches, rendered frames, built packages, and unrelated Source Library models. Archive paths must be traversal-safe, free of symbolic links and cross-platform name collisions, and bounded before extraction.
 
 An Animation Recipe is a reusable `{ id, motionId, expressionId }` reference; `expressionId` may be `null` to use the model's base Expression. Target Profiles keep their direct `motion:<id>` mappings and may add a `recipeMappings` object that assigns a recipe id to a slot. This keeps older projects readable while making the selected Expression durable across save/reopen and build. A recipe must reference the same Motion as its target slot, and one target must not request different Expressions for the same Motion because capture and cache reuse are Motion-scoped. The Mapper creates or reuses a safe recipe id when the user assigns the currently previewed Motion/Expression; clearing or replacing a mapping removes the slot's recipe reference.
 
 ## Save and recovery
 
-Schema revision 2 adds project-scoped `visualSettings.hiddenElementIds`: a sorted,
-deduplicated list of stable Visual Element IDs. Revision 1 migrates to an empty
-hidden set without changing its mappings. Only manual hide/show decisions are
+Schema revision 3 keeps the project-scoped `visualSettings.hiddenElementIds`
+introduced in revision 2 and replaces the stored source path with a typed
+`source.location`. Revision 1 migrates to an empty hidden set without changing
+its mappings; revisions 1 and 2 migrate their existing source path into the v3
+in-memory shape. Only manual hide/show decisions are
 persisted; temporary Solo preview state is excluded. Undo/redo includes visibility.
 Preview and both Package Builds apply the same settings, and their canonical
 digest separates dependent capture and encoded-asset cache entries. Restoring
 visibility does not delete source files or unrelated cached assets.
 
-The Mapper provides an explicit Save action. A dirty browser session also writes a bounded, reference-only autosave draft to the browser profile. Recovery is offered when a valid draft is present; an invalid or oversized draft is discarded and never presented as recoverable. Accepting a recovery loads the validated project document and marks it dirty so the user can save it explicitly. Opening another project or saving the current project clears the superseded browser draft.
+The App provides explicit Save and Portable Project actions. A dirty renderer session also writes a bounded, reference-only autosave draft to its local profile. Recovery is offered when a valid draft is present; an invalid or oversized draft is discarded and never presented as recoverable. Accepting a recovery loads the validated project document and marks it dirty so the user can save it explicitly. Opening another project or saving the current project clears the superseded draft.
 
-The project service writes the primary document atomically with restrictive local-file permissions. Browser-profile recovery is advisory: it never silently overwrites the primary project, installs a package, or copies Source Package and runtime bytes into the project directory. A future Electron host may move the same draft envelope to its project service, but the current Mapper keeps it local to the browser profile.
+The project service writes the primary document atomically with restrictive local-file permissions. Local-profile recovery is advisory: it never silently overwrites the primary project, installs a package, or copies Source Package and runtime bytes into the project directory. Portable Projects are extracted only after validation into an App-managed working directory keyed by archive digest.
 
 ## Source relinking and review
 

@@ -266,6 +266,7 @@ function getProjectWorkspaceService() {
   if (!projectWorkspaceService) {
     projectWorkspaceService = createProjectWorkspaceService({
       stateFile: projectWorkspaceStatePath(),
+      portableRoot: path.join(app.getPath('userData'), 'workspace', 'portable-projects'),
       showOpenDialog: (options) => dialog.showOpenDialog(mainWindow, options),
       showSaveDialog: (options) => dialog.showSaveDialog(mainWindow, options),
     });

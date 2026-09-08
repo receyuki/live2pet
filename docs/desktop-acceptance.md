@@ -86,11 +86,11 @@ The subsequent user review superseded the fixed 400-pixel preview cap: the
 result panel and square stage now follow the available card width. Intrinsic
 image sizes and long animation names cannot widen the card or page.
 
-Dropping a `.live2pet` file opens it through the same validated document service
+Dropping an `.l2p`, `.l2pack`, or legacy `.live2pet` file opens it through the same validated document service
 as the picker, including recent-document registration and the existing
 unsaved-project confirmation. Project files are not sent to model or runtime
 inspection. The IPC contract accepts either a recent `documentId` or one
-absolute `.live2pet` `inputPath`, never both.
+absolute supported project `inputPath`, never both.
 
 Hosted renderer builds are serialized. Submitted requests now report Queue
 and Prepare events before capture begins. Waiting targets show a localized

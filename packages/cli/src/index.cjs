@@ -113,8 +113,8 @@ function operationSpec(operation) {
   if (operation === 'version') return { usage: 'live2pet version [--pretty]' };
   if (operation === 'inspect') return { usage: 'live2pet inspect --input <source-directory-or-pck> [--cache-dir <cache-directory>] [--pretty]' };
   if (operation === 'runtime-diagnose') return { usage: 'live2pet runtime-diagnose --input <core-file-or-sdk-directory> [--pretty]' };
-  if (operation === 'project-validate') return { usage: 'live2pet project-validate --input <project.live2pet> [--pretty]' };
-  if (operation === 'project-recover') return { usage: 'live2pet project-recover --input <project.live2pet> [--pretty]' };
+  if (operation === 'project-validate') return { usage: 'live2pet project-validate --input <project.l2p> [--pretty]' };
+  if (operation === 'project-recover') return { usage: 'live2pet project-recover --input <project.l2p> [--pretty]' };
   if (operation === 'package-build') return { usage: 'live2pet package-build --input <build-spec.json> [--target clawd|codex-pet] [--output <directory>] [--cache-dir <cache-directory>] [--runtime-version <id> --renderer-version <id> --encoder-version <id>] [--overwrite] [--pretty]' };
   if (operation === 'package-validate') return { usage: 'live2pet package-validate --input <package.zip> [--target clawd|codex-pet] [--pretty]' };
   if (operation === 'export') return { usage: 'live2pet export --input <package.zip> --output <path.zip> [--overwrite] [--pretty]' };

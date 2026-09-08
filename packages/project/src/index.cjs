@@ -2,8 +2,9 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const SCHEMA_VERSION = 2;
-const PREVIOUS_SCHEMA_VERSION = 1;
+const PROJECT_FORMAT = 'live2pet-project';
+const SCHEMA_VERSION = 3;
+const PREVIOUS_SCHEMA_VERSIONS = new Set([1, 2]);
 const MAX_VISUAL_ELEMENT_IDS = 4096;
 const MAX_VISUAL_ELEMENT_ID_LENGTH = 256;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/;
@@ -72,14 +73,33 @@ function digestVisualSettings(value = { hiddenElementIds: [] }) {
   return crypto.createHash('sha256').update(JSON.stringify(normalized), 'utf8').digest('hex');
 }
 
-function normalizeSource(source) {
+function normalizeSourceLocation(value, baseDirectory) {
+  if (value == null) return undefined;
+  assertRecord(value, 'source.location');
+  if (!['relative', 'absolute'].includes(value.type)) fail('INVALID_SOURCE_LOCATION', 'source.location.type must be relative or absolute.');
+  const locationPath = text(value.path, 'source.location.path', { max: 4096 });
+  if (locationPath.includes('\0')) fail('INVALID_SOURCE_LOCATION', 'source.location.path cannot contain null bytes.');
+  if (value.type === 'absolute' && !path.isAbsolute(locationPath)) fail('INVALID_SOURCE_LOCATION', 'An absolute source location must contain an absolute path.');
+  if (value.type === 'relative' && path.isAbsolute(locationPath)) fail('INVALID_SOURCE_LOCATION', 'A relative source location cannot contain an absolute path.');
+  return {
+    location: { type: value.type, path: locationPath.replace(/\\/g, '/') },
+    path: value.type === 'relative' && baseDirectory ? path.resolve(baseDirectory, locationPath) : locationPath,
+  };
+}
+
+function normalizeSource(source, { baseDirectory } = {}) {
   assertRecord(source, 'source');
   const normalized = {
     kind: text(source.kind, 'source.kind', { max: 64 }),
     name: text(source.name, 'source.name', { max: 512 }),
     fingerprint: text(source.fingerprint, 'source.fingerprint', { max: 128 }),
   };
-  for (const key of ['path', 'modelConfig']) {
+  const located = normalizeSourceLocation(source.location, baseDirectory);
+  const legacyPath = text(source.path, 'source.path', { required: false, max: 4096 });
+  if (located) normalized.location = located.location;
+  if (legacyPath !== undefined) normalized.path = legacyPath;
+  else if (located) normalized.path = located.path;
+  for (const key of ['modelConfig']) {
     const value = text(source[key], `source.${key}`, { required: false, max: 4096 });
     if (value !== undefined) normalized[key] = value;
   }
@@ -205,26 +225,31 @@ function normalizeSourceReview(review) {
   };
 }
 
-function validateProject(input) {
+function validateProject(input, { baseDirectory } = {}) {
   assertRecord(input, 'project');
   const schemaVersion = input.schemaVersion;
-  if (schemaVersion !== SCHEMA_VERSION && schemaVersion !== PREVIOUS_SCHEMA_VERSION) {
+  if (schemaVersion !== SCHEMA_VERSION && !PREVIOUS_SCHEMA_VERSIONS.has(schemaVersion)) {
     if (Number.isInteger(schemaVersion) && schemaVersion > SCHEMA_VERSION) {
       fail('UNSUPPORTED_PROJECT_VERSION', `Project schema version ${schemaVersion} is newer than supported version ${SCHEMA_VERSION}.`);
     }
     fail('INVALID_PROJECT_VERSION', `Project schemaVersion must be ${SCHEMA_VERSION}.`);
   }
-  // Schema v1 did not persist Visual Settings. Keep the migration explicit and
-  // deterministic so an old project never inherits a stale or untrusted field.
-  const source = schemaVersion === PREVIOUS_SCHEMA_VERSION
-    ? { ...input, schemaVersion: SCHEMA_VERSION, visualSettings: { hiddenElementIds: [] } }
-    : input;
+  if (schemaVersion === SCHEMA_VERSION && input.format !== PROJECT_FORMAT) fail('INVALID_PROJECT_FORMAT', `Project format must be ${PROJECT_FORMAT}.`);
+  // Schema v1 did not persist Visual Settings. Schema v1 and v2 used source.path
+  // directly. Both migrate into the v3 in-memory shape without mutating the file.
+  const source = {
+    ...input,
+    format: PROJECT_FORMAT,
+    schemaVersion: SCHEMA_VERSION,
+    ...(schemaVersion === 1 ? { visualSettings: { hiddenElementIds: [] } } : {}),
+  };
   const project = {
+    format: PROJECT_FORMAT,
     schemaVersion: SCHEMA_VERSION,
     projectId: normalizeProjectId(source.projectId),
     appVersion: text(source.appVersion, 'appVersion', { max: 64 }),
     name: text(source.name, 'name', { max: 256 }),
-    source: normalizeSource(source.source),
+    source: normalizeSource(source.source, { baseDirectory }),
     recipes: normalizeRecipes(source.recipes),
     visualSettings: normalizeVisualSettings(source.visualSettings),
     targets: {},
@@ -251,6 +276,7 @@ function validateProject(input) {
 
 function createProject(input) {
   return validateProject({
+    format: PROJECT_FORMAT,
     schemaVersion: SCHEMA_VERSION,
     appVersion: '0.1.0',
     name: 'Untitled Live2Pet Project',
@@ -258,11 +284,32 @@ function createProject(input) {
   });
 }
 
-function serializeProject(project) {
-  return `${JSON.stringify(validateProject(project), null, 2)}\n`;
+function storageSource(project, { baseDirectory, sourceLocation } = {}) {
+  const source = { ...project.source };
+  let location = sourceLocation;
+  if (!location && source.path) {
+    if (baseDirectory && path.isAbsolute(source.path)) {
+      const relative = path.relative(baseDirectory, source.path);
+      location = path.isAbsolute(relative)
+        ? { type: 'absolute', path: source.path }
+        : { type: 'relative', path: relative || '.' };
+    } else {
+      location = { type: path.isAbsolute(source.path) ? 'absolute' : 'relative', path: source.path };
+    }
+  }
+  delete source.path;
+  if (location) source.location = normalizeSourceLocation(location).location;
+  else delete source.location;
+  return source;
 }
 
-function parseProject(textValue) {
+function serializeProject(project, options = {}) {
+  const validated = validateProject(project);
+  const stored = { ...validated, source: storageSource(validated, options) };
+  return `${JSON.stringify(stored, null, 2)}\n`;
+}
+
+function parseProject(textValue, options = {}) {
   if (typeof textValue !== 'string') fail('INVALID_PROJECT', 'Project content must be text.');
   if (Buffer.byteLength(textValue, 'utf8') > MAX_PROJECT_BYTES) {
     fail('PROJECT_TOO_LARGE', `Project exceeds the ${MAX_PROJECT_BYTES}-byte limit.`);
@@ -273,13 +320,13 @@ function parseProject(textValue) {
   } catch (error) {
     fail('INVALID_PROJECT_JSON', 'Project is not valid UTF-8 JSON.', { cause: String(error.message || error) });
   }
-  return validateProject(parsed);
+  return validateProject(parsed, options);
 }
 
 function saveProjectFile(filePath, project) {
   if (typeof filePath !== 'string' || !filePath.trim()) fail('INVALID_PROJECT_PATH', 'A project file path is required.');
-  const serialized = serializeProject(project);
   const absolute = path.resolve(filePath);
+  const serialized = serializeProject(project, { baseDirectory: path.dirname(absolute) });
   const temporary = `${absolute}.${process.pid}.${crypto.randomUUID()}.tmp`;
   try {
     fs.writeFileSync(temporary, serialized, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
@@ -294,7 +341,7 @@ function saveProjectFile(filePath, project) {
 function loadProjectFile(filePath) {
   if (typeof filePath !== 'string' || !filePath.trim()) fail('INVALID_PROJECT_PATH', 'A project file path is required.');
   const absolute = path.resolve(filePath);
-  return parseProject(fs.readFileSync(absolute, 'utf8'));
+  return parseProject(fs.readFileSync(absolute, 'utf8'), { baseDirectory: path.dirname(absolute) });
 }
 
 function autosavePath(filePath) {
@@ -337,7 +384,9 @@ function recipeDependencyIds(recipe) {
 function relinkProjectSource(project, nextSource, { previousManifest, nextManifest } = {}) {
   const current = validateProject(project);
   assertRecord(nextSource, 'nextSource');
-  const mergedSource = normalizeSource({ ...current.source, ...nextSource });
+  const mergedSourceInput = { ...current.source, ...nextSource };
+  if (Object.hasOwn(nextSource, 'path') && !Object.hasOwn(nextSource, 'location')) delete mergedSourceInput.location;
+  const mergedSource = normalizeSource(mergedSourceInput);
   const changed = current.source.fingerprint !== mergedSource.fingerprint;
   const nextProject = { ...current, source: mergedSource };
   if (!changed) {
@@ -388,6 +437,7 @@ module.exports = {
   MAX_PROJECT_BYTES,
   MAX_VISUAL_ELEMENT_IDS,
   MAX_VISUAL_ELEMENT_ID_LENGTH,
+  PROJECT_FORMAT,
   SCHEMA_VERSION,
   TARGETS,
   RENDER_PRESETS,

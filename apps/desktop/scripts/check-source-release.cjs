@@ -13,7 +13,7 @@ const requiredFiles = [
   'apps/desktop/THIRD-PARTY-NOTICES.md',
 ];
 const forbiddenDirectory = /(?:^|\/)(?:examples?|archive|artifacts?)(?:\/|$)/i;
-const forbiddenExtension = /\.(?:pck|lpk|moc|moc3|dat|webp|zip)$/i;
+const forbiddenExtension = /\.(?:pck|lpk|moc|moc3|dat|webp|zip|l2pack)$/i;
 const forbiddenRuntime = /(?:^|\/)(?:live2dcubismcore|minified-live2d(?:core)?|live2d\.min)\.(?:js|wasm)$/i;
 const maximumTextBytes = 2 * 1024 * 1024;
 const allowedBinaryReleaseFiles = new Set([
@@ -78,7 +78,7 @@ function run() {
     ok: errors.length === 0,
     requiredFiles: [...requiredFiles],
     scannedFiles: files.length,
-    ignoredLocalInputs: ['examples/', 'archive/', 'artifacts/', '*.pck', '*.lpk', '*.moc', '*.moc3', '*.webp', '*.zip', 'Cubism Core'],
+    ignoredLocalInputs: ['examples/', 'archive/', 'artifacts/', '*.pck', '*.lpk', '*.moc', '*.moc3', '*.webp', '*.zip', '*.l2pack', 'Cubism Core'],
     errors,
   };
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

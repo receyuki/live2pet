@@ -597,7 +597,8 @@ function normalizeOpenProjectRequest(value) {
   const unknown = Object.keys(value).filter((key) => !['documentId', 'inputPath'].includes(key));
   if (unknown.length) fail('INVALID_PROJECT_REQUEST', `openProject input contains unsupported fields: ${unknown.join(', ')}.`);
   if (value.inputPath !== undefined) {
-    if (value.documentId !== undefined || typeof value.inputPath !== 'string' || value.inputPath.includes('\0') || !path.isAbsolute(value.inputPath) || path.extname(value.inputPath).toLowerCase() !== '.live2pet') fail('INVALID_PROJECT_REQUEST', 'Provide one absolute .live2pet project path without documentId.');
+    const extension = typeof value.inputPath === 'string' ? path.extname(value.inputPath).toLowerCase() : '';
+    if (value.documentId !== undefined || typeof value.inputPath !== 'string' || value.inputPath.includes('\0') || !path.isAbsolute(value.inputPath) || !['.l2p', '.l2pack', '.live2pet'].includes(extension)) fail('INVALID_PROJECT_REQUEST', 'Provide one absolute .l2p, .l2pack, or legacy .live2pet project path without documentId.');
     return { inputPath: value.inputPath };
   }
   return value.documentId === undefined ? {} : { documentId: normalizeDocumentId(value.documentId) };
@@ -605,15 +606,17 @@ function normalizeOpenProjectRequest(value) {
 
 function normalizeSaveProjectRequest(value) {
   if (!isRecord(value)) fail('INVALID_PROJECT_REQUEST', 'saveProject input must be an object.');
-  const allowed = new Set(['documentId', 'project', 'saveAs']);
+  const allowed = new Set(['documentId', 'project', 'saveAs', 'portable']);
   const unknown = Object.keys(value).filter((key) => !allowed.has(key));
   if (unknown.length) fail('INVALID_PROJECT_REQUEST', `saveProject input contains unsupported fields: ${unknown.join(', ')}.`);
   if (!isRecord(value.project)) fail('INVALID_PROJECT_REQUEST', 'saveProject requires a project object.');
   if (value.saveAs !== undefined && typeof value.saveAs !== 'boolean') fail('INVALID_PROJECT_REQUEST', 'saveAs must be boolean when provided.');
+  if (value.portable !== undefined && typeof value.portable !== 'boolean') fail('INVALID_PROJECT_REQUEST', 'portable must be boolean when provided.');
   return {
     ...(value.documentId === undefined ? {} : { documentId: normalizeDocumentId(value.documentId) }),
     project: value.project,
     saveAs: value.saveAs === true,
+    ...(value.portable === true ? { portable: true } : {}),
   };
 }
 

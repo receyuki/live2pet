@@ -31,7 +31,7 @@ it('saves the chosen name in the project and keeps undo/redo titles consistent',
 it('visibility is a schema-2 project edit with undo/redo, not an App setting', () => {
   let state = appReducer(initialAppState(), { type: 'OPEN_PROJECT', project: { id: 'one', name: 'One', document: projectDocument() } });
   state = appReducer(state, { type: 'SET_VISUAL_SETTINGS', settings: { hiddenElementIds: ['BG', 'BG'] } });
-  expect(state.project?.document).toMatchObject({ schemaVersion: 2, visualSettings: { hiddenElementIds: ['BG'] } });
+  expect(state.project?.document).toMatchObject({ format: 'live2pet-project', schemaVersion: 3, visualSettings: { hiddenElementIds: ['BG'] } });
   expect(state.project?.dirty).toBe(true);
   expect(state.settings).not.toHaveProperty('visualSettings');
   state = appReducer(state, { type: 'UNDO_PROJECT_EDIT' });

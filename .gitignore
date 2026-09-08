@@ -24,6 +24,7 @@ node_modules/
 *.dat
 *.webp
 *.zip
+*.l2pack
 
 # Cubism Core is downloaded locally and is not redistributed by this repo.
 /packages/live2d-exporter/vendor/live2dcubismcore.min.js

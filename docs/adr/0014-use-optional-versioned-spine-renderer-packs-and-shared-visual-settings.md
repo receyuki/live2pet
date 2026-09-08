@@ -36,7 +36,7 @@ updates, participate in visible-bounds calculation, and are included in
 capture-cache identity. Temporary Solo state is a preview aid and is not saved.
 
 The Map preview owns a searchable Visibility drawer with show/hide, Solo, and
-Restore all actions. Visual Settings are stored in the next `.live2pet` schema
+Restore all actions. Visual Settings are stored in the next project schema
 revision with migration from existing projects, then used unchanged by Clawd
 and Codex Package Builds. If a character and background share one ArtMesh or
 Attachment, Live2Pet explains that runtime visibility cannot separate them;

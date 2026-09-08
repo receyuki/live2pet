@@ -979,6 +979,7 @@ export function App() {
   const [spinePack, setSpinePack] = useState<SpinePackStatus | null>(null);
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [actionFeedback, setActionFeedback] = useState("");
+  const [projectSaveBusy, setProjectSaveBusy] = useState(false);
   const [projectDraft, setProjectDraft] = useState<ProjectDraft | null>(() => readProjectDraft());
   const locale = state.settings.language;
   const appearance = state.settings.appearance;
@@ -1150,25 +1151,30 @@ export function App() {
     }
   }
 
-  async function saveProjectDocument(saveAs = false) {
+  async function saveProjectDocument(saveAs = false, portable = false) {
     if (!state.project?.document) {
       setActionFeedback(t("saveRequiresProject"));
       return;
     }
-    setActionFeedback("");
+    setActionFeedback(t(portable ? "savingPortable" : "savingProject"));
+    setProjectSaveBusy(true);
     try {
       const result = await saveProject({
         ...(state.project.documentId ? { documentId: state.project.documentId } : {}),
         project: state.project.document,
         ...(saveAs ? { saveAs: true } : {}),
+        ...(portable ? { portable: true } : {}),
       });
       setRecentProjects(result.recentProjects);
       if (result.cancelled) return;
       dispatch({ type: "PROJECT_SAVED", document: result.project, documentId: result.documentId, fileName: result.fileName });
       clearProjectDraft();
       setProjectDraft(null);
+      setActionFeedback(t(portable ? "portableSaved" : "projectSaved"));
     } catch (cause) {
       setActionFeedback(cause instanceof Error ? cause.message : t("error"));
+    } finally {
+      setProjectSaveBusy(false);
     }
   }
 
@@ -1238,7 +1244,7 @@ export function App() {
     const checked = await inspectSource(sourcePath, projectId);
     await refreshRendererSettings();
     const document: Live2PetProject = {
-      schemaVersion: 2, projectId, appVersion, name: checked.source.name,
+      format: 'live2pet-project', schemaVersion: 3, projectId, appVersion, name: checked.source.name,
       source: { ...checked.source, path: sourcePath }, recipes: [],
       visualSettings: { hiddenElementIds: [] },
       targets: {
@@ -1262,7 +1268,8 @@ export function App() {
       const { inspection, sourcePath } = await inspectLibrarySource(library.libraryId, candidate.id, projectId);
       await refreshRendererSettings();
       const document: Live2PetProject = {
-        schemaVersion: 2,
+        format: 'live2pet-project',
+        schemaVersion: 3,
         visualSettings: { hiddenElementIds: [] },
         projectId,
         appVersion,
@@ -1424,10 +1431,10 @@ export function App() {
       <header className="app-toolbar">
         <div className="toolbar-brand">{projectOpen ? <><span>Live2Pet</span><i /><strong title={state.project?.name}>{state.project?.name}</strong></> : <strong>Live2Pet</strong>}</div>
         {projectOpen ? <nav aria-label={t('projectNavigation')}><ButtonGroup>{(["source", "map", "build"] as const).map((destination) => <Button key={destination} isDisabled={sourceReviewRequired && destination !== "source"} variant={state.destination === destination ? "primary" : "ghost"} onPress={() => dispatch({ type: "NAVIGATE", destination })}>{t(destination)}</Button>)}</ButtonGroup></nav> : <span />}
-        <div className="toolbar-actions">{projectOpen && <Button aria-label={t("newProject")} variant="ghost" isDisabled={Object.values(buildState).some(build => build.status === 'building')} onPress={() => void startNewProject()}><Plus size={17} />{t("newProject")}</Button>}{projectOpen && <Button aria-label={t("saveProject")} variant="ghost" onPress={() => void saveProjectDocument()}><Save size={17} />{t("save")}</Button>}<Button isIconOnly aria-label={t("settings")} variant="ghost" onPress={() => dispatch({ type: "OPEN_SETTINGS" })}><SettingsIcon size={18} /></Button></div>
+        <div className="toolbar-actions">{projectOpen && <Button aria-label={t("newProject")} variant="ghost" isDisabled={projectSaveBusy || Object.values(buildState).some(build => build.status === 'building')} onPress={() => void startNewProject()}><Plus size={17} />{t("newProject")}</Button>}{projectOpen && <Button aria-label={t("saveProject")} variant="ghost" isDisabled={projectSaveBusy} onPress={() => void saveProjectDocument()}><Save size={17} />{t("save")}</Button>}{projectOpen && <Button aria-label={t("savePortableProject")} variant="ghost" isDisabled={projectSaveBusy} onPress={() => void saveProjectDocument(true, true)}><PackageCheck size={17} />{t("savePortable")}</Button>}<Button isIconOnly aria-label={t("settings")} variant="ghost" onPress={() => dispatch({ type: "OPEN_SETTINGS" })}><SettingsIcon size={18} /></Button></div>
       </header>
       <div className="app-content">
-        {actionFeedback && <div className="action-feedback" role="alert">{actionFeedback}</div>}
+        {actionFeedback && <div className="action-feedback" role="alert">{actionFeedback}{projectSaveBusy && <ProgressBar aria-label={actionFeedback} isIndeterminate />}</div>}
         {(state.destination === "welcome" || state.destination === "source") && <WelcomeView selectedLibraryModel={selectedLibraryModel} onSelectLibraryModel={setSelectedLibraryModel} pendingSource={pendingSource} onConfirmSource={confirmPendingSource} onDismissSource={() => setPendingSource(null)} onConfigureRuntime={() => dispatch({ type: "OPEN_SETTINGS", section: "runtimes" })} library={modelLibrary} setLibrary={library => { setModelLibrary(library); setSelectedLibraryModel(null); setPendingSource(null); }} locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} draft={state.project ? null : projectDraft} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onLibrarySelection={openLibrarySource} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onClearRecent={() => void clearRecentProjectHistory()} onRecoverDraft={() => void recoverProjectDraft()} onDiscardDraft={discardProjectDraft} currentModel={state.project && (!state.project.inspection || sourceReviewRequired) ? <div className="model-current-details"><SourceView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} inspectionRequired={Boolean(state.project?.document)} runtimeReady={runtimeReady} busy={importBusy} onConfigureRuntime={configureRequiredRuntime} onRelink={relinkCurrentSource} onAcknowledgeReview={acknowledgeCurrentSourceReview} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} /></div> : null} />}
         {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={configureRequiredRuntime} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => dispatch({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => dispatch({ type: "CLEAR_ASSIGNMENT", destination })} onVisualSettings={(settings) => dispatch({ type: "SET_VISUAL_SETTINGS", settings })} />}
         {state.destination === "build" && <BuildView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} runtimeReady={runtimeReady} state={buildState} onName={(name) => dispatch({ type: "RENAME_PROJECT", name })} onPreset={(target, preset) => dispatch({ type: "SET_RENDER_PRESET", target, preset })} onCustomRender={(settings) => dispatch({ type: 'SET_CLAWD_RENDER', settings })} onBuild={buildProjectTarget} onCancel={(target) => void cancelProjectBuild(target)} />}

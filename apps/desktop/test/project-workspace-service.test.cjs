@@ -59,8 +59,8 @@ test('project workspace opens, saves, and persists opaque recent documents', asy
   assert.equal(loadProjectFile(originalPath).name, 'Updated Cat');
 
   const savedAs = await service.saveProject({ documentId: opened.documentId, project: updated, saveAs: true });
-  assert.equal(savedAs.fileName, 'saved-copy.live2pet');
-  assert.equal(fs.existsSync(`${savedAsPath}.live2pet`), true);
+  assert.equal(savedAs.fileName, 'saved-copy.l2p');
+  assert.equal(fs.existsSync(`${savedAsPath}.l2p`), true);
   assert.equal((await service.getRecentProjects()).length, 2);
 
   const restored = createProjectWorkspaceService({ stateFile, showOpenDialog: async () => openResult, showSaveDialog: async () => saveResult });
@@ -68,9 +68,35 @@ test('project workspace opens, saves, and persists opaque recent documents', asy
 
   assert.deepEqual(await restored.clearRecentProjects(), []);
   assert.equal(fs.existsSync(originalPath), true);
-  assert.equal(fs.existsSync(`${savedAsPath}.live2pet`), true);
+  assert.equal(fs.existsSync(`${savedAsPath}.l2p`), true);
   const cleared = createProjectWorkspaceService({ stateFile, showOpenDialog: async () => openResult, showSaveDialog: async () => saveResult });
   assert.deepEqual(await cleared.getRecentProjects(), []);
+});
+
+test('project workspace saves and reopens a portable project through the same document API', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-workspace-portable-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const source = path.join(root, 'model');
+  fs.mkdirSync(source);
+  fs.writeFileSync(path.join(source, 'model.json'), '{}');
+  const project = createProject({
+    name: 'Portable Cat', projectId: 'portable-cat',
+    source: { kind: 'standard-directory', name: 'model', fingerprint: 'fixture', path: source, modelConfig: 'model.json' },
+    targets: {},
+  });
+  const service = createProjectWorkspaceService({
+    stateFile: path.join(root, 'recent.json'),
+    showOpenDialog: async () => ({ canceled: true }),
+    showSaveDialog: async () => ({ canceled: false, filePath: path.join(root, 'Portable Cat') }),
+  });
+  const saved = await service.saveProject({ project, portable: true });
+  assert.equal(saved.fileName, 'Portable Cat.l2pack');
+  const packagePath = path.join(root, saved.fileName);
+  assert.equal(fs.existsSync(packagePath), true);
+  fs.rmSync(source, { recursive: true });
+  const opened = await service.openProject({ inputPath: packagePath });
+  assert.equal(opened.project.name, 'Portable Cat');
+  assert.equal(fs.existsSync(path.join(opened.project.source.path, 'model.json')), true);
 });
 
 test('project workspace handles cancellation, unknown ids, missing files, and corrupt bounded state', async (t) => {

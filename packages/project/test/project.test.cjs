@@ -67,23 +67,32 @@ test('creates and round-trips a reference-only Live2Pet Project', () => {
   const project = fixture();
   const text = serializeProject(project);
   const parsed = parseProject(text);
+  const stored = JSON.parse(text);
 
-  assert.deepEqual(parsed, project);
+  assert.equal(stored.format, 'live2pet-project');
+  assert.equal(stored.schemaVersion, 3);
+  assert.equal(Object.hasOwn(stored.source, 'path'), false);
+  assert.deepEqual(stored.source.location, { type: 'absolute', path: project.source.path });
+  assert.equal(parsed.source.path, project.source.path);
+  assert.deepEqual({ ...parsed.source, location: undefined }, { ...project.source, location: undefined });
+  assert.deepEqual({ ...parsed, source: undefined }, { ...project, source: undefined });
   assert.equal(text.endsWith('\n'), true);
   assert.equal(text.includes('runtimeBytes'), false);
   assert.equal(text.includes('modelData'), false);
 });
 
-test('migrates a schema v1 project to v2 with an empty Visual Settings set', () => {
+test('migrates schema v1 and v2 projects to v3 with explicit format and Visual Settings', () => {
   const legacy = fixture();
   legacy.schemaVersion = 1;
   delete legacy.visualSettings;
 
   const migrated = parseProject(JSON.stringify(legacy));
 
-  assert.equal(migrated.schemaVersion, 2);
+  assert.equal(migrated.schemaVersion, 3);
+  assert.equal(migrated.format, 'live2pet-project');
   assert.deepEqual(migrated.visualSettings, { hiddenElementIds: [] });
-  assert.deepEqual(parseProject(serializeProject(migrated)), migrated);
+  const schemaTwo = { ...legacy, schemaVersion: 2, visualSettings: { hiddenElementIds: ['BG'] } };
+  assert.deepEqual(parseProject(JSON.stringify(schemaTwo)).visualSettings, { hiddenElementIds: ['BG'] });
 });
 
 test('normalizes Visual Settings canonically and hashes the canonical form', () => {
@@ -120,7 +129,7 @@ test('normalizes missing targets without embedding source assets', () => {
 
 test('rejects future schema versions, duplicate recipes, and malformed mappings', () => {
   assert.throws(
-    () => parseProject(JSON.stringify({ schemaVersion: 3 })),
+    () => parseProject(JSON.stringify({ schemaVersion: 4 })),
     (error) => error instanceof ProjectValidationError && error.code === 'UNSUPPORTED_PROJECT_VERSION',
   );
 
@@ -172,10 +181,16 @@ test('normalizes a target Render Preset without retaining a duplicate option', (
 
 test('saves atomically and reloads the same project', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-project-'));
-  const filePath = path.join(directory, 'project.live2pet');
+  const filePath = path.join(directory, 'project.l2p');
   const saved = saveProjectFile(filePath, fixture());
   assert.equal(saved, path.resolve(filePath));
-  assert.deepEqual(loadProjectFile(filePath), fixture());
+  const reloaded = loadProjectFile(filePath);
+  const stored = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  assert.equal(Object.hasOwn(stored.source, 'path'), false);
+  assert.equal(stored.source.location.type, 'relative');
+  assert.equal(reloaded.source.path, fixture().source.path);
+  assert.equal(reloaded.source.location.type, 'relative');
+  assert.deepEqual({ ...reloaded, source: undefined }, { ...fixture(), source: undefined });
   assert.equal(fs.statSync(filePath).mode & 0o777, 0o600);
   assert.equal(fs.readdirSync(directory).filter((entry) => entry.endsWith('.tmp')).length, 0);
 });

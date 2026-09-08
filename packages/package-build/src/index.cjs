@@ -91,14 +91,12 @@ function buildProvenance(target, targetContractVersion, render = {}, encoderVers
   return provenance;
 }
 
-function createArtifactFilename({ packageId, target, version = '1.0.0' } = {}) {
+function createArtifactFilename({ packageId, target } = {}) {
   const id = String(packageId || '').trim();
   const targetId = String(target || '').trim();
-  const semver = String(version || '').trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/.test(id)) fail('INVALID_ARTIFACT_NAME', 'Artifact package id must be filename-safe.');
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(targetId)) fail('INVALID_ARTIFACT_NAME', 'Artifact target id must be filename-safe.');
-  if (!SEMVER_PATTERN.test(semver)) fail('INVALID_ARTIFACT_NAME', 'Artifact version must be a semantic version such as 1.0.0.');
-  return `${id}-${targetId}-${semver}.zip`;
+  return `${id}-${targetId}.zip`;
 }
 
 function createBuildReport({ build, projectId, source } = {}) {
@@ -848,7 +846,7 @@ async function buildClawdTheme(input = {}, options = {}) {
   if (!framesByMotion || typeof framesByMotion !== 'object' || Array.isArray(framesByMotion)) fail('INVALID_CLAWD_FRAME_SET', 'framesByMotion must be an object keyed by Motion id.');
   for (const motionId of motionIds) if (!Object.hasOwn(framesByMotion, motionId)) fail('MISSING_CLAWD_FRAME_SET', `${motionId} is mapped but has no captured frames.`);
   const { themeId, metadata } = normalizeClawdMetadata(input.metadata || {});
-  const artifactName = createArtifactFilename({ packageId: themeId, target: 'clawd', version: metadata.version });
+  const artifactName = createArtifactFilename({ packageId: themeId, target: 'clawd' });
   progress(onProgress, CLAWD_STAGES[0], 'completed', { motions: motionIds.length });
   checkCancelled(signal);
 
@@ -1073,7 +1071,7 @@ async function buildCodexPet(input = {}, options = {}) {
 
   progress(onProgress, STAGES[4], 'started');
   const metadata = normalizeCodexMetadata(input.metadata || {});
-  const artifactName = createArtifactFilename({ packageId: metadata.id, target: 'codex-pet', version: metadata.version });
+  const artifactName = createArtifactFilename({ packageId: metadata.id, target: 'codex-pet' });
   const manifest = {
     ...metadata,
     schemaVersion: BUILD_CONTRACT_VERSION,
