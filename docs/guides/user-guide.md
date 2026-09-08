@@ -80,6 +80,10 @@ Clawd's **80 MiB** limit is a warning: a larger ZIP can be saved, but Clawd may 
 
 Installation asks for confirmation. Replacing an installed package requires explicit confirmation and keeps a backup for rollback if installation fails.
 
+## Updates
+
+Live2Pet checks the public GitHub Releases page shortly after launch, at most once every 24 hours. Use **Settings → General** to turn automatic checks off, check immediately, or open the exact stable Release when a newer version is available. The App only shows a notification; it never downloads or installs an update for you.
+
 ## Projects and storage
 
 - Save a `.live2pet` project to keep mappings, render options, visibility, and source references.
@@ -105,7 +109,7 @@ Installation asks for confirmation. Replacing an installed package requires expl
 
 ## Privacy and rights
 
-Model processing happens locally. Live2Pet does not upload models, runtimes, rendered frames, or generated packages. GitHub browsing and optional renderer installation require network downloads.
+Model processing happens locally. Live2Pet does not upload models, runtimes, rendered frames, generated packages, account data, or project data. GitHub model browsing, optional renderer installation, and update checks require network access.
 
 Live2Pet's Apache-2.0 license covers its source code. Models, textures, motions, runtimes, and generated derivatives retain their applicable rights and terms. Only redistribute assets you have permission to share.
 

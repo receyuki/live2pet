@@ -18,6 +18,8 @@ GitHub Releases.
   or install generated pet packages.
 - Reuse separately downloaded Live2D runtimes and install version-matched Spine
   renderer packs from the App.
+- Check the latest stable GitHub Release automatically or on demand, then open
+  its release page without downloading or installing anything in the App.
 - Run Live2Pet on Apple Silicon macOS, Intel macOS, and 64-bit Windows.
 
 ### Known limitations

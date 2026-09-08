@@ -53,6 +53,8 @@ const BUILD_PROGRESS_FIELDS = Object.freeze([
 ]);
 const APP_IPC_METHODS = Object.freeze([
   'getVersion',
+  'checkForUpdates',
+  'openReleasePage',
   'getRecentProjects',
   'clearRecentProjects',
   'openProject',
@@ -568,6 +570,22 @@ function normalizeRequest(request) {
   return { protocolVersion: APP_IPC_PROTOCOL_VERSION, method: request.method, args };
 }
 
+function summarizeUpdateStatus(value) {
+  if (!isRecord(value) || value.schemaVersion !== 1 || !['available', 'up-to-date', 'no-release'].includes(value.state) || typeof value.currentVersion !== 'string' || !/^\d+\.\d+\.\d+$/.test(value.currentVersion)) fail('INVALID_UPDATE_RESULT', 'Update status is invalid.');
+  const result = { schemaVersion: 1, state: value.state, currentVersion: value.currentVersion };
+  if (value.state !== 'no-release') {
+    if (typeof value.latestVersion !== 'string' || !/^\d+\.\d+\.\d+$/.test(value.latestVersion) || value.releaseUrl !== `https://github.com/receyuki/live2pet/releases/tag/v${value.latestVersion}`) fail('INVALID_UPDATE_RESULT', 'Update release metadata is invalid.');
+    result.latestVersion = value.latestVersion;
+    result.releaseUrl = value.releaseUrl;
+  }
+  return result;
+}
+
+function normalizeOpenReleaseRequest(value) {
+  if (!isRecord(value) || Object.keys(value).some((key) => key !== 'version') || typeof value.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(value.version)) fail('INVALID_UPDATE_REQUEST', 'Opening a Release requires one stable semantic version.');
+  return { version: value.version };
+}
+
 function normalizeDocumentId(value) {
   if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(value.trim())) fail('INVALID_PROJECT_REQUEST', 'documentId must be an opaque document identifier.');
   return value.trim();
@@ -681,7 +699,7 @@ function typedError(error) {
   };
 }
 
-function createAppIpcRouter({ projectWorkspaceService = null, projectSourceService = null, sourceInspectionService = null, sourceLibraryService = null, runtimeSettingsService = null, spinePackService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, targetInstallationService = null, packageOutputService = null, onBuildProgress = null, onLibraryDownloadProgress = null, appVersion = '0.1.0' } = {}) {
+function createAppIpcRouter({ projectWorkspaceService = null, projectSourceService = null, sourceInspectionService = null, sourceLibraryService = null, runtimeSettingsService = null, spinePackService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, targetInstallationService = null, packageOutputService = null, updateService = null, onBuildProgress = null, onLibraryDownloadProgress = null, appVersion = '0.1.0' } = {}) {
   if (projectWorkspaceService !== null && (!isRecord(projectWorkspaceService) || typeof projectWorkspaceService.getRecentProjects !== 'function' || typeof projectWorkspaceService.clearRecentProjects !== 'function' || typeof projectWorkspaceService.openProject !== 'function' || typeof projectWorkspaceService.saveProject !== 'function')) fail('INVALID_APP_ROUTER', 'projectWorkspaceService must expose getRecentProjects, clearRecentProjects, openProject, and saveProject functions when provided.');
   if (projectSourceService !== null && (!isRecord(projectSourceService) || typeof projectSourceService.relink !== 'function' || typeof projectSourceService.acknowledgeReview !== 'function')) fail('INVALID_APP_ROUTER', 'projectSourceService must expose relink and acknowledgeReview functions when provided.');
   if (sourceInspectionService !== null && typeof sourceInspectionService !== 'function') fail('INVALID_APP_ROUTER', 'sourceInspectionService must be a function when provided.');
@@ -696,6 +714,7 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
   if (onBuildProgress !== null && typeof onBuildProgress !== 'function') fail('INVALID_APP_ROUTER', 'onBuildProgress must be a function when provided.');
   if (onLibraryDownloadProgress !== null && typeof onLibraryDownloadProgress !== 'function') fail('INVALID_APP_ROUTER', 'onLibraryDownloadProgress must be a function when provided.');
   if (packageOutputService !== null && (!isRecord(packageOutputService) || ['get', 'configure', 'save'].some(method => typeof packageOutputService[method] !== 'function'))) fail('INVALID_APP_ROUTER', 'packageOutputService must expose get, configure, and save.');
+  if (updateService !== null && (!isRecord(updateService) || typeof updateService.check !== 'function' || typeof updateService.open !== 'function')) fail('INVALID_APP_ROUTER', 'updateService must expose check and open functions.');
   if (typeof appVersion !== 'string' || !appVersion.trim()) fail('INVALID_APP_ROUTER', 'appVersion must be a non-empty string.');
   let buildArtifacts = new Map();
   let activeBuilds = new Map();
@@ -713,6 +732,16 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
     try {
       const normalized = normalizeRequest(request);
       if (normalized.method === 'getVersion') return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: { appVersion, protocolVersion: APP_IPC_PROTOCOL_VERSION, methods: [...APP_IPC_METHODS] } };
+      if (normalized.method === 'checkForUpdates') {
+        if (normalized.args.length) fail('INVALID_UPDATE_REQUEST', 'Update checks do not accept arguments.');
+        if (!updateService) fail('APP_UPDATE_UNAVAILABLE', 'Update checks require the Desktop App.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: summarizeUpdateStatus(await updateService.check()) };
+      }
+      if (normalized.method === 'openReleasePage') {
+        if (!updateService) fail('APP_UPDATE_UNAVAILABLE', 'Release links require the Desktop App.');
+        if (normalized.args.length !== 1) fail('INVALID_UPDATE_REQUEST', 'Opening a Release requires one request.');
+        return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: await updateService.open(normalizeOpenReleaseRequest(normalized.args[0]).version) };
+      }
       if (normalized.method === 'getRecentProjects') {
         if (!projectWorkspaceService) fail('APP_PROJECT_WORKSPACE_UNAVAILABLE', 'The project workspace service is not configured.');
         if (normalized.args.length) fail('INVALID_PROJECT_REQUEST', 'getRecentProjects does not accept arguments.');
@@ -1071,6 +1100,8 @@ function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePa
   };
   return Object.freeze({
     getVersion: () => invoke('getVersion'),
+    checkForUpdates: () => invoke('checkForUpdates'),
+    openReleasePage: (version) => invoke('openReleasePage', { version }),
     getRecentProjects: () => invoke('getRecentProjects'),
     clearRecentProjects: () => invoke('clearRecentProjects', { confirmClear: true }),
     openProject: (input = {}) => invoke('openProject', input),
@@ -1149,6 +1180,8 @@ module.exports = {
   createAppPreloadApi,
   createAppWindowOptions,
   normalizeRequest,
+  normalizeOpenReleaseRequest,
+  summarizeUpdateStatus,
   normalizeOpenProjectRequest,
   normalizeSaveProjectRequest,
   normalizeRelinkSourceRequest,

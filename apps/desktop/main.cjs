@@ -5,6 +5,7 @@ const { createRuntimeHelpWindowHandler } = require('./runtime-help.cjs');
 const { createTargetInstallationService } = require('./target-installation-service.cjs');
 const { createPackageOutputService } = require('./package-output-service.cjs');
 const { createSourceLibraryService } = require('./source-library-service.cjs');
+const { createUpdateService } = require('./update-service.cjs');
 
 const {
   APP_COMMAND_CHANNEL,
@@ -353,6 +354,7 @@ function registerIpc() {
     installRootPickerService: chooseInstallRoot,
     targetInstallationService: getTargetInstallationService(),
     packageOutputService: getPackageOutputService(),
+    updateService: createUpdateService({ currentVersion: app.getVersion(), openExternal: (url) => shell.openExternal(url) }),
     onBuildProgress: (event) => {
       if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
       try { mainWindow.webContents.send(APP_BUILD_PROGRESS_CHANNEL, event); } catch {}

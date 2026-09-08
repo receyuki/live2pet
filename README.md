@@ -39,6 +39,7 @@
 | **One project, two destinations** | Assign animations to Clawd or Codex states, then build ready-to-import packages. |
 | **Interactive by default** | Unmapped Clawd drag and double-click reactions safely reuse Idle. |
 | **Pick up where you left off** | Save projects, reuse runtimes, and work in English or Simplified Chinese. |
+| **Know when a fix ships** | Check the latest stable GitHub Release from Settings, automatically or on demand. |
 
 ## How it works
 

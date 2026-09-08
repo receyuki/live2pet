@@ -181,6 +181,14 @@ type AppResponse<T> = {
   error?: { code: string; message: string };
 };
 
+export type UpdateStatus = {
+  schemaVersion: 1;
+  state: 'available' | 'up-to-date' | 'no-release';
+  currentVersion: string;
+  latestVersion?: string;
+  releaseUrl?: string;
+};
+
 type Live2PetApi = {
   getVersion(): Promise<
     AppResponse<{
@@ -189,6 +197,8 @@ type Live2PetApi = {
       methods: string[];
     }>
   >;
+  checkForUpdates?(): Promise<AppResponse<UpdateStatus>>;
+  openReleasePage?(version: string): Promise<AppResponse<{ opened: true }>>;
   inspectSource(input: { inputPath: string; projectId: string }): Promise<AppResponse<SourceInspection>>;
   relinkSource(input: { project: Live2PetProject; inputPath: string }): Promise<AppResponse<SourceRelinkResult>>;
   acknowledgeSourceReview(input: { project: Live2PetProject }): Promise<AppResponse<{ project: Live2PetProject }>>;
@@ -385,6 +395,18 @@ export async function getAppVersion() {
   if (!api) return '0.1.0';
   const result = await unwrap(api.getVersion());
   return result.appVersion;
+}
+
+export async function checkForUpdates(): Promise<UpdateStatus> {
+  const api = desktopApi();
+  if (!api?.checkForUpdates) throw new DesktopApiError('APP_UPDATE_UNAVAILABLE', 'Update checks require the Desktop App.');
+  return unwrap(api.checkForUpdates());
+}
+
+export async function openReleasePage(version: string): Promise<void> {
+  const api = desktopApi();
+  if (!api?.openReleasePage) throw new DesktopApiError('APP_UPDATE_UNAVAILABLE', 'Release links require the Desktop App.');
+  await unwrap(api.openReleasePage(version));
 }
 
 export async function inspectSource(inputPath: string, projectId: string): Promise<SourceInspection> {

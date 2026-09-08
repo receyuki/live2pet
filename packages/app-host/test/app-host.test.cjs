@@ -63,6 +63,8 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.equal(APP_IPC_METHODS.includes('getSkillStatus'), false);
   assert.equal(APP_IPC_METHODS.includes('installSkill'), false);
   assert.equal(APP_IPC_METHODS.includes('getBuildCacheStatus'), true);
+  assert.equal(APP_IPC_METHODS.includes('checkForUpdates'), true);
+  assert.equal(APP_IPC_METHODS.includes('openReleasePage'), true);
   assert.equal(APP_IPC_METHODS.includes('clearBuildCache'), true);
   assert.equal(APP_IPC_METHODS.includes('getSpinePackStatus'), true);
   assert.equal(APP_IPC_METHODS.includes('installSpinePack'), true);
@@ -93,6 +95,23 @@ test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.deepEqual(normalizeCancelBuildRequest({ buildId: 'build_1234' }), { buildId: 'build_1234' });
   assert.throws(() => normalizeCancelBuildRequest({ buildId: 'short' }), (error) => error instanceof AppHostError && error.code === 'INVALID_BUILD_CANCEL_REQUEST');
   assert.throws(() => normalizeCancelBuildRequest({ buildId: 'build_1234', extra: true }), (error) => error instanceof AppHostError && error.code === 'INVALID_BUILD_CANCEL_REQUEST');
+});
+
+test('routes bounded update checks and release links', async () => {
+  const opened = [];
+  const router = createAppIpcRouter({
+    appVersion: '1.0.0',
+    updateService: {
+      check: async () => ({ schemaVersion: 1, state: 'available', currentVersion: '1.0.0', latestVersion: '1.0.1', releaseUrl: 'https://github.com/receyuki/live2pet/releases/tag/v1.0.1' }),
+      open: async (version) => { opened.push(version); return { opened: true }; },
+    },
+  });
+  const checked = await router({ protocolVersion: 1, method: 'checkForUpdates', args: [] });
+  assert.deepEqual(checked.result, { schemaVersion: 1, state: 'available', currentVersion: '1.0.0', latestVersion: '1.0.1', releaseUrl: 'https://github.com/receyuki/live2pet/releases/tag/v1.0.1' });
+  const openedResult = await router({ protocolVersion: 1, method: 'openReleasePage', args: [{ version: '1.0.1' }] });
+  assert.equal(openedResult.ok, true);
+  assert.deepEqual(opened, ['1.0.1']);
+  assert.equal((await router({ protocolVersion: 1, method: 'openReleasePage', args: [{ version: '../latest' }] })).error.code, 'INVALID_UPDATE_REQUEST');
 });
 
 test('output settings and saving accept native actions and trusted artifact IDs without installing', async () => {

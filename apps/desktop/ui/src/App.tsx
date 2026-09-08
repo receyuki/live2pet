@@ -44,6 +44,7 @@ import {
 import { ChangeEvent, DragEvent, ReactNode, useEffect, useReducer, useRef, useState } from "react";
 import {
   clearCache,
+  checkForUpdates,
   buildProject,
   cancelBuild,
   clearRuntimeSettings,
@@ -77,6 +78,7 @@ import {
   onLibraryDownloadProgress,
   onAppCommand,
   openProject,
+  openReleasePage,
   openLive2DPreview,
   readLive2DPreviewStatus,
   playLive2DPreview,
@@ -99,6 +101,7 @@ import {
   saveProject,
   SourceInspection,
   BuildTarget,
+  UpdateStatus,
 } from "./app-host";
 import {
   appReducer,
@@ -128,6 +131,10 @@ import type { ProjectDraft } from "./project-draft";
 const SETUP_KEY = "live2pet.desktop.setup-completed";
 const LOCALE_KEY = "live2pet.desktop.locale";
 const APPEARANCE_KEY = "live2pet.desktop.appearance";
+const AUTOMATIC_UPDATE_KEY = "live2pet.desktop.automatic-update-checks";
+const LAST_UPDATE_CHECK_KEY = "live2pet.desktop.last-update-check";
+const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const UPDATE_CHECK_DELAY_MS = 5000;
 
 const motions = [
   { id: "main-1", nameKey: "motionMainOne", seconds: "4.2", tint: "" },
@@ -894,7 +901,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   );
 }
 
-function SettingsView({ locale, section, appearance, spinePack, onSection, onLocale, onAppearance, onRuntimeSettingsChange, onSpinePackChange, onClose }: { locale: Locale; section: SettingsSection; appearance: AppSettings["appearance"]; spinePack: SpinePackStatus | null; onSection: (section: SettingsSection) => void; onLocale: (locale: Locale) => void; onAppearance: (appearance: AppSettings["appearance"]) => void; onRuntimeSettingsChange: (settings: RuntimeSettings) => void; onSpinePackChange: (status: SpinePackStatus) => void; onClose: () => void }) {
+function SettingsView({ locale, section, appearance, spinePack, appVersion, updateStatus, updateError, updateBusy, automaticUpdateChecks, onCheckForUpdates, onOpenRelease, onAutomaticUpdateChecks, onSection, onLocale, onAppearance, onRuntimeSettingsChange, onSpinePackChange, onClose }: { locale: Locale; section: SettingsSection; appearance: AppSettings["appearance"]; spinePack: SpinePackStatus | null; appVersion: string; updateStatus: UpdateStatus | null; updateError: string; updateBusy: boolean; automaticUpdateChecks: boolean; onCheckForUpdates: () => void; onOpenRelease: () => void; onAutomaticUpdateChecks: (enabled: boolean) => void; onSection: (section: SettingsSection) => void; onLocale: (locale: Locale) => void; onAppearance: (appearance: AppSettings["appearance"]) => void; onRuntimeSettingsChange: (settings: RuntimeSettings) => void; onSpinePackChange: (status: SpinePackStatus) => void; onClose: () => void }) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   const [cache, setCache] = useState({ byteLength: 0, entryCount: 0, maxBytes: 0 });
   const [libraryCache, setLibraryCache] = useState({ schemaVersion: 1 as const, byteLength: 0, entryCount: 0, maxBytes: 1024 ** 3 });
@@ -917,6 +924,15 @@ function SettingsView({ locale, section, appearance, spinePack, onSection, onLoc
     try { setLibraryCache(await clearSourceLibraryCache()); }
     catch (cause) { setStorageError(cause instanceof Error ? cause.message : t("error")); }
   }
+  const updateMessage = updateBusy
+    ? t('checkingForUpdates')
+    : updateError || (updateStatus?.state === 'available'
+      ? t('updateAvailable', { version: updateStatus.latestVersion ?? '' })
+      : updateStatus?.state === 'up-to-date'
+        ? t('upToDate')
+        : updateStatus?.state === 'no-release'
+          ? t('noReleasePublished')
+          : t('updateNotChecked'));
   return (
     <>
     <header className="app-toolbar settings-toolbar">
@@ -928,7 +944,12 @@ function SettingsView({ locale, section, appearance, spinePack, onSection, onLoc
         <nav aria-label={t("settings")}>{nav.map(([id, key, icon]) => <Button key={id} className="settings-nav" variant={section === id ? "secondary" : "ghost"} onPress={() => onSection(id)}>{icon}<span>{t(key)}</span><ChevronRight size={14} /></Button>)}</nav>
       </aside>
       <section className="settings-content">
-        {section === "general" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("general")} body={t("settingsBody")} /><Card className="surface-card"><Card.Content><div className="setting-row"><span className="large-icon"><Languages size={19} /></span><span className="grow-copy"><strong>{t("language")}</strong></span><ButtonGroup><Button variant={locale === "en" ? "primary" : "secondary"} onPress={() => onLocale("en")}>English</Button><Button variant={locale === "zh-CN" ? "primary" : "secondary"} onPress={() => onLocale("zh-CN")}>简体中文</Button></ButtonGroup></div></Card.Content></Card><Card className="surface-card"><Card.Content><div className="setting-row"><span className="large-icon">{appearance === "dark" ? <Moon size={19} /> : <Sun size={19} />}</span><span className="grow-copy"><strong>{t("appearance")}</strong></span><ButtonGroup>{(["system", "light", "dark"] as const).map((item) => <Button key={item} variant={appearance === item ? "primary" : "secondary"} onPress={() => onAppearance(item)}>{t(item)}</Button>)}</ButtonGroup></div></Card.Content></Card></div>}
+        {section === "general" && <div className="settings-section">
+          <PageHeading eyebrow={t("settings")} title={t("general")} body={t("settingsBody")} />
+          <Card className="surface-card"><Card.Content><div className="setting-row"><span className="large-icon"><Languages size={19} /></span><span className="grow-copy"><strong>{t("language")}</strong></span><ButtonGroup><Button variant={locale === "en" ? "primary" : "secondary"} onPress={() => onLocale("en")}>English</Button><Button variant={locale === "zh-CN" ? "primary" : "secondary"} onPress={() => onLocale("zh-CN")}>简体中文</Button></ButtonGroup></div></Card.Content></Card>
+          <Card className="surface-card"><Card.Content><div className="setting-row"><span className="large-icon">{appearance === "dark" ? <Moon size={19} /> : <Sun size={19} />}</span><span className="grow-copy"><strong>{t("appearance")}</strong></span><ButtonGroup>{(["system", "light", "dark"] as const).map((item) => <Button key={item} variant={appearance === item ? "primary" : "secondary"} onPress={() => onAppearance(item)}>{t(item)}</Button>)}</ButtonGroup></div></Card.Content></Card>
+          <Card className="surface-card"><Card.Content><div className="setting-row update-setting-row"><span className="large-icon"><RefreshCcw size={19} /></span><span className="grow-copy"><strong>{t('updates')} · {appVersion}</strong><small className={updateError ? 'inline-error' : ''}>{updateMessage}</small><small>{t('updatePrivacyHint')}</small></span><div className="update-setting-actions"><Button size="sm" variant={automaticUpdateChecks ? "primary" : "secondary"} onPress={() => onAutomaticUpdateChecks(!automaticUpdateChecks)}>{t(automaticUpdateChecks ? 'automaticUpdateChecksOn' : 'automaticUpdateChecksOff')}</Button><Button size="sm" variant="secondary" isDisabled={updateBusy || !hasDesktopApi()} onPress={onCheckForUpdates}>{t('checkNow')}</Button>{updateStatus?.state === 'available' && <Button size="sm" variant="primary" onPress={onOpenRelease}><ExternalLink size={14} />{t('viewRelease')}</Button>}</div></div></Card.Content></Card>
+        </div>}
         {section === "runtimes" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("runtimes")} body={t("runtimeBody")} /><RuntimePanel locale={locale} compact spinePack={spinePack} onSettingsChange={onRuntimeSettingsChange} onSpinePackChange={onSpinePackChange} /></div>}
         {section === "targets" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("targets")} body={t("targetBody")} /><TargetSettings locale={locale} /></div>}
         {section === "storage" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("storage")} body={t("storageBody")} /><OutputSettings locale={locale} /><Card className="surface-card"><Card.Content><div className="section-heading-row"><div><p className="eyebrow"><Database size={13} />{t("storageTitle")}</p><h2>{cache.entryCount ? t("cacheEntries", { count: cache.entryCount, size: `${Math.round(cache.byteLength / 1024 / 1024)} MiB` }) : t("cacheEmpty")}</h2></div><Button variant="secondary" onPress={clearBuildCache} isDisabled={!cache.entryCount}><Trash2 size={15} />{t("clearCache")}</Button></div></Card.Content></Card><Card className="surface-card"><Card.Content><div className="section-heading-row"><div><p className="eyebrow"><GitBranch size={13} />{t("githubCacheTitle")}</p><h2>{t("githubCacheUsage", { count: libraryCache.entryCount, size: `${Math.round(libraryCache.byteLength / 1024 / 1024)} MiB` })}</h2><p>{t("githubCacheHint")}</p></div><Button variant="secondary" onPress={() => void clearLibraryCache()} isDisabled={!libraryCache.entryCount}><Trash2 size={15} />{t("clearCache")}</Button></div><div className="cache-limit-row"><Input type="number" min="0.25" max="20" step="0.25" aria-label={t("githubCacheLimit")} value={libraryCacheGiB} onChange={(event) => setLibraryCacheGiB(event.target.value)} /><span>GiB</span><Button variant="primary" onPress={() => void saveLibraryCacheLimit()}>{t("saveCacheLimit")}</Button></div>{storageError && <p className="inline-error" role="alert">{storageError}</p>}</Card.Content></Card></div>}
@@ -945,6 +966,10 @@ export function App() {
   });
   const [buildState, dispatchBuild] = useReducer(buildReducer, undefined, initialBuildState);
   const [appVersion, setAppVersion] = useState("0.1.0");
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const [updateError, setUpdateError] = useState("");
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [automaticUpdateChecks, setAutomaticUpdateChecks] = useState(() => localStorage.getItem(AUTOMATIC_UPDATE_KEY) !== "false");
   const [importBusy, setImportBusy] = useState(false);
   const [selectedLibraryModel, setSelectedLibraryModel] = useState<SourceLibraryCandidate | null>(null);
   const [pendingSource, setPendingSource] = useState<SourceLibrarySelection | null>(null);
@@ -957,7 +982,7 @@ export function App() {
   const [projectDraft, setProjectDraft] = useState<ProjectDraft | null>(() => readProjectDraft());
   const locale = state.settings.language;
   const appearance = state.settings.appearance;
-  const t = (key: MessageKey) => translate(locale, key);
+  const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
 
   useEffect(() => { document.documentElement.lang = locale; localStorage.setItem(LOCALE_KEY, locale); }, [locale]);
   useEffect(() => {
@@ -969,6 +994,13 @@ export function App() {
     return () => media.removeEventListener("change", applyAppearance);
   }, [appearance]);
   useEffect(() => { void getAppVersion().then(setAppVersion).catch(() => undefined); }, []);
+  useEffect(() => {
+    if (!automaticUpdateChecks || !hasDesktopApi()) return;
+    const lastChecked = Number(localStorage.getItem(LAST_UPDATE_CHECK_KEY));
+    if (Number.isFinite(lastChecked) && Date.now() - lastChecked < UPDATE_CHECK_INTERVAL_MS) return;
+    const timer = window.setTimeout(() => { void runUpdateCheck(false); }, UPDATE_CHECK_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [automaticUpdateChecks]);
   useEffect(() => { void getRuntimeSettings().then(setRuntimeSettings).catch(() => undefined); }, []);
   useEffect(() => { void getSpinePackStatus().then(setSpinePack).catch(() => undefined); }, []);
   useEffect(() => { void getRecentProjects().then(setRecentProjects).catch(() => undefined); }, []);
@@ -1031,6 +1063,27 @@ export function App() {
   }, []);
 
   function completeSetup() { localStorage.setItem(SETUP_KEY, "true"); dispatch({ type: "COMPLETE_SETUP" }); }
+  async function runUpdateCheck(manual: boolean) {
+    setUpdateBusy(true);
+    if (manual) setUpdateError("");
+    try {
+      const result = await checkForUpdates();
+      setUpdateStatus(result);
+      setUpdateError("");
+      localStorage.setItem(LAST_UPDATE_CHECK_KEY, String(Date.now()));
+    } catch (cause) {
+      if (manual) setUpdateError(cause instanceof Error ? cause.message : t('updateCheckFailed'));
+    } finally { setUpdateBusy(false); }
+  }
+  function setAutomaticChecks(enabled: boolean) {
+    setAutomaticUpdateChecks(enabled);
+    localStorage.setItem(AUTOMATIC_UPDATE_KEY, String(enabled));
+  }
+  async function openAvailableRelease() {
+    if (!updateStatus?.latestVersion) return;
+    try { await openReleasePage(updateStatus.latestVersion); }
+    catch (cause) { setUpdateError(cause instanceof Error ? cause.message : t('updateCheckFailed')); }
+  }
   function confirmProjectReplacement(): boolean {
     if (!state.project?.dirty) return true;
     if (!window.confirm(t("confirmReplaceDirtyProject"))) return false;
@@ -1348,7 +1401,7 @@ export function App() {
   } : openRuntimeSettings;
   const statusBar = <footer className="status-bar">
     <span className="save-status"><i className="status-dot" />{!hasDesktopApi() ? t("notConnected") : state.project?.dirty ? t("unsaved") : state.project?.documentId ? t("saved") : t("noSavedProject")}</span>
-    <div className="footer-builds">{(['clawd', 'codex-pet'] as const).filter(target => buildState[target].status !== 'idle').map(target => {
+    <div className="footer-builds">{updateStatus?.state === 'available' && <Button size="sm" variant="ghost" onPress={() => void openAvailableRelease()}><Download size={13} />{t('updateAvailableShort', { version: updateStatus.latestVersion ?? '' })}</Button>}{(['clawd', 'codex-pet'] as const).filter(target => buildState[target].status !== 'idle').map(target => {
       const current = buildState[target];
       const name = target === 'clawd' ? 'Clawd' : 'Codex';
       return <div className="footer-build" key={target} title={current.error ?? current.message ?? t('build')}>
@@ -1362,7 +1415,7 @@ export function App() {
   </footer>;
 
   if (state.destination === "setup") return <SetupView locale={locale} returning={state.setupReturnDestination !== null} onComplete={completeSetup} onRuntimeSettingsChange={setRuntimeSettings} />;
-  if (state.destination === "settings") return <div className="app-shell settings-shell"><SettingsView locale={locale} section={state.settingsSection} appearance={appearance} spinePack={spinePack} onSection={(section) => dispatch({ type: "SELECT_SETTINGS_SECTION", section })} onLocale={(language) => dispatch({ type: "UPDATE_LANGUAGE", language })} onAppearance={(value) => dispatch({ type: "UPDATE_APPEARANCE", appearance: value })} onRuntimeSettingsChange={setRuntimeSettings} onSpinePackChange={setSpinePack} onClose={() => dispatch({ type: "CLOSE_SETTINGS" })} />{statusBar}</div>;
+  if (state.destination === "settings") return <div className="app-shell settings-shell"><SettingsView locale={locale} section={state.settingsSection} appearance={appearance} spinePack={spinePack} appVersion={appVersion} updateStatus={updateStatus} updateError={updateError} updateBusy={updateBusy} automaticUpdateChecks={automaticUpdateChecks} onCheckForUpdates={() => void runUpdateCheck(true)} onOpenRelease={() => void openAvailableRelease()} onAutomaticUpdateChecks={setAutomaticChecks} onSection={(section) => dispatch({ type: "SELECT_SETTINGS_SECTION", section })} onLocale={(language) => dispatch({ type: "UPDATE_LANGUAGE", language })} onAppearance={(value) => dispatch({ type: "UPDATE_APPEARANCE", appearance: value })} onRuntimeSettingsChange={setRuntimeSettings} onSpinePackChange={setSpinePack} onClose={() => dispatch({ type: "CLOSE_SETTINGS" })} />{statusBar}</div>;
 
   const projectOpen = state.project !== null;
   const sourceReviewRequired = Boolean(state.project?.document?.sourceReview?.required);

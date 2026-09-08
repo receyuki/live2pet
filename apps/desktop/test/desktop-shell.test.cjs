@@ -49,7 +49,7 @@ test('desktop shell pins the HeroUI entrypoint and keeps navigation and IPC narr
   assert.match(preload, /new Set\(\['new', 'open', 'save', 'settings', 'build', 'setup', 'undo', 'redo'\]\)/);
   assert.match(preload, /webUtils\.getPathForFile/);
   assert.match(preload, /getFilePath,/);
-  for (const method of ['getVersion', 'inspectSource', 'relinkSource', 'acknowledgeSourceReview', 'getRuntimeSettings', 'configureRuntime', 'clearRuntimeSettings', 'buildProject', 'cancelBuild', 'getBuildArtifact', 'chooseInstallRoot', 'installArtifact', 'getCaptureCacheStatus', 'putCaptureCache', 'getBuildCacheStatus', 'clearBuildCache']) {
+  for (const method of ['getVersion', 'checkForUpdates', 'openReleasePage', 'inspectSource', 'relinkSource', 'acknowledgeSourceReview', 'getRuntimeSettings', 'configureRuntime', 'clearRuntimeSettings', 'buildProject', 'cancelBuild', 'getBuildArtifact', 'chooseInstallRoot', 'installArtifact', 'getCaptureCacheStatus', 'putCaptureCache', 'getBuildCacheStatus', 'clearBuildCache']) {
     assert.match(preload, new RegExp(`invoke\\('${method}'`));
   }
   for (const method of ['getRecentProjects', 'clearRecentProjects', 'openProject', 'saveProject']) assert.match(preload, new RegExp(`invoke\\('${method}'`));

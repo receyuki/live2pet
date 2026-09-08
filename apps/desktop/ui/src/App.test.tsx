@@ -70,6 +70,8 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = true, previewVi
   const openProject = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: openCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-document', fileName: 'saved.live2pet', project: openedProject, recentProjects } }));
   const saveProject = vi.fn(async (input: { project: Live2PetProject }) => ({ protocolVersion: 1 as const, ok: true, result: saveCancelled ? { cancelled: true as const, recentProjects } : { cancelled: false as const, documentId: 'opaque-saved-document', fileName: `${input.project.name}.live2pet`, project: input.project, recentProjects } }));
   const clearRecentProjects = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { recentProjects: [] } }));
+  const checkForUpdates = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, state: 'available' as const, currentVersion: '0.1.0', latestVersion: '0.1.1', releaseUrl: 'https://github.com/receyuki/live2pet/releases/tag/v0.1.1' } }));
+  const openReleasePage = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { opened: true as const } }));
   let appCommandListener: ((command: 'new' | 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => void) | undefined;
   let buildProgressListener: ((event: { protocolVersion: 1; buildId: string; sequence: number; target: 'clawd'; stage: string; status: string; fraction: number }) => void) | undefined;
   let libraryDownloadProgressListener: ((event: { protocolVersion: 1; downloadId: string; sequence: number; libraryId: string; stage: 'downloading' | 'complete'; total: number; completed: number; downloaded: number; cached: number; failed: number; percent: number; currentName?: string }) => void) | undefined;
@@ -86,6 +88,8 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = true, previewVi
     configurable: true,
     value: {
       getVersion: vi.fn(async () => ({ protocolVersion: 1, ok: true, result: { appVersion: '0.1.0', protocolVersion: 1, methods: [] } })),
+      checkForUpdates,
+      openReleasePage,
       inspectSource,
       relinkSource,
       acknowledgeSourceReview,
@@ -132,7 +136,7 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = true, previewVi
       } : {}),
     },
   });
-  return { configureRuntime, getSpinePackStatus, installSpinePack, removeSpinePack, openSourceLibrary, inspectLibrarySource, downloadSourceLibrary, getSourceLibraryCacheStatus, configureSourceLibraryCache, clearSourceLibraryCache, inspectSource, relinkSource, acknowledgeSourceReview, openPreview, getPreviewVisualElements, getPreviewVisualElementThumbnail, openProject, saveProject, clearRecentProjects, buildProject, emitAppCommand: (command: 'new' | 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => appCommandListener?.(command) };
+  return { configureRuntime, getSpinePackStatus, installSpinePack, removeSpinePack, openSourceLibrary, inspectLibrarySource, downloadSourceLibrary, getSourceLibraryCacheStatus, configureSourceLibraryCache, clearSourceLibraryCache, inspectSource, relinkSource, acknowledgeSourceReview, openPreview, getPreviewVisualElements, getPreviewVisualElementThumbnail, openProject, saveProject, clearRecentProjects, buildProject, checkForUpdates, openReleasePage, emitAppCommand: (command: 'new' | 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => appCommandListener?.(command) };
 }
 
 function setSystemDarkMode(matches: boolean) {
@@ -279,6 +283,20 @@ describe('Live2Pet desktop shell', () => {
     expect(within(container.querySelector('.settings-sidebar') as HTMLElement).queryByRole('button', { name: 'Done' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Done' }));
     expect(screen.getByRole('button', { name: 'Open project' })).toBeVisible();
+  });
+
+  it('checks for a stable update from Settings and opens its exact Release page', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const api = installDesktopApi();
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByText('App updates · 0.1.0')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Check now' }));
+    expect(await screen.findByText('Live2Pet 0.1.1 is available.')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'View release' }));
+    expect(api.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(api.openReleasePage).toHaveBeenCalledWith('0.1.1');
   });
   it.each(['en', 'zh-CN'] as const)('opens localized runtime help from setup and Settings (%s)', async (locale) => {
     localStorage.setItem('live2pet.desktop.locale', locale);

@@ -120,6 +120,8 @@ const onPreviewStatus = (listener) => {
 
 contextBridge.exposeInMainWorld('live2pet', Object.freeze({
   getVersion: () => invoke('getVersion'),
+  checkForUpdates: () => invoke('checkForUpdates'),
+  openReleasePage: (version) => invoke('openReleasePage', { version }),
   getRecentProjects: () => invoke('getRecentProjects'),
   clearRecentProjects: () => invoke('clearRecentProjects', { confirmClear: true }),
   openProject: (input = {}) => invoke('openProject', input),
