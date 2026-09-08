@@ -42,6 +42,19 @@ These principles are adapted for Live2Pet from the behavioral guidance in [`mult
 - Preserve the surrounding style and do not combine feature work with unrelated cleanup.
 - Mention unrelated dead code or problems instead of removing them without authorization.
 - Remove imports, variables, functions, and files made obsolete by the current change.
+- Preserve unrelated local changes and exclude them from the current commit; do not clean them up without authorization.
+
+### Project compatibility and model browsing
+
+- When changing project schemas, source fingerprints, or model selection rules, verify legacy `.live2pet`, `.l2p`, and `.l2pack` opening. An algorithm change alone must not be treated as a Source Package change.
+- Keep Source Library search and sorting local to catalog metadata. Preserve lazy thumbnails, bounded caching, and the current selection across navigation; do not trigger whole-library downloads or thumbnail regeneration.
+- Route project documents and model resources through their respective import paths. Check the complete drag lifecycle, overlay cleanup, and navigation on both success and failure.
+- See `docs/agents/project-import-regressions.md` for focused regression scenarios. These rules do not prescribe a fixed page layout.
+
+### Commits and releases
+
+- Treat committing, pushing, and publishing a Release as separate operations. A push does not imply authorization to publish a Release.
+- Honor authorization already given in the conversation; do not repeatedly request confirmation for authorized operations. If an approval review blocks an operation, report the specific blocker.
 
 ### Work toward verified outcomes
 
