@@ -42,6 +42,8 @@ to the repository or CI artifacts.
 - Maintain the English and Simplified Chinese READMEs and user guides together.
   Issues and engineering documentation use English. Schema keys and error
   codes remain language-neutral.
+- Record notable user-facing changes under `Unreleased` in `CHANGELOG.md`.
+  Release preparation and tagging are documented in the developer guide.
 - Update the relevant specification, plan, or agent guide when a contract or
   release boundary changes.
 

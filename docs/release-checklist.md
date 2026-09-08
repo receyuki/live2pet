@@ -41,11 +41,11 @@ macOS or Windows release.
 
 ## Cross-architecture binary validation gate
 
-- [ ] The GitHub Actions preview workflow produces a downloadable Windows x64
+- [x] The GitHub Actions release workflow produces a downloadable Windows x64
       ZIP plus Intel and Apple Silicon macOS DMGs from a clean locked install,
       without bundled user
       models or separately licensed runtimes.
-- [ ] Both native macOS builds pass the packaged-App smoke test before their
+- [x] Both native macOS builds pass the packaged-App smoke test before their
       architecture-specific DMGs are uploaded.
 
 - [ ] A clean arm64 account can select a permitted local runtime and model,
@@ -66,5 +66,7 @@ macOS or Windows release.
       exact public binary; local V1 acceptance alone does not satisfy this gate.
 - [ ] Any required Live2D approval, signing identity, notarization, update
       channel, and privacy disclosures are recorded.
-- [ ] Only after the previous items pass may Electron Forge makers and public
-      installer publication be enabled.
+- [ ] Signing, notarization, bundled third-party runtimes, and an automatic
+      update channel remain blocked until their applicable checks above pass.
+      Unsigned GitHub Releases must disclose their unsigned status and must not
+      bundle user models or separately licensed runtimes.

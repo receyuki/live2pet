@@ -4,7 +4,7 @@
 <p align="center">Turn Live2D and Spine animations into pets for Clawd on Desk and Codex.</p>
 
 <p align="center">
-  <a href="https://github.com/receyuki/live2pet/releases"><img src="https://img.shields.io/badge/release-coming%20soon-9087ff?style=flat-square" alt="Release: coming soon"></a>
+  <a href="https://github.com/receyuki/live2pet/releases/latest"><img src="https://img.shields.io/github/v/release/receyuki/live2pet?style=flat-square&color=9087ff" alt="Latest release"></a>
   <a href="https://github.com/receyuki/live2pet/stargazers"><img src="https://img.shields.io/github/stars/receyuki/live2pet?style=flat-square&color=9087ff" alt="GitHub stars"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-111118?style=flat-square&logo=electron&logoColor=white" alt="Platforms: macOS and Windows">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/receyuki/live2pet?style=flat-square&color=9087ff" alt="License: Apache-2.0"></a>
@@ -57,15 +57,15 @@ Pointer tracking is preview-only; exported Live2D frames use a stable neutral fo
 
 ## Get started
 
-**Unsigned preview builds for macOS and Windows.**
+**Unsigned builds for macOS and Windows.**
 
-Open the latest successful [Desktop CI and preview release](https://github.com/receyuki/live2pet/actions/workflows/desktop-release.yml), download its artifact, and unzip it:
+Open the [latest GitHub Release](https://github.com/receyuki/live2pet/releases/latest) and download the build for your computer:
 
 - `Live2Pet-macOS-x64.dmg` supports Intel Macs.
 - `Live2Pet-macOS-arm64.dmg` supports Apple Silicon Macs.
 - `Live2Pet-Windows-x64.zip` supports 64-bit Windows.
 
-These preview builds are not signed with trusted developer certificates. On macOS, if Finder says Live2Pet is damaged or cannot be opened, first make sure the DMG came from this repository, move `Live2Pet.app` to Applications, then run:
+These builds are not signed with trusted developer certificates. On macOS, if Finder says Live2Pet is damaged or cannot be opened, first make sure the DMG came from this repository, move `Live2Pet.app` to Applications, then run:
 
 ```sh
 xattr -r -d com.apple.quarantine /Applications/Live2Pet.app

@@ -35,7 +35,32 @@ Windows x64 must be packaged on Windows:
 pnpm --filter @live2pet/desktop package:win
 ```
 
-The `Desktop CI and preview release` GitHub Actions workflow runs verification on pushes and pull requests. A manual run builds a Windows x64 ZIP plus separate Intel and Apple Silicon macOS DMGs, verifying each native App before packaging. A `v*` tag publishes those files as a GitHub prerelease. It does not create signed installers.
+The `Desktop CI and release` GitHub Actions workflow runs verification on pushes and pull requests. A manual run builds a Windows x64 ZIP plus separate Intel and Apple Silicon macOS DMGs, verifying each native App before packaging. A `v*` tag that matches the version in `apps/desktop/package.json` publishes those files as the latest GitHub Release. It does not create signed installers.
+
+## Releases
+
+`apps/desktop/package.json` is the single source of truth for the Live2Pet
+product version. Internal workspace package versions are not release versions.
+
+Record user-facing changes under `Unreleased` in the root `CHANGELOG.md`. To
+publish a version:
+
+1. Set `apps/desktop/package.json` to the new semantic version.
+2. Rename the relevant `Unreleased` content to a dated
+   `## [X.Y.Z] - YYYY-MM-DD` section and restore an empty `Unreleased` section.
+3. Commit and push those changes.
+4. Create and push an annotated `vX.Y.Z` tag.
+
+The release job rejects a tag that does not match the Desktop App version or
+has no matching Changelog section. That section is prepended to GitHub's
+automatically generated notes, and the three platform downloads plus
+`SHA256SUMS.txt` are attached. Published releases are never overwritten; ship a
+new patch version for a correction.
+
+```sh
+git tag -a v0.1.0 -m "Live2Pet 0.1.0"
+git push origin v0.1.0
+```
 
 ## Repository map
 
@@ -58,12 +83,6 @@ The `Desktop CI and preview release` GitHub Actions workflow runs verification o
 
 Keep both READMEs aligned and preserve their `runtime-setup` anchors. Keep detailed behavior in the user guides.
 
-The release badge currently says **coming soon** because no GitHub Release exists. When publishing the first release, replace its image URL in both READMEs with:
-
-```text
-https://img.shields.io/github/v/release/receyuki/live2pet?include_prereleases&style=flat-square&color=9087ff
-```
-
-Stars and license badges use live GitHub data through [Shields.io](https://shields.io/).
+The release, stars, and license badges use live GitHub data through [Shields.io](https://shields.io/).
 
 The README screenshot at `docs/assets/app-preview.png` was supplied and explicitly selected by the repository owner for the public README. It is a UI illustration, not a distributable model. Do not add its source model or runtime files.

@@ -17,6 +17,8 @@ test('Windows package options are unsigned, x64, and Sharp-safe', () => {
   assert.equal(options.platform, 'win32');
   assert.equal(options.arch, 'x64');
   assert.equal(options.electronVersion, '44.0.0');
+  assert.equal(options.appVersion, require('../package.json').version);
+  assert.equal(options.buildVersion, require('../package.json').version);
   assert.equal(options.icon, WINDOWS_ICON_PATH);
   assert.equal(path.extname(WINDOWS_ICON_PATH), '.ico');
   assert.equal(fs.existsSync(WINDOWS_ICON_PATH), true);

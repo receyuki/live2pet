@@ -4,7 +4,7 @@
 <p align="center">将 Live2D 与 Spine 动画制作成 Clawd on Desk 和 Codex 桌面宠物。</p>
 
 <p align="center">
-  <a href="https://github.com/receyuki/live2pet/releases"><img src="https://img.shields.io/badge/release-coming%20soon-9087ff?style=flat-square" alt="Release: coming soon"></a>
+  <a href="https://github.com/receyuki/live2pet/releases/latest"><img src="https://img.shields.io/github/v/release/receyuki/live2pet?style=flat-square&color=9087ff" alt="最新版本"></a>
   <a href="https://github.com/receyuki/live2pet/stargazers"><img src="https://img.shields.io/github/stars/receyuki/live2pet?style=flat-square&color=9087ff" alt="GitHub stars"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-111118?style=flat-square&logo=electron&logoColor=white" alt="平台：macOS 和 Windows">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/receyuki/live2pet?style=flat-square&color=9087ff" alt="License: Apache-2.0"></a>
@@ -57,15 +57,15 @@
 
 ## 开始使用
 
-**提供 macOS 与 Windows 未签名预览包。**
+**提供 macOS 与 Windows 未签名版本。**
 
-打开最近一次成功的 [Desktop CI and preview release](https://github.com/receyuki/live2pet/actions/workflows/desktop-release.yml)，下载对应的 Artifact 并解压：
+打开[最新 GitHub Release](https://github.com/receyuki/live2pet/releases/latest)，下载适合当前电脑的版本：
 
 - `Live2Pet-macOS-x64.dmg` 支持 Intel Mac。
 - `Live2Pet-macOS-arm64.dmg` 支持 Apple Silicon Mac。
 - `Live2Pet-Windows-x64.zip` 支持 64 位 Windows。
 
-这些预览包尚未使用受信任的开发者证书签名。如果 macOS 提示 Live2Pet“已损坏”或“无法打开”，请先确认 DMG 来自本仓库，将 `Live2Pet.app` 移到“应用程序”文件夹，再运行：
+这些版本尚未使用受信任的开发者证书签名。如果 macOS 提示 Live2Pet“已损坏”或“无法打开”，请先确认 DMG 来自本仓库，将 `Live2Pet.app` 移到“应用程序”文件夹，再运行：
 
 ```sh
 xattr -r -d com.apple.quarantine /Applications/Live2Pet.app

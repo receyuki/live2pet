@@ -4,6 +4,7 @@ const path = require('node:path');
 
 const {
   APP_NAME,
+  APP_VERSION,
   ELECTRON_VERSION,
   copyResources,
   deployProductionStage,
@@ -32,8 +33,8 @@ function createWindowsPackagerOptions({ stageRoot, extraResource, arch = current
     dir: stageRoot,
     name: APP_NAME,
     executableName: APP_NAME,
-    appVersion: '0.1.0',
-    buildVersion: '0.1.0',
+    appVersion: APP_VERSION,
+    buildVersion: APP_VERSION,
     icon: WINDOWS_ICON_PATH,
     platform: 'win32',
     arch,

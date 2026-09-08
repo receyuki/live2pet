@@ -7,6 +7,7 @@ const test = require('node:test');
 
 const {
   APP_ICON_PATH,
+  APP_VERSION,
   FORBIDDEN_BUNDLE_ENTRY,
   createPackagerOptions,
   currentMacArch,
@@ -45,6 +46,8 @@ test('macOS package options remain local, unsigned, current-architecture, and Sh
   assert.equal(options.platform, 'darwin');
   assert.equal(options.arch, 'x64');
   assert.equal(options.electronVersion, '44.0.0');
+  assert.equal(options.appVersion, APP_VERSION);
+  assert.equal(options.buildVersion, APP_VERSION);
   assert.equal(options.icon, APP_ICON_PATH);
   assert.equal(options.executableName, 'Live2Pet');
   assert.equal(fs.existsSync(APP_ICON_PATH), true);

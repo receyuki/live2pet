@@ -8,6 +8,7 @@ const desktopRoot = path.resolve(__dirname, '..');
 const mapperRoot = path.join(desktopRoot, 'mapper-dist');
 const rendererRoot = path.join(desktopRoot, 'renderer-dist');
 const outputRoot = path.join(desktopRoot, 'out');
+const APP_VERSION = require(path.join(desktopRoot, 'package.json')).version;
 const APP_ICON_PATH = path.join(desktopRoot, 'assets', 'icon.icns');
 const ELECTRON_VERSION = '44.0.0';
 const APP_NAME = 'Live2Pet';
@@ -105,8 +106,8 @@ function createPackagerOptions({ stageRoot, extraResource, arch = currentMacArch
     name: APP_NAME,
     executableName: APP_NAME,
     appBundleId: 'dev.live2pet.desktop',
-    appVersion: '0.1.0',
-    buildVersion: '0.1.0',
+    appVersion: APP_VERSION,
+    buildVersion: APP_VERSION,
     icon: APP_ICON_PATH,
     platform: 'darwin',
     arch,
@@ -214,6 +215,7 @@ if (require.main === module) packageMacApp().catch((error) => {
 module.exports = {
   APP_ICON_PATH,
   APP_NAME,
+  APP_VERSION,
   ELECTRON_VERSION,
   FORBIDDEN_BUNDLE_ENTRY,
   copyResources,
