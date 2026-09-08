@@ -388,8 +388,11 @@ function relinkProjectSource(project, nextSource, { previousManifest, nextManife
   if (Object.hasOwn(nextSource, 'path') && !Object.hasOwn(nextSource, 'location')) delete mergedSourceInput.location;
   const mergedSource = normalizeSource(mergedSourceInput);
   const changed = current.source.fingerprint !== mergedSource.fingerprint;
+  const equivalentPackageFingerprint = changed
+    && typeof nextManifest?.source?.packageFingerprint === 'string'
+    && current.source.fingerprint === nextManifest.source.packageFingerprint;
   const nextProject = { ...current, source: mergedSource };
-  if (!changed) {
+  if (!changed || equivalentPackageFingerprint) {
     // Re-inspecting the same bytes is not user acknowledgement of an earlier change.
     return { project: validateProject(nextProject), status: 'relinked', reviewRequired: Boolean(current.sourceReview?.required), affectedRecipeIds: current.sourceReview?.affectedRecipeIds ?? [] };
   }

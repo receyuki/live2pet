@@ -609,6 +609,9 @@ function inspectSourcePackage(inputPath, { cache = null, projectId, modelConfig 
   const descriptor = resolveSourceInput(inputPath);
   if (descriptor.kind !== 'directory' && modelConfig != null) fail('INVALID_MODEL_SELECTION', 'A model configuration can only select a model inside a Source Package directory.');
   const selectedConfig = modelConfig == null ? null : normalizeReference(modelConfig);
+  const withPackageFingerprint = (manifest) => selectedConfig && descriptor.kind === 'directory'
+    ? { ...manifest, source: { ...manifest.source, packageFingerprint: descriptor.fingerprint } }
+    : manifest;
   const inspectionFingerprint = selectedConfig
     ? hashBuffer(Buffer.from(`${descriptor.fingerprint}\0${selectedConfig}`, 'utf8'))
     : descriptor.fingerprint;
@@ -619,7 +622,7 @@ function inspectSourcePackage(inputPath, { cache = null, projectId, modelConfig 
     if (cached) {
       try {
         const decoded = decodeInspectionCache(cached.data);
-        if (decoded.manifest?.source?.fingerprint === inspectionFingerprint) return decoded.manifest;
+        if (decoded.manifest?.source?.fingerprint === inspectionFingerprint) return withPackageFingerprint(decoded.manifest);
       } catch {
         // A stale or manually damaged cache entry is ignored and rebuilt below.
       }
@@ -629,7 +632,7 @@ function inspectSourcePackage(inputPath, { cache = null, projectId, modelConfig 
   const inspected = descriptor.kind === 'directory'
     ? inspectDirectory(descriptor.resolved, { files: descriptor.files, fingerprint: inspectionFingerprint, withResources: useCache, modelConfig: selectedConfig })
     : inspectPck(descriptor.resolved, { bytes: descriptor.bytes, fingerprint: descriptor.fingerprint, withResources: useCache });
-  const manifest = useCache ? inspected.manifest : inspected;
+  const manifest = withPackageFingerprint(useCache ? inspected.manifest : inspected);
   if (useCache) {
     const data = encodeInspectionCache({ manifest, buffers: inspected.buffers });
     cache.put(key, data, {

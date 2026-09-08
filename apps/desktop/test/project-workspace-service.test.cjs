@@ -177,6 +177,29 @@ test('project Source service relinks inspected manifests, retains host paths pri
   assert.equal(acknowledged.project.sourceReview.reviewedFingerprint, 'new-fingerprint');
 });
 
+test('project Source service upgrades an equivalent package fingerprint without blocking legacy mappings', async () => {
+  const project = createProject({
+    name: 'Legacy fingerprint', projectId: 'legacy-fingerprint',
+    source: { kind: 'standard-directory', name: 'hero', fingerprint: 'package-fingerprint', modelConfig: 'hero.model3.json' },
+    recipes: [{ id: 'idle-recipe', motionId: 'idle', expressionId: null }],
+    targets: {},
+  });
+  const inspection = {
+    schemaVersion: 1,
+    source: { kind: 'standard-directory', name: 'hero', fingerprint: 'selected-model-fingerprint', packageFingerprint: 'package-fingerprint', modelConfig: 'hero.model3.json' },
+    model: { cubism: 4 }, motions: [{ id: 'idle' }], expressions: [], resources: [], warnings: [],
+  };
+  const service = createProjectSourceService({ sourceRegistry: new Map(), inspectSource: async () => inspection });
+
+  const result = await service.relink({ project, inputPath: '/private/hero' });
+
+  assert.equal(result.status, 'relinked');
+  assert.equal(result.reviewRequired, false);
+  assert.equal(result.project.source.fingerprint, 'selected-model-fingerprint');
+  assert.equal(result.project.sourceReview, undefined);
+  assert.deepEqual(result.project.visualSettings, project.visualSettings);
+});
+
 test('project Source service never registers failed inspections', async () => {
   const sourceRegistry = new Map([['existing-1', {}], ['existing-2', {}]]);
   const service = createProjectSourceService({

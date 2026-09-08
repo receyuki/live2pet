@@ -1019,6 +1019,34 @@ describe('Live2Pet desktop shell', () => {
     expect(await screen.findByRole('main', { name: 'Map' })).toBeVisible();
   });
 
+  it('shows changed dropped projects on a dedicated Source review page', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const openedProject = {
+      ...savedProject,
+      schemaVersion: 3 as const,
+      format: 'live2pet-project' as const,
+      visualSettings: { hiddenElementIds: [] },
+      recipes: [{ id: 'idle-recipe', motionId: 'idle:0', expressionId: null }],
+    };
+    const api = installDesktopApi({ openedProject });
+    const response = await api.relinkSource({ project: openedProject, inputPath: openedProject.source.path });
+    api.relinkSource.mockResolvedValue({ ...response, result: {
+      ...response.result,
+      status: 'source-changed',
+      reviewRequired: true,
+      affectedRecipeIds: ['idle-recipe'],
+      project: { ...openedProject, sourceReview: { required: true, reason: 'source-fingerprint-changed', affectedRecipeIds: ['idle-recipe'] } },
+    } } as unknown as typeof response);
+    render(<App />);
+
+    fireEvent.drop(screen.getByLabelText('Import model source'), { dataTransfer: { types: ['Files'], files: [new File(['{}'], 'legacy.live2pet')] } });
+
+    expect(await screen.findByRole('main', { name: 'Models' })).toBeVisible();
+    expect(screen.getByText('Review changed Source Package')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Browse model folder' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Recent projects' })).not.toBeInTheDocument();
+  });
+
   it('preserves unsaved work when a dropped project replacement is declined', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const { openProject, relinkSource } = installDesktopApi();

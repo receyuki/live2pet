@@ -58,7 +58,7 @@ export type SourceExpression = {
 
 export type SourceInspection = {
   schemaVersion: 1;
-  source: { kind: 'standard-directory' | 'pck' | 'destiny-child-pck' | 'spine-directory'; name: string; fingerprint: string; modelConfig: string };
+  source: { kind: 'standard-directory' | 'pck' | 'destiny-child-pck' | 'spine-directory'; name: string; fingerprint: string; packageFingerprint?: string; modelConfig: string };
   model: { format?: 'spine'; cubism?: number; configFile: string; modelFile: string | null; textures: string[]; atlasFile?: string; spineVersion?: string; runtimeLine?: string; binary?: boolean };
   motions: SourceMotion[];
   expressions: SourceExpression[];

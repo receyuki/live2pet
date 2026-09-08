@@ -163,6 +163,15 @@ test('inspects a modern Cubism Source Package into a normalized manifest', () =>
   assert.equal(JSON.stringify(manifest).includes(fixture.root), false);
 });
 
+test('retains the package fingerprint when a model config scopes the inspection fingerprint', () => {
+  const fixture = modernFixture();
+  const packageFingerprint = inspectSourcePackage(fixture.root).source.fingerprint;
+  const selected = inspectSourcePackage(fixture.root, { modelConfig: 'hero/hero.model3.json' });
+
+  assert.equal(selected.source.packageFingerprint, packageFingerprint);
+  assert.notEqual(selected.source.fingerprint, packageFingerprint);
+});
+
 test('inspects a Cubism 2 Source Package and derives motion duration', () => {
   const fixture = legacyFixture();
   const manifest = inspectSourcePackage(fixture.root);
