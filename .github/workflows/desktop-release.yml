@@ -64,8 +64,12 @@ jobs:
         run: pnpm --filter @live2pet/desktop package:mac
       - name: Verify package layout and startup
         run: pnpm --filter @live2pet/desktop smoke:mac
-      - name: Create downloadable DMG
-        run: hdiutil create -volname Live2Pet -srcfolder "apps/desktop/out/Live2Pet-darwin-${{ matrix.arch }}/Live2Pet.app" -ov -format UDZO "Live2Pet-macOS-${{ matrix.arch }}.dmg"
+      - name: Install DMG layout tool
+        run: brew install create-dmg
+      - name: Create drag-to-install DMG
+        run: node apps/desktop/scripts/macos-dmg.cjs create "apps/desktop/out/Live2Pet-darwin-${{ matrix.arch }}/Live2Pet.app" "Live2Pet-macOS-${{ matrix.arch }}.dmg"
+      - name: Verify DMG contents
+        run: node apps/desktop/scripts/macos-dmg.cjs verify "Live2Pet-macOS-${{ matrix.arch }}.dmg"
       - uses: actions/upload-artifact@v6
         with:
           name: live2pet-macos-${{ matrix.arch }}

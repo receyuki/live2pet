@@ -11,11 +11,10 @@ validated chunks of at most 1 MiB. The Mapper reports this transfer separately
 from the completed package build, then opens the ZIP through a Blob reader and
 extracts only the currently previewed Clawd WebP. Building does not implicitly
 install anything. Renderer requests cannot choose arbitrary mapper files or
-invoke shell commands. Forge makers/signing are not
-configured until the macOS source-release gates pass. `forge.config.cjs` records
-the future packager resource path, but the Forge CLI is not a workspace
-dependency because a local unsigned App needs only the smaller
-`@electron/packager` build dependency.
+invoke shell commands. Forge makers and signing remain unconfigured.
+`forge.config.cjs` records the future packager resource path, while the release
+workflow uses `create-dmg` only after the custom Packager and smoke-test stages
+to create an unsigned App-to-Applications disk image.
 
 The main process also injects the shared Source Package inspector into the typed
 `inspectSource` method. Standard Live2D directories and supported PCK
@@ -143,10 +142,10 @@ pnpm --filter @live2pet/desktop run package:win
 ```
 
 GitHub Actions can build and smoke-test separate Intel and Apple Silicon macOS
-Apps, package each as a DMG, and build the Windows x64 folder. Manual workflow
-runs retain all three downloads as preview artifacts; a `v*` tag publishes them
-as a prerelease. These are deliberately unsigned App archives, not signed
-installers: there is no maker, Developer ID, notarization, or update channel.
+Apps, package each as a drag-to-install DMG, verify the mounted contents, and
+build the Windows x64 folder. Manual workflow runs retain all three downloads as
+preview artifacts; a `v*` tag publishes them as the latest release. These are
+deliberately unsigned downloads without a Developer ID or notarization.
 See the repository README for platform security prompts and the release
 checklist for the remaining public-installer gates.
 

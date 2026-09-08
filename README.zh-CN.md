@@ -1,3 +1,5 @@
+<p align="center"><img src="apps/desktop/assets/icon.png" alt="Live2Pet 应用图标" width="112"></p>
+
 <h1 align="center">Live2Pet</h1>
 
 <p align="center"><strong>把喜欢的角色，变成桌面上的陪伴。</strong></p>
@@ -66,7 +68,9 @@
 - `Live2Pet-macOS-arm64.dmg` 支持 Apple Silicon Mac。
 - `Live2Pet-Windows-x64.zip` 支持 64 位 Windows。
 
-这些版本尚未使用受信任的开发者证书签名。如果 macOS 提示 Live2Pet“已损坏”或“无法打开”，请先确认 DMG 来自本仓库，将 `Live2Pet.app` 移到“应用程序”文件夹，再运行：
+在 macOS 上打开 DMG，然后将 `Live2Pet.app` 拖到 **Applications** 快捷方式上。
+
+这些版本尚未使用受信任的开发者证书签名。如果 macOS 提示 Live2Pet“已损坏”或“无法打开”，请先确认 DMG 来自本仓库，并已将 App 移入“应用程序”文件夹，再运行：
 
 ```sh
 xattr -r -d com.apple.quarantine /Applications/Live2Pet.app

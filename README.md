@@ -1,3 +1,5 @@
+<p align="center"><img src="apps/desktop/assets/icon.png" alt="Live2Pet app icon" width="112"></p>
+
 <h1 align="center">Live2Pet</h1>
 
 <p align="center"><strong>Your favorite model. Your next desktop companion.</strong></p>
@@ -66,7 +68,9 @@ Open the [latest GitHub Release](https://github.com/receyuki/live2pet/releases/l
 - `Live2Pet-macOS-arm64.dmg` supports Apple Silicon Macs.
 - `Live2Pet-Windows-x64.zip` supports 64-bit Windows.
 
-These builds are not signed with trusted developer certificates. On macOS, if Finder says Live2Pet is damaged or cannot be opened, first make sure the DMG came from this repository, move `Live2Pet.app` to Applications, then run:
+On macOS, open the DMG and drag `Live2Pet.app` onto the **Applications** shortcut.
+
+These builds are not signed with trusted developer certificates. If Finder says Live2Pet is damaged or cannot be opened, first make sure the DMG came from this repository and the App is in Applications, then run:
 
 ```sh
 xattr -r -d com.apple.quarantine /Applications/Live2Pet.app
