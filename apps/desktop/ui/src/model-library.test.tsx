@@ -73,4 +73,29 @@ describe('ModelLibrary thumbnails', () => {
     expect(screen.getByText('Review model compatibility, included motions, expressions, and textures before mapping.')).toBeTruthy();
     expect(screen.getByText(/Browse and preview models without changing your current project/)).toBeTruthy();
   });
+
+  it('searches model names, paths, formats, and runtime versions without loading hidden thumbnails', () => {
+    const searchable: SourceLibrary = { ...library, candidates: [
+      { id: 'miku', name: 'Miku', relativePath: 'characters/miku/model3.json', format: 'live2d', version: null, runtimeLine: '4', binary: false },
+      { id: 'dragon', name: 'Dragon', relativePath: 'bosses/dragon/dragon.json', format: 'spine', version: '4.2.0', runtimeLine: '4.2', binary: false },
+    ] };
+    const view = render(<ModelLibrary library={searchable} locale="en" onUse={async () => {}} />);
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search models' }), { target: { value: 'spine' } });
+
+    expect([...view.container.querySelectorAll('.model-library-card strong')].map(element => element.textContent)).toEqual(['Dragon']);
+    expect(screen.getByText('1 of 2')).toBeTruthy();
+    expect(getLibraryThumbnail).not.toHaveBeenCalled();
+  });
+
+  it('sorts matching cards while preserving the source order option', () => {
+    const view = render(<ModelLibrary library={library} locale="en" onUse={async () => {}} />);
+    const names = () => [...view.container.querySelectorAll('.model-library-card strong')].map(element => element.textContent);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Sort models' }), { target: { value: 'name-desc' } });
+    expect(names()).toEqual(['two', 'three', 'one']);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Sort models' }), { target: { value: 'source' } });
+    expect(names()).toEqual(['one', 'two', 'three']);
+  });
 });

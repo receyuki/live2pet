@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Button, Chip, ProgressBar } from '@heroui/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Button, Chip, Input, ProgressBar } from '@heroui/react';
 import { Image } from 'lucide-react';
 import { setLive2DPreviewExpression, installSpinePack, hasPreviewApi, getLibraryThumbnail, inspectLibrarySource, openLive2DPreview, layoutLive2DPreview, playLive2DPreview, type SourceLibrary, type SourceLibraryCandidate, type SourceLibrarySelection } from './app-host';
 import { translate, type Locale } from './i18n';
@@ -93,10 +93,36 @@ export function ModelPreview({ library, candidate, locale, onUse, onClose, direc
 
 export function ModelLibrary({ library, locale, onUse, onConfigureRuntime, selectedModel, onSelectModel, thumbnailRevision = 0 }: { library: SourceLibrary; locale: Locale; onUse: (library: SourceLibrary, candidate: SourceLibraryCandidate, motion: string) => Promise<void>; onConfigureRuntime?: () => void; selectedModel?: SourceLibraryCandidate | null; onSelectModel?: (model: SourceLibraryCandidate | null) => void; thumbnailRevision?: number }) {
   const [localSelected, setLocalSelected] = useState<SourceLibraryCandidate | null>(null);
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState('source');
   const selected = selectedModel === undefined ? localSelected : selectedModel;
   const setSelected = onSelectModel ?? setLocalSelected;
+  const candidates = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase(locale);
+    const filtered = normalizedQuery ? library.candidates.filter(candidate => [candidate.name, candidate.relativePath, candidate.format, candidate.version, candidate.runtimeLine]
+      .filter(Boolean)
+      .some(value => String(value).toLocaleLowerCase(locale).includes(normalizedQuery))) : [...library.candidates];
+    if (sort === 'source') return filtered;
+    const collator = new Intl.Collator(locale, { numeric: true, sensitivity: 'base' });
+    const byName = (left: SourceLibraryCandidate, right: SourceLibraryCandidate) => collator.compare(left.name, right.name) || collator.compare(left.relativePath, right.relativePath);
+    if (sort === 'name-desc') return filtered.sort((left, right) => byName(right, left));
+    if (sort === 'format') return filtered.sort((left, right) => collator.compare(left.format, right.format) || byName(left, right));
+    return filtered.sort(byName);
+  }, [library.candidates, locale, query, sort]);
   return <div className={`library-browser${selected ? ' library-browser-selected' : ''}`}>
-    <div className="model-library-grid">{library.candidates.map(candidate => <ModelCard key={candidate.id} library={library} candidate={candidate} selected={candidate.id === selected?.id} onSelect={() => setSelected(candidate)} locale={locale} thumbnailRevision={thumbnailRevision} />)}</div>
+    <div className="model-library-results">
+      <div className="model-library-toolbar">
+        <Input type="search" aria-label={translate(locale, 'searchModels')} placeholder={translate(locale, 'searchModels')} value={query} onChange={event => setQuery(event.target.value)} />
+        <select aria-label={translate(locale, 'sortModels')} value={sort} onChange={event => setSort(event.target.value)}>
+          <option value="source">{translate(locale, 'sortSourceOrder')}</option>
+          <option value="name-asc">{translate(locale, 'sortNameAscending')}</option>
+          <option value="name-desc">{translate(locale, 'sortNameDescending')}</option>
+          <option value="format">{translate(locale, 'sortModelType')}</option>
+        </select>
+        <small>{translate(locale, 'modelLibraryVisibleCount', { visible: candidates.length, total: library.candidates.length })}</small>
+      </div>
+      {candidates.length ? <div className="model-library-grid">{candidates.map(candidate => <ModelCard key={candidate.id} library={library} candidate={candidate} selected={candidate.id === selected?.id} onSelect={() => setSelected(candidate)} locale={locale} thumbnailRevision={thumbnailRevision} />)}</div> : <div className="empty-state">{translate(locale, 'noModelMatches')}</div>}
+    </div>
     {selected && <ModelPreview onConfigureRuntime={onConfigureRuntime} onClose={() => setSelected(null)} key={`${library.libraryId}:${selected.id}`} library={library} candidate={selected} locale={locale} onUse={motion => onUse(library, selected, motion)} />}
   </div>;
 }
