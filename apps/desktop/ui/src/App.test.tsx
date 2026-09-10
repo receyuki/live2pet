@@ -5,6 +5,7 @@ import { App } from './App';
 import type { Live2PetProject, SourceInspection, VisualElement } from './app-host';
 import { CLAWD_PROFILE, CODEX_PROFILE } from './target-profiles';
 import { PROJECT_DRAFT_KEY, writeProjectDraft } from './project-draft';
+import { ONBOARDING_KEY } from './onboarding/onboarding-state';
 
 const emptyRuntimes = { schemaVersion: 2 as const, configured: false, restartRequired: false, runtimes: [] };
 
@@ -283,6 +284,19 @@ describe('Live2Pet desktop shell', () => {
     expect(within(container.querySelector('.settings-sidebar') as HTMLElement).queryByRole('button', { name: 'Done' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Done' }));
     expect(screen.getByRole('button', { name: 'Open project' })).toBeVisible();
+  });
+
+  it('lets existing users replay and skip the guided tutorial from Settings', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(screen.queryByText('Start with a model')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('button', { name: 'Replay tutorial' }));
+    expect(await screen.findByText('Start with a model')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Close tutorial' }));
+    await vi.waitFor(() => expect(JSON.parse(localStorage.getItem(ONBOARDING_KEY) ?? '{}')).toMatchObject({ status: 'skipped' }));
   });
 
   it('checks for a stable update from Settings and opens its exact Release page', async () => {

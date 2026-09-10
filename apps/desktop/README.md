@@ -52,6 +52,9 @@ Clawd build action disabled because they do not provide the trusted App encoder.
 On first launch, the UI matches supported system languages and otherwise falls
 back to English. A manual English/Chinese (`zh-CN`) choice is persisted for
 later launches; locale text does not alter project, IPC, or package schemas.
+New installations also receive a short contextual Models → Map → Build tour
+after setup. Its progress remains local, it can be skipped at any time, and
+existing installations are not interrupted; Settings → General can replay it.
 After a successful App build, the Mapper can preview the generated Clawd WebP
 assets by state or reaction directly from the in-memory ZIP artifact. This
 preview follows manifest fallbacks; it does not yet replace a full Clawd runtime

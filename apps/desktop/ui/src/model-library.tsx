@@ -71,7 +71,7 @@ export function ModelPreview({ library, candidate, locale, onUse, onClose, direc
     })();
     return () => { active = false; observer?.disconnect(); window.removeEventListener('resize', update); window.removeEventListener('scroll', update, true); if (hasPreviewApi()) void layoutLive2DPreview({ visible: false }).catch(() => {}); };
   }, [library?.libraryId, candidate.id, locale, direct, retry]);
-  return <aside className="library-detail" aria-label={candidate.name}>
+  return <aside className="library-detail" aria-label={candidate.name} data-tour-id="model-preview">
     <header className="library-detail-header"><div><p className="eyebrow">{translate(locale, 'source')}</p><h3>{candidate.name}</h3><small title={candidate.relativePath}>{candidate.relativePath}</small></div><Button size="sm" variant="ghost" onPress={onClose}>{translate(locale, 'close')}</Button></header>
     <section className="library-package-summary" aria-labelledby="library-package-title">
       <div><h4 id="library-package-title">{translate(locale, 'sourceTitle')}</h4><Chip size="sm" variant="soft">{format}</Chip></div>

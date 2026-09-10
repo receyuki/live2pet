@@ -126,7 +126,7 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
   }
 
   return (
-    <main className="page build-page">
+    <main className="page build-page" data-tour-id="build-options">
       <header className="page-heading"><p className="eyebrow">{t("build")}</p><h1>{t("buildTitle")}</h1><p>{t("buildBody")}</p></header>
       {project && <TextField className="package-name-field" value={project.name} onChange={onName} isRequired isDisabled={targets.some((target) => state[target].status === 'building')}><Label>{t('packageName')}</Label><Input maxLength={256} /><small>{t('packageNameHint')}</small></TextField>}
       {!hostReady && <div className="action-feedback" role="alert">{t("buildHostUnavailable")}</div>}

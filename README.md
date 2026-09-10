@@ -40,6 +40,7 @@
 | **Keep the character, hide the clutter** | Identify parts with thumbnails and hide separable backgrounds or effects. |
 | **One project, two destinations** | Assign animations to Clawd or Codex states, then build ready-to-import packages. |
 | **Interactive by default** | Unmapped Clawd drag and double-click reactions safely reuse Idle. |
+| **Guided, not overwhelming** | A short contextual tutorial follows you from Models to Map and Build; skip it anytime or replay it from Settings. |
 | **Pick up where you left off** | Save projects, reuse runtimes, and match English or Simplified Chinese automatically on first launch. |
 | **Know when a fix ships** | Check the latest stable GitHub Release from Settings, automatically or on demand. |
 
@@ -89,7 +90,7 @@ pnpm --filter @live2pet/desktop package:mac
 open apps/desktop/out/Live2Pet-darwin-*/Live2Pet.app
 ```
 
-On first launch, add your runtime and choose a model. [Setup help and troubleshooting →](docs/guides/user-guide.md)
+On first launch, add your runtime and follow the optional guided tutorial. You can skip it at any time and replay it from **Settings → General**. [Setup help and troubleshooting →](docs/guides/user-guide.md)
 
 ## Compatibility
 
