@@ -145,7 +145,7 @@ function createPreviewView() {
       webSecurity: true,
       allowRunningInsecureContent: false,
       webviewTag: false,
-      backgroundThrottling: false,
+      backgroundThrottling: true,
     },
   });
   view.setBackgroundColor('#00000000');

@@ -46,6 +46,7 @@ function fixture({ source = null, runtime = { runtimePath: '/private/runtime/Liv
   const adapter = {
     async load(rendererSource) { calls.push(['adapter.load', rendererSource]); },
     async unload() { calls.push(['adapter.unload']); },
+    async setActive(active) { calls.push(['active', active]); },
     async playMotion(motionId, options) { Object.assign(playback, { motionId, playing: true, loop: options.loop, speed: options.speed }); calls.push(['play', motionId, options]); },
     async setExpression(expressionId) { playback.expressionId = expressionId; calls.push(['expression', expressionId]); },
     async pause() { playback.playing = false; calls.push(['pause']); },
@@ -141,6 +142,7 @@ test('opens a directory Source in an attached view and exposes playback controls
   assert.equal(calls.find(([name]) => name === 'resolveRuntime')[1], 4);
   assert.equal(calls.find(([name]) => name === 'loadPage')[1], 'http://127.0.0.1:3210/preview');
   assert.equal(calls.find(([name]) => name === 'adapter')[1].playbackMode, 'realtime');
+  assert.deepEqual(calls.filter(([name]) => name === 'active'), [['active', true]]);
   let blockedNavigation = false;
   webContents.emit('will-navigate', { preventDefault: () => { blockedNavigation = true; } }, 'https://example.com/');
   assert.equal(blockedNavigation, true);
@@ -153,11 +155,13 @@ test('opens a directory Source in an attached view and exposes playback controls
   await service.control({ action: 'restart' });
   await service.setExpression({ expressionId: null });
   const laidOut = await service.layout({ visible: false, bounds: { x: 5, y: 7, width: 700, height: 500 } });
+  assert.deepEqual(calls.filter(([name]) => name === 'active').at(-1), ['active', false]);
   assert.equal(laidOut.visible, false);
   assert.deepEqual(view.bounds, { x: 5, y: 7, width: 700, height: 500 });
   assert.ok(calls.some(([name, width, height]) => name === 'resize' && width === 700 && height === 500));
   assert.equal(view.visible, false);
   assert.equal((await service.layout({ visible: true })).visible, true);
+  assert.deepEqual(calls.filter(([name]) => name === 'active').at(-1), ['active', true]);
 
   const closed = await service.close();
   assert.equal(closed.state, 'idle');

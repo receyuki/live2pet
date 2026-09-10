@@ -41,6 +41,8 @@ test('desktop shell pins the HeroUI entrypoint and keeps navigation and IPC narr
   assert.match(main, /setPermissionRequestHandler/);
   assert.match(main, /setPermissionCheckHandler/);
   assert.doesNotMatch(main, /nodeIntegration:\s*true/);
+  assert.match(main, /backgroundThrottling:\s*true/);
+  assert.doesNotMatch(main, /backgroundThrottling:\s*false/);
   assert.match(preload, /contextBridge\.exposeInMainWorld\('live2pet'/);
   assert.match(preload, /const APP_IPC_CHANNEL = 'live2pet:app';/);
   assert.match(preload, /const APP_IPC_PROTOCOL_VERSION = 1;/);

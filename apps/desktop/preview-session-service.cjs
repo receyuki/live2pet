@@ -356,6 +356,7 @@ function createPreviewSessionService({
       const rendererSource = await (isSpine ? createSpineRendererSource : createRendererSource)(record.manifest, { baseUrl: `${assetServer.baseUrl}/model` });
       await adapter.load(rendererSource);
       if (input.visualSettings) await adapter.setVisualSettings(normalizeVisualSettings(input.visualSettings));
+      if (typeof adapter.setActive === 'function') await adapter.setActive(requestedVisible);
       if (token !== generation) return getStatus();
       state = SESSION_STATES.ready;
       error = null;
@@ -380,7 +381,14 @@ function createPreviewSessionService({
         throw typed;
       }
     }
-    applyLayout(view, nextBounds, nextVisible);
+    try {
+      if (!nextVisible && adapter && typeof adapter.setActive === 'function') await adapter.setActive(false);
+      applyLayout(view, nextBounds, nextVisible);
+      if (nextVisible && adapter && typeof adapter.setActive === 'function') await adapter.setActive(true);
+    } catch (cause) {
+      const typed = await failSession(cause, generation, 'PREVIEW_LAYOUT_FAILED');
+      throw typed;
+    }
     bounds = nextBounds;
     visible = nextVisible;
     emitStatus();

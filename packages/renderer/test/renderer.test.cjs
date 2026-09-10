@@ -34,6 +34,7 @@ const {
   pagePlayMotion,
   pageResize,
   pageResume,
+  pageSetActive,
   pageSeek,
   pageStep,
   pageUnload,
@@ -88,6 +89,7 @@ class FakePixiPage {
     if (fn.name === 'pagePlayMotion') return { ...state, motionId: args[0], time: args[3], playing: true, loop: args[1], speed: args[2] };
     if (fn.name === 'pagePause') return { ...state, playing: false };
     if (fn.name === 'pageResume') return { ...state, playing: true };
+    if (fn.name === 'pageSetActive') return { ...state };
     if (fn.name === 'pageRestart') return { ...state, playing: true };
     if (fn.name === 'pageSetPlayback') return { ...state, loop: args[0] === undefined ? state.loop : args[0], speed: args[1] === undefined ? state.speed : args[1] };
     if (fn.name === 'pageSetExpression') return args[0];
@@ -246,6 +248,9 @@ test('Pixi Live2D adapter bridges the shared contract without bundling a runtime
   assert.equal((await renderer.getBounds({ motionId: 'Base:wave' })).normalized, true);
   await renderer.pause();
   assert.equal(renderer.getState().playing, false);
+  await renderer.setActive(false);
+  await renderer.setActive(true);
+  assert.deepEqual(page.calls.filter((call) => call.name === 'pageSetActive').map((call) => call.args[0]), [false, true]);
   await renderer.unload();
   assert.equal(renderer.getState().loaded, false);
   assert.ok(page.calls.some((call) => call.name === 'pageLoad'));
@@ -375,12 +380,18 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     assert.equal(ticker.started, false);
     await pagePlayMotion('Base:wave', false, 2, 0, 3);
     assert.equal(ticker.started, true);
+    assert.equal(ticker.maxFPS, 60);
     ticker.tick(16);
     assert.equal(updates.at(-1), 32);
 
     pagePause();
     assert.equal(ticker.started, false);
     pageResume();
+    assert.equal(ticker.started, true);
+    pageSetActive(false);
+    assert.equal(ticker.started, false);
+    assert.equal(global.window.__live2petPixiLive2D.state.playing, true);
+    pageSetActive(true);
     assert.equal(ticker.started, true);
 
     assert.deepEqual(pageResize(10, 6), { width: 10, height: 6 });
@@ -500,7 +511,9 @@ test('Spine manifest conversion and adapter reuse the shared renderer contract',
   assert.equal(source.skeletonUrl, 'http://127.0.0.1/model/hero.json');
   assert.equal(source.atlasUrl, 'http://127.0.0.1/model/hero.atlas');
   const state = { loaded: true, motionId: 'idle', expressionId: null, time: 0, playing: false, loop: true, speed: 1 };
+  const pageCalls = [];
   const page = { supportsBinaryResults: true, async evaluate(fn, ...args) {
+    pageCalls.push({ name: fn.name, args });
     if (fn.name === 'pageLoad') return { state, motions: source.motions, slots: source.slots };
     if (fn.name === 'pagePlay') return { ...state, motionId: args[0], playing: true, loop: args[1], speed: args[2], time: args[3] };
     if (fn.name === 'pageState') return state;
@@ -514,6 +527,9 @@ test('Spine manifest conversion and adapter reuse the shared renderer contract',
   assert.deepEqual(renderer.getMotions(), [{ id: 'idle', name: 'Idle', duration: 1 }]);
   assert.deepEqual(renderer.getVisualElements(), [{ id: 'slot:body', name: 'body', kind: 'slot' }]);
   assert.equal((await renderer.playMotion('idle')).playing, true);
+  await renderer.setActive(false);
+  await renderer.setActive(true);
+  assert.deepEqual(pageCalls.filter((call) => call.name === 'pageSetActive').map((call) => call.args[0]), [false, true]);
   assert.equal((await renderer.captureRgba({ width: 16, height: 16, motionId: 'idle', time: 0.5 })).rgba.byteLength, 1024);
   await renderer.setVisualSettings({ hiddenElementIds: ['slot:body'] });
   await renderer.unload();

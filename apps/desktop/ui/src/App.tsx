@@ -712,7 +712,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
       observer?.disconnect();
       window.removeEventListener('resize', syncBounds);
       unsubscribe();
-      void layoutLive2DPreview({ visible: false }).catch(() => undefined);
+      void closeLive2DPreview().catch(() => undefined);
     };
   }, [inspection, nativePreview, previewRetry, projectId]);
 

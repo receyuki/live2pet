@@ -142,6 +142,7 @@ function pageLoad(source, options) {
       preserveDrawingBuffer: true,
       resolution: 1,
     });
+    app.ticker.maxFPS = 60;
     app.stop();
     // Cubism 2's queue ignores Pixi's `now` and reads UtSystem instead.
     // Each renderer realm owns one model, so use its public controlled clock.
@@ -301,6 +302,14 @@ function pageResize(width, height) {
   runtime.fit();
   runtime.render();
   return { width: runtime.app.renderer.width, height: runtime.app.renderer.height };
+}
+
+function pageSetActive(active) {
+  const runtime = window.__live2petPixiLive2D;
+  if (!runtime) throw new Error('Renderer is not loaded.');
+  if (active) runtime.syncTicker();
+  else runtime.app.stop();
+  return { ...runtime.state };
 }
 
 function pagePlayMotion(motionId, loop, speed, start, priority) {
@@ -544,6 +553,12 @@ class PixiLive2dAdapter {
     this.visualElements = [];
   }
 
+  async setActive(active) {
+    this.requireLoaded();
+    this.state = await this.evaluate(pageSetActive, Boolean(active));
+    return this.getState();
+  }
+
   getVisualElements() {
     this.requireLoaded();
     return (this.visualElements || []).map(element => ({ ...element }));
@@ -726,6 +741,7 @@ module.exports = {
   pageRestart,
   pageResize,
   pageResume,
+  pageSetActive,
   pageSeek,
   pageSetExpression,
   pageSetPlayback,

@@ -1,20 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Chip, Input, ProgressBar } from '@heroui/react';
 import { Image } from 'lucide-react';
-import { setLive2DPreviewExpression, installSpinePack, hasPreviewApi, getLibraryThumbnail, inspectLibrarySource, openLive2DPreview, layoutLive2DPreview, playLive2DPreview, type SourceLibrary, type SourceLibraryCandidate, type SourceLibrarySelection } from './app-host';
+import { setLive2DPreviewExpression, installSpinePack, hasPreviewApi, getLibraryThumbnail, inspectLibrarySource, openLive2DPreview, layoutLive2DPreview, playLive2DPreview, closeLive2DPreview, type SourceLibrary, type SourceLibraryCandidate, type SourceLibrarySelection } from './app-host';
 import { translate, type Locale } from './i18n';
+import { ThumbnailMemory } from './thumbnail-memory';
 
-const thumbnailMemory = new Map<string, string>();
+const thumbnailMemory = new ThumbnailMemory({ maxEntries: 128, maxBytes: 32 * 1024 * 1024 });
 
 function ModelCard({ library, candidate, selected, onSelect, locale, thumbnailRevision }: { library: SourceLibrary; candidate: SourceLibraryCandidate; selected: boolean; onSelect: () => void; locale: Locale; thumbnailRevision: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const thumbnailKey = `${library.libraryId}:${candidate.id}`;
-  const [cover, setCover] = useState<string | null>(() => thumbnailMemory.get(thumbnailKey) ?? null);
+  const [cover, setCover] = useState<string | null>(() => thumbnailMemory.get(thumbnailKey));
   const [failed, setFailed] = useState(false);
   const unsupportedSpine = candidate.format === 'spine' && Boolean(candidate.runtimeLine) && !['4.0', '4.1', '4.2', '4.3'].includes(candidate.runtimeLine!);
   useEffect(() => {
-    if (cover || unsupportedSpine) return;
     let active = true, requested = false;
+    const unsubscribe = thumbnailMemory.subscribe((evictedKey) => { if (active && evictedKey === thumbnailKey) setCover(null); });
+    if (cover || unsupportedSpine) return () => { active = false; unsubscribe(); };
     const load = () => {
       if (requested) return;
       requested = true;
@@ -24,7 +26,7 @@ function ModelCard({ library, candidate, selected, onSelect, locale, thumbnailRe
     };
     const observer = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) { load(); observer?.disconnect(); } }) : null;
     if (observer && ref.current) observer.observe(ref.current); else load();
-    return () => { active = false; observer?.disconnect(); };
+    return () => { active = false; observer?.disconnect(); unsubscribe(); };
   }, [library.libraryId, candidate.id, thumbnailKey, cover, unsupportedSpine, thumbnailRevision]);
   return <div ref={ref}><Button className={`model-library-card${selected ? ' model-library-card-selected' : ''}`} variant="ghost" aria-pressed={selected} onPress={onSelect}>
     <span className="model-library-cover">{cover ? <img src={cover} alt="" /> : <><Image size={24} /><small>{translate(locale, library.kind === 'github' ? 'libraryDownloadPreview' : unsupportedSpine ? 'librarySpineVersionUnsupported' : failed ? 'libraryPreviewUnavailable' : 'libraryThumbnailLoading', { value: candidate.runtimeLine || '?' })}</small></>}</span>
@@ -69,7 +71,7 @@ export function ModelPreview({ library, candidate, locale, onUse, onClose, direc
         if (catalog[0]) { setMotion(catalog[0].id); await playLive2DPreview({ motionId: catalog[0].id, loop: true }); }
       } catch (cause) { if (active) setError(cause instanceof Error ? cause.message : String(cause)); }
     })();
-    return () => { active = false; observer?.disconnect(); window.removeEventListener('resize', update); window.removeEventListener('scroll', update, true); if (hasPreviewApi()) void layoutLive2DPreview({ visible: false }).catch(() => {}); };
+    return () => { active = false; observer?.disconnect(); window.removeEventListener('resize', update); window.removeEventListener('scroll', update, true); if (hasPreviewApi()) void closeLive2DPreview().catch(() => {}); };
   }, [library?.libraryId, candidate.id, locale, direct, retry]);
   return <aside className="library-detail" aria-label={candidate.name} data-tour-id="model-preview">
     <header className="library-detail-header"><div><p className="eyebrow">{translate(locale, 'source')}</p><h3>{candidate.name}</h3><small title={candidate.relativePath}>{candidate.relativePath}</small></div><Button size="sm" variant="ghost" onPress={onClose}>{translate(locale, 'close')}</Button></header>

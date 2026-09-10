@@ -1,17 +1,24 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SourceLibrary } from './app-host';
+import type { SourceLibrary, SourceLibrarySelection } from './app-host';
 
-const { getLibraryThumbnail } = vi.hoisted(() => ({
+const { closeLive2DPreview, getLibraryThumbnail, openLive2DPreview, playLive2DPreview } = vi.hoisted(() => ({
+  closeLive2DPreview: vi.fn(async () => ({ state: 'idle' })),
   getLibraryThumbnail: vi.fn(async (_libraryId: string, sourceId: string) => ({ dataUrl: `data:image/png;base64,${sourceId}` })),
+  openLive2DPreview: vi.fn(async () => ({ schemaVersion: 1, state: 'ready', projectId: 'library-preview', sourceFingerprint: 'a'.repeat(64), visible: true, bounds: { x: 0, y: 0, width: 64, height: 64 } })),
+  playLive2DPreview: vi.fn(async () => ({ state: 'ready' })),
 }));
 
 vi.mock('./app-host', async importOriginal => ({
   ...await importOriginal<typeof import('./app-host')>(),
+  closeLive2DPreview,
   getLibraryThumbnail,
+  hasPreviewApi: () => true,
+  openLive2DPreview,
+  playLive2DPreview,
 }));
 
-import { ModelLibrary } from './model-library';
+import { ModelLibrary, ModelPreview } from './model-library';
 
 const library: SourceLibrary = {
   schemaVersion: 1,
@@ -26,6 +33,9 @@ describe('ModelLibrary thumbnails', () => {
   let intersections: Array<(entries: Array<{ isIntersecting: boolean }>) => void>;
   beforeEach(() => {
     getLibraryThumbnail.mockClear();
+    closeLive2DPreview.mockClear();
+    openLive2DPreview.mockClear();
+    playLive2DPreview.mockClear();
     intersections = [];
     vi.stubGlobal('IntersectionObserver', class {
       constructor(callback: (entries: Array<{ isIntersecting: boolean }>) => void) { intersections.push(callback); }
@@ -57,6 +67,29 @@ describe('ModelLibrary thumbnails', () => {
     const second = render(<ModelLibrary library={retained} locale="en" onUse={async () => {}} />);
     expect(second.container.querySelectorAll('.model-library-cover img')).toHaveLength(3);
     expect(getLibraryThumbnail).toHaveBeenCalledTimes(3);
+  });
+
+  it('releases the live renderer when the selected model preview closes', async () => {
+    const candidate = library.candidates[0];
+    const direct = {
+      sourcePath: '<selected-source>',
+      candidate,
+      inspection: {
+        schemaVersion: 1,
+        source: { kind: 'standard-directory', name: 'one', fingerprint: 'a'.repeat(64), modelConfig: 'one.model3.json' },
+        model: { cubism: 4, configFile: 'one.model3.json', modelFile: 'one.moc3', textures: [] },
+        motions: [{ id: 'idle', group: 'Idle', index: 0, name: 'Idle', sourceFile: 'idle.motion3.json', duration: 1 }],
+        expressions: [],
+        resources: [],
+        warnings: [],
+      },
+    } satisfies SourceLibrarySelection;
+    const view = render(<ModelPreview candidate={candidate} direct={direct} locale="en" onUse={async () => {}} onClose={() => {}} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(openLive2DPreview).toHaveBeenCalled();
+
+    view.unmount();
+    expect(closeLive2DPreview).toHaveBeenCalledTimes(1);
   });
 
   it('labels unsupported Spine versions without trying to render them', async () => {

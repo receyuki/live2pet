@@ -42,7 +42,7 @@ function pageLoad(source, options) {
     Object.assign(container.style, { width: `${options.width}px`, height: `${options.height}px`, overflow: 'hidden', background: 'transparent' });
     const state = { contractVersion: 1, loaded: false, motionId: source.motions[0]?.id || null, expressionId: null, time: 0, playing: false, loop: true, speed: 1 };
     const runtime = {
-      player: null, source, state, hidden: [], options, container,
+      player: null, source, state, hidden: [], options, container, active: options.playbackMode === 'realtime',
       applyHidden() {
         const hidden = new Set(this.hidden);
         for (const slot of this.player.skeleton.slots) if (hidden.has(`slot:${slot.data.name}`)) {
@@ -151,7 +151,9 @@ function pageLoad(source, options) {
         player.setAnimation(runtime.state.motionId, true);
         runtime.state.loaded = true;
         runtime.fit(runtime.state.motionId);
-        if (options.playbackMode === 'manual') { player.pause(); player.stopRendering(); runtime.draw(); }
+        // Loading needs requestAnimationFrame, but an idle preview does not.
+        // Playback explicitly restarts rendering after the UI selects a Motion.
+        player.pause(); player.stopRendering(); runtime.draw();
         finish(resolve, {
           state: { ...runtime.state },
           motions: runtime.source.motions.map((motion) => ({ ...motion })),
@@ -172,10 +174,11 @@ function pageLoad(source, options) {
 
 function pageUnload() { const runtime = window.__live2petSpine; runtime?.player?.dispose(); delete window.__live2petSpine; document.body.innerHTML = ''; return { loaded: false }; }
 function pageState() { const runtime = window.__live2petSpine; if (!runtime) throw new Error('Renderer is not loaded.'); return { ...runtime.state }; }
-function pagePlay(id, loop, speed, start) { const runtime = window.__live2petSpine; const motion = runtime.source.motions.find((item) => item.id === id); if (!motion) throw new Error(`Animation is not available: ${id}`); runtime.player.setAnimation(id, loop); const entry = runtime.track(); if (entry) entry.trackTime = start; runtime.state = { ...runtime.state, motionId: id, loop, speed, time: start, playing: true }; runtime.player.speed = speed; runtime.player.paused = false; runtime.pose(start); runtime.fit(id); runtime.draw(); if (runtime.options.playbackMode === 'realtime') runtime.startRendering(); return { ...runtime.state }; }
-function pagePause() { const runtime = window.__live2petSpine; runtime.state.playing = false; runtime.player.pause(); return { ...runtime.state }; }
-function pageResume() { const runtime = window.__live2petSpine; runtime.state.playing = true; runtime.player.speed = runtime.state.speed; runtime.player.play(); return { ...runtime.state }; }
-function pageRestart() { const runtime = window.__live2petSpine; const id = runtime.state.motionId; runtime.player.setAnimation(id, runtime.state.loop); runtime.state.time = 0; runtime.state.playing = true; runtime.player.speed = runtime.state.speed; runtime.player.paused = false; runtime.pose(0); runtime.fit(id); runtime.draw(); if (runtime.options.playbackMode === 'realtime') runtime.startRendering(); return { ...runtime.state }; }
+function pagePlay(id, loop, speed, start) { const runtime = window.__live2petSpine; const motion = runtime.source.motions.find((item) => item.id === id); if (!motion) throw new Error(`Animation is not available: ${id}`); runtime.player.setAnimation(id, loop); const entry = runtime.track(); if (entry) entry.trackTime = start; runtime.state = { ...runtime.state, motionId: id, loop, speed, time: start, playing: true }; runtime.player.speed = speed; runtime.player.paused = false; runtime.pose(start); runtime.fit(id); runtime.draw(); if (runtime.active && runtime.options.playbackMode === 'realtime') runtime.startRendering(); return { ...runtime.state }; }
+function pagePause() { const runtime = window.__live2petSpine; runtime.state.playing = false; runtime.player.pause(); runtime.player.stopRendering(); return { ...runtime.state }; }
+function pageResume() { const runtime = window.__live2petSpine; runtime.state.playing = true; runtime.player.speed = runtime.state.speed; runtime.player.play(); if (runtime.active && runtime.options.playbackMode === 'realtime') runtime.startRendering(); return { ...runtime.state }; }
+function pageRestart() { const runtime = window.__live2petSpine; const id = runtime.state.motionId; runtime.player.setAnimation(id, runtime.state.loop); runtime.state.time = 0; runtime.state.playing = true; runtime.player.speed = runtime.state.speed; runtime.player.paused = false; runtime.pose(0); runtime.fit(id); runtime.draw(); if (runtime.active && runtime.options.playbackMode === 'realtime') runtime.startRendering(); return { ...runtime.state }; }
+function pageSetActive(active) { const runtime = window.__live2petSpine; runtime.active = Boolean(active); if (!runtime.active) { runtime.player.pause(); runtime.player.stopRendering(); } else if (runtime.state.playing && runtime.options.playbackMode === 'realtime') { runtime.player.play(); runtime.startRendering(); } return { ...runtime.state }; }
 function pagePlayback(loop, speed) { const runtime = window.__live2petSpine; if (loop !== null) { runtime.state.loop = loop; const entry = runtime.track(); if (entry) entry.loop = loop; } if (speed !== null) { runtime.state.speed = speed; runtime.player.speed = speed; } return { ...runtime.state }; }
 function pageSeek(time) { const runtime = window.__live2petSpine; runtime.state.time = time; runtime.pose(time); runtime.draw(); return { ...runtime.state }; }
 function pageStep(delta) { const runtime = window.__live2petSpine; if (!runtime.state.playing) return { ...runtime.state }; const motion = runtime.source.motions.find((item) => item.id === runtime.state.motionId); let next = runtime.state.time + delta * runtime.state.speed; if (motion.duration > 0 && next >= motion.duration) { if (runtime.state.loop) next %= motion.duration; else { next = motion.duration; runtime.state.playing = false; } } runtime.state.time = next; runtime.pose(next); runtime.draw(); return { ...runtime.state }; }
@@ -199,6 +202,7 @@ class SpinePlayerAdapter {
   motion(id) { const motion = this.source?.motions.find((item) => item.id === id); if (!motion) fail('MOTION_NOT_FOUND', `Animation is not available: ${id}`); return motion; }
   async load(source) { if (source?.format !== 'spine' || !supportsSpineRuntime(source.runtimeLine) || !Array.isArray(source.motions)) fail('INVALID_RENDER_SOURCE', 'A supported Spine 4.x renderer source is required.'); const loaded = await this.evaluate(pageLoad, source, this.options); this.state = loaded.state; this.source = { ...source, motions: loaded.motions }; this.visualElements = loaded.slots; return { contractVersion: 1, motionCount: this.source.motions.length, expressionCount: 0 }; }
   async unload() { if (this.source) await this.evaluate(pageUnload); this.source = null; this.visualElements = []; this.state = { loaded: false, motionId: null, expressionId: null, time: 0, playing: false, loop: true, speed: 1 }; }
+  async setActive(active) { this.requireLoaded(); this.state = await this.evaluate(pageSetActive, Boolean(active)); return this.getState(); }
   getVisualElements() { this.requireLoaded(); return this.visualElements.map((item) => ({ ...item })); }
   getMotions() { this.requireLoaded(); return this.source.motions.map((item) => ({ ...item })); }
   async getVisualElementThumbnail(id) { this.requireLoaded(); if (!this.visualElements.some((item) => item.id === id)) fail('VISUAL_ELEMENT_NOT_FOUND', 'Spine Slot is not available.'); return this.evaluate(pageThumbnail, id); }
