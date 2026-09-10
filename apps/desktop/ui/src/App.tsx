@@ -109,7 +109,7 @@ import {
   initialAppState,
   SettingsSection,
 } from "./app-state";
-import { Locale, MessageKey, translate, translateBehavior } from "./i18n";
+import { Locale, MessageKey, resolveInitialLocale, translate, translateBehavior } from "./i18n";
 import runtimeHelpLinks from "../../runtime-help-links.json";
 import { isSingleSourceSelection, projectIdFromSourceName, sourcePathFromSelection } from "./source-selection";
 import { hasDraggedFiles, isProjectFile, isSourceDirectoryDrop, sourceFilesFromDrop } from "./file-drop";
@@ -159,7 +159,7 @@ function mappingDestination(target: MappingTargetId, channel: MappingChannel, sl
 }
 
 function storedLocale(): Locale {
-  return localStorage.getItem(LOCALE_KEY) === "zh-CN" ? "zh-CN" : "en";
+  return resolveInitialLocale(localStorage, navigator.language);
 }
 
 function storedAppearance(): AppSettings["appearance"] {

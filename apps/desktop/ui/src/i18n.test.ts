@@ -1,9 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { messages, translateBehavior } from './i18n';
+import { localeFromSystemLanguage, messages, resolveInitialLocale, translateBehavior } from './i18n';
 
 const placeholders = (value: string) => [...value.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]).sort();
 
 describe('i18n catalog', () => {
+  it.each([
+    ['zh-CN', 'zh-CN'],
+    ['zh-Hans-CN', 'zh-CN'],
+    ['zh_SG', 'zh-CN'],
+    ['zh-Hant', 'en'],
+    ['zh-TW', 'en'],
+    ['ja-JP', 'en'],
+    [undefined, 'en'],
+  ] as const)('matches supported system language %s to %s', (language, expected) => {
+    expect(localeFromSystemLanguage(language)).toBe(expected);
+  });
+
+  it('uses a saved user language before the system language', () => {
+    expect(resolveInitialLocale({ getItem: () => 'en' }, 'zh-CN')).toBe('en');
+    expect(resolveInitialLocale({ getItem: () => 'zh-CN' }, 'en-US')).toBe('zh-CN');
+    expect(resolveInitialLocale({ getItem: () => null }, 'zh-Hans')).toBe('zh-CN');
+  });
+
   it('keeps English and Simplified Chinese keys and placeholders aligned', () => {
     expect(Object.keys(messages['zh-CN']).sort()).toEqual(Object.keys(messages.en).sort());
     for (const key of Object.keys(messages.en) as Array<keyof typeof messages.en>) {

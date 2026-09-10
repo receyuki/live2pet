@@ -40,7 +40,7 @@
 | **Keep the character, hide the clutter** | Identify parts with thumbnails and hide separable backgrounds or effects. |
 | **One project, two destinations** | Assign animations to Clawd or Codex states, then build ready-to-import packages. |
 | **Interactive by default** | Unmapped Clawd drag and double-click reactions safely reuse Idle. |
-| **Pick up where you left off** | Save projects, reuse runtimes, and work in English or Simplified Chinese. |
+| **Pick up where you left off** | Save projects, reuse runtimes, and match English or Simplified Chinese automatically on first launch. |
 | **Know when a fix ships** | Check the latest stable GitHub Release from Settings, automatically or on demand. |
 
 ## How it works

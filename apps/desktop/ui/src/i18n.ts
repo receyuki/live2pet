@@ -1,5 +1,21 @@
 export type Locale = 'en' | 'zh-CN';
 
+export function localeFromSystemLanguage(language: string | null | undefined): Locale {
+  const parts = (language ?? '').replaceAll('_', '-').toLowerCase().split('-').filter(Boolean);
+  if (parts[0] !== 'zh') return 'en';
+  if (parts.includes('hant') || parts.some((part) => ['tw', 'hk', 'mo'].includes(part))) return 'en';
+  return 'zh-CN';
+}
+
+export function resolveInitialLocale(
+  storage: Pick<Storage, 'getItem'>,
+  systemLanguage: string | null | undefined,
+): Locale {
+  const stored = storage.getItem('live2pet.desktop.locale');
+  if (stored === 'en' || stored === 'zh-CN') return stored;
+  return localeFromSystemLanguage(systemLanguage);
+}
+
 export const messages = {
   en: {
     libraryUseModel: 'Use and start mapping', libraryPreviewOnly: 'Browse and preview models without changing your current project. Choose “Use and start mapping” when ready.', libraryDownloadPreview: 'Click to download preview', libraryThumbnailLoading: 'Preparing preview', libraryPreviewUnavailable: 'Preview unavailable · check runtime', librarySpineVersionUnsupported: 'Spine {value} preview is not supported yet',
