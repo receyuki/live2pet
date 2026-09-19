@@ -6,6 +6,11 @@ GitHub Releases.
 
 ## [Unreleased]
 
+### Compatibility
+
+- Windows x64 packaging and the supported desktop workflow have completed CI
+  and real-device acceptance, so Windows is no longer labelled as preview.
+
 ## [0.2.0] - 2026-09-08
 
 ### New features

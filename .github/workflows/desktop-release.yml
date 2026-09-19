@@ -78,7 +78,7 @@ jobs:
           retention-days: 14
 
   windows:
-    name: Windows x64 preview
+    name: Windows x64
     if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
     needs: verify
     runs-on: windows-latest

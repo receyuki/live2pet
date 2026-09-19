@@ -107,7 +107,7 @@ On first launch, add your runtime and follow the optional guided tutorial. You c
 
 Save a lightweight **.l2p** project for local work, or a portable **.l2pack** project that includes a copy of the selected model. Legacy `.live2pet` projects remain supported.
 
-Spine and Windows support are in preview. PCK support depends on its contents and packaging. [Detailed support and limitations →](docs/guides/user-guide.md#compatibility)
+Spine support remains in preview. PCK support depends on its contents and packaging. [Detailed support and limitations →](docs/guides/user-guide.md#compatibility)
 
 <a id="runtime-setup"></a>
 
