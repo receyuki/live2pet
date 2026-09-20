@@ -11,6 +11,16 @@ const {
 
 const FINGERPRINT = 'a'.repeat(64);
 
+test('closing a preview after its native owner is destroyed still releases resources', async () => {
+  const { service, ownerWindow, calls, webContents } = fixture();
+  await service.open({ projectId: 'fixture', sourceFingerprint: FINGERPRINT, bounds: { x: 0, y: 0, width: 768, height: 768 } });
+  ownerWindow.isDestroyed = () => true;
+  Object.defineProperty(ownerWindow, 'contentView', { get() { throw new Error('Object has been destroyed'); } });
+  await service.close();
+  assert.equal(webContents.closed, true);
+  assert.equal(calls.some(call => call[0] === 'server.close'), true);
+});
+
 test('build validation sees the runtime selected for loading before creating a renderer', async () => {
   const { service, calls } = fixture({ runtime: { runtimePath: '/private/runtime/core.js', descriptor: { fingerprint: 'b'.repeat(64) } } });
   await assert.rejects(service.withRenderer({ projectId: 'fixture', sourceFingerprint: FINGERPRINT, fresh: true, verifyBuildContext: selected => {

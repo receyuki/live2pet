@@ -182,7 +182,7 @@ function createPreviewSessionService({
   }
 
   function removeView(currentView) {
-    if (!currentView) return;
+    if (!currentView || isDestroyed(ownerWindow)) return;
     const contentView = ownerWindow.contentView;
     if (contentView && typeof contentView.removeChildView === 'function') {
       try { contentView.removeChildView(currentView); } catch {}
