@@ -68,6 +68,11 @@ async function run() {
   const runtime = process.env.LIVE2PET_BENCH_RUNTIME;
   const motions = JSON.parse(process.env.LIVE2PET_BENCH_MOTIONS || '[]');
   const repetitions = Number(process.env.LIVE2PET_BENCH_REPETITIONS || 3);
+  const allScenarios = ['cold', 'warm', 'metadata-only', 'one-motion-changed', 'sequential-target'];
+  const requestedScenarios = process.env.LIVE2PET_BENCH_SCENARIOS?.split(',') || allScenarios;
+  assert.ok(requestedScenarios.length && requestedScenarios.every(scenario => allScenarios.includes(scenario)), 'Unknown benchmark scenario.');
+  const scenarios = allScenarios.filter(scenario => requestedScenarios.includes(scenario));
+  assert.ok(scenarios.includes('cold') || !scenarios.some(scenario => ['warm', 'metadata-only'].includes(scenario)), 'Warm parity scenarios require a cold reference.');
   assert.ok(inputPath && path.isAbsolute(inputPath), 'Provide LIVE2PET_BENCH_PROJECT as an absolute project path.');
   assert.ok(motions.length === 4 && motions.every(id => typeof id === 'string' && id), 'Provide four inspected Motion ids through LIVE2PET_BENCH_MOTIONS (JSON array).');
   assert.ok(Number.isInteger(repetitions) && repetitions >= 1 && repetitions <= 10);
@@ -78,6 +83,7 @@ async function run() {
   const runs = [];
   const report = {
     schemaVersion: 1, revision: process.env.LIVE2PET_BENCH_REVISION || 'working-tree',
+    completed: false, expectedRuns: repetitions * scenarios.length,
     platform: process.platform, arch: process.arch, preset: 'balanced',
     method: 'Monotonic wall time around public Desktop build IPC. Electron process-group working sets sampled every 500 ms (KiB); sampled peak, not a guaranteed absolute peak. Artifact download/decoding is outside the timed interval. Stage intervals overlap and are not additive. No model names, Motion ids, or input paths in this report.',
     runs,
@@ -87,8 +93,12 @@ async function run() {
   try {
     const packaged = process.env.LIVE2PET_APP_EXECUTABLE;
     app = await _electron.launch({ executablePath: packaged || require('electron'), args: [...(packaged ? [] : [desktop]), `--user-data-dir=${profile}`], timeout: 30000 });
+    app.process().stderr?.on('data', chunk => process.stderr.write(chunk));
+    app.process().once('exit', (code, signal) => console.log(`Benchmark App exited: ${code ?? signal}`));
     assert.equal(fs.realpathSync(await app.evaluate(({ app }) => app.getPath('userData'))), fs.realpathSync(profile), 'Never run a benchmark against the normal App profile.');
     const page = await app.firstWindow();
+    page.on('crash', () => console.error('Benchmark main page crashed.'));
+    page.on('close', () => console.log('Benchmark main page closed.'));
     await page.waitForFunction(() => Boolean(window.live2pet));
     const invoke = async (method, input) => {
       const response = await page.evaluate(({ method, input }) => input === undefined ? window.live2pet[method]() : window.live2pet[method](input), { method, input });
@@ -106,7 +116,7 @@ async function run() {
     project.targets['codex-pet'] = { profile: 'codex-pet', renderPreset: 'balanced', mappings: Object.fromEntries(['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review'].map((id, i) => [id, `motion:${motions[i % 3]}`])), reactions: {}, options: {} };
     for (let repetition = 1; repetition <= repetitions; repetition++) {
       await invoke('clearBuildCache', { confirmClear: true });
-      for (const scenario of ['cold', 'warm', 'metadata-only', 'one-motion-changed', 'sequential-target']) {
+      for (const scenario of scenarios) {
         await invoke('closePreview');
         const current = structuredClone(project);
         if (scenario === 'metadata-only') current.name = 'Renamed benchmark';
@@ -155,6 +165,7 @@ async function run() {
         }
       }
     }
+    report.completed = true;
   } finally {
     writeReport();
     if (app) await app.close();

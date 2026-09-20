@@ -55,7 +55,10 @@ Required environment:
 | `LIVE2PET_BENCH_REVISION` | Revision label for the report |
 
 `LIVE2PET_BENCH_REPETITIONS` defaults to 3. `LIVE2PET_APP_EXECUTABLE` optionally
-selects a packaged App. The harness preserves Visual Settings, creates mappings
+selects a packaged App. `LIVE2PET_BENCH_SCENARIOS=cold` can build a fresh reference
+for a changed mapping; otherwise all five scenarios run. Warm and metadata-only
+scenarios require a cold reference in the same run.
+The harness preserves Visual Settings, creates mappings
 only in memory and never saves over the input or installs a Pet Package. Current
 automated real-model setup is Live2D; native Spine setup and cancel/retry benchmark
 scenarios remain follow-up acceptance work for #19.
