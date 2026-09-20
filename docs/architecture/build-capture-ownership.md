@@ -1,7 +1,7 @@
 # Capture-scoped renderer ownership
 
-The second checkpoint of [#20](https://github.com/receyuki/live2pet/issues/20)
-adds byte-budgeted Clawd capture/encoding. Full performance acceptance remains open.
+[Issue #20](https://github.com/receyuki/live2pet/issues/20) adds byte-budgeted
+Clawd capture/encoding. Measured results and platform limitations are below.
 
 ## Boundary
 
@@ -10,7 +10,8 @@ The shared Package Build calls it for Visual Settings, bounds preparation and
 capture, then receives owned RGBA candidates. Multi-Motion Clawd encoding can
 overlap subsequent captures; the final Motion waits for the lease to settle.
 Atlas composition and ZIP assembly run outside the lease. Single-Motion Clawd
-and Codex retain their capture-then-encode path.
+uses the same admission pool but still releases its lease before encoding;
+Codex retains its capture-then-encode path.
 Direct renderer inputs remain supported for headless callers. Already captured
 inputs and complete encoded-cache hits do not acquire a lease.
 
@@ -44,7 +45,7 @@ their existing numeric report fields.
 
 One ordered producer hands off each missing Motion to its encoder and waits when
 the shared admission pool is full. The default pool admits at most two raw Motion
-sets across multi-Motion builds, under an **estimated working-byte budget** of
+sets across Clawd builds with capture misses, under an **estimated working-byte budget** of
 one quarter of physical RAM, with a 512 MiB floor and a 3 GiB cap. Thus 4 / 8 /
 16 GiB hosts use 1 / 2 / 3 GiB respectively; larger hosts retain the 3 GiB cap.
 The estimate is four times sampled RGBA bytes plus 64 MiB per Motion, accounting
@@ -65,7 +66,7 @@ unconsumed handoffs and waits for active capture to settle before cleanup.
 and final `reservedBytes`. The last field must be zero after success. The optional
 core `captureBudgetBytes` override creates a separate pool for deterministic
 tests/headless callers; the Desktop default shares one process-wide pool.
-Externally supplied frames and the single-Motion/Codex paths are not budgeted.
+Externally supplied frames and the Codex path are not budgeted.
 
 Pipelined progress carries independent `stageFractions` for capture, validation
 and encoding. The Desktop sums their existing weights instead of assuming every
@@ -83,8 +84,10 @@ The existing planned-cache and runtime-change regressions remain applicable.
 
 Public pipeline tests cover early encoding, oversized admission, byte-identical
 outputs, cancellation, storage/acquisition/capture failures and immediate retry.
-The remaining #20 acceptance includes many-Motion and large-texture repeated
-measurements, native overhead calibration and cross-request peak-memory evidence.
+Admission tests cover concurrent requests sharing the pool and single-Motion
+misses, including renderer release before encoding. Native measurements below
+exercise both one and two simultaneous encoders. They do not claim to bound
+other App processes or unbudgeted Codex/external-frame inputs.
 
 The measured ZIP recompression bottleneck remains separate work in #21.
 
@@ -107,8 +110,8 @@ work no longer depends on the native view remaining alive.
 First-checkpoint verification: 409 Node tests and 190 UI tests passed, with three
 opt-in tests skipped. Typechecking, source-release asset checks and the macOS x64
 packaged startup smoke passed. Independent Standards and Spec reviews reported
-no remaining findings for that checkpoint. The full #20 issue remains open for
-the remaining memory/throughput acceptance.
+no remaining findings for that checkpoint. At that point #20 remained open for
+memory/throughput acceptance.
 
 Second-checkpoint Spine smoke: cold/warm/cancel-retry output bytes and decoded
 samples matched the accepted baseline. Cold build took 22.00 s versus 22.62 s
@@ -122,7 +125,7 @@ regressed from 129.58 s to 149.68 s, while sampled process-group peak fell from
 and ran alone; admission waits totalled 29.27 s, encoding 51.46 s and ZIP assembly
 57.65 s. The previous baseline predates this checkpoint and is not a controlled
 paired experiment. This is a memory/throughput tradeoff requiring follow-up,
-not evidence of an overall acceleration. Do not close #20 on this result.
+not evidence of an overall acceleration, and did not justify closing #20.
 
 ### Admission calibration
 
@@ -137,8 +140,8 @@ generated package. With raw input already resident, 20 ms RSS sampling observed:
 
 | Concurrent encodes | Raw input | Additional encode RSS | Reserved estimate |
 | --- | ---: | ---: | ---: |
-| 1 | 324 MiB | 343 MiB | 1,360 MiB |
-| 2 | 679.5 MiB | 741.4 MiB | 2,846 MiB |
+| 1 | 324 MiB | 358.6 MiB | 1,360 MiB |
+| 2 | 679.5 MiB | 738.2 MiB | 2,846 MiB |
 
 These samples include the mandatory stack copy and native codec work, but are not
 an allocator-wide bound or proof for every model/platform. Source frames plus
@@ -146,4 +149,31 @@ the observed additional RSS fit within the retained four-times-RGBA-plus-64-MiB
 estimate. The calibration used decoded output frames, not redistributed models;
 fresh processes, explicit input lifetime and sampled RSS avoid claiming that
 all native allocations are tracked by JavaScript counters. Raw-cache copies
-and renderer textures are instead exercised by whole-App benchmarks.
+and renderer textures are instead exercised by whole-App benchmarks. The final
+calibration kept sharp's production-default cache settings enabled.
+
+Three large-fixture cold runs with the 3 GiB budget took 131.46 / 129.06 /
+126.00 s, with sampled process-group peaks of 2,955,552 / 3,016,224 / 3,133,372
+KiB. All output image records matched the accepted pre-pipeline baseline exactly.
+The two default-policy warm runs captured/encoded zero frames and also matched,
+but still took 51.07 / 52.53 s because ZIP recompression is unchanged. Compared
+with the 512 MiB checkpoint, throughput recovered at the cost of higher peak
+memory. Lower-memory hosts retain lower admission limits; no universal speedup
+or lower RSS is claimed for every source.
+
+A 12-Motion Spine 4.1 fixture (345 captured frames) was measured twice per path
+in fresh profiles on the same macOS x64 / 16 GiB host. The control uses Package
+Build from `93b224a` with the current Desktop host and benchmark harness, not an
+unchanged historical App. No heavy test suite ran alongside the measurements.
+
+| Path | Cold seconds | Sampled process-group peak (KiB) |
+| --- | --- | --- |
+| Pre-pipeline control | 55.59 / 54.13 | 2,034,316 / 2,355,576 |
+| Adaptive pipeline | 50.87 / 51.29 | 1,799,372 / 1,888,820 |
+
+All twelve WebP files matched across all four runs: full encoded SHA, frame
+count, dimensions, alpha, delays and decoded sample SHA. The mean elapsed time
+fell about 6.9%, and mean sampled peak about 16%. The two resident-Motion ceiling
+was retained, with no reservations remaining at completion. These are small
+local comparisons, not cross-platform performance guarantees; Windows and
+Apple Silicon acceptance remains a separate #22 gate.

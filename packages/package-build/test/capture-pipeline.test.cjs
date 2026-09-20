@@ -140,3 +140,19 @@ test('concurrent builds share a two-Motion admission ceiling', { timeout: 10000 
     assert.equal(build.builds.clawd.timings.pipeline.reservedBytes, 0);
   }
 });
+
+test('single-Motion misses reserve memory but release their renderer before encoding', async () => {
+  const renderer = new SyntheticRenderer();
+  await renderer.load({ motions: [{ id: 'idle', duration: 0.1 }] });
+  const input = project();
+  input.targets.clawd.mappings = { idle: 'motion:idle', thinking: 'motion:idle', working: 'motion:idle', sleeping: 'motion:idle' };
+  let leased = false;
+  const built = await buildProjectTargets({ project: input, targets: ['clawd'],
+    inputsByTarget: { clawd: { render: { preset: 'compact', width: 128, height: 128, samples: 2 },
+      withCaptureRenderer: async consume => { leased = true; try { return await consume(renderer); } finally { leased = false; } },
+    } },
+    optionsByTarget: { clawd: { captureBudgetBytes: 1, onEncodedAsset: () => assert.equal(leased, false) } },
+  });
+  assert.equal(built.builds.clawd.timings.pipeline?.oversizedMotions, 1);
+  assert.equal(built.builds.clawd.timings.pipeline?.reservedBytes, 0);
+});

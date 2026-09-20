@@ -1339,12 +1339,11 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
         const capture = async (renderer, captureCacheOptions = {}) => {
           await prepare(renderer, captureCacheOptions);
           const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, visualSettings: projectVisualSettings, render: configuredRender, signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext, captureTimings });
-          if (targetId === 'clawd') return { ...targetInput, framesByMotion };
           targetOptions.selection = { ...targetOptions.selection, preserveTiming: true };
           const candidatesByRow = Object.fromEntries(Object.entries(targetProject.mappings).map(([row, value]) => [row, framesByMotion[value.slice(7)]?.frames || []]));
           return { ...targetInput, candidatesByRow };
         };
-        if (targetId === 'clawd' && ids.length > 1) {
+        if (targetId === 'clawd' && ids.length > 0) {
           stageFractions = { capture: 0, validate: 0, encode: 0 };
           const { settings: preset } = resolveTargetRenderPreset(targetId, configuredRender);
           capturePipeline = createCapturePipeline({
@@ -1367,7 +1366,7 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
           await capturePipeline.ready;
           renderedInput = { ...targetInput, withFrameSet: capturePipeline.withFrameSet };
         } else {
-          // Single-Motion capture releases the renderer before encoding.
+          // Codex captures its candidates before composition and encoding.
           renderedInput = !ids.length ? { ...targetInput, framesByMotion: {} }
             : targetInput.withCaptureRenderer ? await targetInput.withCaptureRenderer(capture)
               : await capture(renderer);
