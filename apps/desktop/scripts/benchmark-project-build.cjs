@@ -93,7 +93,6 @@ async function run() {
   try {
     const packaged = process.env.LIVE2PET_APP_EXECUTABLE;
     app = await _electron.launch({ executablePath: packaged || require('electron'), args: [...(packaged ? [] : [desktop]), `--user-data-dir=${profile}`], timeout: 30000 });
-    app.process().stderr?.on('data', chunk => process.stderr.write(chunk));
     app.process().once('exit', (code, signal) => console.log(`Benchmark App exited: ${code ?? signal}`));
     assert.equal(fs.realpathSync(await app.evaluate(({ app }) => app.getPath('userData'))), fs.realpathSync(profile), 'Never run a benchmark against the normal App profile.');
     const page = await app.firstWindow();
