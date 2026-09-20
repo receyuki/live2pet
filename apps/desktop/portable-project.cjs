@@ -170,6 +170,27 @@ async function rejectSymlinkComponents(root, target) {
   }
 }
 
+function manifestInventory(manifest) {
+  const declaredFiles = new Map();
+  const declaredDirectories = new Map();
+  for (const record of manifest.files) {
+    const fileIdentity = record.path.normalize('NFC').toLowerCase();
+    declaredFiles.set(fileIdentity, record.path);
+    let directory = path.posix.dirname(record.path);
+    while (directory !== '.') {
+      const directoryIdentity = directory.normalize('NFC').toLowerCase();
+      const existing = declaredDirectories.get(directoryIdentity);
+      if (existing && existing !== directory) fail('INVALID_PORTABLE_PROJECT', 'The portable project manifest contains duplicate directory paths.');
+      declaredDirectories.set(directoryIdentity, directory);
+      directory = path.posix.dirname(directory);
+    }
+  }
+  for (const identity of declaredFiles.keys()) {
+    if (declaredDirectories.has(identity)) fail('INVALID_PORTABLE_PROJECT', 'The portable project uses the same path as a file and directory.');
+  }
+  return { declaredFiles, declaredDirectories };
+}
+
 function validateManifest(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || value.format !== PORTABLE_FORMAT || value.containerVersion !== CONTAINER_VERSION || value.project !== PROJECT_ENTRY) fail('INVALID_PORTABLE_PROJECT', 'The selected file is not a supported Live2Pet portable project.');
   if (!value.source || !['file', 'directory'].includes(value.source.type) || !safeEntryPath(value.source.entry) || (value.source.entry !== 'source' && !value.source.entry.startsWith('source/'))) fail('INVALID_PORTABLE_PROJECT', 'The portable project source entry is invalid.');
@@ -196,6 +217,7 @@ function validateManifest(value) {
       fail('INVALID_PORTABLE_PROJECT', 'The portable project contains a file outside its declared source.');
     }
   }
+  manifestInventory(value);
   return value;
 }
 
@@ -262,20 +284,7 @@ async function validateCachedProject(destination, ready, archiveHash, manifest) 
   }
   const readyStat = await fsp.lstat(ready).catch(() => null);
   if (!readyStat?.isFile() || marker.trim() !== archiveHash) fail('INVALID_PORTABLE_PROJECT', 'The portable project working copy is not trusted.');
-  const declaredFiles = new Map();
-  const declaredDirectories = new Map();
-  for (const record of manifest.files) {
-    const fileIdentity = record.path.normalize('NFC').toLowerCase();
-    declaredFiles.set(fileIdentity, record.path);
-    let directory = path.posix.dirname(record.path);
-    while (directory !== '.') {
-      const directoryIdentity = directory.normalize('NFC').toLowerCase();
-      const existing = declaredDirectories.get(directoryIdentity);
-      if (existing && existing !== directory) fail('INVALID_PORTABLE_PROJECT', 'The portable project manifest contains duplicate directory paths.');
-      declaredDirectories.set(directoryIdentity, directory);
-      directory = path.posix.dirname(directory);
-    }
-  }
+  const { declaredFiles, declaredDirectories } = manifestInventory(manifest);
   const seen = new Set();
   async function inspectCache(directory, relativeDirectory = '') {
     const entries = await fsp.readdir(directory, { withFileTypes: true });

@@ -100,6 +100,28 @@ test('rejects a project whose source location disagrees with the manifest on eve
   assert.equal(fs.existsSync(workspace) ? fs.readdirSync(workspace).length : 0, 0);
 });
 
+test('rejects colliding ancestor paths before publishing a portable working copy', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-portable-path-collision-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const project = createProject({
+    projectId: 'portable-path-collision', name: 'Path collision',
+    source: { kind: 'standard-directory', name: 'model', modelConfig: 'Parts/a.json', fingerprint: 'fixture' }, targets: {},
+  });
+  const projectText = serializeProject(project, { sourceLocation: { type: 'relative', path: 'source' } });
+  for (const [name, sourceEntries] of [
+    ['case', [['source/Parts/a.json', '{}'], ['source/parts/b.json', '{}']]],
+    ['kind', [['source/Parts', '{}'], ['source/Parts/a.json', '{}']]],
+  ]) {
+    const packagePath = path.join(root, `${name}.l2pack`);
+    const workspace = path.join(root, name);
+    await writeArchive(packagePath, [['manifest.json', manifestFor(projectText, sourceEntries)], ['project.l2p', projectText], ...sourceEntries]);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await assert.rejects(openPortableProject(packagePath, workspace), (error) => error.code === 'INVALID_PORTABLE_PROJECT');
+      assert.equal(fs.existsSync(workspace) ? fs.readdirSync(workspace).length : 0, 0);
+    }
+  }
+});
+
 test('does not trust a ready cache after a packaged source file is changed', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-portable-cache-integrity-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
