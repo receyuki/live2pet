@@ -89,7 +89,7 @@ describe('ModelLibrary thumbnails', () => {
     expect(openLive2DPreview).toHaveBeenCalled();
 
     view.unmount();
-    expect(closeLive2DPreview).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(closeLive2DPreview).toHaveBeenCalledTimes(1));
   });
 
   it('labels unsupported Spine versions without trying to render them', async () => {

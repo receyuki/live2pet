@@ -36,7 +36,7 @@
 | | Make it yours |
 | --- | --- |
 | **Find your character** | Drop anywhere to browse, search, and sort local collections, or open a GitHub folder and download one model or all of them. |
-| **See every motion** | Play, pause, scrub, and compare animations in a live preview. |
+| **See every motion** | Play, pause, scrub, and compare animations live; previews stop rendering when you leave their page. |
 | **Keep the character, hide the clutter** | Identify parts with thumbnails and hide separable backgrounds or effects. |
 | **One project, two destinations** | Assign animations to Clawd or Codex states, then build ready-to-import packages. |
 | **Interactive by default** | Unmapped Clawd drag and double-click reactions safely reuse Idle. |

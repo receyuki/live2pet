@@ -28,6 +28,11 @@ Use the scenarios relevant to the change. Prefer synthetic fixtures; keep user m
 
 ## Asynchronous document ownership
 
+- Direct and Source Library confirmation must use the same project defaults and retain the chosen Motion when entering Map.
+- Return from Settings without losing the selected model or current project, and restore a usable keyboard focus target in both locales.
+- Delay preview opening or playback, leave the page, then open another preview. Old completion callbacks and queued commands must not hide, close, or update the new owner's surface.
+- Hide an adapter, then issue playback, seek, or visual-inspection commands. Its automatic ticker must remain stopped until explicitly active; paused playback and manual capture are separate states.
+
 - Delay Save/Save As, edit the name, mappings, or Visual Settings, and complete the save. Only the submitted snapshot becomes the saved baseline; newer edits and undo/redo history survive.
 - Repeated Save commands are coalesced while a save is in flight. Cancel/failure leaves the current document and recovery draft intact.
 - Switch or reopen a project before Save returns. The old result must not change the new session's document, filename, dirty state, or draft.

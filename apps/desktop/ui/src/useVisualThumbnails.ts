@@ -10,7 +10,7 @@ export type VisualElementThumbnailState = {
 
 // One low-priority request at a time: never fill the renderer command queue
 // with the whole model, and let playback/visibility commands run between Parts.
-export function useVisualThumbnails(scope: string, enabled: boolean) {
+export function useVisualThumbnails(scope: string, enabled: boolean, requestThumbnail = getPreviewVisualElementThumbnail) {
   const store = useRef({ scope, values: {} as Record<string, VisualElementThumbnailState> });
   if (store.current.scope !== scope) store.current = { scope, values: {} };
   const [selection, setSelection] = useState({ scope, id: null as string | null });
@@ -32,7 +32,7 @@ export function useVisualThumbnails(scope: string, enabled: boolean) {
       pending.current = true;
       current.values[id] = { id, dataUrl: null, loading: true };
       refresh();
-      void Promise.resolve().then(() => getPreviewVisualElementThumbnail(id)).then(result => {
+      void Promise.resolve().then(() => requestThumbnail(id)).then(result => {
         if (result.id !== id) throw new Error('Thumbnail identity mismatch');
         current.values[id] = { ...result, loading: false };
       }).catch(() => {
@@ -43,7 +43,7 @@ export function useVisualThumbnails(scope: string, enabled: boolean) {
       });
     }, 32);
     return () => window.clearTimeout(timer);
-  }, [scope, enabled, selectedId, visibleIds, revision]);
+  }, [scope, enabled, selectedId, visibleIds, revision, requestThumbnail]);
 
   const inspect = (id: string) => {
     if (store.current.values[id]?.failed) delete store.current.values[id];

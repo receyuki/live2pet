@@ -107,6 +107,15 @@ function pageLoad(source, options) {
         if (this.player.startRendering) this.player.startRendering();
         else { this.player.stopRequestAnimationFrame = false; this.player.drawFrame(); }
       },
+      syncPlayback() {
+        if (this.active && this.options.playbackMode === 'realtime' && this.state.playing) {
+          this.player.play();
+          this.startRendering();
+        } else {
+          this.player.pause();
+          this.player.stopRendering();
+        }
+      },
     };
     window.__live2petSpine = runtime;
     let settled = false;
@@ -140,7 +149,11 @@ function pageLoad(source, options) {
         runtime.state.time += delta;
         if (motion?.duration > 0 && runtime.state.time >= motion.duration) {
           if (runtime.state.loop) runtime.state.time %= motion.duration;
-          else { runtime.state.time = motion.duration; runtime.state.playing = false; runtime.player.pause(); }
+          else {
+            runtime.state.time = motion.duration;
+            runtime.state.playing = false;
+            runtime.syncPlayback();
+          }
         }
       },
       success(player) {
@@ -174,14 +187,14 @@ function pageLoad(source, options) {
 
 function pageUnload() { const runtime = window.__live2petSpine; runtime?.player?.dispose(); delete window.__live2petSpine; document.body.innerHTML = ''; return { loaded: false }; }
 function pageState() { const runtime = window.__live2petSpine; if (!runtime) throw new Error('Renderer is not loaded.'); return { ...runtime.state }; }
-function pagePlay(id, loop, speed, start) { const runtime = window.__live2petSpine; const motion = runtime.source.motions.find((item) => item.id === id); if (!motion) throw new Error(`Animation is not available: ${id}`); runtime.player.setAnimation(id, loop); const entry = runtime.track(); if (entry) entry.trackTime = start; runtime.state = { ...runtime.state, motionId: id, loop, speed, time: start, playing: true }; runtime.player.speed = speed; runtime.player.paused = false; runtime.pose(start); runtime.fit(id); runtime.draw(); if (runtime.active && runtime.options.playbackMode === 'realtime') runtime.startRendering(); return { ...runtime.state }; }
-function pagePause() { const runtime = window.__live2petSpine; runtime.state.playing = false; runtime.player.pause(); runtime.player.stopRendering(); return { ...runtime.state }; }
-function pageResume() { const runtime = window.__live2petSpine; runtime.state.playing = true; runtime.player.speed = runtime.state.speed; runtime.player.play(); if (runtime.active && runtime.options.playbackMode === 'realtime') runtime.startRendering(); return { ...runtime.state }; }
-function pageRestart() { const runtime = window.__live2petSpine; const id = runtime.state.motionId; runtime.player.setAnimation(id, runtime.state.loop); runtime.state.time = 0; runtime.state.playing = true; runtime.player.speed = runtime.state.speed; runtime.player.paused = false; runtime.pose(0); runtime.fit(id); runtime.draw(); if (runtime.active && runtime.options.playbackMode === 'realtime') runtime.startRendering(); return { ...runtime.state }; }
-function pageSetActive(active) { const runtime = window.__live2petSpine; runtime.active = Boolean(active); if (!runtime.active) { runtime.player.pause(); runtime.player.stopRendering(); } else if (runtime.state.playing && runtime.options.playbackMode === 'realtime') { runtime.player.play(); runtime.startRendering(); } return { ...runtime.state }; }
+function pagePlay(id, loop, speed, start) { const runtime = window.__live2petSpine; const motion = runtime.source.motions.find((item) => item.id === id); if (!motion) throw new Error(`Animation is not available: ${id}`); runtime.player.setAnimation(id, loop); const entry = runtime.track(); if (entry) entry.trackTime = start; runtime.state = { ...runtime.state, motionId: id, loop, speed, time: start, playing: true }; runtime.player.speed = speed; runtime.pose(start); runtime.fit(id); runtime.draw(); runtime.syncPlayback(); return { ...runtime.state }; }
+function pagePause() { const runtime = window.__live2petSpine; runtime.state.playing = false; runtime.syncPlayback(); return { ...runtime.state }; }
+function pageResume() { const runtime = window.__live2petSpine; runtime.state.playing = true; runtime.player.speed = runtime.state.speed; runtime.syncPlayback(); return { ...runtime.state }; }
+function pageRestart() { const runtime = window.__live2petSpine; const id = runtime.state.motionId; runtime.player.setAnimation(id, runtime.state.loop); runtime.state.time = 0; runtime.state.playing = true; runtime.player.speed = runtime.state.speed; runtime.pose(0); runtime.fit(id); runtime.draw(); runtime.syncPlayback(); return { ...runtime.state }; }
+function pageSetActive(active) { const runtime = window.__live2petSpine; runtime.active = Boolean(active); runtime.syncPlayback(); return { ...runtime.state }; }
 function pagePlayback(loop, speed) { const runtime = window.__live2petSpine; if (loop !== null) { runtime.state.loop = loop; const entry = runtime.track(); if (entry) entry.loop = loop; } if (speed !== null) { runtime.state.speed = speed; runtime.player.speed = speed; } return { ...runtime.state }; }
 function pageSeek(time) { const runtime = window.__live2petSpine; runtime.state.time = time; runtime.pose(time); runtime.draw(); return { ...runtime.state }; }
-function pageStep(delta) { const runtime = window.__live2petSpine; if (!runtime.state.playing) return { ...runtime.state }; const motion = runtime.source.motions.find((item) => item.id === runtime.state.motionId); let next = runtime.state.time + delta * runtime.state.speed; if (motion.duration > 0 && next >= motion.duration) { if (runtime.state.loop) next %= motion.duration; else { next = motion.duration; runtime.state.playing = false; } } runtime.state.time = next; runtime.pose(next); runtime.draw(); return { ...runtime.state }; }
+function pageStep(delta) { const runtime = window.__live2petSpine; if (!runtime.state.playing) return { ...runtime.state }; const motion = runtime.source.motions.find((item) => item.id === runtime.state.motionId); let next = runtime.state.time + delta * runtime.state.speed; if (motion.duration > 0 && next >= motion.duration) { if (runtime.state.loop) next %= motion.duration; else { next = motion.duration; runtime.state.playing = false; runtime.syncPlayback(); } } runtime.state.time = next; runtime.pose(next); runtime.draw(); return { ...runtime.state }; }
 function pageResize(width, height) { const runtime = window.__live2petSpine; runtime.container.style.width = `${width}px`; runtime.container.style.height = `${height}px`; runtime.draw(); return { width, height }; }
 function pageBounds(id) { const runtime = window.__live2petSpine; return runtime.fit(id); }
 function pageVisualElements() { const runtime = window.__live2petSpine; return runtime.player.skeleton.slots.map((slot) => ({ id: `slot:${slot.data.name}`, name: slot.data.name, kind: 'slot' })); }
@@ -224,4 +237,9 @@ class SpinePlayerAdapter {
   async captureRgba({ width = this.options.width, height = this.options.height, motionId = this.state.motionId, time = this.state.time } = {}) { const motion = this.motion(motionId); const targetWidth = integer(width, 'Capture width'), targetHeight = integer(height, 'Capture height'), captureTime = finite(time, 'Capture time', 0, Math.max(0, motion.duration)); const capture = await this.evaluate(pageCapture, motionId, captureTime, targetWidth, targetHeight, this.page.supportsBinaryResults === true); const rgba = ArrayBuffer.isView(capture?.rgba) ? new Uint8Array(capture.rgba.buffer, capture.rgba.byteOffset, capture.rgba.byteLength) : Array.isArray(capture?.rgba) ? Uint8Array.from(capture.rgba) : null; if (!rgba || rgba.byteLength !== targetWidth * targetHeight * 4) fail('INVALID_RENDER_CAPTURE', 'Spine renderer returned an invalid RGBA capture.'); this.state.motionId = motionId; this.state.time = captureTime; return { contractVersion: 1, width: targetWidth, height: targetHeight, motionId, time: captureTime, rgba }; }
 }
 
-module.exports = { SUPPORTED_SPINE_RUNTIME_LINES, SpinePlayerAdapter, spineSourceFromManifest, supportsSpineRuntime };
+module.exports = {
+  SUPPORTED_SPINE_RUNTIME_LINES,
+  SpinePlayerAdapter,
+  spineSourceFromManifest,
+  supportsSpineRuntime,
+};

@@ -213,6 +213,55 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('Live2Pet desktop shell', () => {
+  it.each(['direct', 'library'])('keeps the confirmed motion and project defaults through %s import', async route => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const api = installDesktopApi();
+    const initial = await api.inspectSource();
+    const inspection = { ...initial.result, motions: [...initial.result.motions, { id: 'wave:1', group: 'wave', index: 1, name: 'Wave', sourceFile: 'wave.mtn', duration: 3 }] };
+    api.inspectSource.mockResolvedValue({ ...initial, result: inspection });
+    const user = userEvent.setup();
+    const view = render(<App />);
+    if (route === 'direct') await user.upload(view.container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Vicious Khepri.pck'));
+    else {
+      await user.click(screen.getByRole('button', { name: 'Browse model folder' }));
+      await user.click(await screen.findByRole('button', { name: /Spine Hero/ }));
+    }
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'Motions' }), 'wave:1');
+    await user.click(screen.getByRole('button', { name: 'Use and start mapping' }));
+    expect(await screen.findByRole('main', { name: 'Map' })).toBeVisible();
+    expect(screen.getByRole('button', { name: /Wave.*Selected/ })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Save project' }));
+    await vi.waitFor(() => expect(api.saveProject).toHaveBeenCalledOnce());
+    expect(api.saveProject.mock.calls[0][0].project).toMatchObject({
+      format: 'live2pet-project', schemaVersion: 3, name: 'Vicious Khepri',
+      source: { kind: 'pck', name: 'Vicious Khepri', fingerprint: 'fixture', modelConfig: 'model.json' },
+      recipes: [], visualSettings: { hiddenElementIds: [] },
+      targets: { clawd: { mappings: {}, reactions: {}, options: {} }, 'codex-pet': { mappings: {}, reactions: {}, options: {} } },
+    });
+  });
+
+  it('keeps the newer model preview when an earlier model finishes opening late', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const api = installDesktopApi();
+    const finishOpen = api.openPreview.getMockImplementation()!;
+    let resolveFirst!: (value: Awaited<ReturnType<typeof finishOpen>>) => void;
+    api.openPreview.mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }));
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    const input = container.querySelector('input[accept=".pck"]') as HTMLInputElement;
+    await user.upload(input, new File(['one'], 'One.pck'));
+    await vi.waitFor(() => expect(api.openPreview).toHaveBeenCalledOnce());
+    const original = await api.inspectSource();
+    api.inspectSource.mockResolvedValue({ ...original, result: { ...original.result, source: { ...original.result.source, name: 'Newer model', fingerprint: 'newer-fingerprint' } } });
+    await user.upload(input, new File(['two'], 'Two.pck'));
+    expect(await screen.findByRole('heading', { name: 'Newer model' })).toBeVisible();
+    await act(async () => resolveFirst(await finishOpen(api.openPreview.mock.calls[0][0])));
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeEnabled());
+    expect(api.openPreview.mock.calls.at(-1)?.[0].sourceFingerprint).toBe('newer-fingerprint');
+    const close = vi.mocked(window.live2pet!.closePreview!);
+    expect(close.mock.invocationCallOrder[0]).toBeLessThan(api.openPreview.mock.invocationCallOrder[1]);
+  });
+
   it('browses a local model library before inspecting the selected model', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const api = installDesktopApi();
@@ -279,6 +328,17 @@ describe('Live2Pet desktop shell', () => {
     expect(screen.getByRole('heading', { name: 'Recent projects' })).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Open design preview' })).not.toBeInTheDocument();
     expect(screen.queryByText('Interface preview')).not.toBeInTheDocument();
+  });
+
+  it.each(['en', 'zh-CN'] as const)('returns keyboard focus after native Settings navigation (%s)', async locale => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    localStorage.setItem('live2pet.desktop.locale', locale);
+    const api = installDesktopApi();
+    const user = userEvent.setup();
+    render(<App />);
+    act(() => api.emitAppCommand('settings'));
+    await user.click(screen.getByRole('button', { name: locale === 'en' ? 'Done' : '完成' }));
+    expect(screen.getByRole('button', { name: locale === 'en' ? 'Settings' : '设置' })).toHaveFocus();
   });
 
   it('places Settings Done in the shared top toolbar rather than the sidebar', async () => {

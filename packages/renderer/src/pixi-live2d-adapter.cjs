@@ -248,7 +248,7 @@ function pageLoad(source, options) {
       if (!state.playing) app.stop();
     };
     const syncTicker = () => {
-      if (realtime && state.playing) app.start();
+      if (realtime && runtime.active && state.playing) app.start();
       else app.stop();
     };
     if (realtime) app.ticker.add(tickerUpdate);
@@ -266,6 +266,11 @@ function pageLoad(source, options) {
       state,
       options,
       realtime,
+      // A loaded renderer starts in the foreground. The host explicitly
+      // toggles this when a preview leaves or re-enters the active surface.
+      // Keep it separate from `state.playing`: an inactive preview may retain
+      // its playback intent without owning a background ticker.
+      active: true,
       advance,
       tickerUpdate,
       syncTicker,
@@ -307,8 +312,8 @@ function pageResize(width, height) {
 function pageSetActive(active) {
   const runtime = window.__live2petPixiLive2D;
   if (!runtime) throw new Error('Renderer is not loaded.');
-  if (active) runtime.syncTicker();
-  else runtime.app.stop();
+  runtime.active = Boolean(active);
+  runtime.syncTicker();
   return { ...runtime.state };
 }
 
@@ -409,7 +414,7 @@ function pageStep(deltaSeconds) {
   const runtime = window.__live2petPixiLive2D;
   if (!runtime) throw new Error('Renderer is not loaded.');
   if (!runtime.state.motionId || !runtime.state.playing) return { ...runtime.state };
-  const resumeRealtime = runtime.realtime && runtime.app.ticker.started;
+  const resumeRealtime = runtime.realtime && runtime.active && runtime.app.ticker.started;
   runtime.app.stop();
   runtime.advance(deltaSeconds);
   runtime.render();
@@ -446,6 +451,7 @@ function pageCapture(motionId, time, width, height, priority, binary = false) {
     const focus = model.internalModel?.focusController;
     const focusSnapshot = focus ? Object.fromEntries(['targetX', 'targetY', 'x', 'y', 'vx', 'vy'].map((key) => [key, focus[key]])) : null;
     const autoInteract = model.autoInteract;
+    const previousPlaying = runtime.state.playing;
     model.autoInteract = false;
     model.unregisterInteraction?.();
     if (focus) for (const key of ['targetX', 'targetY', 'x', 'y', 'vx', 'vy']) focus[key] = 0;
@@ -490,8 +496,9 @@ function pageCapture(motionId, time, width, height, priority, binary = false) {
       // millions of channels into JS numbers makes capture serialization far
       // more expensive than the render itself. Browser-only hosts retain the
       // serializable-array path unless they explicitly support binary results.
-      return { width, height, motionId: motion.id, time: captureTime, rgba: binary ? pixels : Array.from(pixels) };
+      return { width, height, motionId: motion.id, time: captureTime, playing: previousPlaying, rgba: binary ? pixels : Array.from(pixels) };
     } finally {
+      runtime.state.playing = previousPlaying;
       if (focusSnapshot) for (const [key, value] of Object.entries(focusSnapshot)) focus[key] = value;
       model.autoInteract = autoInteract;
       if (autoInteract) model.registerInteraction?.(runtime.app.renderer.plugins?.interaction);
@@ -689,7 +696,7 @@ class PixiLive2dAdapter {
     if (!capture || capture.width !== targetWidth || capture.height !== targetHeight || !rgba || rgba.byteLength !== targetWidth * targetHeight * 4) fail('INVALID_RENDER_CAPTURE', `Pixi renderer returned an invalid RGBA capture for ${motionId}.`);
     this.state.motionId = motion.id;
     this.state.time = captureTime;
-    this.state.playing = true;
+    this.state.playing = capture.playing == null ? this.state.playing : Boolean(capture.playing);
     return { contractVersion: 1, width: targetWidth, height: targetHeight, motionId: motion.id, time: captureTime, rgba };
   }
 }

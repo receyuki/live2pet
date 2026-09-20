@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const vm = require('node:vm');
 
 const {
   CONTRACT_METHODS,
@@ -44,7 +45,6 @@ const {
   selectRendererAdapter,
   sampleMotionCandidates,
 } = require('../src/index.cjs');
-
 function source() {
   return {
     motions: [
@@ -391,8 +391,14 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     pageSetActive(false);
     assert.equal(ticker.started, false);
     assert.equal(global.window.__live2petPixiLive2D.state.playing, true);
+    await pagePlayMotion('Base:wave', true, 1, 0, 3);
+    assert.equal(ticker.started, false, 'an inactive preview must not restart its ticker when playback changes');
+    const hiddenSeek = await pageSeek(0.25, 3);
+    assert.equal(hiddenSeek.playing, true);
+    assert.equal(ticker.started, false, 'an inactive preview must not restart its ticker when seeking');
     pageSetActive(true);
     assert.equal(ticker.started, true);
+    await pagePlayMotion('Base:wave', false, 2, 0.032, 3);
 
     assert.deepEqual(pageResize(10, 6), { width: 10, height: 6 });
 
@@ -429,6 +435,10 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     assert.equal(sought.time, 0.25);
     assert.equal(sought.playing, false);
     assert.equal(ticker.started, false, 'paused seeking never starts the realtime ticker');
+    const pausedCapture = await pageCapture('Base:wave', 0.3, 8, 4, 3);
+    assert.equal(pausedCapture.playing, false);
+    assert.equal(global.window.__live2petPixiLive2D.state.playing, false, 'capturing a frame preserves paused playback');
+    assert.equal(ticker.started, false);
 
     await pageUnload();
     assert.equal(ticker.started, false);
@@ -452,6 +462,80 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     global.window = previousWindow;
     global.document = previousDocument;
   }
+});
+
+test('Spine serialized preview keeps inactive and manual playback stopped and releases a non-looping end', async () => {
+  let player;
+  const animation = { name: 'idle', duration: 1, apply() {} };
+  const track = { trackTime: 0, loop: true };
+  class Player {
+    constructor(_container, config) {
+      player = this;
+      this.config = config;
+      this.paused = true;
+      this.stopRequestAnimationFrame = true;
+      this.canvas = { style: {}, toDataURL: () => 'data:image/png;base64,fixture' };
+      this.skeleton = {
+        data: { animations: [animation], findAnimation: () => animation },
+        slots: [{ data: { name: 'body' }, setAttachment() {} }],
+        setToSetupPose() {}, updateWorldTransform() {},
+        getBounds(offset, size) { offset.x = 0; offset.y = 0; size.x = 100; size.y = 100; },
+      };
+      this.animationState = { getCurrent: () => track };
+      this.sceneRenderer = { skeletonRenderer: { clipper: {} } };
+      this.context = { gl: { readPixels() {} } };
+      queueMicrotask(() => config.success(this));
+    }
+    setAnimation(_id, loop) { track.loop = loop; }
+    play() { this.paused = false; }
+    pause() { this.paused = true; }
+    startRendering() { this.stopRequestAnimationFrame = false; }
+    stopRendering() { this.stopRequestAnimationFrame = true; }
+    drawFrame() {}
+    dispose() { this.stopRendering(); }
+  }
+  const browser = {
+    window: { spine: { SpinePlayer: Player, Vector2: class {} }, setTimeout, clearTimeout, setInterval, clearInterval },
+    document: { body: { innerHTML: '' }, getElementById: () => ({ style: {} }) },
+  };
+  const page = { async evaluate(fn, ...args) { return vm.runInNewContext(`(${fn.toString()})`, browser)(...args); } };
+  const input = { format: 'spine', runtimeLine: '4.1', skeletonUrl: '/hero.json', atlasUrl: '/hero.atlas', motions: [{ id: 'idle', name: 'Idle', duration: 1 }], slots: [] };
+  const renderer = new SpinePlayerAdapter({ page, playbackMode: 'realtime' });
+  await renderer.load(input);
+  await renderer.setActive(false);
+  for (const command of [
+    () => renderer.playMotion('idle', { loop: true }),
+    () => renderer.seek(0.2),
+    () => renderer.resume(),
+    () => renderer.restart(),
+    () => renderer.setVisualSettings({ hiddenElementIds: ['slot:body'] }),
+    () => renderer.getVisualElementThumbnail('slot:body'),
+  ]) {
+    await command();
+    assert.equal(player.paused, true);
+    assert.equal(player.stopRequestAnimationFrame, true, 'inactive commands must not restart rendering');
+  }
+  await renderer.setActive(true);
+  assert.equal(player.paused, false);
+  assert.equal(player.stopRequestAnimationFrame, false);
+  await renderer.playMotion('idle', { loop: false, start: 0.9 });
+  player.config.frame(player, 0.2);
+  assert.equal((await renderer.readState()).playing, false);
+  assert.equal(player.paused, true);
+  assert.equal(player.stopRequestAnimationFrame, true, 'non-looping realtime completion stops rendering');
+  await renderer.playMotion('idle', { loop: false, start: 0.9 });
+  assert.equal((await renderer.step(0.2)).time, 1);
+  assert.equal(player.stopRequestAnimationFrame, true);
+  await renderer.unload();
+
+  const manual = new SpinePlayerAdapter({ page, playbackMode: 'manual' });
+  await manual.load(input);
+  await manual.playMotion('idle', { loop: true });
+  await manual.setActive(true);
+  assert.equal(player.stopRequestAnimationFrame, true, 'manual capture never owns an automatic render loop');
+  await manual.captureRgba({ width: 2, height: 2, time: 0.2 });
+  assert.equal(player.stopRequestAnimationFrame, true);
+  await manual.unload();
 });
 
 test('Cubism 2 adapter keeps the legacy boundary explicit and preserves expression indexes', async () => {

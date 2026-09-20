@@ -1,31 +1,14 @@
-import { ModelLibrary, ModelPreview } from './model-library';
-import {
-  Button,
-  ButtonGroup,
-  Card,
-  Chip,
-  Input,
-  ProgressBar,
-  Tabs,
-} from "@heroui/react";
+import { Button, ButtonGroup, Card, Chip, Input, ProgressBar, Tabs } from "@heroui/react";
 import { buttonGroupVariants, buttonVariants } from '@heroui/styles';
 import type { ComponentPropsWithRef, CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import {
-  Archive,
   AlertTriangle,
   Box,
   ChevronRight,
   CircleCheck,
-  CircleHelp,
-  Database,
   Download,
-  ExternalLink,
   FolderOpen,
   Gauge,
-  GitBranch,
-  HardDrive,
-  Languages,
-  Moon,
   PackageCheck,
   Pause,
   Play,
@@ -36,36 +19,21 @@ import {
   Settings as SettingsIcon,
   SlidersHorizontal,
   Sparkles,
-  Sun,
-  Trash2,
   Upload,
   WandSparkles,
-  X,
 } from "lucide-react";
-import { ChangeEvent, DragEvent, ReactNode, useEffect, useReducer, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, ReactNode, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import {
-  clearCache,
   checkForUpdates,
   buildProject,
   createBuildRequest,
   cancelBuild,
-  clearRuntimeSettings,
-  configureRuntimePath,
-  configureRuntime,
   getAppVersion,
-  getCacheStatus,
   getRecentProjects,
   clearRecentProjects,
   getRuntimeSettings,
   getSpinePackStatus,
-  getSourceLibraryCacheStatus,
-  configureSourceLibraryCache,
-  clearSourceLibraryCache,
   installSpinePack,
-  removeSpinePack,
-  openSourceLibrary,
-  openGitHubLibrary,
-  downloadSourceLibrary,
   inspectLibrarySource,
   getDesktopFilePath,
   hasDesktopApi,
@@ -74,14 +42,10 @@ import {
   relinkSourcePath,
   acknowledgeSourceReview,
   Live2PetProject,
-  layoutLive2DPreview,
-  onLive2DPreviewStatus,
   onBuildProgress,
-  onLibraryDownloadProgress,
   onAppCommand,
   openProject,
   openReleasePage,
-  openLive2DPreview,
   readLive2DPreviewStatus,
   playLive2DPreview,
   controlLive2DPreview,
@@ -98,7 +62,6 @@ import {
   SourceLibrary,
   SourceLibraryCandidate,
   SourceLibrarySelection,
-  SourceLibraryDownloadProgress,
   RecentProject,
   saveProject,
   SourceInspection,
@@ -114,31 +77,22 @@ import {
   skipOnboarding,
   writeOnboardingState,
 } from './onboarding/onboarding-state';
-import {
-  appReducer,
-  AppAction,
-  AppSettings,
-  initialAppState,
-  SettingsSection,
-} from "./app-state";
+import { appReducer, AppAction, AppSettings, initialAppState } from "./app-state";
 import { Locale, MessageKey, resolveInitialLocale, translate, translateBehavior } from "./i18n";
-import runtimeHelpLinks from "../../runtime-help-links.json";
 import { isSingleSourceSelection, projectIdFromSourceName, sourcePathFromSelection } from "./source-selection";
-import { hasDraggedFiles, isProjectFile, isSourceDirectoryDrop, sourceFilesFromDrop } from "./file-drop";
+import { hasDraggedFiles, isProjectFile, sourceFilesFromDrop } from "./file-drop";
 import { CLAWD_PROFILE, CODEX_PROFILE, MappingDestination } from "./target-profiles";
 import { BuildView } from "./BuildView";
-import { TargetSettings } from "./TargetSettings";
 import { VisibilityPanel, soloVisualSettings } from './VisibilityPanel';
 import { useVisualThumbnails } from './useVisualThumbnails';
-import { OutputSettings } from './OutputSettings';
 import { buildReducer, initialBuildState } from "./build-state";
-import {
-  clearProjectDraft,
-  PROJECT_DRAFT_DEBOUNCE_MS,
-  readProjectDraft,
-  writeProjectDraft,
-} from "./project-draft";
+import { clearProjectDraft, PROJECT_DRAFT_DEBOUNCE_MS, readProjectDraft, writeProjectDraft } from "./project-draft";
 import type { ProjectDraft } from "./project-draft";
+import { SettingsView, SetupView } from "./SettingsView";
+import { ModelsView } from "./ModelsView";
+import { projectFromSource } from './project-from-source';
+import { usePreviewSession } from './usePreviewSession';
+import { getPreviewVisualElementThumbnail } from './app-host';
 
 const SETUP_KEY = "live2pet.desktop.setup-completed";
 const LOCALE_KEY = "live2pet.desktop.locale";
@@ -190,331 +144,6 @@ function preserveTextEditingHistory(command: "undo" | "redo"): boolean {
   return true;
 }
 
-function PageHeading({ eyebrow, title, body }: { eyebrow: string; title: string; body: string }) {
-  return (
-    <header className="page-heading">
-      <p className="eyebrow"><Sparkles size={13} />{eyebrow}</p>
-      <h1>{title}</h1>
-      <p>{body}</p>
-    </header>
-  );
-}
-
-function RuntimePanel({ locale, compact = false, spinePack = null, onSettingsChange, onSpinePackChange }: { locale: Locale; compact?: boolean; spinePack?: SpinePackStatus | null; onSettingsChange?: (settings: RuntimeSettings) => void; onSpinePackChange?: (status: SpinePackStatus) => void }) {
-  const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
-  const [settings, setSettings] = useState<RuntimeSettings | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [dragActive, setDragActive] = useState(false);
-  const dragDepth = useRef(0);
-  const fileInput = useRef<HTMLInputElement>(null);
-  const folderInput = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    void getRuntimeSettings().then(setSettings).catch((cause: Error) => setError(cause.message));
-  }, []);
-  async function saveRuntime(file: File | undefined) {
-    if (!file) return;
-    setBusy(true);
-    setError("");
-    try {
-      const next = await configureRuntime(file);
-      setSettings(next);
-      onSettingsChange?.(next);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("error"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function addRuntime(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    void saveRuntime(file);
-  }
-
-  async function addRuntimeFolder(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
-    event.target.value = "";
-    const inputPath = sourcePathFromSelection(files, getDesktopFilePath);
-    if (!inputPath) { setError(t("sourcePathUnavailable")); return; }
-    setBusy(true);
-    setError("");
-    try {
-      const next = await configureRuntimePath(inputPath);
-      setSettings(next);
-      onSettingsChange?.(next);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("error"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function dropRuntime(event: DragEvent<HTMLElement>) {
-    if (busy || !hasDraggedFiles(event.dataTransfer)) return;
-    event.preventDefault();
-    dragDepth.current = 0;
-    setDragActive(false);
-    if (Array.from(event.dataTransfer.files).some(isProjectFile)) return;
-    if (event.dataTransfer.files.length !== 1) { setError(t("dropOne")); return; }
-    void saveRuntime(event.dataTransfer.files[0]);
-  }
-
-  async function removeRuntimes(fingerprint?: string) {
-    if (!window.confirm(t(fingerprint ? "confirmRemoveRuntime" : "confirmRemoveRuntimes"))) return;
-    setBusy(true);
-    setError("");
-    try {
-      const next = await clearRuntimeSettings(fingerprint);
-      setSettings(next);
-      onSettingsChange?.(next);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("error"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function changeSpinePack(runtimeLine: string, action: 'install' | 'remove') {
-    if (action === 'remove' && !window.confirm(t('confirmRemoveSpinePack'))) return;
-    setBusy(true);
-    setError('');
-    try {
-      const next = action === 'install' ? await installSpinePack(runtimeLine) : await removeSpinePack(runtimeLine);
-      onSpinePackChange?.(next);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t('error'));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const runtimes = settings?.runtimes ?? [];
-  return (
-    <Card
-      aria-label={t("setupRuntime")}
-      className={`surface-card drop-zone${dragActive ? " drop-zone-active" : ""}`}
-      onDragEnter={(event) => { if (!busy && hasDraggedFiles(event.dataTransfer)) { event.preventDefault(); dragDepth.current += 1; setDragActive(true); } }}
-      onDragOver={(event) => { if (hasDraggedFiles(event.dataTransfer)) event.preventDefault(); }}
-      onDragLeave={() => { dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDragActive(false); }}
-      onDrop={dropRuntime}
-    >
-      <Card.Content>
-        <div className="section-heading-row">
-          <div>
-            <p className="eyebrow"><Gauge size={13} />{t("setupRuntime")}</p>
-            <h2>{compact ? t("runtimeTitle") : t("setupRuntime")}</h2>
-            <p>{t("runtimeBody")}</p>
-          </div>
-          <input ref={fileInput} className="visually-hidden" type="file" tabIndex={-1} onChange={addRuntime} disabled={busy} />
-          <input ref={folderInput} className="visually-hidden" type="file" multiple {...{ webkitdirectory: "" }} tabIndex={-1} onChange={addRuntimeFolder} disabled={busy} />
-          <div className="runtime-actions"><Button variant="secondary" size="sm" onPress={() => fileInput.current?.click()} isDisabled={busy}>
-            <Plus size={15} />{runtimes.length ? t("replaceRuntime") : t("addRuntime")}
-          </Button>
-          <Button variant="secondary" size="sm" onPress={() => folderInput.current?.click()} isDisabled={busy}>
-            <FolderOpen size={15} />{t("addRuntimeFolder")}
-          </Button>
-          </div>
-        </div>
-        {busy && <ProgressBar aria-label={t("loading")} isIndeterminate className="mt-4" />}
-        <p className="drop-hint">{t("dropRuntime")}</p>
-        <Button variant="ghost" size="sm" onPress={() => window.open(runtimeHelpLinks[locale], '_blank', 'noopener,noreferrer')}>
-          <ExternalLink size={14} />{t("runtimeHelp")}
-        </Button>
-        {dragActive && <div className="drop-overlay" aria-hidden="true"><Upload size={20} />{t("dropRuntime")}</div>}
-        <div className="runtime-list">
-          {runtimes.length === 0 ? (
-            <div className="empty-state"><HardDrive size={17} />{t("setupEmpty")}</div>
-          ) : runtimes.map((runtime) => (
-            <div className="runtime-item" key={runtime.fingerprint}>
-              <span className="large-icon"><Box size={19} /></span>
-              <span className="grow-copy">
-                <strong>{runtime.runtimeName}</strong>
-                <small>{t("generations", { value: runtime.cubismGenerations.join(", ") })}</small>
-              </span>
-              <Chip color="success" size="sm" variant="soft">{t("runtimeAvailable")}</Chip>
-              <Button isIconOnly aria-label={t('removeRuntime', { name: runtime.runtimeName })} variant="ghost" size="sm" isDisabled={busy} onPress={() => void removeRuntimes(runtime.fingerprint)}><Trash2 size={14} /></Button>
-            </div>
-          ))}
-        </div>
-        {error && <p className="inline-error" role="alert">{error}</p>}
-        {runtimes.length > 0 && (
-          <Button className="danger-link" variant="ghost" size="sm" onPress={() => void removeRuntimes()} isDisabled={busy}>
-            <Trash2 size={14} />{t("removeAll")}
-          </Button>
-        )}
-        {compact && <>{(spinePack?.packs ?? []).map((pack) => <div className="runtime-item spine-pack-item" key={pack.runtimeLine}>
-          <span className="large-icon"><WandSparkles size={19} /></span>
-          <span className="grow-copy"><strong>{t('spinePackLine', { value: pack.runtimeLine })}</strong><small>{t('spinePackVersion', { value: pack.version })}</small></span>
-          <Chip color={pack.installed ? 'success' : 'default'} size="sm" variant="soft">{t(pack.installed ? 'runtimeAvailable' : 'runtimeMissing')}</Chip>
-          <Button variant="secondary" size="sm" isDisabled={busy || !pack.downloadable} onPress={() => void changeSpinePack(pack.runtimeLine, pack.installed ? 'remove' : 'install')}>{t(pack.installed ? 'removeSpinePack' : 'installSpinePack')}</Button>
-        </div>)}
-        <p className="drop-hint">{t('spinePackHint')}</p></>}
-      </Card.Content>
-    </Card>
-  );
-}
-
-function SetupView({ locale, returning, onComplete, onRuntimeSettingsChange }: { locale: Locale; returning: boolean; onComplete: () => void; onRuntimeSettingsChange: (settings: RuntimeSettings) => void }) {
-  const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
-  return (
-    <main className="setup-view">
-      <section className="setup-content">
-        <p className="eyebrow"><Sparkles size={13} />{t("setupEyebrow")}</p>
-        <h1>{t("setupTitle")}</h1>
-        <p className="lead">{t("setupBody")}</p>
-        <RuntimePanel locale={locale} onSettingsChange={onRuntimeSettingsChange} />
-        <div className="setup-actions">
-          <Button variant="ghost" onPress={onComplete}>{t("setupSkip")}</Button>
-          <Button variant="primary" onPress={onComplete}>{returning ? t("setupDone") : t("setupContinue")}<ChevronRight size={16} /></Button>
-        </div>
-      </section>
-    </main>
-  );
-}
-
-function WelcomeView({ locale, busy, error, recentProjects, draft, onImport, onLibrarySelection, onOpenProject, onOpenRecent, onClearRecent, onRecoverDraft, onDiscardDraft, library, setLibrary, pendingSource, onConfirmSource, onDismissSource, onConfigureRuntime, selectedLibraryModel, onSelectLibraryModel }: { selectedLibraryModel: SourceLibraryCandidate | null; onSelectLibraryModel: (model: SourceLibraryCandidate | null) => void; pendingSource: SourceLibrarySelection | null; onConfirmSource: (motion: string) => Promise<void>; onDismissSource: () => void; onConfigureRuntime: () => void; library: SourceLibrary | null; setLibrary: (library: SourceLibrary) => void; locale: Locale; busy: boolean; error: string; recentProjects: RecentProject[]; draft: ProjectDraft | null; onImport: (files: File[], directDrop?: boolean) => void; onLibrarySelection: (library: SourceLibrary, candidate: SourceLibraryCandidate, motion: string) => Promise<void>; onOpenProject: () => void; onOpenRecent: (project: RecentProject) => void; onClearRecent: () => void; onRecoverDraft: () => void; onDiscardDraft: () => void }) {
-  const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
-  const [dragActive, setDragActive] = useState(false);
-  const [libraryBusy, setLibraryBusy] = useState(false);
-  const [libraryError, setLibraryError] = useState("");
-  const [githubUrl, setGithubUrl] = useState("");
-  const [libraryDownloadBusy, setLibraryDownloadBusy] = useState(false);
-  const [libraryDownloadProgress, setLibraryDownloadProgress] = useState<SourceLibraryDownloadProgress | null>(null);
-  const [libraryDownloadSummary, setLibraryDownloadSummary] = useState("");
-  const [thumbnailRevision, setThumbnailRevision] = useState(0);
-  const dragDepth = useRef(0);
-  const folderInput = useRef<HTMLInputElement>(null);
-  const pckInput = useRef<HTMLInputElement>(null);
-  function selected(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
-    event.target.value = "";
-    if (files.length) onImport(files);
-  }
-  function dropSource(event: DragEvent<HTMLElement>) {
-    if (busy || !hasDraggedFiles(event.dataTransfer)) return;
-    event.preventDefault();
-    dragDepth.current = 0;
-    setDragActive(false);
-    const files = sourceFilesFromDrop(event.dataTransfer);
-    if (files.some(isProjectFile)) return;
-    if (!files.length) return;
-    if (isSourceDirectoryDrop(event.dataTransfer)) {
-      const inputPath = sourcePathFromSelection(files, getDesktopFilePath, true);
-      if (inputPath) void browseLocalLibrary(inputPath);
-      else setLibraryError(t("sourcePathUnavailable"));
-      return;
-    }
-    onImport(files, true);
-  }
-  async function browseLocalLibrary(inputPath?: string) {
-    setLibraryBusy(true); setLibraryError("");
-    try { const result = await openSourceLibrary(inputPath); if (!result.cancelled) setLibrary(result.library); }
-    catch (cause) { setLibraryError(cause instanceof Error ? cause.message : t("error")); }
-    finally { setLibraryBusy(false); }
-  }
-  async function browseGitHubLibrary() {
-    if (!githubUrl.trim()) return;
-    setLibraryBusy(true); setLibraryError("");
-    try { const result = await openGitHubLibrary(githubUrl.trim()); if (!result.cancelled) setLibrary(result.library); }
-    catch (cause) { setLibraryError(cause instanceof Error ? cause.message : t("error")); }
-    finally { setLibraryBusy(false); }
-  }
-  useEffect(() => {
-    if (!library || library.kind !== 'github') return;
-    return onLibraryDownloadProgress(event => {
-      if (event.libraryId === library.libraryId) setLibraryDownloadProgress(event);
-    });
-  }, [library?.libraryId, library?.kind]);
-  useEffect(() => {
-    setLibraryDownloadBusy(false); setLibraryDownloadProgress(null); setLibraryDownloadSummary(""); setThumbnailRevision(0);
-  }, [library?.libraryId]);
-  async function downloadAllModels() {
-    if (!library || library.kind !== 'github' || libraryDownloadBusy) return;
-    setLibraryDownloadBusy(true); setLibraryError(""); setLibraryDownloadSummary("");
-    setLibraryDownloadProgress({ protocolVersion: 1, downloadId: 'pending-download', sequence: 0, libraryId: library.libraryId, stage: 'downloading', total: library.candidates.length, completed: 0, downloaded: 0, cached: 0, failed: 0, percent: 0 });
-    try {
-      const result = await downloadSourceLibrary(library.libraryId);
-      setLibraryDownloadSummary(t('libraryDownloadComplete', { downloaded: result.downloaded, cached: result.cached, failed: result.failed }));
-      setThumbnailRevision(value => value + 1);
-    } catch (cause) { setLibraryDownloadProgress(null); setLibraryError(cause instanceof Error ? cause.message : t("error")); }
-    finally { setLibraryDownloadBusy(false); }
-  }
-  return (
-    <main
-      aria-label={t("importSource")}
-      className={`welcome-view drop-zone${dragActive ? " drop-zone-active" : ""}`}
-      onDragEnter={(event) => { if (!busy && hasDraggedFiles(event.dataTransfer)) { event.preventDefault(); dragDepth.current += 1; setDragActive(true); } }}
-      onDragOver={(event) => { if (hasDraggedFiles(event.dataTransfer)) event.preventDefault(); }}
-      onDragLeave={() => { dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDragActive(false); }}
-      onDrop={dropSource}
-    >
-      {dragActive && <div className="drop-overlay" aria-hidden="true"><Upload size={22} />{t("dropSource")}</div>}
-      <section className="welcome-hero" data-tour-id="models-import">
-        <div className="welcome-copy">
-          <h1>{t("source")}</h1>
-          <p>{t("libraryPreviewOnly")}</p>
-          <div className="welcome-actions">
-            <input ref={folderInput} className="visually-hidden" type="file" multiple {...{ webkitdirectory: "" }} onChange={selected} />
-            <input ref={pckInput} className="visually-hidden" type="file" accept=".pck" onChange={selected} />
-            <Button variant="primary" size="lg" isDisabled={busy || libraryBusy || !hasDesktopApi()} onPress={() => void browseLocalLibrary()}><FolderOpen size={18} />{t("browseLocalLibrary")}</Button>
-            <Button variant="secondary" size="lg" isDisabled={busy || !hasDesktopApi()} onPress={() => folderInput.current?.click()}><FolderOpen size={18} />{t("importSource")}</Button>
-            <Button variant="secondary" size="lg" isDisabled={busy || !hasDesktopApi()} onPress={() => pckInput.current?.click()}><Box size={18} />{t("importPck")}</Button>
-            <Button variant="secondary" size="lg" isDisabled={busy || !hasDesktopApi()} onPress={onOpenProject}><FolderOpen size={18} />{t("openProject")}</Button>
-          </div>
-          <div className="github-library-row">
-            <Input aria-label={t("githubLibraryUrl")} placeholder="https://github.com/owner/repo/tree/main/models" value={githubUrl} onChange={(event) => setGithubUrl(event.target.value)} />
-            <Button variant="secondary" isDisabled={busy || libraryBusy || !githubUrl.trim() || !hasDesktopApi()} onPress={() => void browseGitHubLibrary()}><GitBranch size={16} />{t("browseGitHubLibrary")}</Button>
-          </div>
-          <p className="import-hint">{busy ? t("loading") : t("importHint")}</p>
-          {(busy || libraryBusy) && <ProgressBar aria-label={t("loading")} isIndeterminate className="mt-4" />}
-          {error && <p className="inline-error" role="alert">{error}</p>}
-          {libraryError && <p className="inline-error" role="alert">{libraryError}</p>}
-        </div>
-      </section>
-      {pendingSource && <section className="model-library-section direct-source-review"><ModelPreview key={pendingSource.sourcePath + pendingSource.inspection.source.fingerprint} candidate={pendingSource.candidate} direct={pendingSource} locale={locale} onUse={onConfirmSource} onClose={onDismissSource} onConfigureRuntime={onConfigureRuntime} /></section>}
-      {!pendingSource && library && <section className="model-library-section" aria-label={t("modelLibraryTitle")} data-tour-id="model-library">
-        <div className="section-heading-row"><div><p className="eyebrow">{t("modelLibraryTitle")}</p><h2>{library.name}</h2><p>{translate(locale, "modelLibraryCount", { count: library.candidates.length, depth: library.maxDepth })}</p></div><div className="model-library-heading-actions"><Chip size="sm" variant="soft">{library.kind === "github" ? "GitHub" : t("localFolder")}</Chip>{library.kind === 'github' && library.candidates.length > 0 && <Button size="sm" variant="secondary" isDisabled={libraryDownloadBusy} onPress={() => void downloadAllModels()}><Download size={15} />{libraryDownloadBusy ? t('libraryDownloading') : t('libraryDownloadAll')}</Button>}</div></div>
-        {library.kind === 'github' && libraryDownloadProgress && <div className="library-download-progress" aria-live="polite"><div><strong>{t('libraryDownloadProgress', { completed: libraryDownloadProgress.completed, total: libraryDownloadProgress.total })}</strong><span>{libraryDownloadProgress.percent}%</span></div>{libraryDownloadProgress.currentName && libraryDownloadBusy && <small title={libraryDownloadProgress.currentName}>{libraryDownloadProgress.currentName}</small>}<ProgressBar aria-label={t('libraryDownloading')} value={libraryDownloadProgress.percent}><ProgressBar.Track><ProgressBar.Fill /></ProgressBar.Track></ProgressBar></div>}
-        {libraryDownloadSummary && <p className="library-download-summary" role="status">{libraryDownloadSummary}</p>}
-        {library.candidates.length === 0 ? <div className="empty-state">{t("modelLibraryEmpty")}</div> : <ModelLibrary key={library.libraryId} library={library} locale={locale} selectedModel={selectedLibraryModel} onSelectModel={onSelectLibraryModel} onUse={onLibrarySelection} onConfigureRuntime={onConfigureRuntime} thumbnailRevision={thumbnailRevision} />}
-      </section>}
-      {draft && <section className="draft-recovery" aria-label={t("draftRecoveryTitle")}>
-        <Card className="surface-card"><Card.Content>
-          <div className="draft-recovery-copy">
-            <span className="large-icon"><RotateCcw size={18} /></span>
-            <span><strong>{t("draftRecoveryTitle")}</strong><small>{translate(locale, "draftRecoveryBody", { name: draft.project.name, savedAt: new Date(draft.savedAt).toLocaleString(locale) })}</small></span>
-          </div>
-          <div className="draft-recovery-actions">
-            <Button variant="ghost" isDisabled={busy} onPress={onDiscardDraft}>{t("discardDraft")}</Button>
-            <Button variant="primary" isDisabled={busy} onPress={onRecoverDraft}>{t("recoverDraft")}</Button>
-          </div>
-        </Card.Content></Card>
-      </section>}
-      <section className="recent-section">
-        <div className="section-heading-row"><div><p className="eyebrow">{t("recent")}</p><h2>{t("recent")}</h2></div>{recentProjects.length > 0 && <Button size="sm" variant="ghost" onPress={onClearRecent}><Trash2 size={15} />{t("clearRecent")}</Button>}</div>
-        {recentProjects.length === 0 ? <div className="empty-state"><Archive size={18} />{t("noRecent")}</div> : (
-          <div className="recent-list">
-            {recentProjects.map((project) => (
-              <Button
-                key={project.documentId}
-                className={`recent-project${project.available ? "" : " recent-project-unavailable"}`}
-                variant="ghost"
-                onPress={() => onOpenRecent(project)}
-              >
-                <span className="large-icon"><FolderOpen size={18} /></span>
-                <span className="grow-copy"><strong>{project.name}</strong><small>{project.fileName}</small></span>
-                <Chip color={project.available ? "success" : "default"} size="sm" variant="soft">{t(project.available ? "available" : "unavailable")}</Chip>
-              </Button>
-            ))}
-          </div>
-        )}
-      </section>
-    </main>
-  );
-}
 
 function SourceView({ locale, project, inspection, inspectionRequired, runtimeReady, busy, onConfigureRuntime, onRelink, onAcknowledgeReview, onMap }: { locale: Locale; project: Live2PetProject | null; inspection?: SourceInspection; inspectionRequired: boolean; runtimeReady: boolean; busy: boolean; onConfigureRuntime: () => void; onRelink: (files: File[], directDrop?: boolean) => Promise<void>; onAcknowledgeReview: () => Promise<void>; onMap: () => void }) {
   const t = (key: MessageKey) => translate(locale, key);
@@ -587,8 +216,12 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   const sourceKeyRef = useRef(sourceKey);
   sourceKeyRef.current = sourceKey;
   const previewSurface = useRef<HTMLDivElement>(null);
-  const [previewStatus, setPreviewStatus] = useState<PreviewStatus | null>(null);
   const [previewRetry, setPreviewRetry] = useState(0);
+  const nativePreview = Boolean(inspection && runtimeReady && hasPreviewApi());
+  const { status: previewStatus, setStatus: setPreviewStatus, run: runPreview } = usePreviewSession({
+    surface: previewSurface, enabled: nativePreview, projectId,
+    sourceFingerprint: inspection?.source.fingerprint, visualSettings: projectDocument?.visualSettings, retry: previewRetry,
+  });
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [seekTime, setSeekTime] = useState<number | null>(null);
   const [previewLoop, setPreviewLoop] = useState(true);
@@ -606,9 +239,15 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   const [visibilityBusy, setVisibilityBusy] = useState(false);
   const [scanningParts, setScanningParts] = useState(false);
   const thumbnailScope = JSON.stringify([sourceKey, selectedMotionId, selectedExpressionId, previewRetry]);
+  const requestThumbnail = useCallback(async (id: string) => {
+    const result = await runPreview(() => getPreviewVisualElementThumbnail(id));
+    if (!result) throw new Error('Preview session ended.');
+    return result;
+  }, [runPreview]);
   const visualThumbnails = useVisualThumbnails(
     thumbnailScope,
     visibilityOpen && !visibilityBusy && !scanningParts && previewStatus?.state === 'ready' && visualElements.length > 0,
+    requestThumbnail,
   );
   const [motionQuery, setMotionQuery] = useState('');
   const visualSettings = projectDocument?.visualSettings ?? { hiddenElementIds: [] };
@@ -617,7 +256,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   const runPlayback = async (operation: () => Promise<PreviewStatus>) => {
     const sequence = ++commandSequence.current;
     setPlaybackError(null);
-    try { const status = await operation(); if (sequence === commandSequence.current) setPreviewStatus(status); }
+    try { await runPreview(operation); }
     catch (cause) { if (sequence === commandSequence.current) setPlaybackError(cause instanceof Error ? cause.message : t('previewFailed')); }
   };
   const [mappingTarget, setMappingTarget] = useState<MappingTargetId>("clawd");
@@ -640,7 +279,6 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   const selectedExpression = displayedExpressions.find((expression) => expression.id === selectedExpressionId);
   const selectedName = selected?.name ?? "—";
   const selectedDuration = sourceMotions.find((motion) => motion.id === selectedMotionId)?.duration ?? (Number(selected?.seconds) || 0);
-  const nativePreview = Boolean(inspection && runtimeReady && hasPreviewApi());
   const canEditMappings = Boolean(projectDocument && inspection);
   const canAssign = canEditMappings && Boolean(selectedMotionId);
   const targetDocument = projectDocument?.targets[mappingTarget];
@@ -679,52 +317,14 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
     if (!selectedMotionId && previewStatus?.catalog?.motions[0]?.id) onSelectMotion(previewStatus.catalog.motions[0].id);
   }, [selectedMotionId, previewStatus?.catalog, onSelectMotion]);
 
-  useEffect(() => {
-    if (!nativePreview || !inspection) return;
-    let active = true;
-    let opened = false;
-    let syncing = false;
-    const syncBounds = async () => {
-      const element = previewSurface.current;
-      if (!element || !active || syncing) return;
-      const rect = element.getBoundingClientRect();
-      if (rect.width < 64 || rect.height < 64) return;
-      const bounds = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-      syncing = true;
-      try {
-        const status = opened
-          ? await layoutLive2DPreview({ visible: true, bounds })
-          : await openLive2DPreview({ projectId, sourceFingerprint: inspection.source.fingerprint, bounds, visualSettings });
-        opened = true;
-        if (active) setPreviewStatus(status);
-        else await layoutLive2DPreview({ visible: false }).catch(() => undefined);
-      } catch (cause) {
-        if (active) setPreviewStatus({ schemaVersion: 1, state: 'failed', projectId, sourceFingerprint: inspection.source.fingerprint, visible: false, bounds: null, error: { code: cause instanceof Error && 'code' in cause ? String(cause.code) : 'PREVIEW_OPEN_FAILED', message: cause instanceof Error ? cause.message : t('previewFailed') } });
-      } finally {
-        syncing = false;
-      }
-    };
-    const unsubscribe = onLive2DPreviewStatus((status) => { if (active) setPreviewStatus(status); });
-    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { void syncBounds(); }) : null;
-    if (previewSurface.current) observer?.observe(previewSurface.current);
-    window.addEventListener('resize', syncBounds);
-    void syncBounds();
-    return () => {
-      active = false;
-      observer?.disconnect();
-      window.removeEventListener('resize', syncBounds);
-      unsubscribe();
-      void closeLive2DPreview().catch(() => undefined);
-    };
-  }, [inspection, nativePreview, previewRetry, projectId]);
 
   useEffect(() => {
     const expectedSourceFingerprint = inspection?.source.fingerprint;
     if (previewStatus?.state !== 'ready' || !expectedSourceFingerprint || previewStatus.projectId !== projectId || previewStatus.sourceFingerprint !== expectedSourceFingerprint) return;
     const expectedSourceKey = sourceKey;
     let active = true;
-    void getPreviewVisualElements().then(elements => {
-      if (active && sourceKeyRef.current === expectedSourceKey) setVisualElementState({ sourceKey: expectedSourceKey, elements });
+    void runPreview(getPreviewVisualElements).then(elements => {
+      if (elements && active && sourceKeyRef.current === expectedSourceKey) setVisualElementState({ sourceKey: expectedSourceKey, elements });
     }).catch(cause => {
       if (active && sourceKeyRef.current === expectedSourceKey) setPlaybackError(String(cause instanceof Error ? cause.message : cause));
     });
@@ -746,7 +346,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   }, [previewStatus?.state, selectedMotionId, previewLoop, previewSpeed]);
 
   useEffect(() => {
-    if (previewStatus?.state === 'ready') void setLive2DPreviewExpression(selectedExpressionId).catch(() => undefined);
+    if (previewStatus?.state === 'ready') void runPreview(() => setLive2DPreviewExpression(selectedExpressionId)).catch(() => undefined);
   }, [previewStatus?.state, selectedExpressionId]);
 
   useEffect(() => {
@@ -759,20 +359,6 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
     return () => { active = false; window.clearTimeout(timer); };
   }, [seekTime]);
 
-  useEffect(() => {
-    if (previewStatus?.state !== 'ready') return;
-    let active = true;
-    let pending = false;
-    const timer = window.setInterval(async () => {
-      if (pending) return;
-      pending = true;
-      const sequence = commandSequence.current;
-      try { const status = await readLive2DPreviewStatus(); if (active && status && sequence === commandSequence.current) setPreviewStatus(status); }
-      catch { /* Command errors remain visible; transient status reads are retried. */ }
-      finally { pending = false; }
-    }, 150);
-    return () => { active = false; window.clearInterval(timer); };
-  }, [previewStatus?.state]);
 
   const togglePlayback = () => {
     if (previewStatus?.state !== 'ready') return;
@@ -833,9 +419,10 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
         <Tabs.Panel id="visibility" className="library-tab-panel"><VisibilityPanel key={sourceKey} locale={locale} elements={visualElements} settings={visualSettings} soloId={soloId} thumbnail={visualThumbnails.thumbnail} thumbnails={visualThumbnails.thumbnails} busy={visibilityBusy || scanningParts || previewStatus?.state !== 'ready'} onSettings={onVisualSettings} onSolo={inspectSolo} onInspect={visualThumbnails.inspect} onVisible={visualThumbnails.onVisible} scanScope={thumbnailScope} onScan={inspection && inspection.model.cubism !== 2 && selectedMotionId ? async () => {
           setScanningParts(true); setSoloId(null); setSeekTime(null);
           try {
-            await setPreviewVisualSettings(visualSettings);
-            const result = await scanPreviewVisualElements(selectedMotionId);
-            if (sourceKeyRef.current === sourceKey) setPreviewStatus(await readLive2DPreviewStatus());
+            await runPreview(() => setPreviewVisualSettings(visualSettings));
+            const result = await runPreview(() => scanPreviewVisualElements(selectedMotionId));
+            if (!result) throw new Error('Preview session ended.');
+            await runPreview(readLive2DPreviewStatus);
             return result;
           } finally { setScanningParts(false); }
         } : undefined} /></Tabs.Panel>
@@ -910,64 +497,6 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   );
 }
 
-function SettingsView({ locale, section, appearance, spinePack, appVersion, updateStatus, updateError, updateBusy, automaticUpdateChecks, onCheckForUpdates, onOpenRelease, onAutomaticUpdateChecks, onReplayTutorial, onSection, onLocale, onAppearance, onRuntimeSettingsChange, onSpinePackChange, onClose }: { locale: Locale; section: SettingsSection; appearance: AppSettings["appearance"]; spinePack: SpinePackStatus | null; appVersion: string; updateStatus: UpdateStatus | null; updateError: string; updateBusy: boolean; automaticUpdateChecks: boolean; onCheckForUpdates: () => void; onOpenRelease: () => void; onAutomaticUpdateChecks: (enabled: boolean) => void; onReplayTutorial: () => void; onSection: (section: SettingsSection) => void; onLocale: (locale: Locale) => void; onAppearance: (appearance: AppSettings["appearance"]) => void; onRuntimeSettingsChange: (settings: RuntimeSettings) => void; onSpinePackChange: (status: SpinePackStatus) => void; onClose: () => void }) {
-  const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
-  const [cache, setCache] = useState({ byteLength: 0, entryCount: 0, maxBytes: 0 });
-  const [libraryCache, setLibraryCache] = useState({ schemaVersion: 1 as const, byteLength: 0, entryCount: 0, maxBytes: 1024 ** 3 });
-  const [libraryCacheGiB, setLibraryCacheGiB] = useState("1");
-  const [storageError, setStorageError] = useState("");
-  const nav: Array<[SettingsSection, MessageKey, ReactNode]> = [["general", "general", <SlidersHorizontal size={16} />], ["runtimes", "runtimes", <Gauge size={16} />], ["targets", "targetsNav", <PackageCheck size={16} />], ["storage", "storage", <Database size={16} />]];
-  useEffect(() => { if (section === "storage") { void getCacheStatus().then(setCache); void getSourceLibraryCacheStatus().then((next) => { setLibraryCache(next); setLibraryCacheGiB(String(Number((next.maxBytes / 1024 ** 3).toFixed(2)))); }); } }, [section]);
-  async function clearBuildCache() { if (!window.confirm(t("confirmClearCache"))) return; await clearCache(); setCache(await getCacheStatus()); }
-  async function saveLibraryCacheLimit() {
-    setStorageError("");
-    try {
-      const next = await configureSourceLibraryCache(Math.round(Number(libraryCacheGiB) * 1024 ** 3));
-      setLibraryCache(next);
-      setLibraryCacheGiB(String(Number((next.maxBytes / 1024 ** 3).toFixed(2))));
-    } catch (cause) { setStorageError(cause instanceof Error ? cause.message : t("error")); }
-  }
-  async function clearLibraryCache() {
-    if (!window.confirm(t("confirmClearLibraryCache"))) return;
-    setStorageError("");
-    try { setLibraryCache(await clearSourceLibraryCache()); }
-    catch (cause) { setStorageError(cause instanceof Error ? cause.message : t("error")); }
-  }
-  const updateMessage = updateBusy
-    ? t('checkingForUpdates')
-    : updateError || (updateStatus?.state === 'available'
-      ? t('updateAvailable', { version: updateStatus.latestVersion ?? '' })
-      : updateStatus?.state === 'up-to-date'
-        ? t('upToDate')
-        : updateStatus?.state === 'no-release'
-          ? t('noReleasePublished')
-          : t('updateNotChecked'));
-  return (
-    <>
-    <header className="app-toolbar settings-toolbar">
-      <div className="toolbar-brand"><span>Live2Pet</span><i /><h1 className="toolbar-title">{t("settingsTitle")}</h1></div>
-      <div className="toolbar-actions"><Button variant="secondary" size="sm" onPress={onClose}><X size={16} />{t("close")}</Button></div>
-    </header>
-    <main className="settings-view">
-      <aside className="settings-sidebar">
-        <nav aria-label={t("settings")}>{nav.map(([id, key, icon]) => <Button key={id} className="settings-nav" variant={section === id ? "secondary" : "ghost"} onPress={() => onSection(id)}>{icon}<span>{t(key)}</span><ChevronRight size={14} /></Button>)}</nav>
-      </aside>
-      <section className="settings-content">
-        {section === "general" && <div className="settings-section">
-          <PageHeading eyebrow={t("settings")} title={t("general")} body={t("settingsBody")} />
-          <Card className="surface-card"><Card.Content><div className="setting-row"><span className="large-icon"><Languages size={19} /></span><span className="grow-copy"><strong>{t("language")}</strong></span><ButtonGroup><Button variant={locale === "en" ? "primary" : "secondary"} onPress={() => onLocale("en")}>English</Button><Button variant={locale === "zh-CN" ? "primary" : "secondary"} onPress={() => onLocale("zh-CN")}>简体中文</Button></ButtonGroup></div></Card.Content></Card>
-          <Card className="surface-card"><Card.Content><div className="setting-row"><span className="large-icon">{appearance === "dark" ? <Moon size={19} /> : <Sun size={19} />}</span><span className="grow-copy"><strong>{t("appearance")}</strong></span><ButtonGroup>{(["system", "light", "dark"] as const).map((item) => <Button key={item} variant={appearance === item ? "primary" : "secondary"} onPress={() => onAppearance(item)}>{t(item)}</Button>)}</ButtonGroup></div></Card.Content></Card>
-          <Card className="surface-card"><Card.Content><div className="setting-row"><span className="large-icon"><CircleHelp size={19} /></span><span className="grow-copy"><strong>{t("tutorial")}</strong><small>{t("tutorialHint")}</small></span><Button variant="secondary" onPress={onReplayTutorial}>{t("replayTutorial")}</Button></div></Card.Content></Card>
-          <Card className="surface-card"><Card.Content><div className="setting-row update-setting-row"><span className="large-icon"><RefreshCcw size={19} /></span><span className="grow-copy"><strong>{t('updates')} · {appVersion}</strong><small className={updateError ? 'inline-error' : ''}>{updateMessage}</small></span><div className="update-setting-actions"><Button size="sm" variant={automaticUpdateChecks ? "primary" : "secondary"} onPress={() => onAutomaticUpdateChecks(!automaticUpdateChecks)}>{t(automaticUpdateChecks ? 'automaticUpdateChecksOn' : 'automaticUpdateChecksOff')}</Button><Button size="sm" variant="secondary" isDisabled={updateBusy || !hasDesktopApi()} onPress={onCheckForUpdates}>{t('checkNow')}</Button>{updateStatus?.state === 'available' && <Button size="sm" variant="primary" onPress={onOpenRelease}><ExternalLink size={14} />{t('viewRelease')}</Button>}</div></div></Card.Content></Card>
-        </div>}
-        {section === "runtimes" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("runtimes")} body={t("runtimeBody")} /><RuntimePanel locale={locale} compact spinePack={spinePack} onSettingsChange={onRuntimeSettingsChange} onSpinePackChange={onSpinePackChange} /></div>}
-        {section === "targets" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("targets")} body={t("targetBody")} /><TargetSettings locale={locale} /></div>}
-        {section === "storage" && <div className="settings-section"><PageHeading eyebrow={t("settings")} title={t("storage")} body={t("storageBody")} /><OutputSettings locale={locale} /><Card className="surface-card"><Card.Content><div className="section-heading-row"><div><p className="eyebrow"><Database size={13} />{t("storageTitle")}</p><h2>{cache.entryCount ? t("cacheEntries", { count: cache.entryCount, size: `${Math.round(cache.byteLength / 1024 / 1024)} MiB` }) : t("cacheEmpty")}</h2></div><Button variant="secondary" onPress={clearBuildCache} isDisabled={!cache.entryCount}><Trash2 size={15} />{t("clearCache")}</Button></div></Card.Content></Card><Card className="surface-card"><Card.Content><div className="section-heading-row"><div><p className="eyebrow"><GitBranch size={13} />{t("githubCacheTitle")}</p><h2>{t("githubCacheUsage", { count: libraryCache.entryCount, size: `${Math.round(libraryCache.byteLength / 1024 / 1024)} MiB` })}</h2><p>{t("githubCacheHint")}</p></div><Button variant="secondary" onPress={() => void clearLibraryCache()} isDisabled={!libraryCache.entryCount}><Trash2 size={15} />{t("clearCache")}</Button></div><div className="cache-limit-row"><Input type="number" min="0.25" max="20" step="0.25" aria-label={t("githubCacheLimit")} value={libraryCacheGiB} onChange={(event) => setLibraryCacheGiB(event.target.value)} /><span>GiB</span><Button variant="primary" onPress={() => void saveLibraryCacheLimit()}>{t("saveCacheLimit")}</Button></div>{storageError && <p className="inline-error" role="alert">{storageError}</p>}</Card.Content></Card></div>}
-      </section>
-    </main>
-    </>
-  );
-}
 
 export function App() {
   const [state, dispatch] = useReducer(appReducer, undefined, () => {
@@ -990,6 +519,12 @@ export function App() {
   const [pendingSource, setPendingSource] = useState<SourceLibrarySelection | null>(null);
   const [modelLibrary, setModelLibrary] = useState<SourceLibrary | null>(null);
   const [importError, setImportError] = useState("");
+  const settingsButton = useRef<HTMLButtonElement>(null);
+  const previousDestination = useRef(state.destination);
+  useEffect(() => {
+    if (previousDestination.current === 'settings' && state.destination !== 'settings') settingsButton.current?.focus();
+    previousDestination.current = state.destination;
+  }, [state.destination]);
   const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings | null>(null);
   const [spinePack, setSpinePack] = useState<SpinePackStatus | null>(null);
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
@@ -1284,6 +819,12 @@ export function App() {
     setSpinePack(spine);
   }
 
+  function startMapping(project: ReturnType<typeof projectFromSource>) {
+    dispatchBuild({ type: 'RESET' });
+    dispatch({ type: 'OPEN_PROJECT', project });
+    dispatch({ type: 'NAVIGATE', destination: 'map' });
+  }
+
   async function confirmPendingSource(motion: string) {
     if (!pendingSource || !beginProjectReplacement()) return;
     setImportBusy(true);
@@ -1292,18 +833,7 @@ export function App() {
       const projectId = projectIdFromSourceName(inspection.source.name);
       const checked = await inspectSource(sourcePath, projectId);
       await refreshRendererSettings();
-      const document: Live2PetProject = {
-        format: 'live2pet-project', schemaVersion: 3, projectId, appVersion, name: checked.source.name,
-        source: { ...checked.source, path: sourcePath }, recipes: [],
-        visualSettings: { hiddenElementIds: [] },
-        targets: {
-          clawd: { profile: "clawd", mappings: {}, reactions: {}, options: {} },
-          "codex-pet": { profile: "codex-pet", mappings: {}, reactions: {}, options: {} },
-        },
-      };
-      dispatchBuild({ type: 'RESET' });
-      dispatch({ type: "OPEN_PROJECT", project: { id: projectId, name: document.name, sourcePath, document, dirty: true, inspection: checked, selectedMotionId: motion || checked.motions[0]?.id || null } });
-      dispatch({ type: "NAVIGATE", destination: "map" });
+      startMapping(projectFromSource({ projectId, appVersion, sourcePath, inspection: checked, motion }));
       setPendingSource(null);
       setProjectDraft(null);
     } finally {
@@ -1320,23 +850,7 @@ export function App() {
       const projectId = projectIdFromSourceName(candidate.name);
       const { inspection, sourcePath } = await inspectLibrarySource(library.libraryId, candidate.id, projectId);
       await refreshRendererSettings();
-      const document: Live2PetProject = {
-        format: 'live2pet-project',
-        schemaVersion: 3,
-        visualSettings: { hiddenElementIds: [] },
-        projectId,
-        appVersion,
-        name: inspection.source.name,
-        source: { kind: inspection.source.kind, name: inspection.source.name, path: sourcePath, fingerprint: inspection.source.fingerprint, modelConfig: inspection.source.modelConfig },
-        recipes: [],
-        targets: {
-          clawd: { profile: "clawd", mappings: {}, reactions: {}, options: {} },
-          "codex-pet": { profile: "codex-pet", mappings: {}, reactions: {}, options: {} },
-        },
-      };
-      dispatch({ type: "OPEN_PROJECT", project: { id: projectId, name: inspection.source.name, sourcePath, document, dirty: true, inspection, selectedMotionId: motion || inspection.motions[0]?.id || null, selectedExpressionId: null } });
-      dispatchBuild({ type: "RESET" });
-      dispatch({ type: "NAVIGATE", destination: "map" });
+      startMapping(projectFromSource({ projectId, appVersion, sourcePath, inspection, motion }));
       setProjectDraft(null);
     } catch (cause) {
       setImportError(cause instanceof Error ? cause.message : t("error"));
@@ -1496,11 +1010,11 @@ export function App() {
       <header className="app-toolbar" inert={importBusy && projectTransition.current}>
         <div className="toolbar-brand">{projectOpen ? <><span>Live2Pet</span><i /><strong title={state.project?.name}>{state.project?.name}</strong></> : <strong>Live2Pet</strong>}</div>
         {projectOpen ? <nav aria-label={t('projectNavigation')}><ButtonGroup>{(["source", "map", "build"] as const).map((destination) => <Button key={destination} isDisabled={sourceReviewRequired && destination !== "source"} variant={state.destination === destination ? "primary" : "ghost"} onPress={() => dispatch({ type: "NAVIGATE", destination })}>{t(destination)}</Button>)}</ButtonGroup></nav> : <span />}
-        <div className="toolbar-actions">{projectOpen && <Button aria-label={t("newProject")} variant="ghost" isDisabled={projectSaveBusy || Object.values(buildState).some(build => build.status === 'building')} onPress={() => void startNewProject()}><Plus size={17} />{t("newProject")}</Button>}{projectOpen && <Button aria-label={t("saveProject")} variant="ghost" isDisabled={projectSaveBusy} onPress={() => void saveProjectDocument()}><Save size={17} />{t("save")}</Button>}{projectOpen && <Button aria-label={t("savePortableProject")} variant="ghost" isDisabled={projectSaveBusy} onPress={() => void saveProjectDocument(true, true)}><PackageCheck size={17} />{t("savePortable")}</Button>}<Button isIconOnly aria-label={t("settings")} variant="ghost" onPress={() => dispatch({ type: "OPEN_SETTINGS" })}><SettingsIcon size={18} /></Button></div>
+        <div className="toolbar-actions">{projectOpen && <Button aria-label={t("newProject")} variant="ghost" isDisabled={projectSaveBusy || Object.values(buildState).some(build => build.status === 'building')} onPress={() => void startNewProject()}><Plus size={17} />{t("newProject")}</Button>}{projectOpen && <Button aria-label={t("saveProject")} variant="ghost" isDisabled={projectSaveBusy} onPress={() => void saveProjectDocument()}><Save size={17} />{t("save")}</Button>}{projectOpen && <Button aria-label={t("savePortableProject")} variant="ghost" isDisabled={projectSaveBusy} onPress={() => void saveProjectDocument(true, true)}><PackageCheck size={17} />{t("savePortable")}</Button>}<Button ref={settingsButton} isIconOnly aria-label={t("settings")} variant="ghost" onPress={() => dispatch({ type: "OPEN_SETTINGS" })}><SettingsIcon size={18} /></Button></div>
       </header>
       <div className="app-content" inert={importBusy && projectTransition.current} aria-busy={importBusy}>
         {actionFeedback && <div className="action-feedback" role="alert">{actionFeedback}{projectSaveBusy && <ProgressBar aria-label={actionFeedback} isIndeterminate />}</div>}
-        {state.destination === "welcome" && <WelcomeView selectedLibraryModel={selectedLibraryModel} onSelectLibraryModel={setSelectedLibraryModel} pendingSource={pendingSource} onConfirmSource={confirmPendingSource} onDismissSource={() => setPendingSource(null)} onConfigureRuntime={() => dispatch({ type: "OPEN_SETTINGS", section: "runtimes" })} library={modelLibrary} setLibrary={library => { setModelLibrary(library); setSelectedLibraryModel(null); setPendingSource(null); }} locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} draft={projectDraft} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onLibrarySelection={openLibrarySource} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onClearRecent={() => void clearRecentProjectHistory()} onRecoverDraft={() => void recoverProjectDraft()} onDiscardDraft={discardProjectDraft} />}
+        {state.destination === "welcome" && <ModelsView selectedLibraryModel={selectedLibraryModel} onSelectLibraryModel={setSelectedLibraryModel} pendingSource={pendingSource} onConfirmSource={confirmPendingSource} onDismissSource={() => setPendingSource(null)} onConfigureRuntime={() => dispatch({ type: "OPEN_SETTINGS", section: "runtimes" })} library={modelLibrary} setLibrary={library => { setModelLibrary(library); setSelectedLibraryModel(null); setPendingSource(null); }} locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} draft={projectDraft} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onLibrarySelection={openLibrarySource} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onClearRecent={() => void clearRecentProjectHistory()} onRecoverDraft={() => void recoverProjectDraft()} onDiscardDraft={discardProjectDraft} />}
         {state.destination === "source" && state.project && <SourceView locale={locale} project={state.project.document} inspection={state.project.inspection} inspectionRequired={Boolean(state.project.document)} runtimeReady={runtimeReady} busy={importBusy} onConfigureRuntime={configureRequiredRuntime} onRelink={relinkCurrentSource} onAcknowledgeReview={acknowledgeCurrentSourceReview} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
         {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={configureRequiredRuntime} onSelectMotion={(motionId) => editProject({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => editProject({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => editProject({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => editProject({ type: "CLEAR_ASSIGNMENT", destination })} onVisualSettings={(settings) => editProject({ type: "SET_VISUAL_SETTINGS", settings })} />}
         {state.destination === "build" && <BuildView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} runtimeReady={runtimeReady} state={buildState} onName={(name) => editProject({ type: "RENAME_PROJECT", name })} onPreset={(target, preset) => editProject({ type: "SET_RENDER_PRESET", target, preset })} onCustomRender={(settings) => editProject({ type: 'SET_CLAWD_RENDER', settings })} onBuild={buildProjectTarget} onCancel={(target) => void cancelProjectBuild(target)} />}

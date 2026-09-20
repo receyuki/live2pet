@@ -8,6 +8,13 @@ GitHub Releases.
 
 ### Fixes
 
+- Keep preview commands attached to their owning page during rapid model
+  switches and Settings navigation; hidden previews no longer restart their
+  render loop when a playback or inspection command arrives.
+- Preserve paused playback across frame capture and stop rendering when a
+  non-looping animation finishes. Live2D retains its 60 FPS foreground limit;
+  Spine's foreground animation timing is unchanged.
+- Return keyboard focus to Settings after closing the Settings page.
 - Keep newer edits and recovery drafts when an earlier project save completes,
   and ignore save responses belonging to a closed or reopened project.
 - Keep generated packages attached to their project snapshot, label earlier
