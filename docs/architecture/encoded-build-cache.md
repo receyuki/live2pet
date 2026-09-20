@@ -57,7 +57,7 @@ Required environment:
 | --- | --- |
 | `LIVE2PET_BENCH_PROJECT` | Absolute path to a permitted `.l2p`, `.l2pack` or legacy project |
 | `LIVE2PET_BENCH_MOTIONS` | JSON array of four inspected Motion ids |
-| `LIVE2PET_BENCH_RUNTIME` | A local matching Live2D runtime, copied into the test profile |
+| `LIVE2PET_BENCH_RUNTIME` | For Live2D: a local matching runtime, copied into the test profile; Spine uses the pack variables below |
 | `LIVE2PET_BENCH_REVISION` | Revision label for the report |
 
 `LIVE2PET_BENCH_REPETITIONS` defaults to 3. `LIVE2PET_APP_EXECUTABLE` optionally
@@ -65,9 +65,8 @@ selects a packaged App. `LIVE2PET_BENCH_SCENARIOS=cold` can build a fresh refere
 for a changed mapping; otherwise all six scenarios run. Warm and metadata-only
 scenarios require a cold reference in the same run.
 The harness preserves Visual Settings, creates mappings
-only in memory and never saves over the input or installs a Pet Package. Current
-automated real-model setup is Live2D; native Spine setup remains follow-up
-acceptance work for #19.
+only in memory and never saves over the input or installs a Pet Package. Native
+setup supports modern/legacy Live2D and installed Spine packs, as described below.
 
 Each repetition clears only its isolated cache, then measures a cold multi-motion
 Clawd build, warm rebuild, metadata-only change, one-Motion change and a subsequent

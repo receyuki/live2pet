@@ -1,8 +1,9 @@
 # Encoded-cache checkpoint — 2026-09-20
 
-This is a partial delivery of [#19](https://github.com/receyuki/live2pet/issues/19),
-not completion of its acceptance matrix or a release performance guarantee.
-Implementation: `a85c4bd`, measured against the preceding `51dcde8` baseline.
+This record tracks delivery of [#19](https://github.com/receyuki/live2pet/issues/19),
+from partial checkpoints to the completed acceptance below. It is not a release
+performance guarantee. Initial implementation: `a85c4bd`, measured against the
+preceding `51dcde8` baseline; final measurement implementation: `b915dda`.
 
 ## Method
 
@@ -61,7 +62,7 @@ still acquire no renderer. Any cheaper reset must first prove equivalent output.
 - Independent Standards and Spec reviews found no remaining blockers in the
   delivered checkpoint. The incomplete #19 criteria below remain open.
 
-## Acceptance still required
+## Earlier acceptance gaps
 
 - Three comparable repetitions on the final implementation, including renamed
   output and sequential targets. Older order-dependent measurements do not count.
@@ -189,3 +190,58 @@ tests skipped; the additional benchmark-catalog regression passed with all seven
 benchmark tests. Typechecking, source-release checks and macOS x64 packaged
 startup passed. Independent Standards review reported no findings; the Spec
 review's optional-catalog bug was fixed and rechecked with no remaining findings.
+
+## Three-repetition scenario matrix
+
+At `b915dda`, the shared benchmark completed three consecutive repetitions of
+all six scenarios for the same local Spine 4.1 fixture. No heavy test or package
+build ran concurrently. This is 18 completed builds with identical output images
+within each scenario across repetitions, not an extrapolation from one run.
+
+| Scenario | Public build IPC seconds, three repetitions | Captures per run |
+| --- | --- | --- |
+| Cold Clawd | 24.36 / 32.02 / 22.80 | 129 |
+| Warm Clawd | 0.36 / 0.44 / 0.31 | 0 |
+| Metadata-only Clawd | 0.35 / 0.39 / 0.30 | 0 |
+| One Motion changed | 11.87 / 11.93 / 11.47 | 48 |
+| Sequential Codex V2 | 20.81 / 19.57 / 22.63 | 237 |
+| Cancel then retry Clawd | 32.18 / 23.83 / 27.13 | 129 |
+
+Each warm and renamed build had zero renderer acquisition, captures and encodes.
+Each changed mapping reused two assets and encoded one missing Motion. All three
+retry outputs matched their cold reference exactly. Across repetitions, encoded
+WebP bytes, dimensions, alpha, delays and decoded first/middle/last frame samples
+matched for every scenario, including the Codex atlas. Variable wall times do not
+affect correctness acceptance or establish a cross-machine throughput guarantee.
+
+An independent uncached build of the changed Spine mapping completed in 21.44 s
+with 129 captures. Its three WebPs and decoded samples matched all three mixed
+results exactly; the mixed path captured only the missing 48-frame Motion.
+
+The independent changed-mapping Cubism 2 reference also passed: 28.92 s and
+260 captures, with all WebPs and inspected pixels/metadata exactly matching the
+earlier mixed result (108 captures, two encoded hits). Together with the modern
+Cubism mixed/reference comparison above, all three native renderer families now
+have a checked mixed-hit versus fully uncached output pair.
+
+## Acceptance conclusion and next boundary
+
+The #19 acceptance matrix is complete for these permitted representative fixtures:
+three comparable full-scenario Spine repetitions, three legacy cold/warm pairs
+plus its expanded scenario matrix, and the modern cold/warm, mixed/reference and
+cancellation checks recorded above. This does not mean every scenario was run
+three times on every renderer, every supported runtime line was tested, or every
+frame was visually reviewed. Exact encoded bytes plus sampled decoded pixels
+provide the parity evidence. Public synthetic tests cover the identity, malformed
+cache, oversized write, ownership and project-compatibility branches.
+
+Measurement coverage is explicitly bounded: source/runtime identity and acquisition,
+per-Motion reload, capture and its native subphases, cache storage, encoding,
+ZIP/validation, total IPC time, payload/chunk counts and sampled process memory.
+Nested intervals are not additive; serialization overhead is not independently
+isolated. There is no telemetry, native-runtime redistribution or throughput SLA.
+
+The next implementation is #20: shorten exclusive renderer ownership to capture,
+then add an in-flight byte budget and backpressure for overlapping capture and
+encoding. This is not implemented by #19. Redundant ZIP recompression stays in
+#21; its measured cost above remains a known, separate bottleneck.
