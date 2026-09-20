@@ -102,6 +102,16 @@ installed renderer-packs directory) and `LIVE2PET_BENCH_SPINE_RUNTIME_LINE`
 isolated profile, verifies it again, and hydrates the binary Motion catalog before
 building. It does not download runtimes or modify the normal App profile.
 
+For admission calibration, `LIVE2PET_BENCH_CAPTURE_BUDGET_MIB` overrides the
+in-flight budget for the isolated benchmark only. Omit it to exercise the
+production default. `LIVE2PET_BENCH_MOTION_COUNT` accepts 3–32 (default 3);
+additional Clawd idle-pool Motions are selected deterministically from the
+hydrated catalog, shortest first with a duration of at least one second. This
+changes only the in-memory test snapshot and records the count, not Motion names.
+`LIVE2PET_BENCH_APP_ENTRY` optionally selects an absolute local source App entry
+for a controlled baseline bootstrap; report the exact substituted module/revision
+and do not describe such a comparison as an unchanged historical whole App.
+
 ### Timing fields and overlap
 
 The local build report preserves integer `timings.totalMs` and `timings.stages`,

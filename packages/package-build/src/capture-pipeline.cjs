@@ -1,6 +1,9 @@
 const { performance } = require('node:perf_hooks');
+const { totalmem } = require('node:os');
 
-const DEFAULT_BUDGET_BYTES = 512 * 1024 * 1024;
+// Use a quarter of physical memory, with a 512 MiB floor and a 3 GiB cap.
+// This limits estimated in-flight work, not the whole Electron process group.
+const DEFAULT_BUDGET_BYTES = Math.max(512 * 1024 * 1024, Math.min(3 * 1024 ** 3, Math.floor(totalmem() / 4)));
 
 function cancelled() {
   return Object.assign(new Error('Build cancelled.'), { code: 'BUILD_CANCELLED' });

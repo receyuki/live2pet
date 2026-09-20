@@ -103,6 +103,11 @@ async function run() {
   assert.equal(Boolean(spinePackRoot), Boolean(spineRuntimeLine), 'Provide both Spine pack root and runtime line.');
   const motions = JSON.parse(process.env.LIVE2PET_BENCH_MOTIONS || '[]');
   const repetitions = Number(process.env.LIVE2PET_BENCH_REPETITIONS || 3);
+  const motionCount = Number(process.env.LIVE2PET_BENCH_MOTION_COUNT || 3);
+  assert.ok(Number.isInteger(motionCount) && motionCount >= 3 && motionCount <= 32, 'Choose between 3 and 32 benchmark Motions.');
+  const captureBudgetBytes = process.env.LIVE2PET_BENCH_CAPTURE_BUDGET_MIB === undefined ? undefined
+    : Number(process.env.LIVE2PET_BENCH_CAPTURE_BUDGET_MIB) * 1024 * 1024;
+  assert.ok(captureBudgetBytes === undefined || (Number.isSafeInteger(captureBudgetBytes) && captureBudgetBytes > 0), 'Provide a positive capture budget in MiB.');
   const allScenarios = ['cold', 'warm', 'metadata-only', 'one-motion-changed', 'sequential-target', 'cancel-retry'];
   const requestedScenarios = process.env.LIVE2PET_BENCH_SCENARIOS?.split(',') || allScenarios;
   assert.ok(requestedScenarios.length && requestedScenarios.every(scenario => allScenarios.includes(scenario)), 'Unknown benchmark scenario.');
@@ -119,7 +124,8 @@ async function run() {
   const report = {
     schemaVersion: 1, revision: process.env.LIVE2PET_BENCH_REVISION || 'working-tree',
     completed: false, expectedRuns: repetitions * scenarios.length,
-    platform: process.platform, arch: process.arch, preset: 'balanced',
+    platform: process.platform, arch: process.arch, preset: 'balanced', motionCount,
+    ...(captureBudgetBytes === undefined ? {} : { captureBudgetBytes }),
     method: 'Monotonic wall time around public Desktop build IPC. Electron process-group working sets sampled every 500 ms (KiB); sampled peak, not a guaranteed absolute peak. Artifact download/decoding is outside the timed interval. Stage intervals overlap and are not additive. No model names, Motion ids, or input paths in this report.',
     runs,
   };
@@ -134,7 +140,9 @@ async function run() {
       resolveSpinePack(stagedRoot, spineRuntimeLine);
     }
     const packaged = process.env.LIVE2PET_APP_EXECUTABLE;
-    app = await _electron.launch({ executablePath: packaged || require('electron'), args: [...(packaged ? [] : [desktop]), `--user-data-dir=${profile}`], timeout: 30000 });
+    const entry = process.env.LIVE2PET_BENCH_APP_ENTRY || desktop;
+    assert.ok(path.isAbsolute(entry), 'Benchmark App entry must be an absolute path.');
+    app = await _electron.launch({ executablePath: packaged || require('electron'), args: [...(packaged ? [] : [entry]), `--user-data-dir=${profile}`], timeout: 30000 });
     app.process().once('exit', (code, signal) => console.log(`Benchmark App exited: ${code ?? signal}`));
     assert.equal(fs.realpathSync(await app.evaluate(({ app }) => app.getPath('userData'))), fs.realpathSync(profile), 'Never run a benchmark against the normal App profile.');
     const page = await app.firstWindow();
@@ -150,15 +158,23 @@ async function run() {
     let project = (await invoke('openProject', { inputPath })).project;
     const linked = await invoke('relinkSource', { project, inputPath: project.source.path });
     project = linked.project;
+    let catalog = linked.inspection.motions;
     if (spinePackRoot) {
       const preview = await invoke('openPreview', { projectId: project.projectId, sourceFingerprint: project.source.fingerprint, bounds: { x: 0, y: 0, width: 768, height: 768 }, visible: false });
       verifySpineBenchmarkMotions(preview, linked.inspection, motions);
+      catalog = preview.catalog?.motions ?? catalog;
       await invoke('closePreview');
     }
     // This modifies only the in-memory test snapshot, never the input file.
     project.name = 'Benchmark';
     project.recipes = [];
     project.targets.clawd = { profile: 'clawd', renderPreset: 'balanced', mappings: { idle: `motion:${motions[0]}`, thinking: `motion:${motions[1]}`, working: `motion:${motions[2]}`, sleeping: `motion:${motions[0]}` }, reactions: {}, options: {} };
+    if (motionCount > 3) {
+      const extra = catalog.filter(motion => !motions.includes(motion.id) && Number.isFinite(motion.duration) && motion.duration >= 1)
+        .sort((a, b) => a.duration - b.duration || a.id.localeCompare(b.id)).slice(0, motionCount - 3);
+      assert.equal(extra.length, motionCount - 3, 'Not enough additional Motions with known duration for this benchmark.');
+      project.targets.clawd.options.behavior = { idleAnimations: extra.map(motion => ({ motion: `motion:${motion.id}`, duration: Math.round(motion.duration * 1000) })) };
+    }
     project.targets['codex-pet'] = { profile: 'codex-pet', renderPreset: 'balanced', mappings: Object.fromEntries(['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review'].map((id, i) => [id, `motion:${motions[i % 3]}`])), reactions: {}, options: {} };
     for (let repetition = 1; repetition <= repetitions; repetition++) {
       await invoke('clearBuildCache', { confirmClear: true });
@@ -170,7 +186,7 @@ async function run() {
         if (scenario === 'metadata-only') current.name = 'Renamed benchmark';
         if (scenario === 'one-motion-changed') current.targets.clawd.mappings.thinking = `motion:${motions[3]}`;
         const target = scenario === 'sequential-target' ? 'codex-pet' : 'clawd';
-        const buildInput = { project: current, requestId: crypto.randomUUID(), projectId: current.projectId, snapshotFingerprint: crypto.createHash('sha256').update(JSON.stringify(current)).digest('hex'), targets: [target], optionsByTarget: { [target]: { package: true, ...(target === 'codex-pet' ? { spriteVersionNumber: 2 } : {}) } } };
+        const buildInput = { project: current, requestId: crypto.randomUUID(), projectId: current.projectId, snapshotFingerprint: crypto.createHash('sha256').update(JSON.stringify(current)).digest('hex'), targets: [target], optionsByTarget: { [target]: { package: true, ...(captureBudgetBytes === undefined ? {} : { captureBudgetBytes }), ...(target === 'codex-pet' ? { spriteVersionNumber: 2 } : {}) } } };
         let cancellation;
         if (scenario === 'cancel-retry') cancellation = await page.evaluate(cancelDuringCapture, { ...buildInput, requestId: crypto.randomUUID() });
         await page.evaluate(() => {

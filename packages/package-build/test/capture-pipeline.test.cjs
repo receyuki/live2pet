@@ -11,6 +11,26 @@ function project() {
   } });
 }
 
+test('default capture budgets scale with host memory without exceeding three GiB', () => {
+  const { execFileSync } = require('node:child_process');
+  // Host memory is an OS boundary. Separate processes isolate the shared pool.
+  const script = `
+    require('node:os').totalmem = () => Number(process.argv[1]);
+    const { buildProjectTargets } = require(${JSON.stringify(require.resolve('../src/index.cjs'))});
+    const { SyntheticRenderer } = require(${JSON.stringify(require.resolve('../../renderer/src/index.cjs'))});
+    (async () => {
+      const renderer = new SyntheticRenderer();
+      await renderer.load({ motions: ${JSON.stringify(motions.map(id => ({ id, duration: 0.1 })))} });
+      const built = await buildProjectTargets({ project: ${JSON.stringify(project())}, targets: ['clawd'],
+        inputsByTarget: { clawd: { renderer, render: { preset: 'compact', width: 128, height: 128, samples: 2 } } } });
+      process.stdout.write(String(built.builds.clawd.timings.pipeline.budgetBytes / 1024 / 1024));
+    })().catch(error => { console.error(error); process.exitCode = 1; });
+  `;
+  for (const [hostGiB, expectedMiB] of [[2, 512], [4, 1024], [8, 2048], [16, 3072], [64, 3072]]) {
+    assert.equal(Number(execFileSync(process.execPath, ['-e', script, String(hostGiB * 1024 ** 3)], { encoding: 'utf8', timeout: 10000 })), expectedMiB);
+  }
+});
+
 test('Clawd encodes before all Motions are captured and bounds resident raw Motion sets', async () => {
   const renderer = new SyntheticRenderer();
   await renderer.load({ motions: motions.map(id => ({ id, duration: 0.1 })) });

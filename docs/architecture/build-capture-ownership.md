@@ -44,12 +44,14 @@ their existing numeric report fields.
 
 One ordered producer hands off each missing Motion to its encoder and waits when
 the shared admission pool is full. The default pool admits at most two raw Motion
-sets across multi-Motion builds, under a 512 MiB **estimated working-byte budget**.
+sets across multi-Motion builds, under an **estimated working-byte budget** of
+one quarter of physical RAM, with a 512 MiB floor and a 3 GiB cap. Thus 4 / 8 /
+16 GiB hosts use 1 / 2 / 3 GiB respectively; larger hosts retain the 3 GiB cap.
 The estimate is four times sampled RGBA bytes plus 64 MiB per Motion, accounting
 conservatively for frame storage, stack copies and codec/cache scratch space.
 It is not a process RSS limit: textures, Chromium, encoded assets and native
-allocator retention are outside this accounting. Native overhead calibration is
-still pending; do not interpret the estimate as a measured hard memory bound.
+allocator retention are outside this accounting. It is not a live system-memory
+pressure monitor; do not interpret the estimate as a hard process-memory bound.
 
 A Motion exceeding the budget is admitted alone, without changing resolution,
 frame rate or full-duration atomic WebP encoding. Its reservation is reported
@@ -121,3 +123,27 @@ and ran alone; admission waits totalled 29.27 s, encoding 51.46 s and ZIP assemb
 57.65 s. The previous baseline predates this checkpoint and is not a controlled
 paired experiment. This is a memory/throughput tradeoff requiring follow-up,
 not evidence of an overall acceleration. Do not close #20 on this result.
+
+### Admission calibration
+
+The initial 512 MiB default made normal balanced-preset Motions oversized and
+serialized them even on a 16 GiB host. The adaptive default retains the same
+conservative per-Motion estimate and two-slot ceiling rather than assuming
+smaller codec overhead to allow concurrency.
+
+Fresh Node processes exercised the real sharp 0.34.5 / libvips 8.17.3 encoder
+with one and two full-duration 768-square animations decoded from a permitted
+generated package. With raw input already resident, 20 ms RSS sampling observed:
+
+| Concurrent encodes | Raw input | Additional encode RSS | Reserved estimate |
+| --- | ---: | ---: | ---: |
+| 1 | 324 MiB | 343 MiB | 1,360 MiB |
+| 2 | 679.5 MiB | 741.4 MiB | 2,846 MiB |
+
+These samples include the mandatory stack copy and native codec work, but are not
+an allocator-wide bound or proof for every model/platform. Source frames plus
+the observed additional RSS fit within the retained four-times-RGBA-plus-64-MiB
+estimate. The calibration used decoded output frames, not redistributed models;
+fresh processes, explicit input lifetime and sampled RSS avoid claiming that
+all native allocations are tracked by JavaScript counters. Raw-cache copies
+and renderer textures are instead exercised by whole-App benchmarks.
