@@ -23,6 +23,7 @@ async function cancelDuringCapture(input) {
   let requestedAt;
   let cancellation;
   const unsubscribe = window.live2pet.onBuildProgress(event => {
+    if (input.requestId && event.requestId !== input.requestId) return;
     if (cancellation || event.stage !== 'render' || event.status !== 'frame-completed') return;
     requestedAt = performance.now();
     cancellation = window.live2pet.cancelBuild(event.buildId)
@@ -41,7 +42,8 @@ async function cancelDuringCapture(input) {
   } finally { unsubscribe(); }
 }
 
-function summarizeProgress(events) {
+function summarizeProgress(events, requestId) {
+  if (requestId) events = events.filter(event => event.requestId === requestId);
   const stageIntervals = [];
   const starts = new Map();
   const origin = events[0]?.at || 0;
@@ -147,9 +149,9 @@ async function run() {
         if (scenario === 'metadata-only') current.name = 'Renamed benchmark';
         if (scenario === 'one-motion-changed') current.targets.clawd.mappings.thinking = `motion:${motions[3]}`;
         const target = scenario === 'sequential-target' ? 'codex-pet' : 'clawd';
-        const buildInput = { project: current, targets: [target], optionsByTarget: { [target]: { package: true, ...(target === 'codex-pet' ? { spriteVersionNumber: 2 } : {}) } } };
+        const buildInput = { project: current, requestId: crypto.randomUUID(), projectId: current.projectId, snapshotFingerprint: crypto.createHash('sha256').update(JSON.stringify(current)).digest('hex'), targets: [target], optionsByTarget: { [target]: { package: true, ...(target === 'codex-pet' ? { spriteVersionNumber: 2 } : {}) } } };
         let cancellation;
-        if (scenario === 'cancel-retry') cancellation = await page.evaluate(cancelDuringCapture, buildInput);
+        if (scenario === 'cancel-retry') cancellation = await page.evaluate(cancelDuringCapture, { ...buildInput, requestId: crypto.randomUUID() });
         await page.evaluate(() => {
           window.__benchmarkEvents = [];
           window.__benchmarkUnsubscribe = window.live2pet.onBuildProgress(event => window.__benchmarkEvents.push({ ...event, at: performance.now() }));
@@ -185,7 +187,7 @@ async function run() {
         const bytes = Buffer.concat(chunks);
         fs.writeFileSync(path.join(output, `${repetition}-${scenario}.zip`), bytes, { mode: 0o600 });
         const images = await inspectPackage(bytes);
-        const entry = { repetition, scenario, target, totalMs, peakWorkingSetKiB, memorySamples, cache: build.cache, packageBytes: artifact.byteLength, artifactTransferredBytes: bytes.length, artifactChunks: chunks.length, timings: build.report?.timings, desktopTimings: build.report?.desktopTimings, ...(cancellation ? { cancellation } : {}), ...summarizeProgress(events), images };
+        const entry = { repetition, scenario, target, totalMs, peakWorkingSetKiB, memorySamples, cache: build.cache, packageBytes: artifact.byteLength, artifactTransferredBytes: bytes.length, artifactChunks: chunks.length, timings: build.report?.timings, desktopTimings: build.report?.desktopTimings, ...(cancellation ? { cancellation } : {}), ...summarizeProgress(events, buildInput.requestId), images };
         runs.push(entry); writeReport();
         console.log(JSON.stringify({ repetition, scenario, totalMs, peakWorkingSetKiB, capturedFrames: entry.capturedFrames, cache: entry.cache }));
         if (['warm', 'metadata-only', 'cancel-retry'].includes(scenario) && scenarios.includes('cold')) {

@@ -62,7 +62,7 @@ Required environment:
 
 `LIVE2PET_BENCH_REPETITIONS` defaults to 3. `LIVE2PET_APP_EXECUTABLE` optionally
 selects a packaged App. `LIVE2PET_BENCH_SCENARIOS=cold` can build a fresh reference
-for a changed mapping; otherwise all five scenarios run. Warm and metadata-only
+for a changed mapping; otherwise all six scenarios run. Warm and metadata-only
 scenarios require a cold reference in the same run.
 The harness preserves Visual Settings, creates mappings
 only in memory and never saves over the input or installs a Pet Package. Current
@@ -74,8 +74,9 @@ Clawd build, warm rebuild, metadata-only change, one-Motion change and a subsequ
 Codex build, followed by capture cancellation and an immediate retry. Cancellation
 clears only the test cache, requests cancellation after the first captured frame
 through the public preload, and requires an acknowledged `BUILD_CANCELLED` result.
-Retry timings exclude the cancelled attempt; its acknowledgement latency is
-recorded separately. If a cold reference is included, retry assets must match it.
+Retry timings exclude the cancelled attempt; the time from requesting cancellation
+to `BUILD_CANCELLED` settlement is recorded separately as `responseMs`.
+Acknowledgement is validated separately. If a cold reference is included, retry assets must match it.
 Output settings remain Balanced. The test profile is removed on exit;
 local ZIPs and a path-free report are retained in the printed temporary directory.
 Do not commit those ZIPs or private input assets.

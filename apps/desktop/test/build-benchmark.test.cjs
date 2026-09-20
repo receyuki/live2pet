@@ -22,12 +22,13 @@ test('benchmark cancels actual capture through the preload and the same host imm
     clawd: { mappings: { idle: 'motion:private-motion', thinking: 'motion:private-motion', working: 'motion:private-motion', sleeping: 'motion:private-motion' } },
   } });
   const input = { project, targets: ['clawd'], inputsByTarget: { clawd: { render: { preset: 'compact', width: 128, height: 128, samples: 2 } } }, optionsByTarget: { clawd: { package: true } } };
+  Object.assign(input, { requestId: 'benchmark-cancel', projectId: project.projectId, snapshotFingerprint: require('node:crypto').createHash('sha256').update(JSON.stringify(project)).digest('hex') });
   const run = vm.runInNewContext(`(${cancelDuringCapture.toString()})`, { window: { live2pet: api }, performance });
   const cancelled = await run(input);
   assert.equal(cancelled.cancelled, true);
   assert.ok(cancelled.responseMs >= 0);
   assert.equal(bus.listenerCount(APP_BUILD_PROGRESS_CHANNEL), 0);
-  const retry = await api.buildProject(input);
+  const retry = await api.buildProject({ ...input, requestId: 'benchmark-retry' });
   assert.equal(retry.ok, true);
   assert.equal(retry.result.builds.clawd.validation.ok, true);
   assert.ok(retry.result.artifacts[0].byteLength > 0);
@@ -82,4 +83,15 @@ test('benchmark counts newly encoded Codex atlases separately from cached atlase
   ]);
   assert.equal(result.encodedAtlases, 1);
   assert.equal(result.encodedAnimations, 0);
+});
+
+test('benchmark retry measurements exclude late progress from a cancelled request', () => {
+  const result = summarizeProgress([
+    { requestId: 'cancelled', target: 'clawd', stage: 'render', status: 'frame-completed', at: 10 },
+    { requestId: 'retry', target: 'clawd', stage: 'render', status: 'started', at: 20 },
+    { requestId: 'retry', target: 'clawd', stage: 'render', status: 'frame-completed', at: 30 },
+    { requestId: 'retry', target: 'clawd', stage: 'render', status: 'completed', at: 40 },
+  ], 'retry');
+  assert.equal(result.capturedFrames, 1);
+  assert.deepEqual(result.stageIntervals.map(value => [value.startMs, value.endMs]), [[0, 20]]);
 });
