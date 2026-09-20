@@ -66,12 +66,17 @@ for a changed mapping; otherwise all five scenarios run. Warm and metadata-only
 scenarios require a cold reference in the same run.
 The harness preserves Visual Settings, creates mappings
 only in memory and never saves over the input or installs a Pet Package. Current
-automated real-model setup is Live2D; native Spine setup and cancel/retry benchmark
-scenarios remain follow-up acceptance work for #19.
+automated real-model setup is Live2D; native Spine setup remains follow-up
+acceptance work for #19.
 
 Each repetition clears only its isolated cache, then measures a cold multi-motion
 Clawd build, warm rebuild, metadata-only change, one-Motion change and a subsequent
-Codex build. Output settings remain Balanced. The test profile is removed on exit;
+Codex build, followed by capture cancellation and an immediate retry. Cancellation
+clears only the test cache, requests cancellation after the first captured frame
+through the public preload, and requires an acknowledged `BUILD_CANCELLED` result.
+Retry timings exclude the cancelled attempt; its acknowledgement latency is
+recorded separately. If a cold reference is included, retry assets must match it.
+Output settings remain Balanced. The test profile is removed on exit;
 local ZIPs and a path-free report are retained in the printed temporary directory.
 Do not commit those ZIPs or private input assets.
 
@@ -86,8 +91,35 @@ Warm and renamed builds must retain identical WebP bytes, dimensions, frame
 delays and alpha. The report also records decoded RGBA digests and visible-pixel
 counts at the first, middle and last encoded frames. CI uses public synthetic
 models and checks behavior, never machine-dependent timing thresholds. Full
-phase-specific preparation/bounds/cache/ZIP/memory instrumentation is still part
-of #19; this harness does not claim to measure uninstrumented subphases.
+native bounds-analysis and lower-level IPC instrumentation remain part of #19;
+this harness does not claim to measure uninstrumented subphases.
+
+### Timing fields and overlap
+
+The local build report preserves integer `timings.totalMs` and `timings.stages`,
+now measured with a monotonic clock. Additional numeric fields have these scopes:
+
+| Field | Measured work |
+| --- | --- |
+| `timings.capturePreparationMs` | Per-Motion model reload, excluding reapplying Visual Settings |
+| `timings.rawCacheReadMs` / `rawCacheDecodeMs` | Raw-cache lookup and frame-envelope decoding |
+| `timings.rawCacheWriteMs` | Frame-envelope encoding and raw-cache persistence |
+| `timings.capturedRgbaBytes` | Newly captured pixel payload, not IPC serialization overhead |
+| `timings.encodeMotions` | Completed Clawd operations, actual encodes, hits, sum and maximum operation durations |
+| `desktopTimings.requestMs` | Entire successful Desktop planned build request, shared across its targets |
+| `desktopTimings.identityChecksMs` | All freshness checks, including the separately recorded source inspection and runtime verification |
+| `desktopTimings.encodedCacheReadMs` / `encodedCacheWriteMs` | Planned encoded-cache storage operations; byte counters count returned or successfully stored payloads, excluding cache metadata |
+| `desktopTimings.rendererQueueMs` / `rendererAcquisitionMs` | Waiting for the serialized host, and acquiring the fresh renderer including its native preparation |
+| `desktopTimings.queuedRequestsAhead` | Number of outstanding host requests ahead when submitted, not encoder-worker queue depth |
+
+Encoding operations overlap under concurrency and include cache/callback work.
+Their summed duration is not encoding wall time; `stages.encode` is the enclosing
+elapsed duration. Codex atlas encoding uses that stage and has no per-Motion
+encoding operations. Raw-cache writes overlap the enclosing render stage; identity
+checks can be nested inside renderer acquisition or encoded-asset callbacks.
+Never sum these fields into total wall time. Reports retain fixed numeric fields,
+not private Motion IDs or unbounded per-frame timing records. The benchmark also
+records actual artifact download bytes/chunks, separately from capture payload.
 
 See the [2026-09-20 checkpoint](../research/encoded-cache-checkpoint.md) for
 qualified local measurements, the native-state parity finding and remaining

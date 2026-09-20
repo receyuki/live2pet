@@ -72,6 +72,13 @@ still acquire no renderer. Any cheaper reset must first prove equivalent output.
 - Visual acceptance of the generated theme in the target host, especially motion
   starts, framing and hidden parts.
 
+The user subsequently accepted the generated Clawd theme visually. That check
+is complete for this fixture; it does not substitute for native Cubism 2/Spine
+acceptance. Follow-up implementation adds monotonic operation aggregates,
+Desktop preparation/cache measurements and a public-preload cancel/retry scenario.
+The timing table above still describes the original qualified checkpoint, not
+new runs of those expanded scenarios.
+
 One earlier extended benchmark stopped because its main page closed; no system
 crash report was found. Whether that closure was user-initiated is unconfirmed,
 so the interrupted run is not counted as complete. A separate reproducible

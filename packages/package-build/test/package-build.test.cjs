@@ -1013,6 +1013,62 @@ test('build reports stay concise and never include RGBA buffers or source paths'
   assert.equal(JSON.stringify(report).includes('/private/'), false);
 });
 
+test('project builds distinguish capture preparation and raw cache work on cold and warm runs', async () => {
+  class ReloadingSyntheticRenderer extends SyntheticRenderer {
+    async prepareCapture() { await this.load({ motions: [{ id: 'private-capture-motion', duration: 0.1 }] }); }
+  }
+  const renderer = new ReloadingSyntheticRenderer();
+  await renderer.prepareCapture();
+  const cache = new CacheStore({ rootDir: require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'live2pet-timing-cache-')) });
+  const project = createProject({ projectId: 'capture-timing', name: 'Capture timing', source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'fixture' }, targets: {
+    clawd: { renderPreset: 'compact', mappings: { idle: 'motion:private-capture-motion', thinking: 'motion:private-capture-motion', working: 'motion:private-capture-motion', sleeping: 'fallback:idle' }, options: { renderOverrides: { width: 16, height: 16, fps: 10 } } },
+  } });
+  const input = { project, targets: ['clawd'], inputsByTarget: { clawd: { renderer } }, optionsByTarget: { clawd: { cache, runtimeVersion: 'synthetic-1', rendererVersion: 'synthetic-1' } } };
+  const cold = (await buildProjectTargets(input)).builds.clawd;
+  const warm = (await buildProjectTargets(input)).builds.clawd;
+  assert.ok(cold.timings.capturePreparationMs > 0);
+  assert.equal(cold.timings.capturedRgbaBytes, 2048);
+  assert.equal(warm.timings.capturedRgbaBytes, 0);
+  assert.ok(cold.timings.rawCacheReadMs > 0);
+  assert.ok(cold.timings.rawCacheWriteMs > 0);
+  assert.equal(cold.timings.rawCacheDecodeMs, 0);
+  assert.equal(warm.timings.capturePreparationMs, 0);
+  assert.equal(warm.timings.rawCacheWriteMs, 0);
+  assert.ok(warm.timings.rawCacheReadMs > 0);
+  assert.ok(warm.timings.rawCacheDecodeMs > 0);
+  for (const build of [cold, warm]) {
+    assert.deepEqual(build.report.timings, build.timings);
+    for (const key of ['capturePreparationMs', 'rawCacheReadMs', 'rawCacheDecodeMs', 'rawCacheWriteMs']) assert.ok(Number.isFinite(build.timings[key]) && build.timings[key] >= 0 && build.timings[key] <= build.timings.totalMs);
+    assert.equal(JSON.stringify(build.timings).includes('private-capture-motion'), false);
+  }
+});
+
+test('project builds report bounded Motion encode operation timing separately from stage walltime', async () => {
+  const renderer = new SyntheticRenderer();
+  const ids = ['private-idle-motion', 'private-working-motion'];
+  await renderer.load({ motions: ids.map(id => ({ id, duration: 0.1 })) });
+  const project = createProject({ projectId: 'timed-project', name: 'Timed project', source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'fixture' }, targets: {
+    clawd: { renderPreset: 'compact', mappings: { idle: `motion:${ids[0]}`, thinking: `motion:${ids[1]}`, working: `motion:${ids[1]}`, sleeping: 'fallback:idle' }, options: { renderOverrides: { width: 16, height: 16, fps: 10 } } },
+  } });
+  const encodedByMotion = {};
+  const cold = (await buildProjectTargets({ project, targets: ['clawd'], inputsByTarget: { clawd: { renderer } }, optionsByTarget: { clawd: { encodingConcurrency: 2, onEncodedAsset: (id, asset) => { encodedByMotion[id] = asset; } } } })).builds.clawd;
+  const warm = (await buildProjectTargets({ project, targets: ['clawd'], inputsByTarget: { clawd: { renderer, encodedByMotion } } })).builds.clawd;
+  for (const build of [cold, warm]) {
+    const timing = build.timings;
+    assert.equal(timing.encodeMotions.completed, 2);
+    assert.ok(timing.encodeMotions.operationTotalMs >= timing.encodeMotions.operationMaxMs);
+    assert.ok(timing.encodeMotions.operationMaxMs <= timing.stages.encode);
+    assert.ok(timing.stages.encode <= timing.totalMs);
+    for (const value of Object.values(timing.encodeMotions)) assert.ok(Number.isFinite(value) && value >= 0);
+    assert.deepEqual(build.report.timings, timing);
+    for (const id of ids) assert.equal(JSON.stringify(timing).includes(id), false);
+  }
+  assert.equal(cold.timings.encodeMotions.encoded, 2);
+  assert.equal(cold.timings.encodeMotions.cacheHits, 0);
+  assert.equal(warm.timings.encodeMotions.encoded, 0);
+  assert.equal(warm.timings.encodeMotions.cacheHits, 2);
+});
+
 test('project target Render Presets flow into capture and provenance', async () => {
   const renderer = new SyntheticRenderer();
   const motionIds = [...new Set(['idle', 'thinking', 'working', 'error', 'attention', ...Object.values(mapping()).map((value) => value.slice(7))])];

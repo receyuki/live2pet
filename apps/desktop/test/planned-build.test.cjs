@@ -126,6 +126,15 @@ test('unchanged or renamed Clawd builds reuse animations without acquiring a ren
   assert.deepEqual(warm.builds.clawd.assets, cold.builds.clawd.assets);
   assert.deepEqual(warm.builds.clawd.provenance, cold.builds.clawd.provenance);
   assert.equal(warm.builds.clawd.provenance.encoder.version, 'sharp-test');
+  const coldTiming = cold.builds.clawd.report.desktopTimings;
+  const warmTiming = warm.builds.clawd.report.desktopTimings;
+  assert.ok(coldTiming.requestMs >= cold.builds.clawd.timings.totalMs - 1);
+  assert.ok(coldTiming.rendererAcquisitionMs > 0);
+  assert.ok(coldTiming.encodedCacheWriteBytes > 0);
+  assert.equal(warmTiming.rendererAcquisitionMs, 0);
+  assert.ok(warmTiming.encodedCacheReadBytes > 0);
+  assert.equal(warmTiming.encodedCacheWriteBytes, 0);
+  assert.ok(Object.values(warmTiming).every(value => Number.isFinite(value) && value >= 0));
   const changed = structuredClone(project);
   changed.targets.clawd.mappings.thinking = 'motion:jump';
   const mixed = await build({ ...input, project: changed });

@@ -18,6 +18,29 @@ async function readArtifactChunk({ artifactId, offset }) {
   return { nextOffset: response.result.nextOffset, base64: btoa(binary) };
 }
 
+// Executed inside the App renderer; cancellation uses the same preload as the UI.
+async function cancelDuringCapture(input) {
+  let requestedAt;
+  let cancellation;
+  const unsubscribe = window.live2pet.onBuildProgress(event => {
+    if (cancellation || event.stage !== 'render' || event.status !== 'frame-completed') return;
+    requestedAt = performance.now();
+    cancellation = window.live2pet.cancelBuild(event.buildId)
+      .then(response => ({ response }), error => ({ error }));
+  });
+  try {
+    const response = await window.live2pet.buildProject(input);
+    const settledAt = performance.now();
+    const acknowledgement = await cancellation;
+    if (acknowledgement?.error) throw acknowledgement.error;
+    if (response.ok || response.error?.code !== 'BUILD_CANCELLED'
+      || !acknowledgement?.response.ok || acknowledgement.response.result.cancelled !== true) {
+      throw new Error('Capture cancellation was not observed and acknowledged.');
+    }
+    return { cancelled: true, responseMs: settledAt - requestedAt };
+  } finally { unsubscribe(); }
+}
+
 function summarizeProgress(events) {
   const stageIntervals = [];
   const starts = new Map();
@@ -35,6 +58,7 @@ function summarizeProgress(events) {
     stageIntervals,
     capturedFrames: events.filter(e => e.stage === 'render' && e.status === 'frame-completed').length,
     encodedAnimations: events.filter(e => e.stage === 'encode' && e.status === 'motion-completed' && e.cache !== 'hit').length,
+    encodedAtlases: events.filter(e => e.target === 'codex-pet' && e.stage === 'encode' && e.status === 'completed' && !(e.cacheHits > 0)).length,
     queuedEvents: events.filter(e => e.stage === 'queue' && e.status === 'queued').length,
   };
 }
@@ -68,7 +92,7 @@ async function run() {
   const runtime = process.env.LIVE2PET_BENCH_RUNTIME;
   const motions = JSON.parse(process.env.LIVE2PET_BENCH_MOTIONS || '[]');
   const repetitions = Number(process.env.LIVE2PET_BENCH_REPETITIONS || 3);
-  const allScenarios = ['cold', 'warm', 'metadata-only', 'one-motion-changed', 'sequential-target'];
+  const allScenarios = ['cold', 'warm', 'metadata-only', 'one-motion-changed', 'sequential-target', 'cancel-retry'];
   const requestedScenarios = process.env.LIVE2PET_BENCH_SCENARIOS?.split(',') || allScenarios;
   assert.ok(requestedScenarios.length && requestedScenarios.every(scenario => allScenarios.includes(scenario)), 'Unknown benchmark scenario.');
   const scenarios = allScenarios.filter(scenario => requestedScenarios.includes(scenario));
@@ -117,10 +141,15 @@ async function run() {
       await invoke('clearBuildCache', { confirmClear: true });
       for (const scenario of scenarios) {
         await invoke('closePreview');
+        // Force native work so cancellation cannot silently exercise a cache hit.
+        if (scenario === 'cancel-retry') await invoke('clearBuildCache', { confirmClear: true });
         const current = structuredClone(project);
         if (scenario === 'metadata-only') current.name = 'Renamed benchmark';
         if (scenario === 'one-motion-changed') current.targets.clawd.mappings.thinking = `motion:${motions[3]}`;
         const target = scenario === 'sequential-target' ? 'codex-pet' : 'clawd';
+        const buildInput = { project: current, targets: [target], optionsByTarget: { [target]: { package: true, ...(target === 'codex-pet' ? { spriteVersionNumber: 2 } : {}) } } };
+        let cancellation;
+        if (scenario === 'cancel-retry') cancellation = await page.evaluate(cancelDuringCapture, buildInput);
         await page.evaluate(() => {
           window.__benchmarkEvents = [];
           window.__benchmarkUnsubscribe = window.live2pet.onBuildProgress(event => window.__benchmarkEvents.push({ ...event, at: performance.now() }));
@@ -140,7 +169,7 @@ async function run() {
         let built;
         let totalMs;
         try {
-          built = await invoke('buildProject', { project: current, targets: [target], optionsByTarget: { [target]: { package: true, ...(target === 'codex-pet' ? { spriteVersionNumber: 2 } : {}) } } });
+          built = await invoke('buildProject', buildInput);
           totalMs = performance.now() - started;
         } finally { clearInterval(timer); if (pendingSample) await pendingSample; }
         const events = await page.evaluate(() => { window.__benchmarkUnsubscribe(); return window.__benchmarkEvents; });
@@ -156,10 +185,10 @@ async function run() {
         const bytes = Buffer.concat(chunks);
         fs.writeFileSync(path.join(output, `${repetition}-${scenario}.zip`), bytes, { mode: 0o600 });
         const images = await inspectPackage(bytes);
-        const entry = { repetition, scenario, target, totalMs, peakWorkingSetKiB, memorySamples, cache: build.cache, packageBytes: artifact.byteLength, ...summarizeProgress(events), images };
+        const entry = { repetition, scenario, target, totalMs, peakWorkingSetKiB, memorySamples, cache: build.cache, packageBytes: artifact.byteLength, artifactTransferredBytes: bytes.length, artifactChunks: chunks.length, timings: build.report?.timings, desktopTimings: build.report?.desktopTimings, ...(cancellation ? { cancellation } : {}), ...summarizeProgress(events), images };
         runs.push(entry); writeReport();
         console.log(JSON.stringify({ repetition, scenario, totalMs, peakWorkingSetKiB, capturedFrames: entry.capturedFrames, cache: entry.cache }));
-        if (['warm', 'metadata-only'].includes(scenario)) {
+        if (['warm', 'metadata-only', 'cancel-retry'].includes(scenario) && scenarios.includes('cold')) {
           assert.deepEqual(images, runs.find(run => run.repetition === repetition && run.scenario === 'cold').images, 'Warm and renamed packages must preserve all encoded pixels, timing and alpha.');
         }
       }
@@ -175,4 +204,4 @@ async function run() {
 }
 
 if (require.main === module) run().catch(error => { console.error(`${error.code || 'BENCHMARK_FAILED'}: ${error.message}`); process.exitCode = 1; });
-module.exports = { summarizeProgress, inspectPackage, readArtifactChunk };
+module.exports = { summarizeProgress, inspectPackage, readArtifactChunk, cancelDuringCapture };

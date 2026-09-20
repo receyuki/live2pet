@@ -1,7 +1,37 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const vm = require('node:vm');
-const { summarizeProgress, readArtifactChunk, inspectPackage } = require('../scripts/benchmark-project-build.cjs');
+const { summarizeProgress, readArtifactChunk, inspectPackage, cancelDuringCapture } = require('../scripts/benchmark-project-build.cjs');
+
+test('benchmark cancels actual capture through the preload and the same host immediately builds a retry', async () => {
+  const { EventEmitter } = require('node:events');
+  const { createAppIpcRouter, createAppPreloadApi, APP_BUILD_PROGRESS_CHANNEL } = require('../../../packages/app-host/src/index.cjs');
+  const { createProject } = require('../../../packages/project/src/index.cjs');
+  const { SyntheticRenderer } = require('../../../packages/renderer/src/index.cjs');
+  const { buildProjectTargets } = require('../../../packages/package-build/src/index.cjs');
+  const renderer = new SyntheticRenderer();
+  await renderer.load({ motions: [{ id: 'private-motion', duration: 0.1 }] });
+  const bus = new EventEmitter();
+  const router = createAppIpcRouter({
+    onBuildProgress: event => bus.emit(APP_BUILD_PROGRESS_CHANNEL, {}, event),
+    buildProjectService: input => buildProjectTargets({ ...input, inputsByTarget: { clawd: { ...input.inputsByTarget.clawd, renderer } } }),
+  });
+  bus.invoke = (_channel, request) => router(request);
+  const api = createAppPreloadApi({ ipcRenderer: bus });
+  const project = createProject({ projectId: 'cancel-benchmark', name: 'Test', source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'a'.repeat(64) }, targets: {
+    clawd: { mappings: { idle: 'motion:private-motion', thinking: 'motion:private-motion', working: 'motion:private-motion', sleeping: 'motion:private-motion' } },
+  } });
+  const input = { project, targets: ['clawd'], inputsByTarget: { clawd: { render: { preset: 'compact', width: 128, height: 128, samples: 2 } } }, optionsByTarget: { clawd: { package: true } } };
+  const run = vm.runInNewContext(`(${cancelDuringCapture.toString()})`, { window: { live2pet: api }, performance });
+  const cancelled = await run(input);
+  assert.equal(cancelled.cancelled, true);
+  assert.ok(cancelled.responseMs >= 0);
+  assert.equal(bus.listenerCount(APP_BUILD_PROGRESS_CHANNEL), 0);
+  const retry = await api.buildProject(input);
+  assert.equal(retry.ok, true);
+  assert.equal(retry.result.builds.clawd.validation.ok, true);
+  assert.ok(retry.result.artifacts[0].byteLength > 0);
+});
 
 test('benchmark inspects a Node Buffer ZIP without treating its view as a split archive', async () => {
   const { ZipWriter, Uint8ArrayWriter, Uint8ArrayReader } = require('@zip.js/zip.js');
@@ -43,4 +73,13 @@ test('benchmark reports overlapping intervals separately and omits private Motio
   ]);
   assert.equal(summary.encodedAnimations, 1);
   assert.equal(JSON.stringify(summary).includes('private-motion'), false);
+});
+
+test('benchmark counts newly encoded Codex atlases separately from cached atlases', () => {
+  const result = summarizeProgress([
+    { target: 'codex-pet', stage: 'encode', status: 'completed', cacheHits: 0, cacheMisses: 1, at: 10 },
+    { target: 'codex-pet', stage: 'encode', status: 'completed', cacheHits: 1, cacheMisses: 0, at: 20 },
+  ]);
+  assert.equal(result.encodedAtlases, 1);
+  assert.equal(result.encodedAnimations, 0);
 });

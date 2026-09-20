@@ -1,5 +1,6 @@
 const path = require('node:path');
 const { createHash } = require('node:crypto');
+const { performance } = require('node:perf_hooks');
 const { pathToFileURL } = require('node:url');
 const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, screen, shell, WebContentsView } = require('electron');
 const { createRuntimeHelpWindowHandler } = require('./runtime-help.cjs');
@@ -230,14 +231,19 @@ const buildProjectWithHostedRenderer = createHostedBuildService({
 const buildProjectWithPlan = createPlannedBuildService({
   getCache: getCaptureCacheStore,
   buildProject: buildProjectWithHostedRenderer,
-  resolveContext: async (project) => {
+  resolveContext: async (project, recordTiming) => {
     const record = sourceRegistry.get(project.projectId);
     if (!record) throw Object.assign(new Error('The project Source Package is no longer available.'), { code: 'PREVIEW_SOURCE_NOT_FOUND' });
     // Re-inspect the selected files even for a complete encoded-cache hit.
     // A cached registry record is not evidence that the files are unchanged.
+    const inspectionStarted = performance.now();
     const manifest = await sourceInspectionService({ inputPath: record.inputPath, modelConfig: project.source.modelConfig });
+    recordTiming('sourceInspectionMs', performance.now() - inspectionStarted);
     if (manifest.source.fingerprint !== project.source.fingerprint) throw Object.assign(new Error('The Source Package changed. Reopen the project to review its mappings.'), { code: 'PREVIEW_SOURCE_MISMATCH' });
-    return resolveRendererCacheContext({ format: manifest.model.format, runtimeLine: manifest.model.runtimeLine, cubismVersion: manifest.model.cubism });
+    const runtimeStarted = performance.now();
+    const context = await resolveRendererCacheContext({ format: manifest.model.format, runtimeLine: manifest.model.runtimeLine, cubismVersion: manifest.model.cubism });
+    recordTiming('runtimeVerificationMs', performance.now() - runtimeStarted);
+    return context;
   },
 });
 

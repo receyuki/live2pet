@@ -8,6 +8,7 @@ const {
 } = require('@live2pet/codex-target');
 const CODEX_PROFILE = require('@live2pet/codex-target/profile');
 const { createHash } = require('node:crypto');
+const { performance } = require('node:perf_hooks');
 const { createClawdTarget, validateClawdThemePackage, clawdPackageSizeWarning } = require('@live2pet/clawd-target');
 const CLAWD_PROFILE = require('@live2pet/clawd-target/profile');
 const {
@@ -121,6 +122,8 @@ function createBuildReport({ build, projectId, source } = {}) {
     timings: build.timings ? {
       totalMs: Number.isInteger(build.timings.totalMs) && build.timings.totalMs >= 0 ? build.timings.totalMs : 0,
       stages: Object.fromEntries(Object.entries(build.timings.stages || {}).filter(([, value]) => Number.isInteger(value) && value >= 0)),
+      ...Object.fromEntries(['capturePreparationMs', 'rawCacheReadMs', 'rawCacheDecodeMs', 'rawCacheWriteMs', 'capturedRgbaBytes'].filter(key => Number.isFinite(build.timings[key]) && build.timings[key] >= 0).map(key => [key, build.timings[key]])),
+      ...(build.timings.encodeMotions ? { encodeMotions: Object.fromEntries(['completed', 'encoded', 'cacheHits', 'operationTotalMs', 'operationMaxMs'].map(key => [key, Number.isFinite(build.timings.encodeMotions[key]) && build.timings.encodeMotions[key] >= 0 ? build.timings.encodeMotions[key] : 0])) } : {}),
     } : null,
     warnings: Array.isArray(build.warnings) ? build.warnings.map((warning) => ({ ...warning })) : [],
   };
@@ -403,7 +406,7 @@ function planTargetRecipes(project, targetId, render) {
   };
 }
 
-async function renderMappedMotions({ renderer, motionIds, render = {}, signal, onProgress, target, cache, cacheContext, expressionByMotion = {}, visualSettings } = {}) {
+async function renderMappedMotions({ renderer, motionIds, render = {}, signal, onProgress, target, cache, cacheContext, expressionByMotion = {}, visualSettings, captureTimings } = {}) {
   if (!renderer || typeof renderer.captureRgba !== 'function') fail('RENDERER_REQUIRED', 'A renderer implementing captureRgba is required when build inputs do not include captured frames.');
   if (!Array.isArray(motionIds) || !motionIds.length) fail('MOTION_MAPPING_REQUIRED', `No ${target || 'target'} Motion mappings are available for renderer capture.`);
   const visualSettingsIdentity = resolveVisualSettings(visualSettings, cacheContext);
@@ -445,10 +448,18 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
       artifact: 'render-candidates',
     }) : null;
     if (cacheKey) {
+      const readStartedAt = performance.now();
       const cached = cache.get(cacheKey);
+      if (captureTimings) captureTimings.rawCacheReadMs += performance.now() - readStartedAt;
       if (cached) {
         try {
-          const decoded = decodeFrameSet(cached.data);
+          let decoded;
+          const decodeStartedAt = performance.now();
+          try {
+            decoded = decodeFrameSet(cached.data);
+          } finally {
+            if (captureTimings) captureTimings.rawCacheDecodeMs += performance.now() - decodeStartedAt;
+          }
           if (decoded.motionId === motionId && decoded.frames.length > 0) {
             framesByMotion[motionId] = decoded;
             progress(onProgress, 'render', 'completed', { target, motionId, samples: decoded.frames.length, cache: 'hit', fraction: (motionIds.indexOf(motionId) + 1) / motionIds.length });
@@ -461,19 +472,27 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
     }
     const motionIndex = motionIds.indexOf(motionId);
     if (typeof renderer.prepareCapture === 'function') {
+      const preparationStartedAt = performance.now();
       await renderer.prepareCapture();
+      if (captureTimings) captureTimings.capturePreparationMs += performance.now() - preparationStartedAt;
       await applyRendererVisualSettings(renderer, visualSettingsIdentity.settings, target);
       checkCancelled(signal);
     }
     progress(onProgress, 'render', 'started', { target, motionId, width, height, samples, duration, fraction: motionIndex / motionIds.length });
     const result = await sampleMotionCandidates(renderer, { motionId, duration, samples, width, height, includeEndpoint: target !== 'clawd', expressionId, signal, onFrame: ({ completed, total }) => progress(onProgress, 'render', 'frame-completed', { target, motionId, completed, total, fraction: (motionIndex + completed / total) / motionIds.length }) });
     checkCancelled(signal);
+    // Newly captured RGBA payload only, not transport/IPC serialization bytes.
+    if (captureTimings) captureTimings.capturedRgbaBytes += result.candidates.reduce((bytes, frame) => bytes + frame.rgba.byteLength, 0);
     framesByMotion[motionId] = {
       frames: result.candidates,
       fps: target === 'clawd' && !configuredSamples && duration > 0 ? samples / duration : Number.isFinite(render.fps) ? render.fps : (render.preset ? (preset.fps || (duration > 0 ? samples / duration : 10)) : (duration > 0 ? samples / duration : 10)),
       expressionId,
     };
-    if (cacheKey) cache.put(cacheKey, encodeFrameSet({ motionId, ...framesByMotion[motionId] }), { projectId: cacheContext.projectId, sourceFingerprint: cacheContext.sourceFingerprint, artifact: 'render-candidates' });
+    if (cacheKey) {
+      const writeStartedAt = performance.now();
+      cache.put(cacheKey, encodeFrameSet({ motionId, ...framesByMotion[motionId] }), { projectId: cacheContext.projectId, sourceFingerprint: cacheContext.sourceFingerprint, artifact: 'render-candidates' });
+      if (captureTimings) captureTimings.rawCacheWriteMs += performance.now() - writeStartedAt;
+    }
     progress(onProgress, 'render', 'completed', { target, motionId, samples: result.candidates.length, fraction: (motionIndex + 1) / motionIds.length });
   }
   return framesByMotion;
@@ -1215,19 +1234,37 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
   const builds = {};
   const warnings = [];
   for (const targetId of uniqueTargets) {
-    const targetStartedAt = Date.now();
+    const targetStartedAt = performance.now();
     const stageStartedAt = new Map();
     const stageDurations = {};
+    // Preparation excludes applying Visual Settings. Cache write includes frame
+    // envelope encoding; decode measures frame envelope decoding only.
+    // These boundaries can overlap render walltime and are not additive stages.
+    const captureTimings = { capturePreparationMs: 0, rawCacheReadMs: 0, rawCacheDecodeMs: 0, rawCacheWriteMs: 0, capturedRgbaBytes: 0 };
+    const motionStartedAt = new Map();
+    // Motion operations overlap when encoding concurrently. Their sum is work
+    // duration, not walltime; stages.encode measures the enclosing walltime.
+    // Operations include cache lookup/write and the encoded-asset callback.
+    const encodeMotions = { completed: 0, encoded: 0, cacheHits: 0, operationTotalMs: 0, operationMaxMs: 0 };
     checkCancelled(signal);
     const targetInput = inputsByTarget[targetId] || {};
     const targetProject = normalizedProject.targets[targetId];
     if (!targetProject || !targetProject.mappings || !Object.keys(targetProject.mappings).length) fail('TARGET_MAPPING_REQUIRED', `${targetId} has no mappings in the Live2Pet Project.`);
     const targetOptions = { ...(optionsByTarget[targetId] || {}), signal, onProgress: (event) => {
-      const now = Date.now();
+      const now = performance.now();
       if (event.status === 'started') stageStartedAt.set(event.stage, now);
       if (event.status === 'completed' && stageStartedAt.has(event.stage)) {
         stageDurations[event.stage] = (stageDurations[event.stage] || 0) + Math.max(0, now - stageStartedAt.get(event.stage));
         stageStartedAt.delete(event.stage);
+      }
+      if (event.stage === 'encode' && event.status === 'motion-started') motionStartedAt.set(event.motionId, now);
+      if (event.stage === 'encode' && event.status === 'motion-completed' && motionStartedAt.has(event.motionId)) {
+        const duration = Math.max(0, now - motionStartedAt.get(event.motionId));
+        motionStartedAt.delete(event.motionId);
+        encodeMotions.completed += 1;
+        encodeMotions[event.cache === 'hit' ? 'cacheHits' : 'encoded'] += 1;
+        encodeMotions.operationTotalMs += duration;
+        encodeMotions.operationMaxMs = Math.max(encodeMotions.operationMaxMs, duration);
       }
       onProgress?.({ target: targetId, ...event });
     } };
@@ -1253,13 +1290,13 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
       if (targetId === 'clawd' && !targetInput.framesByMotion && !targetInput.frames) {
         await applyRendererVisualSettings(renderer, projectVisualSettings, targetId);
         const ids = planTargetRecipes(normalizedProject, targetId, configuredRender).motions.map(recipe => recipe.motionId).filter(id => !targetInput.encodedByMotion?.[id]);
-        const framesByMotion = ids.length ? await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, visualSettings: projectVisualSettings, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext }) : {};
+        const framesByMotion = ids.length ? await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, visualSettings: projectVisualSettings, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext, captureTimings }) : {};
         renderedInput = { ...targetInput, framesByMotion };
       } else if (targetId === 'codex-pet' && !targetInput.candidatesByRow && !targetInput.candidates && !targetInput.encodedAtlas) {
         await applyRendererVisualSettings(renderer, projectVisualSettings, targetId);
         targetOptions.selection = { ...targetOptions.selection, preserveTiming: true };
         const ids = mappedMotionIds(targetProject.mappings);
-        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, visualSettings: projectVisualSettings, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext });
+        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, visualSettings: projectVisualSettings, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext, captureTimings });
         const candidatesByRow = Object.fromEntries(Object.entries(targetProject.mappings).map(([row, value]) => [row, framesByMotion[value.slice(7)]?.frames || []]));
         renderedInput = { ...targetInput, candidatesByRow };
       }
@@ -1283,7 +1320,14 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
         metadata: metadataByTarget[targetId] || renderedInput.metadata || defaultMetadata,
       }, targetOptions);
     }
-    result.timings = { totalMs: Math.max(0, Date.now() - targetStartedAt), stages: stageDurations };
+    // Preserve the existing integer millisecond fields; operation aggregates
+    // retain sub-millisecond resolution for short/cache-hit operations.
+    result.timings = {
+      totalMs: Math.ceil(Math.max(0, performance.now() - targetStartedAt)),
+      stages: Object.fromEntries(Object.entries(stageDurations).map(([stage, duration]) => [stage, Math.ceil(duration)])),
+      encodeMotions,
+      ...captureTimings,
+    };
     result.report = createBuildReport({ build: result, projectId: normalizedProject.projectId, source: normalizedProject.source });
     builds[targetId] = result;
     warnings.push(...(result.warnings || []).map((warning) => ({ target: targetId, ...warning })));

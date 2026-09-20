@@ -1,4 +1,5 @@
 const { redactMessage } = require('./preview-session-service.cjs');
+const { performance } = require('node:perf_hooks');
 
 class HostedBuildError extends Error {
   constructor(code, message) {
@@ -34,6 +35,8 @@ function createHostedBuildService({ previewSession, buildProject, captureBounds 
   let pendingCaptures = 0;
 
   const runCaptured = (operation, { signal, onProgress, targets }) => {
+    const queuedAt = performance.now();
+    const queuedRequestsAhead = pendingCaptures;
     const emit = (stage, status) => {
       for (const target of targets) {
         try { onProgress?.({ target, stage, status, fraction: 0 }); } catch { /* Progress must not fail a build. */ }
@@ -43,7 +46,7 @@ function createHostedBuildService({ previewSession, buildProject, captureBounds 
     const result = captureQueue.then(() => {
       if (signal?.aborted) fail('BUILD_CANCELLED', 'Package Build was cancelled while waiting for the renderer.');
       emit('prepare', 'started');
-      return operation();
+      return operation({ queueMs: performance.now() - queuedAt, queuedRequestsAhead });
     }).finally(() => { pendingCaptures -= 1; });
     captureQueue = result.then(() => undefined, () => undefined);
     if (!signal) return result;
@@ -61,9 +64,11 @@ function createHostedBuildService({ previewSession, buildProject, captureBounds 
     const missingRendererTargets = targets.filter((target) => !hasCapturedInput(target, inputsByTarget[target]));
     if (!missingRendererTargets.length) return buildProject(input);
     const identity = normalizeIdentity(input.project);
-    return runCaptured(async () => {
+    return runCaptured(async ({ queueMs, queuedRequestsAhead }) => {
       try {
+        const acquisitionStarted = performance.now();
         return await previewSession.withRenderer({ ...identity, bounds: captureBounds, fresh: true, ...(input.verifyBuildContext ? { verifyBuildContext: input.verifyBuildContext } : {}) }, async (renderer) => {
+          try { input.onHostedTimings?.({ queueMs, queuedRequestsAhead, acquisitionMs: performance.now() - acquisitionStarted }); } catch { /* Diagnostics must not fail a build. */ }
           await input.verifyBuildContext?.();
           const hostedInputs = { ...inputsByTarget };
           for (const target of missingRendererTargets) hostedInputs[target] = { ...(hostedInputs[target] || {}), renderer };
