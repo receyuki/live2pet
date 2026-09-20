@@ -478,6 +478,30 @@ describe('Live2Pet desktop shell', () => {
     expect(screen.queryByText('Saved Project.l2pack')).not.toBeInTheDocument();
   });
 
+  it('locks project edits and native Save/Undo during an accepted replacement', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const api = installDesktopApi();
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    await user.click(screen.getByRole('button', { name: 'Open project' }));
+    await screen.findByRole('main', { name: 'Map' });
+    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Build' }));
+    await user.type(screen.getByRole('textbox', { name: 'Pet / theme name' }), ' edited');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    let finish!: (value: Awaited<ReturnType<typeof api.openProject>>) => void;
+    api.openProject.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await act(async () => api.emitAppCommand('open'));
+    expect(container.querySelector('.app-content')).toHaveAttribute('inert');
+    await act(async () => { api.emitAppCommand('undo'); api.emitAppCommand('save'); });
+    // A queued UI event also cannot sneak an edit into the locked document.
+    fireEvent.change(screen.getByRole('textbox', { name: 'Pet / theme name' }), { target: { value: 'Too late' } });
+    expect(screen.getByRole('textbox', { name: 'Pet / theme name' })).toHaveValue('Saved Project edited');
+    expect(api.saveProject).not.toHaveBeenCalled();
+    await act(async () => finish({ protocolVersion: 1, ok: true, result: { cancelled: true, recentProjects: [] } }));
+    expect(container.querySelector('.app-content')).not.toHaveAttribute('inert');
+    expect(screen.getByRole('textbox', { name: 'Pet / theme name' })).toHaveValue('Saved Project edited');
+  });
+
   it('keeps the recovery draft when Save is cancelled', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const { saveProject } = installDesktopApi({ saveCancelled: true });

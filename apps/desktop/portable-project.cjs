@@ -122,6 +122,7 @@ async function savePortableProject(filePath, project) {
   const files = [{ path: PROJECT_ENTRY, size: Buffer.byteLength(projectText), sha256: sha256Buffer(projectText) }];
   for (const record of records) files.push({ path: record.entry, size: record.size, sha256: await sha256File(record.absolute) });
   const manifest = `${JSON.stringify({ format: PORTABLE_FORMAT, containerVersion: CONTAINER_VERSION, project: PROJECT_ENTRY, source: { entry: sourceEntry, type: sourceEntry === 'source' ? 'directory' : 'file' }, files }, null, 2)}\n`;
+  if (Buffer.byteLength(manifest, 'utf8') > MAX_PORTABLE_MANIFEST_BYTES) fail('PORTABLE_MANIFEST_TOO_LARGE', 'The portable project manifest is too large to open safely.');
   const temporary = `${absolute}.${process.pid}.${crypto.randomUUID()}.tmp`;
   await fsp.mkdir(path.dirname(absolute), { recursive: true });
   const output = fileWriter(temporary);
@@ -261,19 +262,39 @@ async function validateCachedProject(destination, ready, archiveHash, manifest) 
   }
   const readyStat = await fsp.lstat(ready).catch(() => null);
   if (!readyStat?.isFile() || marker.trim() !== archiveHash) fail('INVALID_PORTABLE_PROJECT', 'The portable project working copy is not trusted.');
-  const declared = new Set(manifest.files.map((record) => record.path.normalize('NFC').toLowerCase()));
-  let cacheEntries = 0;
+  const declaredFiles = new Map();
+  const declaredDirectories = new Map();
+  for (const record of manifest.files) {
+    const fileIdentity = record.path.normalize('NFC').toLowerCase();
+    declaredFiles.set(fileIdentity, record.path);
+    let directory = path.posix.dirname(record.path);
+    while (directory !== '.') {
+      const directoryIdentity = directory.normalize('NFC').toLowerCase();
+      const existing = declaredDirectories.get(directoryIdentity);
+      if (existing && existing !== directory) fail('INVALID_PORTABLE_PROJECT', 'The portable project manifest contains duplicate directory paths.');
+      declaredDirectories.set(directoryIdentity, directory);
+      directory = path.posix.dirname(directory);
+    }
+  }
+  const seen = new Set();
   async function inspectCache(directory, relativeDirectory = '') {
     const entries = await fsp.readdir(directory, { withFileTypes: true });
     for (const entry of entries) {
-      if (++cacheEntries > MAX_PORTABLE_FILES + 1) fail('INVALID_PORTABLE_PROJECT', 'The portable project working copy contains too many entries.');
       const relative = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
       const current = path.join(directory, entry.name);
       if (!relativeDirectory && entry.name === '.ready') continue;
       if (entry.isSymbolicLink()) fail('INVALID_PORTABLE_PROJECT', 'The portable project working copy contains a symbolic link.');
-      if (entry.isDirectory()) await inspectCache(current, relative);
-      else if (entry.isFile() && !declared.has(relative.normalize('NFC').toLowerCase())) fail('INVALID_PORTABLE_PROJECT', 'The portable project working copy contains an undeclared file.');
-      else if (!entry.isFile()) fail('INVALID_PORTABLE_PROJECT', 'The portable project working copy contains an invalid entry.');
+      const identity = relative.normalize('NFC').toLowerCase();
+      if (seen.has(identity)) fail('INVALID_PORTABLE_PROJECT', 'The portable project working copy contains duplicate cross-platform paths.');
+      seen.add(identity);
+      if (entry.isDirectory()) {
+        if (declaredDirectories.get(identity) !== relative) fail('INVALID_PORTABLE_PROJECT', 'The portable project working copy contains an undeclared directory.');
+        await inspectCache(current, relative);
+      } else if (entry.isFile()) {
+        if (declaredFiles.get(identity) !== relative) fail('INVALID_PORTABLE_PROJECT', 'The portable project working copy contains an undeclared file.');
+      } else {
+        fail('INVALID_PORTABLE_PROJECT', 'The portable project working copy contains an invalid entry.');
+      }
     }
   }
   await inspectCache(destination);

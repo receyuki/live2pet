@@ -125,6 +125,27 @@ test('does not trust a ready cache after a packaged source file is changed', asy
   assert.equal(fs.readFileSync(cachedSource, 'utf8'), '{"tampered":true}');
 });
 
+test('reopens a cached package with a deeply nested source inventory', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-portable-cache-limit-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const project = createProject({
+    projectId: 'portable-cache-limit',
+    name: 'Portable cache limit',
+    source: { kind: 'standard-directory', name: 'model', modelConfig: 'model-00000/part-00/part-01/part-02/part-03/part-04/part-05/part-06/part-07/part-08/part-09/file.json', fingerprint: 'fixture' },
+    targets: {},
+  });
+  const sourceEntries = Array.from({ length: 1000 }, (_, index) => [`source/model-${String(index).padStart(5, '0')}/part-00/part-01/part-02/part-03/part-04/part-05/part-06/part-07/part-08/part-09/file.json`, '{}']);
+  const projectText = serializeProject(project, { sourceLocation: { type: 'relative', path: 'source' } });
+  const packagePath = path.join(root, 'cache-limit.l2pack');
+  const workspace = path.join(root, 'workspace');
+  await writeArchive(packagePath, [['manifest.json', manifestFor(projectText, sourceEntries)], ['project.l2p', projectText], ...sourceEntries]);
+
+  const first = await openPortableProject(packagePath, workspace);
+  const second = await openPortableProject(packagePath, workspace);
+  assert.equal(first.projectId, 'portable-cache-limit');
+  assert.equal(second.projectId, 'portable-cache-limit');
+});
+
 test('reopens edits saved from a portable working copy', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-portable-edit-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

@@ -116,6 +116,7 @@ import {
 } from './onboarding/onboarding-state';
 import {
   appReducer,
+  AppAction,
   AppSettings,
   initialAppState,
   SettingsSection,
@@ -1073,7 +1074,7 @@ export function App() {
       const redo = modifier && ((event.key.toLowerCase() === "z" && event.shiftKey) || event.key.toLowerCase() === "y");
       if (!undo && !redo) return;
       event.preventDefault();
-      dispatch({ type: undo ? "UNDO_PROJECT_EDIT" : "REDO_PROJECT_EDIT" });
+      editProject({ type: undo ? "UNDO_PROJECT_EDIT" : "REDO_PROJECT_EDIT" });
     };
     window.addEventListener("keydown", handleProjectHistoryShortcut);
     return () => window.removeEventListener("keydown", handleProjectHistoryShortcut);
@@ -1111,6 +1112,9 @@ export function App() {
     }
     projectTransition.current = true;
     return true;
+  }
+  function editProject(action: AppAction) {
+    if (!projectTransition.current) dispatch(action);
   }
   async function startNewProject() {
     if (Object.values(buildState).some(build => build.status === 'building')) { setActionFeedback(t('newProjectBuildBusy')); return; }
@@ -1174,7 +1178,7 @@ export function App() {
   }
 
   async function saveProjectDocument(saveAs = false, portable = false) {
-    if (saveInFlight.current) return;
+    if (saveInFlight.current || projectTransition.current) return;
     const { project, projectSession: session } = latestState.current;
     if (!project?.document) {
       setActionFeedback(t("saveRequiresProject"));
@@ -1446,7 +1450,7 @@ export function App() {
       else if (state.project?.document) dispatch({ type: "NAVIGATE", destination: "build" });
       else setActionFeedback(t("buildRequiresProject"));
     } else if (command === "undo" || command === "redo") {
-      if (!preserveTextEditingHistory(command)) dispatch({ type: command === "undo" ? "UNDO_PROJECT_EDIT" : "REDO_PROJECT_EDIT" });
+      if (!projectTransition.current && !preserveTextEditingHistory(command)) editProject({ type: command === "undo" ? "UNDO_PROJECT_EDIT" : "REDO_PROJECT_EDIT" });
     }
   }), [state, locale, buildState]);
 
@@ -1489,17 +1493,17 @@ export function App() {
   const sourceReviewRequired = Boolean(state.project?.document?.sourceReview?.required);
   return (
     <div className="app-shell">
-      <header className="app-toolbar">
+      <header className="app-toolbar" inert={importBusy && projectTransition.current}>
         <div className="toolbar-brand">{projectOpen ? <><span>Live2Pet</span><i /><strong title={state.project?.name}>{state.project?.name}</strong></> : <strong>Live2Pet</strong>}</div>
         {projectOpen ? <nav aria-label={t('projectNavigation')}><ButtonGroup>{(["source", "map", "build"] as const).map((destination) => <Button key={destination} isDisabled={sourceReviewRequired && destination !== "source"} variant={state.destination === destination ? "primary" : "ghost"} onPress={() => dispatch({ type: "NAVIGATE", destination })}>{t(destination)}</Button>)}</ButtonGroup></nav> : <span />}
         <div className="toolbar-actions">{projectOpen && <Button aria-label={t("newProject")} variant="ghost" isDisabled={projectSaveBusy || Object.values(buildState).some(build => build.status === 'building')} onPress={() => void startNewProject()}><Plus size={17} />{t("newProject")}</Button>}{projectOpen && <Button aria-label={t("saveProject")} variant="ghost" isDisabled={projectSaveBusy} onPress={() => void saveProjectDocument()}><Save size={17} />{t("save")}</Button>}{projectOpen && <Button aria-label={t("savePortableProject")} variant="ghost" isDisabled={projectSaveBusy} onPress={() => void saveProjectDocument(true, true)}><PackageCheck size={17} />{t("savePortable")}</Button>}<Button isIconOnly aria-label={t("settings")} variant="ghost" onPress={() => dispatch({ type: "OPEN_SETTINGS" })}><SettingsIcon size={18} /></Button></div>
       </header>
-      <div className="app-content">
+      <div className="app-content" inert={importBusy && projectTransition.current} aria-busy={importBusy}>
         {actionFeedback && <div className="action-feedback" role="alert">{actionFeedback}{projectSaveBusy && <ProgressBar aria-label={actionFeedback} isIndeterminate />}</div>}
         {state.destination === "welcome" && <WelcomeView selectedLibraryModel={selectedLibraryModel} onSelectLibraryModel={setSelectedLibraryModel} pendingSource={pendingSource} onConfirmSource={confirmPendingSource} onDismissSource={() => setPendingSource(null)} onConfigureRuntime={() => dispatch({ type: "OPEN_SETTINGS", section: "runtimes" })} library={modelLibrary} setLibrary={library => { setModelLibrary(library); setSelectedLibraryModel(null); setPendingSource(null); }} locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} draft={projectDraft} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onLibrarySelection={openLibrarySource} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onClearRecent={() => void clearRecentProjectHistory()} onRecoverDraft={() => void recoverProjectDraft()} onDiscardDraft={discardProjectDraft} />}
         {state.destination === "source" && state.project && <SourceView locale={locale} project={state.project.document} inspection={state.project.inspection} inspectionRequired={Boolean(state.project.document)} runtimeReady={runtimeReady} busy={importBusy} onConfigureRuntime={configureRequiredRuntime} onRelink={relinkCurrentSource} onAcknowledgeReview={acknowledgeCurrentSourceReview} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
-        {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={configureRequiredRuntime} onSelectMotion={(motionId) => dispatch({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => dispatch({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => dispatch({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => dispatch({ type: "CLEAR_ASSIGNMENT", destination })} onVisualSettings={(settings) => dispatch({ type: "SET_VISUAL_SETTINGS", settings })} />}
-        {state.destination === "build" && <BuildView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} runtimeReady={runtimeReady} state={buildState} onName={(name) => dispatch({ type: "RENAME_PROJECT", name })} onPreset={(target, preset) => dispatch({ type: "SET_RENDER_PRESET", target, preset })} onCustomRender={(settings) => dispatch({ type: 'SET_CLAWD_RENDER', settings })} onBuild={buildProjectTarget} onCancel={(target) => void cancelProjectBuild(target)} />}
+        {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={configureRequiredRuntime} onSelectMotion={(motionId) => editProject({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => editProject({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => editProject({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => editProject({ type: "CLEAR_ASSIGNMENT", destination })} onVisualSettings={(settings) => editProject({ type: "SET_VISUAL_SETTINGS", settings })} />}
+        {state.destination === "build" && <BuildView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} runtimeReady={runtimeReady} state={buildState} onName={(name) => editProject({ type: "RENAME_PROJECT", name })} onPreset={(target, preset) => editProject({ type: "SET_RENDER_PRESET", target, preset })} onCustomRender={(settings) => editProject({ type: 'SET_CLAWD_RENDER', settings })} onBuild={buildProjectTarget} onCancel={(target) => void cancelProjectBuild(target)} />}
       </div>
       {statusBar}
       {onboardingStage && <OnboardingTour locale={locale} stage={onboardingStage} onComplete={(stage) => setOnboarding((current) => completeOnboardingStage(current, stage))} onSkip={() => setOnboarding((current) => skipOnboarding(current))} />}
