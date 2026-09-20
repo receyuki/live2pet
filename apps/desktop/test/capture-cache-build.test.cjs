@@ -25,7 +25,7 @@ function project() {
   };
 }
 
-test('hosted Spine builds reuse bounded raw and encoded caches with a pinned runtime identity', async t => {
+for (const access of ['renderer', 'lease']) test(`hosted Spine builds reuse bounded raw and encoded caches with a pinned runtime identity via ${access}`, async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-spine-cache-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const cache = new CacheStore({ rootDir: root, maxBytes: 1024 * 1024 });
@@ -42,7 +42,8 @@ test('hosted Spine builds reuse bounded raw and encoded caches with a pinned run
     clawd: { mappings: { idle: 'motion:idle', thinking: 'motion:idle', working: 'motion:idle', sleeping: 'motion:idle' } },
   } });
   const events = [];
-  const input = { project: current, targets: ['clawd'], inputsByTarget: { clawd: { renderer, render: { preset: 'compact', width: 128, height: 128, samples: 2 } } }, onProgress: event => events.push(event) };
+  const rendererInput = access === 'lease' ? { withCaptureRenderer: operation => operation(renderer) } : { renderer };
+  const input = { project: current, targets: ['clawd'], inputsByTarget: { clawd: { ...rendererInput, render: { preset: 'compact', width: 128, height: 128, samples: 2 } } }, onProgress: event => events.push(event) };
   await service(input);
   events.length = 0;
   const warm = await service(input);
@@ -69,6 +70,35 @@ function plan(motions, overrides = {}) {
     ...overrides,
   };
 }
+
+test('late lease cache identity is verified before a frame can be captured', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-lease-identity-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const cache = new CacheStore({ rootDir: root, maxBytes: 1024 * 1024 });
+  let captured = false;
+  class ObservedRenderer extends SyntheticRenderer {
+    captureRgba(options) { captured = true; return super.captureRgba(options); }
+  }
+  const renderer = new ObservedRenderer();
+  await renderer.load({ motions: [{ id: 'idle', duration: 0.1 }] });
+  renderer.source = { cubismVersion: 4 };
+  const service = createCaptureCacheBuildService({
+    buildProjectTargets,
+    getCaptureCacheService: () => ({}),
+    getEncodedCache: () => cache,
+    resolveEncodedCacheContext: async () => ({ runtimeVersion: 'b'.repeat(64), rendererVersion: 'pixi', targetVersion: '1', encoderVersion: 'sharp' }),
+  });
+  await assert.rejects(service({
+    project: createProject({ projectId: 'lease', name: 'Lease', source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'a'.repeat(64) }, targets: { clawd: { mappings: { idle: 'motion:idle', thinking: 'motion:idle', working: 'motion:idle', sleeping: 'motion:idle' } } } }),
+    targets: ['clawd'],
+    inputsByTarget: { clawd: { withCaptureRenderer: operation => operation(renderer), render: { preset: 'compact', width: 128, height: 128, samples: 2 } } },
+    verifyBuildContext: selected => {
+      assert.equal(selected.runtimeVersion, 'b'.repeat(64));
+      throw Object.assign(new Error('Runtime changed during acquisition'), { code: 'BUILD_INPUT_CHANGED' });
+    },
+  }), { code: 'BUILD_INPUT_CHANGED' });
+  assert.equal(captured, false);
+});
 
 function frameSet(motionId, value) {
   return {

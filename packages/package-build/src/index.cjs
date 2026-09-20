@@ -1294,20 +1294,28 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
     targetOptions.render = configuredRender;
     const renderer = targetInput.renderer || targetOptions.renderer;
     let renderedInput = targetInput;
-    if (renderer) {
-      if (targetId === 'clawd' && !targetInput.framesByMotion && !targetInput.frames) {
+    const needsCapture = targetId === 'clawd'
+      ? !targetInput.framesByMotion && !targetInput.frames
+      : !targetInput.candidatesByRow && !targetInput.candidates && !targetInput.encodedAtlas;
+    if (needsCapture && (renderer || targetInput.withCaptureRenderer)) {
+      const ids = targetId === 'clawd'
+        ? planTargetRecipes(normalizedProject, targetId, configuredRender).motions.map(recipe => recipe.motionId).filter(id => !targetInput.encodedByMotion?.[id])
+        : mappedMotionIds(targetProject.mappings);
+      const capture = async (renderer, captureCacheOptions = {}) => {
+        if (Object.hasOwn(captureCacheOptions, 'cache')) targetOptions.cache = captureCacheOptions.cache;
+        if (captureCacheOptions.cacheContext) targetOptions.cacheContext = withVisualSettingsCacheContext(captureCacheOptions.cacheContext, projectVisualSettings, projectVisualSettingsDigest);
         await applyRendererVisualSettings(renderer, projectVisualSettings, targetId);
-        const ids = planTargetRecipes(normalizedProject, targetId, configuredRender).motions.map(recipe => recipe.motionId).filter(id => !targetInput.encodedByMotion?.[id]);
-        const framesByMotion = ids.length ? await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, visualSettings: projectVisualSettings, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext, captureTimings }) : {};
-        renderedInput = { ...targetInput, framesByMotion };
-      } else if (targetId === 'codex-pet' && !targetInput.candidatesByRow && !targetInput.candidates && !targetInput.encodedAtlas) {
-        await applyRendererVisualSettings(renderer, projectVisualSettings, targetId);
+        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, visualSettings: projectVisualSettings, render: configuredRender, signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext, captureTimings });
+        if (targetId === 'clawd') return { ...targetInput, framesByMotion };
         targetOptions.selection = { ...targetOptions.selection, preserveTiming: true };
-        const ids = mappedMotionIds(targetProject.mappings);
-        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, visualSettings: projectVisualSettings, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext, captureTimings });
         const candidatesByRow = Object.fromEntries(Object.entries(targetProject.mappings).map(([row, value]) => [row, framesByMotion[value.slice(7)]?.frames || []]));
-        renderedInput = { ...targetInput, candidatesByRow };
-      }
+        return { ...targetInput, candidatesByRow };
+      };
+      // The lease owns only renderer-dependent work. Encoding and packaging use
+      // detached frames after its owner has released the native renderer.
+      renderedInput = !ids.length ? { ...targetInput, framesByMotion: {} }
+        : targetInput.withCaptureRenderer ? await targetInput.withCaptureRenderer(capture)
+          : await capture(renderer);
     }
     let result;
     if (targetId === 'clawd') {

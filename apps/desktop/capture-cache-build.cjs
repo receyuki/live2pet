@@ -147,15 +147,23 @@ function createCaptureCacheBuildService({ buildProjectTargets, getCaptureCacheSe
         for (const target of input.targets || ['clawd', 'codex-pet']) {
           const targetProject = input.project && input.project.targets && input.project.targets[target];
           const targetInput = input.inputsByTarget && input.inputsByTarget[target];
-          const plan = targetInput && targetInput.captureCache
-            ? targetInput.captureCache
-            : inferredRendererPlan(targetInput, targetProject);
-          if (!plan || !targetProject) continue;
-          let resolved = null;
-          try { resolved = await resolveEncodedCacheContext({ project: input.project, target, targetProject, plan }); } catch {}
-          const context = encodedCacheContext(input.project, target, plan, resolved);
-          if (!context) continue;
-          targetOptions[target] = { ...(targetOptions[target] || {}), cache, cacheContext: context };
+          const resolveOptions = async rendererInput => {
+            const plan = rendererInput?.captureCache || inferredRendererPlan(rendererInput, targetProject);
+            if (!plan || !targetProject) return {};
+            let resolved = null;
+            try { resolved = await resolveEncodedCacheContext({ project: input.project, target, targetProject, plan }); } catch {}
+            const context = encodedCacheContext(input.project, target, plan, resolved);
+            if (context) await input.verifyBuildContext?.({ runtimeVersion: context.runtimeVersion });
+            return context ? { cache, cacheContext: context } : {};
+          };
+          if (typeof targetInput?.withCaptureRenderer === 'function') {
+            // The renderer's version/source is available only inside its lease.
+            // Resolve cache identity there, without extending the lease to encode.
+            targetInputs[target] = { ...targetInputs[target], withCaptureRenderer: operation => targetInput.withCaptureRenderer(async renderer =>
+              operation(renderer, await resolveOptions({ ...targetInput, renderer }))) };
+          } else {
+            targetOptions[target] = { ...(targetOptions[target] || {}), ...await resolveOptions(targetInput) };
+          }
         }
       }
     }

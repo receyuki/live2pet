@@ -14,7 +14,7 @@ function fail(code, message) {
 }
 
 function hasCapturedInput(target, input = {}) {
-  if (input.renderer) return true;
+  if (input.renderer || input.withCaptureRenderer) return true;
   if (target === 'clawd') return Boolean(input.framesByMotion || input.frames);
   return Boolean(input.candidatesByRow || input.candidates || input.encodedAtlas);
 }
@@ -64,21 +64,23 @@ function createHostedBuildService({ previewSession, buildProject, captureBounds 
     const missingRendererTargets = targets.filter((target) => !hasCapturedInput(target, inputsByTarget[target]));
     if (!missingRendererTargets.length) return buildProject(input);
     const identity = normalizeIdentity(input.project);
-    return runCaptured(async ({ queueMs, queuedRequestsAhead }) => {
-      try {
+    for (const target of missingRendererTargets) {
+      inputsByTarget[target] = { ...(inputsByTarget[target] || {}), withCaptureRenderer: operation => runCaptured(async ({ queueMs, queuedRequestsAhead }) => {
         const acquisitionStarted = performance.now();
         return await previewSession.withRenderer({ ...identity, bounds: captureBounds, fresh: true, ...(input.verifyBuildContext ? { verifyBuildContext: input.verifyBuildContext } : {}) }, async (renderer) => {
           try { input.onHostedTimings?.({ queueMs, queuedRequestsAhead, acquisitionMs: performance.now() - acquisitionStarted }); } catch { /* Diagnostics must not fail a build. */ }
           await input.verifyBuildContext?.();
-          const hostedInputs = { ...inputsByTarget };
-          for (const target of missingRendererTargets) hostedInputs[target] = { ...(hostedInputs[target] || {}), renderer };
-          return buildProject({ ...input, inputsByTarget: hostedInputs });
+          if (input.signal?.aborted) fail('BUILD_CANCELLED', 'Package Build was cancelled before capture.');
+          return operation(renderer);
         });
-      } catch (error) {
-        if (error instanceof HostedBuildError) throw error;
-        throw new HostedBuildError(error?.code || 'HOSTED_BUILD_FAILED', error?.message || error);
-      }
-    }, { signal: input.signal, onProgress: input.onProgress, targets });
+      }, { signal: input.signal, onProgress: input.onProgress, targets: [target] }) };
+    }
+    try {
+      return await buildProject({ ...input, inputsByTarget });
+    } catch (error) {
+      if (error instanceof HostedBuildError) throw error;
+      throw new HostedBuildError(error?.code || 'HOSTED_BUILD_FAILED', error?.message || error);
+    }
   };
 }
 

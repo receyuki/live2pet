@@ -716,6 +716,82 @@ test('buildProjectTargets can render mapped Motions through the shared renderer 
   assert.ok(events.includes('codex-pet:render:completed'));
 });
 
+test('buildProjectTargets releases a capture renderer before encoding both target packages', async () => {
+  const project = createProject({ projectId: 'capture-lease', name: 'Capture lease', source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'fixture' }, targets: {
+    clawd: { profile: 'clawd', mappings: clawdMapping().states, reactions: clawdMapping().reactions, options: { sleepMode: 'direct' } },
+    'codex-pet': { profile: 'codex-pet', mappings: mapping(), reactions: {}, options: {} },
+  } });
+  const renderer = new SyntheticRenderer();
+  await renderer.load({ motions: [...new Set(['idle', 'thinking', 'working', 'error', 'attention', ...Object.values(mapping()).map(value => value.slice(7))])].map(id => ({ id, duration: 0.2 })) });
+  const render = { width: 192, height: 208, samples: 8 };
+  const optionsByTarget = { clawd: { package: true }, 'codex-pet': { package: true } };
+  const direct = await buildProjectTargets({ project, optionsByTarget, inputsByTarget: { clawd: { renderer, render }, 'codex-pet': { renderer, render } } });
+  let active = false, leases = 0;
+  const withCaptureRenderer = async capture => {
+    active = true;
+    leases += 1;
+    try { return await capture(renderer); } finally { active = false; }
+  };
+  const leased = await buildProjectTargets({ project, optionsByTarget, inputsByTarget: { clawd: { withCaptureRenderer, render }, 'codex-pet': { withCaptureRenderer, render } }, onProgress: event => {
+    if (['encode', 'compose', 'package'].includes(event.stage)) assert.equal(active, false);
+  } });
+  assert.equal(leases, 2);
+  assert.deepEqual(leased.builds.clawd.assets, direct.builds.clawd.assets);
+  assert.deepEqual(leased.builds['codex-pet'].atlas, direct.builds['codex-pet'].atlas);
+  assert.deepEqual(leased.builds['codex-pet'].spritesheet, direct.builds['codex-pet'].spritesheet);
+  assert.ok(leased.builds.clawd.package.byteLength > 0);
+  assert.ok(leased.builds['codex-pet'].package.byteLength > 0);
+});
+
+test('buildProjectTargets bypasses capture leases for supplied frames and encoded assets', async () => {
+  const project = createProject({ projectId: 'capture-bypass', name: 'Capture bypass', source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'fixture' }, targets: {
+    clawd: { profile: 'clawd', mappings: clawdMapping().states, reactions: clawdMapping().reactions, options: { sleepMode: 'direct' } },
+    'codex-pet': { profile: 'codex-pet', mappings: mapping(), reactions: {}, options: {} },
+  } });
+  const withCaptureRenderer = async () => { throw new Error('Captured input must not acquire a renderer'); };
+  const encodedByMotion = {};
+  let encodedAtlas;
+  const first = await buildProjectTargets({ project, inputsByTarget: {
+    clawd: { withCaptureRenderer, framesByMotion: clawdFrames() },
+    'codex-pet': { withCaptureRenderer, candidatesByRow: candidatesByRow() },
+  }, optionsByTarget: {
+    clawd: { onEncodedAsset: (id, asset) => { encodedByMotion[id] = asset; } },
+    'codex-pet': { encode: true, onEncodedAtlas: asset => { encodedAtlas = asset; } },
+  } });
+  const warm = await buildProjectTargets({ project, inputsByTarget: {
+    clawd: { withCaptureRenderer, encodedByMotion },
+    'codex-pet': { withCaptureRenderer, encodedAtlas },
+  } });
+  assert.deepEqual(warm.builds.clawd.assets, first.builds.clawd.assets);
+  assert.deepEqual(warm.builds['codex-pet'].spritesheet, first.builds['codex-pet'].spritesheet);
+  assert.equal(warm.builds.clawd.timings.capturedRgbaBytes, 0);
+  assert.equal(warm.builds['codex-pet'].timings.capturedRgbaBytes, 0);
+});
+
+test('capture leases supply verified cache identity without overriding project Visual Settings', async () => {
+  const cache = new CacheStore({ rootDir: require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'live2pet-lease-cache-')) });
+  const renderer = new SyntheticRenderer();
+  const applied = [];
+  renderer.setVisualSettings = async settings => { applied.push(settings); };
+  await renderer.load({ motions: [{ id: 'idle', duration: 0.1 }] });
+  const project = createProject({ projectId: 'lease-cache', name: 'Lease cache', source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'fixture' }, visualSettings: { hiddenElementIds: ['Background'] }, targets: {
+    clawd: { profile: 'clawd', mappings: { idle: 'motion:idle', thinking: 'motion:idle', working: 'motion:idle', sleeping: 'fallback:idle' }, reactions: {}, options: {} },
+  } });
+  const cacheContext = { projectId: project.projectId, sourceFingerprint: 'verified-source', runtimeVersion: 'verified-core', rendererVersion: 'verified-renderer', encoderVersion: 'verified-encoder', targetVersion: '1', visualSettings: { hiddenElementIds: [] } };
+  const input = { project, targets: ['clawd'], inputsByTarget: { clawd: { render: { width: 2, height: 2, samples: 2 }, withCaptureRenderer: capture => capture(renderer, { cache, cacheContext }) } } };
+  const cold = (await buildProjectTargets(input)).builds.clawd;
+  const warm = (await buildProjectTargets(input)).builds.clawd;
+  assert.equal(cold.cache.misses, 1);
+  assert.equal(warm.cache.hits, 1);
+  assert.equal(warm.timings.capturedRgbaBytes, 0);
+  assert.equal(warm.provenance.encoder.version, 'verified-encoder');
+  assert.deepEqual(warm.assets, cold.assets);
+  const changed = (await buildProjectTargets({ ...input, project: { ...project, visualSettings: { hiddenElementIds: [] } } })).builds.clawd;
+  assert.equal(changed.cache.misses, 1);
+  assert.ok(changed.timings.capturedRgbaBytes > 0);
+  assert.deepEqual(applied, [{ hiddenElementIds: ['Background'] }, { hiddenElementIds: ['Background'] }, { hiddenElementIds: [] }]);
+});
+
 test('buildProjectTargets applies project Animation Recipe Expressions during capture', async () => {
   const renderer = new SyntheticRenderer();
   await renderer.load({

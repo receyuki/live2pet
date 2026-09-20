@@ -11,6 +11,37 @@ const {
 
 const FINGERPRINT = 'a'.repeat(64);
 
+test('closing the real preview session during encoding does not invalidate detached build frames', async () => {
+  const { SyntheticRenderer } = require('../../../packages/renderer/src/index.cjs');
+  const { buildProjectTargets } = require('../../../packages/package-build/src/index.cjs');
+  const { createProject } = require('../../../packages/project/src/index.cjs');
+  const { createHostedBuildService } = require('../hosted-build-service.cjs');
+  const { service: preview, adapter, calls } = fixture();
+  const pixels = new SyntheticRenderer();
+  await pixels.load({ motions: [{ id: 'Idle:0', duration: 1 }] });
+  for (const method of ['setLoop', 'setSpeed', 'step', 'getBounds']) adapter[method] = pixels[method].bind(pixels);
+  adapter.captureRgba = options => {
+    assert.equal(calls.some(call => call[0] === 'adapter.unload'), false);
+    return pixels.captureRgba(options);
+  };
+  const build = createHostedBuildService({ previewSession: preview, buildProject: buildProjectTargets });
+  const project = createProject({ projectId: 'fixture', name: 'Fixture', source: { kind: 'standard-directory', name: 'fixture', fingerprint: FINGERPRINT }, targets: {
+    clawd: { mappings: { idle: 'motion:Idle:0', thinking: 'motion:Idle:0', working: 'motion:Idle:0', sleeping: 'motion:Idle:0' } },
+  } });
+  let release, started;
+  const gate = new Promise(resolve => { release = resolve; });
+  const encoding = new Promise(resolve => { started = resolve; });
+  const pending = build({ project, targets: ['clawd'], inputsByTarget: { clawd: { render: { preset: 'compact', width: 128, height: 128, samples: 2 } } }, optionsByTarget: { clawd: { package: true, onEncodedAsset: async () => { started(); await gate; } } } });
+  try {
+    await encoding;
+    await preview.close();
+    assert.equal(calls.filter(call => call[0] === 'adapter.unload').length, 1);
+  } finally { release(); }
+  const result = await pending;
+  assert.equal(result.builds.clawd.validation.ok, true);
+  assert.ok(result.builds.clawd.package.byteLength > 0);
+});
+
 test('closing a preview after its native owner is destroyed still releases resources', async () => {
   const { service, ownerWindow, calls, webContents } = fixture();
   await service.open({ projectId: 'fixture', sourceFingerprint: FINGERPRINT, bounds: { x: 0, y: 0, width: 768, height: 768 } });

@@ -35,6 +35,8 @@ still regenerates names, metadata, manifests, previews and validated packages.
   supplied captures. One animation is not stored under both encoded identities.
 
 Full encoded hits need no native view, captures, raw-frame decoding or encoding.
+Cache misses now use a [capture-scoped renderer lease](build-capture-ownership.md);
+encoding and ZIP assembly no longer retain exclusive native access.
 Mixed Clawd hits only capture missing Motions. The normal capture cache can still
 help rebuild a missing atlas. Both kinds share the existing bounded, SHA-256
 checked LRU store. Corrupt records miss and oversize writes are skipped.
