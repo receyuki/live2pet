@@ -8,12 +8,16 @@
     codex: Object.freeze({ capture: 40, select: 8, layout: 3, compose: 8, encode: 16, manifest: 2, preview: 2, package: 10, report: 4, transfer: 7 }),
   });
 
-  function progressPercent(target, stage, fractionValue) {
+  function progressPercent(target, stage, fractionValue, stageFractions) {
     const weights = BUILD_PROGRESS_WEIGHTS[target];
     if (!weights || !Object.hasOwn(weights, stage)) return 0;
     const fraction = Math.max(0, Math.min(1, Number(fractionValue) || 0));
     let completed = 0;
-    for (const [candidate, weight] of Object.entries(weights)) {
+    if (stageFractions) {
+      for (const [candidate, weight] of Object.entries(weights)) {
+        completed += weight * Math.max(0, Math.min(1, Number(stageFractions[candidate]) || 0));
+      }
+    } else for (const [candidate, weight] of Object.entries(weights)) {
       if (candidate === stage) {
         completed += weight * fraction;
         break;

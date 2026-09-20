@@ -4,6 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const test = require('node:test');
+
 const crypto = require('node:crypto');
 
 const { createProject } = require('../../project/src/index.cjs');
@@ -38,6 +39,13 @@ const {
   normalizeAcknowledgeSourceReviewRequest,
   normalizeRecentProjects,
 } = require('../src/index.cjs');
+
+test('build progress preserves only bounded numeric capture pipeline fractions', () => {
+  const event = { stage: 'encode', status: 'motion-completed', stageFractions: { capture: 0.25, validate: 1, encode: 0.5 } };
+  assert.deepEqual(normalizeBuildProgressEvent(event).stageFractions, event.stageFractions);
+  assert.deepEqual(normalizeBuildProgressEvent({ ...event, stageFractions: { capture: -2, validate: 3, encode: NaN, secret: '/private/source' } }).stageFractions, { capture: 0, validate: 1 });
+  assert.equal(normalizeBuildProgressEvent({ ...event, stageFractions: { capture: Infinity, validate: '1', encode: {} } }).stageFractions, undefined);
+});
 
 test('correlates build progress and results with the exact submitted project snapshot', async () => {
   const project = { projectId: 'fixture', name: 'Saved snapshot' };

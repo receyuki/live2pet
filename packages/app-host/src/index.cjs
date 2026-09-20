@@ -138,6 +138,12 @@ function normalizeBuildProgressEvent(event) {
   if (typeof normalized.status !== 'string' || !normalized.status.trim()) return null;
   normalized.stage = normalized.stage.trim().slice(0, 64);
   normalized.status = normalized.status.trim().slice(0, 64);
+  if (isRecord(event.stageFractions)) {
+    const fractions = Object.fromEntries(['capture', 'validate', 'encode']
+      .filter(key => Object.hasOwn(event.stageFractions, key) && Number.isFinite(event.stageFractions[key]))
+      .map(key => [key, Math.max(0, Math.min(1, event.stageFractions[key]))]));
+    if (Object.keys(fractions).length) normalized.stageFractions = fractions;
+  }
   return normalized;
 }
 

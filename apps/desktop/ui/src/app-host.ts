@@ -129,6 +129,7 @@ export type BuildProgressEvent = {
   stage: string;
   status: string;
   fraction?: number;
+  stageFractions?: { capture: number; validate: number; encode: number };
   percent?: number;
   message?: string;
   previewReady?: boolean;

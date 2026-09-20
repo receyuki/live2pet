@@ -48,7 +48,7 @@ export function buildReducer(state: BuildState, action: BuildAction): BuildState
     if (current.status !== "building" || !current.request || current.request.requestId !== event.requestId || current.request.projectId !== event.projectId || current.request.snapshotFingerprint !== event.snapshotFingerprint || (current.buildId && current.buildId !== event.buildId) || event.sequence <= current.sequence) return state;
     const fraction = typeof event.fraction === "number" ? event.fraction : event.status === "completed" ? 1 : 0;
     const target = event.target === "codex-pet" ? "codex" : "clawd";
-    const progress = Math.max(current.progress, typeof event.percent === "number" ? Math.min(99, Math.max(0, Math.round(event.percent))) : progressPercent(target, event.stage === 'render' ? 'capture' : event.stage, fraction));
+    const progress = Math.max(current.progress, typeof event.percent === "number" ? Math.min(99, Math.max(0, Math.round(event.percent))) : progressPercent(target, event.stage === 'render' ? 'capture' : event.stage, fraction, event.stageFractions));
     return { ...state, [event.target]: { ...current, buildId: event.buildId, sequence: event.sequence, progress, stage: event.stage, message: event.message ?? null } };
   }
   if (current.status !== 'building' || current.request?.requestId !== action.requestId) return state;

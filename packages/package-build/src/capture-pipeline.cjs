@@ -61,7 +61,7 @@ function deferred() {
 
 function createCapturePipeline({ motionIds, withRenderer, prepare, estimateBytes, capture, signal, budgetBytes }) {
   if (budgetBytes !== undefined && (!Number.isSafeInteger(budgetBytes) || budgetBytes <= 0)) {
-    throw new TypeError('captureBudgetBytes must be a positive safe integer.');
+    throw Object.assign(new TypeError('captureBudgetBytes must be a positive safe integer.'), { code: 'INVALID_CAPTURE_BUDGET' });
   }
   const pool = budgetBytes === undefined ? sharedPool : createPool(budgetBytes);
   const controller = new AbortController();
@@ -94,7 +94,7 @@ function createCapturePipeline({ motionIds, withRenderer, prepare, estimateBytes
     for (const [index, id] of motionIds.entries()) {
       if (failure) throw failure;
       const bytes = estimateBytes(renderer, id);
-      if (!Number.isSafeInteger(bytes) || bytes <= 0) throw new RangeError('Invalid Motion capture reservation.');
+      if (!Number.isSafeInteger(bytes) || bytes <= 0) throw Object.assign(new RangeError('Invalid Motion capture reservation.'), { code: 'INVALID_CAPTURE_RESERVATION' });
       const started = performance.now();
       const releasePool = await pool.acquire(bytes, controller.signal);
       metrics.waitMs += performance.now() - started;

@@ -65,6 +65,11 @@ core `captureBudgetBytes` override creates a separate pool for deterministic
 tests/headless callers; the Desktop default shares one process-wide pool.
 Externally supplied frames and the single-Motion/Codex paths are not budgeted.
 
+Pipelined progress carries independent `stageFractions` for capture, validation
+and encoding. The Desktop sums their existing weights instead of assuming every
+earlier stage is complete when encoding starts. Request/snapshot filtering and
+the final success-only 100% transition remain unchanged.
+
 ## Verification and remaining work
 
 Public build regressions verify byte-identical direct/leased output for Clawd and
@@ -107,3 +112,12 @@ Second-checkpoint Spine smoke: cold/warm/cancel-retry output bytes and decoded
 samples matched the accepted baseline. Cold build took 22.00 s versus 22.62 s
 in the previous checkpoint; sampled process-group peak was 1,694,220 versus
 1,750,852 KiB. These are single runs, not a statistically established speedup.
+
+The large Cubism fixture also matched all baseline WebP bytes, dimensions,
+alpha, delays and decoded samples (512 captured frames). Its single cold run
+regressed from 129.58 s to 149.68 s, while sampled process-group peak fell from
+2,730,644 to 2,582,476 KiB. All three Motions exceeded the conservative budget
+and ran alone; admission waits totalled 29.27 s, encoding 51.46 s and ZIP assembly
+57.65 s. The previous baseline predates this checkpoint and is not a controlled
+paired experiment. This is a memory/throughput tradeoff requiring follow-up,
+not evidence of an overall acceleration. Do not close #20 on this result.

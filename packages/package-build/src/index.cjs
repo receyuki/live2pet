@@ -1267,6 +1267,7 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
     // duration, not walltime; stages.encode measures the enclosing walltime.
     // Operations include cache lookup/write and the encoded-asset callback.
     const encodeMotions = { completed: 0, encoded: 0, cacheHits: 0, operationTotalMs: 0, operationMaxMs: 0, peakPending: 0, peakActive: 0 };
+    let stageFractions;
     checkCancelled(signal);
     const targetInput = inputsByTarget[targetId] || {};
     const targetProject = normalizedProject.targets[targetId];
@@ -1291,7 +1292,14 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
         encodeMotions.operationTotalMs += duration;
         encodeMotions.operationMaxMs = Math.max(encodeMotions.operationMaxMs, duration);
       }
-      onProgress?.({ target: targetId, ...event });
+      const trackedStage = event.stage === 'render' ? 'capture' : event.stage;
+      let progressSnapshot;
+      if (stageFractions && Object.hasOwn(stageFractions, trackedStage)) {
+        const fraction = Number.isFinite(event.fraction) ? event.fraction : event.status === 'completed' ? 1 : 0;
+        stageFractions[trackedStage] = Math.max(stageFractions[trackedStage], Math.min(1, Math.max(0, fraction)));
+        progressSnapshot = { stageFractions: { ...stageFractions } };
+      }
+      onProgress?.({ target: targetId, ...event, ...progressSnapshot });
     } };
     const defaultCacheContext = {
       sourceFingerprint: normalizedProject.source.fingerprint,
@@ -1337,6 +1345,7 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
           return { ...targetInput, candidatesByRow };
         };
         if (targetId === 'clawd' && ids.length > 1) {
+          stageFractions = { capture: 0, validate: 0, encode: 0 };
           const { settings: preset } = resolveTargetRenderPreset(targetId, configuredRender);
           capturePipeline = createCapturePipeline({
             motionIds: ids,

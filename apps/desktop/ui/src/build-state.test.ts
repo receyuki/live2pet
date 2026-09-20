@@ -41,6 +41,16 @@ describe("buildReducer", () => {
     expect(accepted.clawd.progress).toBeGreaterThan(0);
   });
 
+  it("counts concurrent capture and encode fractions without implying capture is complete", () => {
+    let state = buildReducer(initialBuildState(), { type: "START", target: "clawd", request, snapshot: 'original' });
+    state = buildReducer(state, { type: "PROGRESS", event: { ...progress({ stage: "encode", status: "started", fraction: 0 }), stageFractions: { capture: 0, validate: 1, encode: 0 } } });
+    expect(state.clawd.progress).toBe(1);
+    state = buildReducer(state, { type: "PROGRESS", event: { ...progress({ sequence: 2, stage: "encode", status: "motion-completed", fraction: 0.25 }), stageFractions: { capture: 0.25, validate: 1, encode: 0.25 } } });
+    expect(state.clawd.progress).toBe(23);
+    const accepted = state;
+    expect(buildReducer(state, { type: "PROGRESS", event: { ...progress({ sequence: 3, stage: "encode" }), requestId: 'another-request', stageFractions: { capture: 1, validate: 1, encode: 1 } } })).toBe(accepted);
+  });
+
   it("keeps target progress isolated", () => {
     let state = buildReducer(initialBuildState(), { type: "START", target: "codex-pet", request, snapshot: 'original' });
     state = buildReducer(state, { type: "PROGRESS", event: progress({ target: "codex-pet", stage: "encode" }) });
