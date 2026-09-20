@@ -14,6 +14,7 @@ const APP_INSTALL_LOCATION_LIMIT = 8;
 const APP_SOURCE_INSPECTION_PROGRESS_STAGE = 'inspect';
 const APP_RUNTIME_PROGRESS_STAGE = 'runtime';
 const BUILD_PROGRESS_FIELDS = Object.freeze([
+  'requestId', 'projectId', 'snapshotFingerprint',
   'target',
   'stage',
   'status',
@@ -150,15 +151,26 @@ function normalizeBuildProgressPayload(payload) {
 
 function normalizeBuildRequest(value) {
   if (!isRecord(value)) fail('INVALID_BUILD_REQUEST', 'App Package Build input must be an object.');
-  const allowed = new Set(['project', 'inputsByTarget', 'targets', 'metadataByTarget', 'optionsByTarget']);
+  const allowed = new Set(['project', 'inputsByTarget', 'targets', 'metadataByTarget', 'optionsByTarget', 'requestId', 'projectId', 'snapshotFingerprint']);
   const unknown = Object.keys(value).filter((key) => !allowed.has(key));
   if (unknown.length) fail('INVALID_BUILD_REQUEST', `App Package Build input contains unsupported fields: ${unknown.join(', ')}.`);
   if (!isRecord(value.project)) fail('INVALID_BUILD_REQUEST', 'App Package Build input requires a project object.');
+  const identity = {};
+  if (value.requestId !== undefined || value.projectId !== undefined || value.snapshotFingerprint !== undefined) {
+    if (typeof value.requestId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(value.requestId)
+      || typeof value.projectId !== 'string' || value.projectId !== value.project.projectId
+      || typeof value.snapshotFingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(value.snapshotFingerprint)
+      || crypto.createHash('sha256').update(JSON.stringify(value.project)).digest('hex') !== value.snapshotFingerprint) {
+      fail('INVALID_BUILD_REQUEST', 'Package Build identity must match its submitted project snapshot.');
+    }
+    Object.assign(identity, { requestId: value.requestId, projectId: value.projectId, snapshotFingerprint: value.snapshotFingerprint });
+  }
   if (value.inputsByTarget !== undefined && !isRecord(value.inputsByTarget)) fail('INVALID_BUILD_REQUEST', 'inputsByTarget must be an object keyed by Target Profile.');
   if (value.targets !== undefined && (!Array.isArray(value.targets) || value.targets.some((target) => typeof target !== 'string' || !target.trim()))) fail('INVALID_BUILD_REQUEST', 'targets must be an array of non-empty Target Profile ids.');
   if (value.metadataByTarget !== undefined && !isRecord(value.metadataByTarget)) fail('INVALID_BUILD_REQUEST', 'metadataByTarget must be an object keyed by Target Profile.');
   if (value.optionsByTarget !== undefined && !isRecord(value.optionsByTarget)) fail('INVALID_BUILD_REQUEST', 'optionsByTarget must be an object keyed by Target Profile.');
   return {
+    ...identity,
     project: value.project,
     inputsByTarget: value.inputsByTarget || {},
     ...(value.targets ? { targets: [...value.targets] } : {}),
@@ -891,6 +903,7 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
       if (normalized.method === 'buildProject') {
         if (!buildProjectService) fail('APP_BUILD_UNAVAILABLE', 'The App Package Build service is not configured.');
         const input = normalizeBuildRequest(normalized.args[0]);
+        const identity = input.requestId ? { requestId: input.requestId, projectId: input.projectId, snapshotFingerprint: input.snapshotFingerprint } : {};
         const buildTargets = input.targets || ['clawd', 'codex-pet'];
         const progress = [];
         const buildId = crypto.randomUUID();
@@ -903,7 +916,7 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
           progress.push(safeEvent);
           if (onBuildProgress) {
             try {
-              onBuildProgress({ protocolVersion: APP_IPC_PROTOCOL_VERSION, buildId, sequence: ++sequence, ...safeEvent });
+              onBuildProgress({ protocolVersion: APP_IPC_PROTOCOL_VERSION, buildId, sequence: ++sequence, ...safeEvent, ...identity });
             } catch {
               // Progress delivery is best-effort and must never fail a build.
             }
@@ -913,6 +926,11 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
           const built = await buildProjectService({ ...input, signal: controller.signal, onProgress: emitBuildProgress });
           if (controller.signal.aborted) fail('BUILD_CANCELLED', 'Package Build was cancelled before the next stage completed.');
           const artifacts = collectBuildArtifacts(built);
+          for (const target of buildTargets) {
+            if (input.optionsByTarget[target]?.package === true && !artifacts.some(artifact => artifact.target === target)) {
+              fail('BUILD_ARTIFACT_MISSING', 'Package Build finished without a downloadable artifact.');
+            }
+          }
           for (const [artifactId, artifact] of buildArtifacts) {
             if (buildTargets.includes(artifact.target)) buildArtifacts.delete(artifactId);
           }
@@ -928,6 +946,7 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
             progress,
             result: {
               ...summarizeBuildTargets(built),
+              ...identity,
               artifacts: artifacts.map(({ bytes, ...metadata }) => metadata),
             },
           };

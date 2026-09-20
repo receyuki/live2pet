@@ -12,6 +12,7 @@ const PROJECT_ENTRY = 'project.l2p';
 const MANIFEST_ENTRY = 'manifest.json';
 const MAX_PORTABLE_FILES = 10000;
 const MAX_PORTABLE_BYTES = 4 * 1024 * 1024 * 1024;
+const MAX_PORTABLE_MANIFEST_BYTES = 4 * 1024 * 1024;
 const STORED_EXTENSIONS = new Set(['.7z', '.aac', '.flac', '.gif', '.gz', '.jpeg', '.jpg', '.lpk', '.mp3', '.mp4', '.ogg', '.pck', '.png', '.rar', '.webm', '.webp', '.zip']);
 
 class PortableProjectError extends Error {
@@ -149,6 +150,25 @@ async function archiveReader(filePath) {
   return fileReader(filePath, stat.size);
 }
 
+function resolveContainedEntry(root, entry) {
+  const resolved = path.resolve(root, ...entry.split('/'));
+  const relative = path.relative(root, resolved);
+  if (path.isAbsolute(relative) || relative === '..' || relative.startsWith(`..${path.sep}`)) {
+    fail('INVALID_PORTABLE_PROJECT', 'The portable project source path escapes its working copy.');
+  }
+  return resolved;
+}
+
+async function rejectSymlinkComponents(root, target) {
+  let current = path.resolve(root);
+  const relative = path.relative(current, path.resolve(target));
+  for (const segment of relative ? relative.split(path.sep) : []) {
+    current = path.join(current, segment);
+    const stat = await fsp.lstat(current).catch(() => null);
+    if (stat?.isSymbolicLink()) fail('INVALID_PORTABLE_PROJECT', 'The portable project source contains a symbolic link.');
+  }
+}
+
 function validateManifest(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || value.format !== PORTABLE_FORMAT || value.containerVersion !== CONTAINER_VERSION || value.project !== PROJECT_ENTRY) fail('INVALID_PORTABLE_PROJECT', 'The selected file is not a supported Live2Pet portable project.');
   if (!value.source || !['file', 'directory'].includes(value.source.type) || !safeEntryPath(value.source.entry) || (value.source.entry !== 'source' && !value.source.entry.startsWith('source/'))) fail('INVALID_PORTABLE_PROJECT', 'The portable project source entry is invalid.');
@@ -165,7 +185,112 @@ function validateManifest(value) {
     if (total > MAX_PORTABLE_BYTES + 2 * 1024 * 1024) fail('PORTABLE_SOURCE_TOO_LARGE', 'The portable project expands beyond the supported size.');
   }
   if (!seen.has(PROJECT_ENTRY)) fail('INVALID_PORTABLE_PROJECT', 'The portable project is missing project.l2p metadata.');
+  const sourceIdentity = value.source.entry.normalize('NFC').toLowerCase();
+  if (value.source.type === 'file' && !seen.has(sourceIdentity)) fail('INVALID_PORTABLE_PROJECT', 'The portable project source file is not declared in its manifest.');
+  if (value.source.type === 'directory' && ![...seen].some((entry) => entry.startsWith(`${sourceIdentity}/`))) fail('INVALID_PORTABLE_PROJECT', 'The portable project source directory is empty in its manifest.');
+  const sourcePrefix = `${value.source.entry}/`;
+  for (const record of value.files) {
+    if (record.path === PROJECT_ENTRY) continue;
+    if (value.source.type === 'file' ? record.path !== value.source.entry : !record.path.startsWith(sourcePrefix)) {
+      fail('INVALID_PORTABLE_PROJECT', 'The portable project contains a file outside its declared source.');
+    }
+  }
   return value;
+}
+
+async function readArchive(reader) {
+  const entries = await reader.getEntries();
+  if (entries.length > MAX_PORTABLE_FILES + 2) fail('INVALID_PORTABLE_PROJECT', 'The portable project contains too many archive entries.');
+  const byName = new Map();
+  for (const entry of entries) {
+    if (entry.directory) continue;
+    if (!safeEntryPath(entry.filename)) fail('INVALID_PORTABLE_PROJECT', 'The portable project contains an unsafe path.');
+    const identity = entry.filename.normalize('NFC').toLowerCase();
+    if (byName.has(identity)) fail('INVALID_PORTABLE_PROJECT', 'The portable project contains duplicate cross-platform paths.');
+    const unixType = (entry.externalFileAttributes >>> 16) & 0o170000;
+    if (unixType === 0o120000) fail('INVALID_PORTABLE_PROJECT', 'The portable project contains a symbolic link.');
+    byName.set(identity, entry);
+  }
+  const manifestEntry = byName.get(MANIFEST_ENTRY);
+  if (!manifestEntry?.getData || !Number.isSafeInteger(manifestEntry.uncompressedSize) || manifestEntry.uncompressedSize > MAX_PORTABLE_MANIFEST_BYTES) {
+    fail('INVALID_PORTABLE_PROJECT', 'The portable project manifest is missing or too large.');
+  }
+  let manifest;
+  try {
+    manifest = validateManifest(JSON.parse(await manifestEntry.getData(new zip.TextWriter())));
+  } catch (error) {
+    if (error instanceof PortableProjectError) throw error;
+    fail('INVALID_PORTABLE_PROJECT', 'The portable project manifest is not valid JSON.');
+  }
+  const declaredEntries = new Set([MANIFEST_ENTRY, ...manifest.files.map((record) => record.path.normalize('NFC').toLowerCase())]);
+  for (const identity of byName.keys()) if (!declaredEntries.has(identity)) fail('INVALID_PORTABLE_PROJECT', 'The portable project contains an undeclared file.');
+  for (const record of manifest.files) {
+    const entry = byName.get(record.path.normalize('NFC').toLowerCase());
+    if (!entry?.getData || entry.uncompressedSize !== record.size) fail('INVALID_PORTABLE_PROJECT', `The portable project is missing or has changed: ${record.path}`);
+  }
+  return { byName, manifest };
+}
+
+async function validateProjectSource(project, manifest, root) {
+  const expectedSource = resolveContainedEntry(root, manifest.source.entry);
+  await rejectSymlinkComponents(root, expectedSource);
+  if (typeof project?.source?.path !== 'string' || path.resolve(project.source.path) !== expectedSource) {
+    fail('INVALID_PORTABLE_PROJECT', 'The embedded project does not point to its packaged source.');
+  }
+  if (project.source.location && (project.source.location.type !== 'relative' || project.source.location.path !== manifest.source.entry)) {
+    fail('INVALID_PORTABLE_PROJECT', 'The embedded project source location is invalid.');
+  }
+  const sourceStat = await fsp.lstat(expectedSource).catch(() => null);
+  if (!sourceStat || sourceStat.isSymbolicLink() || (manifest.source.type === 'directory' ? !sourceStat.isDirectory() : !sourceStat.isFile())) {
+    fail('INVALID_PORTABLE_PROJECT', 'The packaged source type does not match its manifest.');
+  }
+  return project;
+}
+
+async function validateCachedProject(destination, ready, archiveHash, manifest) {
+  let destinationStat;
+  try { destinationStat = await fsp.lstat(destination); } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+  if (!destinationStat.isDirectory() || destinationStat.isSymbolicLink()) fail('INVALID_PORTABLE_PROJECT', 'The portable project working copy is invalid.');
+  let marker;
+  try { marker = await fsp.readFile(ready, 'utf8'); } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+  const readyStat = await fsp.lstat(ready).catch(() => null);
+  if (!readyStat?.isFile() || marker.trim() !== archiveHash) fail('INVALID_PORTABLE_PROJECT', 'The portable project working copy is not trusted.');
+  const declared = new Set(manifest.files.map((record) => record.path.normalize('NFC').toLowerCase()));
+  let cacheEntries = 0;
+  async function inspectCache(directory, relativeDirectory = '') {
+    const entries = await fsp.readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      if (++cacheEntries > MAX_PORTABLE_FILES + 1) fail('INVALID_PORTABLE_PROJECT', 'The portable project working copy contains too many entries.');
+      const relative = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
+      const current = path.join(directory, entry.name);
+      if (!relativeDirectory && entry.name === '.ready') continue;
+      if (entry.isSymbolicLink()) fail('INVALID_PORTABLE_PROJECT', 'The portable project working copy contains a symbolic link.');
+      if (entry.isDirectory()) await inspectCache(current, relative);
+      else if (entry.isFile() && !declared.has(relative.normalize('NFC').toLowerCase())) fail('INVALID_PORTABLE_PROJECT', 'The portable project working copy contains an undeclared file.');
+      else if (!entry.isFile()) fail('INVALID_PORTABLE_PROJECT', 'The portable project working copy contains an invalid entry.');
+    }
+  }
+  await inspectCache(destination);
+  for (const record of manifest.files) {
+    const outputPath = resolveContainedEntry(destination, record.path);
+    await rejectSymlinkComponents(destination, outputPath);
+    const stat = await fsp.lstat(outputPath).catch(() => null);
+    if (!stat || !stat.isFile() || stat.isSymbolicLink() || stat.size !== record.size || await sha256File(outputPath) !== record.sha256) {
+      fail('INVALID_PORTABLE_PROJECT', `Portable project checksum failed: ${record.path}`);
+    }
+  }
+  const project = parseProject(await fsp.readFile(path.join(destination, PROJECT_ENTRY), 'utf8'), { baseDirectory: destination });
+  return validateProjectSource(project, manifest, destination);
+}
+
+function destinationExistsError(error) {
+  return error?.code === 'EEXIST' || error?.code === 'ENOTEMPTY';
 }
 
 async function openPortableProject(filePath, workspaceRoot) {
@@ -174,57 +299,58 @@ async function openPortableProject(filePath, workspaceRoot) {
   const archiveHash = await sha256File(absolute);
   const destination = path.join(workspaceRoot, archiveHash);
   const ready = path.join(destination, '.ready');
-  try {
-    if ((await fsp.readFile(ready, 'utf8')).trim() === archiveHash) return parseProject(await fsp.readFile(path.join(destination, PROJECT_ENTRY), 'utf8'), { baseDirectory: destination });
-  } catch {}
-  await fsp.rm(destination, { recursive: true, force: true });
-
   const readerSource = await archiveReader(absolute);
   const reader = new zip.ZipReader(readerSource);
   const staging = `${destination}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  let stagingPublished = false;
   try {
-    const entries = await reader.getEntries();
-    if (entries.length > MAX_PORTABLE_FILES + 2) fail('INVALID_PORTABLE_PROJECT', 'The portable project contains too many archive entries.');
-    const byName = new Map();
-    for (const entry of entries) {
-      if (entry.directory) continue;
-      if (!safeEntryPath(entry.filename)) fail('INVALID_PORTABLE_PROJECT', 'The portable project contains an unsafe path.');
-      const identity = entry.filename.normalize('NFC').toLowerCase();
-      if (byName.has(identity)) fail('INVALID_PORTABLE_PROJECT', 'The portable project contains duplicate cross-platform paths.');
-      const unixType = (entry.externalFileAttributes >>> 16) & 0o170000;
-      if (unixType === 0o120000) fail('INVALID_PORTABLE_PROJECT', 'The portable project contains a symbolic link.');
-      byName.set(identity, entry);
-    }
-    const manifestEntry = byName.get(MANIFEST_ENTRY);
-    if (!manifestEntry?.getData) fail('INVALID_PORTABLE_PROJECT', 'The portable project is missing manifest.json.');
-    const manifest = validateManifest(JSON.parse(await manifestEntry.getData(new zip.TextWriter())));
-    const declaredEntries = new Set([MANIFEST_ENTRY, ...manifest.files.map((record) => record.path.normalize('NFC').toLowerCase())]);
-    for (const identity of byName.keys()) if (!declaredEntries.has(identity)) fail('INVALID_PORTABLE_PROJECT', 'The portable project contains an undeclared file.');
+    const { byName, manifest } = await readArchive(reader);
+    const cached = await validateCachedProject(destination, ready, archiveHash, manifest);
+    if (cached) return cached;
+
     await fsp.mkdir(staging, { recursive: true, mode: 0o700 });
     for (const record of manifest.files) {
       const entry = byName.get(record.path.normalize('NFC').toLowerCase());
-      if (!entry?.getData || entry.uncompressedSize !== record.size) fail('INVALID_PORTABLE_PROJECT', `The portable project is missing or has changed: ${record.path}`);
-      const outputPath = path.join(staging, ...record.path.split('/'));
+      const outputPath = resolveContainedEntry(staging, record.path);
       await fsp.mkdir(path.dirname(outputPath), { recursive: true, mode: 0o700 });
       await entry.getData(fileWriter(outputPath));
       if (await sha256File(outputPath) !== record.sha256) fail('INVALID_PORTABLE_PROJECT', `Portable project checksum failed: ${record.path}`);
     }
+    const project = parseProject(await fsp.readFile(path.join(staging, PROJECT_ENTRY), 'utf8'), { baseDirectory: staging });
+    await validateProjectSource(project, manifest, staging);
     await fsp.writeFile(path.join(staging, '.ready'), `${archiveHash}\n`, { mode: 0o600, flag: 'wx' });
     await fsp.mkdir(workspaceRoot, { recursive: true, mode: 0o700 });
-    try { await fsp.rename(staging, destination); } catch (error) {
-      if (error?.code !== 'EEXIST') throw error;
+    let published = false;
+    let renameError = null;
+    try {
+      await fsp.rename(staging, destination);
+      published = true;
+      stagingPublished = true;
+    } catch (error) {
+      renameError = error;
     }
-    const project = parseProject(await fsp.readFile(path.join(destination, PROJECT_ENTRY), 'utf8'), { baseDirectory: destination });
-    const expectedSource = path.resolve(destination, ...manifest.source.entry.split('/'));
-    if (path.resolve(project.source.path) !== expectedSource) fail('INVALID_PORTABLE_PROJECT', 'The embedded project does not point to its packaged source.');
-    const sourceStat = await fsp.stat(expectedSource).catch(() => null);
-    if (!sourceStat || (manifest.source.type === 'directory' ? !sourceStat.isDirectory() : !sourceStat.isFile())) fail('INVALID_PORTABLE_PROJECT', 'The packaged source type does not match its manifest.');
-    return project;
+    if (!published) {
+      let concurrent;
+      try {
+        concurrent = await validateCachedProject(destination, ready, archiveHash, manifest);
+      } catch (error) {
+        if (!destinationExistsError(renameError)) throw renameError;
+        throw error;
+      }
+      if (!concurrent) {
+        if (!destinationExistsError(renameError)) throw renameError;
+        fail('INVALID_PORTABLE_PROJECT', 'The portable project working copy could not be published.');
+      }
+      return concurrent;
+    }
+    return validateProjectSource(parseProject(await fsp.readFile(path.join(destination, PROJECT_ENTRY), 'utf8'), { baseDirectory: destination }), manifest, destination);
   } catch (error) {
-    try { await fsp.rm(staging, { recursive: true, force: true }); } catch {}
     if (error instanceof PortableProjectError || error?.name === 'ProjectValidationError') throw error;
     fail('PORTABLE_OPEN_FAILED', `The portable project could not be opened: ${error?.message || error}`);
   } finally {
+    if (!stagingPublished) {
+      try { await fsp.rm(staging, { recursive: true, force: true }); } catch {}
+    }
     await reader.close().catch(() => {});
     await readerSource.close();
   }

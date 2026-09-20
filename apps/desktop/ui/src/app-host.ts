@@ -116,8 +116,12 @@ export type SourceRelinkResult = {
 export type AppCommand = 'new' | 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo';
 export type BuildTarget = 'clawd' | 'codex-pet';
 export type RenderPreset = 'compact' | 'balanced' | 'high';
+export type BuildRequestIdentity = { requestId: string; projectId: string; snapshotFingerprint: string };
 
 export type BuildProgressEvent = {
+  requestId?: string;
+  projectId?: string;
+  snapshotFingerprint?: string;
   protocolVersion: 1;
   buildId: string;
   sequence: number;
@@ -141,6 +145,8 @@ export type BuildSummary = {
   package?: { format?: string; byteLength?: number; files?: string[]; artifactName?: string } | null;
 };
 export type BuildProjectResult = {
+  requestId?: string;
+  snapshotFingerprint?: string;
   projectId: string;
   targets: BuildTarget[];
   builds: Partial<Record<BuildTarget, BuildSummary>>;
@@ -226,7 +232,7 @@ type Live2PetApi = {
   onLibraryDownloadProgress?(listener: (event: SourceLibraryDownloadProgress) => void): () => void;
   getBuildCacheStatus(): Promise<AppResponse<{ schemaVersion: 1; byteLength: number; entryCount: number; maxBytes: number }>>;
   clearBuildCache(input: { confirmClear: true }): Promise<AppResponse<{ removedEntries: number; removedBytes: number; schemaVersion: 1; byteLength: number; entryCount: number; maxBytes: number }>>;
-  buildProject?(input: { project: Live2PetProject; targets: BuildTarget[]; optionsByTarget: Partial<Record<BuildTarget, { package: true; spriteVersionNumber?: 2 }>> }): Promise<AppResponse<BuildProjectResult>>;
+  buildProject?(input: { project: Live2PetProject; targets: BuildTarget[]; optionsByTarget: Partial<Record<BuildTarget, { package: true; spriteVersionNumber?: 2 }>> } & Partial<BuildRequestIdentity>): Promise<AppResponse<BuildProjectResult>>;
   cancelBuild?(buildId: string): Promise<AppResponse<{ buildId: string; cancelled: boolean; active: boolean }>>;
   onBuildProgress?(listener: (event: BuildProgressEvent) => void): () => void;
   getBuildArtifact?(artifactId: string, offset?: number): Promise<AppResponse<BuildArtifactChunk>>;
@@ -478,8 +484,13 @@ function buildApi(): Live2PetApi {
   return api;
 }
 
-export function buildProject(project: Live2PetProject, target: BuildTarget): Promise<BuildProjectResult> {
-  return unwrap(buildApi().buildProject!({ project, targets: [target], optionsByTarget: { [target]: { package: true, ...(target === 'codex-pet' ? { spriteVersionNumber: 2 as const } : {}) } } }));
+export async function createBuildRequest(project: Live2PetProject): Promise<BuildRequestIdentity> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(project)));
+  return { requestId: crypto.randomUUID(), projectId: project.projectId, snapshotFingerprint: Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('') };
+}
+
+export function buildProject(project: Live2PetProject, target: BuildTarget, request?: BuildRequestIdentity): Promise<BuildProjectResult> {
+  return unwrap(buildApi().buildProject!({ project, ...request, targets: [target], optionsByTarget: { [target]: { package: true, ...(target === 'codex-pet' ? { spriteVersionNumber: 2 as const } : {}) } } }));
 }
 
 export function cancelBuild(buildId: string) {

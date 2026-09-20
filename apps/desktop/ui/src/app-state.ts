@@ -41,6 +41,7 @@ type ReturnDestination = "welcome" | ProjectDestination;
 type SetupReturnDestination = Exclude<Destination, "setup">;
 
 export interface AppState {
+  projectSession: number;
   destination: Destination;
   project: ProjectSession | null;
   settings: AppSettings;
@@ -73,7 +74,7 @@ export type AppAction =
   | { type: "SOURCE_REVIEW_ACKNOWLEDGED"; document: import('./app-host').Live2PetProject }
   | { type: "UNDO_PROJECT_EDIT" }
   | { type: "REDO_PROJECT_EDIT" }
-  | { type: "PROJECT_SAVED"; document: import('./app-host').Live2PetProject; documentId: string; fileName: string }
+  | { type: "PROJECT_SAVED"; session: number; document: import('./app-host').Live2PetProject; documentId: string; fileName: string }
   | { type: "OPEN_SETUP" }
   | { type: "COMPLETE_SETUP" }
   | { type: "UPDATE_LANGUAGE"; language: AppSettings["language"] }
@@ -81,6 +82,7 @@ export type AppAction =
 
 export function initialAppState({ setupCompleted = false }: { setupCompleted?: boolean } = {}): AppState {
   return {
+    projectSession: 0,
     destination: setupCompleted ? "welcome" : "setup",
     project: null,
     settings: { language: "en", appearance: "system" },
@@ -138,6 +140,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "OPEN_PROJECT":
       return {
         ...state,
+        projectSession: state.projectSession + 1,
         destination: "source",
         project: {
           ...action.project,
@@ -156,7 +159,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
 
     case "CLOSE_PROJECT":
-      return { ...state, destination: "welcome", project: null, settingsReturnDestination: null, projectHistory: { past: [], future: [], saved: null } };
+      return { ...state, projectSession: state.projectSession + 1, destination: "welcome", project: null, settingsReturnDestination: null, projectHistory: { past: [], future: [], saved: null } };
 
     case "NAVIGATE":
       if (!state.project || state.destination === "setup") return state;
@@ -286,17 +289,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case "PROJECT_SAVED":
-      return state.project
+      return state.project?.document && state.projectSession === action.session
         ? {
             ...state,
             project: {
               ...state.project,
-              id: action.document.projectId,
-              name: action.document.name,
-              document: action.document,
               documentId: action.documentId,
               fileName: action.fileName,
-              dirty: false,
+              dirty: dirtyFromBaseline(state.project.document, action.document),
             },
             projectHistory: { ...state.projectHistory, saved: action.document },
           }

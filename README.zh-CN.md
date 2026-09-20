@@ -108,6 +108,8 @@ open apps/desktop/out/Live2Pet-darwin-*/Live2Pet.app
 
 可以保存轻量的 **.l2p** 本地项目，也可以将所选模型一起保存为便携的 **.l2pack** 项目；旧 `.live2pet` 项目仍可继续打开。
 
+保存期间可以继续编辑。生成的包只归属于当前项目，修改后会标注旧版本结果；切换项目之前，请先完成或取消正在进行的构建。
+
 Spine 支持仍在预览阶段。PCK 是否可用取决于其内容和封装方式。[详细兼容性与限制 →](docs/guides/user-guide.zh-CN.md#compatibility)
 
 <a id="runtime-setup"></a>

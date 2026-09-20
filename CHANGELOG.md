@@ -8,6 +8,13 @@ GitHub Releases.
 
 ### Fixes
 
+- Keep newer edits and recovery drafts when an earlier project save completes,
+  and ignore save responses belonging to a closed or reopened project.
+- Keep generated packages attached to their project snapshot, label earlier
+  results after edits, and require active builds to finish or cancel before
+  project replacement. Failed rebuilds retain the last successful package.
+- Validate Portable Project contents and cached working copies before opening,
+  including source containment, file types, sizes, and SHA-256 digests.
 - Preserve the installed pet when an upgrade fails during staging, backup,
   publication, or verification, including disk-full errors.
 - Retain the previous package and show recovery instructions when automatic

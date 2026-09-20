@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from './App';
 import type { Live2PetProject, SourceInspection, VisualElement } from './app-host';
 import { CLAWD_PROFILE, CODEX_PROFILE } from './target-profiles';
 import { PROJECT_DRAFT_KEY, writeProjectDraft } from './project-draft';
 import { ONBOARDING_KEY } from './onboarding/onboarding-state';
+import { webcrypto } from 'node:crypto';
+import type { BuildProgressEvent, BuildRequestIdentity } from './app-host';
 
 const emptyRuntimes = { schemaVersion: 2 as const, configured: false, restartRequired: false, runtimes: [] };
 
@@ -74,16 +76,17 @@ function installDesktopApi({ runtimes = emptyRuntimes, preview = true, previewVi
   const checkForUpdates = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, state: 'available' as const, currentVersion: '0.1.0', latestVersion: '0.1.1', releaseUrl: 'https://github.com/receyuki/live2pet/releases/tag/v0.1.1' } }));
   const openReleasePage = vi.fn(async () => ({ protocolVersion: 1 as const, ok: true, result: { opened: true as const } }));
   let appCommandListener: ((command: 'new' | 'open' | 'save' | 'settings' | 'build' | 'setup' | 'undo' | 'redo') => void) | undefined;
-  let buildProgressListener: ((event: { protocolVersion: 1; buildId: string; sequence: number; target: 'clawd'; stage: string; status: string; fraction: number }) => void) | undefined;
+  let buildProgressListener: ((event: BuildProgressEvent) => void) | undefined;
   let libraryDownloadProgressListener: ((event: { protocolVersion: 1; downloadId: string; sequence: number; libraryId: string; stage: 'downloading' | 'complete'; total: number; completed: number; downloaded: number; cached: number; failed: number; percent: number; currentName?: string }) => void) | undefined;
   const downloadSourceLibrary = vi.fn(async (libraryId: string) => {
     libraryDownloadProgressListener?.({ protocolVersion: 1, downloadId: 'download_1234', sequence: 1, libraryId, stage: 'downloading', total: 1, completed: 0, downloaded: 0, cached: 0, failed: 0, percent: 0, currentName: 'Spine Hero' });
     libraryDownloadProgressListener?.({ protocolVersion: 1, downloadId: 'download_1234', sequence: 2, libraryId, stage: 'complete', total: 1, completed: 1, downloaded: 1, cached: 0, failed: 0, percent: 100 });
     return { protocolVersion: 1 as const, ok: true, result: { schemaVersion: 1 as const, libraryId, total: 1, completed: 1, downloaded: 1, cached: 0, failed: 0, failures: [] } };
   });
-  const buildProject = vi.fn(async () => {
-    buildProgressListener?.({ protocolVersion: 1, buildId: 'build_12345678', sequence: 1, target: 'clawd', stage: 'package', status: 'completed', fraction: 1 });
-    return { protocolVersion: 1 as const, ok: true, result: { projectId: openedProject.projectId, targets: ['clawd' as const], builds: { clawd: { target: 'clawd' as const, validation: { ok: true }, preview: { ready: true } } }, warnings: [], artifacts: [{ artifactId: 'artifact-1', target: 'clawd' as const, filename: 'saved-clawd.zip', byteLength: 3 }] } };
+  const buildProject = vi.fn(async (input: BuildRequestIdentity & { project: Live2PetProject }) => {
+    const { requestId, projectId, snapshotFingerprint } = input;
+    buildProgressListener?.({ protocolVersion: 1, buildId: 'build_12345678', sequence: 1, target: 'clawd', stage: 'package', status: 'completed', fraction: 1, requestId, projectId, snapshotFingerprint });
+    return { protocolVersion: 1 as const, ok: true, result: { requestId, projectId, snapshotFingerprint, targets: ['clawd' as const], builds: { clawd: { target: 'clawd' as const, validation: { ok: true }, preview: { ready: true } } }, warnings: [], artifacts: [{ artifactId: 'artifact-1', target: 'clawd' as const, filename: 'saved-clawd.zip', byteLength: 3 }] } };
   });
   Object.defineProperty(window, 'live2pet', {
     configurable: true,
@@ -183,18 +186,24 @@ it('keeps build progress in the footer while Settings is open', async () => {
   await user.click(screen.getByRole('button', { name: 'Open project' }));
   await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Build' }));
   await user.click(screen.getAllByRole('button', { name: 'Build Pet Package' })[0]);
+  await act(async () => api.emitAppCommand('open'));
+  fireEvent.drop(window, { dataTransfer: { types: ['Files'], files: [new File(['fixture'], 'second.l2p')] } });
+  expect(api.openProject).toHaveBeenCalledOnce();
+  expect(screen.getByText('Finish or cancel the active build before switching projects or replacing its source.')).toBeVisible();
   const footer = () => within(screen.getByRole('contentinfo'));
   expect(footer().getByRole('progressbar', { name: 'Clawd build progress' })).toHaveAttribute('aria-valuenow', '0');
   expect(footer().getByRole('progressbar').querySelector('[data-slot="progress-bar-fill"]')).not.toBeNull();
   await user.click(screen.getByRole('button', { name: /^Settings$/ }));
   expect(footer().getByRole('progressbar', { name: 'Clawd build progress' })).toBeVisible();
-  resolveBuild(await finish());
+  await vi.waitFor(() => expect(api.buildProject).toHaveBeenCalledOnce());
+  resolveBuild(await finish(api.buildProject.mock.calls[0][0]));
   await vi.waitFor(() => expect(footer().getByText(/Succeeded/)).toBeVisible());
   await user.click(footer().getByRole('button', { name: /Clawd/ }));
   expect(await screen.findByRole('heading', { name: 'Package Build' })).toBeVisible();
 });
 
 beforeEach(() => {
+  vi.stubGlobal('crypto', webcrypto);
   localStorage.clear();
   localStorage.setItem('live2pet.desktop.locale', 'en');
   setSystemDarkMode(false);
@@ -427,6 +436,48 @@ describe('Live2Pet desktop shell', () => {
     expect(localStorage.getItem(PROJECT_DRAFT_KEY)).not.toBeNull();
   });
 
+  it.each([false, true])('keeps edits, draft and undo history made during an in-flight save (portable: %s)', async (portable) => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const api = installDesktopApi();
+    const finish = api.saveProject.getMockImplementation()!;
+    let resolveSave!: (value: Awaited<ReturnType<typeof finish>>) => void;
+    api.saveProject.mockImplementation(() => new Promise(resolve => { resolveSave = resolve; }));
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole('button', { name: 'Open project' }));
+    await screen.findByRole('main', { name: 'Map' });
+    await user.click(screen.getByRole('button', { name: portable ? 'Save a portable project with model files' : 'Save project' }));
+    await act(async () => { api.emitAppCommand('save'); api.emitAppCommand('save'); });
+    expect(api.saveProject).toHaveBeenCalledOnce();
+    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Build' }));
+    const input = screen.getByRole('textbox', { name: 'Pet / theme name' });
+    await user.clear(input);
+    await user.type(input, 'Newer name');
+    await act(async () => resolveSave(await finish(api.saveProject.mock.calls[0][0])));
+    expect(screen.getByRole('textbox', { name: 'Pet / theme name' })).toHaveValue('Newer name');
+    expect(screen.getByText('Unsaved changes')).toBeVisible();
+    await vi.waitFor(() => expect(JSON.parse(localStorage.getItem(PROJECT_DRAFT_KEY)!).project.name).toBe('Newer name'));
+  });
+
+  it('does not overwrite a newly opened project with a late Save As result', async () => {
+    localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+    const api = installDesktopApi();
+    const finish = api.saveProject.getMockImplementation()!;
+    let resolveSave!: (value: Awaited<ReturnType<typeof finish>>) => void;
+    api.saveProject.mockImplementation(() => new Promise(resolve => { resolveSave = resolve; }));
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole('button', { name: 'Open project' }));
+    await screen.findByRole('main', { name: 'Map' });
+    await user.click(screen.getByRole('button', { name: 'Save a portable project with model files' }));
+    api.openProject.mockResolvedValueOnce({ protocolVersion: 1, ok: true, result: { cancelled: false, documentId: 'second-document', fileName: 'second.l2p', project: { ...savedProject, name: 'Second project', projectId: 'second' }, recentProjects: [] } });
+    await act(async () => api.emitAppCommand('open'));
+    await screen.findByText('Second project');
+    await act(async () => resolveSave(await finish(api.saveProject.mock.calls[0][0])));
+    expect(screen.getByText('Second project')).toBeVisible();
+    expect(screen.queryByText('Saved Project.l2pack')).not.toBeInTheDocument();
+  });
+
   it('keeps the recovery draft when Save is cancelled', async () => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const { saveProject } = installDesktopApi({ saveCancelled: true });
@@ -643,7 +694,7 @@ describe('Live2Pet desktop shell', () => {
     expect(screen.getByText('Breathing · Smile')).toBeVisible();
   });
 
-  it('persists render presets and keeps a completed build while navigating', async () => {
+  it.each(['open', 'recent', 'drop'])('keeps results across navigation, labels edits and clears results on project replacement via %s', async (route) => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const readyProject: Live2PetProject = {
       ...savedProject,
@@ -653,7 +704,7 @@ describe('Live2Pet desktop shell', () => {
       },
     };
     const recent = [{ documentId: 'opaque-document', name: 'Saved Project', fileName: 'saved.live2pet', available: true }];
-    const { buildProject, saveProject } = installDesktopApi({
+    const { buildProject, saveProject, emitAppCommand } = installDesktopApi({
       recentProjects: recent,
       openedProject: readyProject,
       buildHost: true,
@@ -672,11 +723,25 @@ describe('Live2Pet desktop shell', () => {
     expect(saveProject.mock.calls[0][0].project.targets.clawd.renderPreset).toBe('high');
 
     await user.click(within(clawdCard).getByRole('button', { name: 'Build Pet Package' }));
-    await vi.waitFor(() => expect(buildProject).toHaveBeenCalledWith({ project: expect.any(Object), targets: ['clawd'], optionsByTarget: { clawd: { package: true } } }));
+    await vi.waitFor(() => expect(buildProject).toHaveBeenCalledWith(expect.objectContaining({ project: expect.any(Object), requestId: expect.any(String), snapshotFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/), targets: ['clawd'], optionsByTarget: { clawd: { package: true } } })));
     expect(await screen.findByText('saved-clawd.zip')).toBeVisible();
     await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Map' }));
     await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Build' }));
     expect(screen.getByText('saved-clawd.zip')).toBeVisible();
+    await user.type(screen.getByRole('textbox', { name: 'Pet / theme name' }), ' edited');
+    expect(screen.getByText('From an earlier version of this project. Rebuild to include your latest changes.')).toBeVisible();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    if (route === 'open') await act(async () => emitAppCommand('open'));
+    else if (route === 'drop') fireEvent.drop(window, { dataTransfer: { types: ['Files'], files: [new File(['fixture'], 'second.l2p')] } });
+    else {
+      await user.click(screen.getByRole('button', { name: 'New project' }));
+      await user.click(await screen.findByRole('button', { name: /Saved Project/ }));
+    }
+    await screen.findByRole('main', { name: 'Map' });
+    await user.click(within(screen.getByRole('navigation', { name: 'Project' })).getByRole('button', { name: 'Build' }));
+    expect(screen.queryByText('saved-clawd.zip')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save package Clawd Theme Package' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Install Clawd Theme Package' })).not.toBeInTheDocument();
   });
 
   it('opens a recent project by opaque id and relinks its referenced source through the host', async () => {

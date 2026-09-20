@@ -48,6 +48,33 @@ describe("initialAppState", () => {
 });
 
 describe("appReducer", () => {
+  it('records the submitted save baseline without losing newer edits or undo history', () => {
+    const submitted = projectDocument();
+    let state = appReducer(initialAppState(), { type: 'OPEN_PROJECT', project: { id: 'one', name: 'One', document: submitted } });
+    const session = state.projectSession;
+    state = appReducer(state, { type: 'RENAME_PROJECT', name: 'New name' });
+    state = appReducer(state, { type: 'SET_VISUAL_SETTINGS', settings: { hiddenElementIds: ['BG'] } });
+    state = appReducer(state, { type: 'SELECT_MOTION', motionId: 'idle:0' });
+    state = appReducer(state, { type: 'ASSIGN_SELECTED_RECIPE', destination: { target: 'clawd', category: 'states', slot: 'idle' } });
+    state = appReducer(state, { type: 'PROJECT_SAVED', session, document: submitted, documentId: 'saved-document', fileName: 'one.l2pack' });
+    expect(state.project).toMatchObject({ name: 'New name', dirty: true, document: { visualSettings: { hiddenElementIds: ['BG'] } }, fileName: 'one.l2pack' });
+    expect(state.projectHistory.saved).toEqual(submitted);
+    state = appReducer(state, { type: 'UNDO_PROJECT_EDIT' });
+    state = appReducer(state, { type: 'UNDO_PROJECT_EDIT' });
+    state = appReducer(state, { type: 'UNDO_PROJECT_EDIT' });
+    expect(state.project?.dirty).toBe(false);
+    state = appReducer(state, { type: 'REDO_PROJECT_EDIT' });
+    expect(state.project?.dirty).toBe(true);
+  });
+
+  it('ignores a late save even when the same project was reopened', () => {
+    const document = projectDocument();
+    let state = appReducer(initialAppState(), { type: 'OPEN_PROJECT', project: { id: 'one', name: 'One', document } });
+    const session = state.projectSession;
+    state = appReducer(state, { type: 'OPEN_PROJECT', project: { id: 'one', name: 'Reopened', document } });
+    expect(appReducer(state, { type: 'PROJECT_SAVED', session, document, documentId: 'old-document', fileName: 'old.l2p' })).toBe(state);
+  });
+
   it("keeps project selections while navigating and visiting Settings", () => {
     let state = initialAppState({ setupCompleted: true });
     state = appReducer(state, {
@@ -127,7 +154,7 @@ describe("appReducer", () => {
     let state = initialAppState({ setupCompleted: true });
     state = appReducer(state, { type: "OPEN_PROJECT", project: { id: "one", name: "One", document: projectDocument(), selectedMotionId: "Idle" } });
     state = appReducer(state, { type: "ASSIGN_SELECTED_RECIPE", destination: { target: "codex-pet", category: "rows", slot: "idle" } });
-    state = appReducer(state, { type: "PROJECT_SAVED", document: state.project!.document!, documentId: "document_123", fileName: "one.live2pet" });
+    state = appReducer(state, { type: "PROJECT_SAVED", session: state.projectSession, document: state.project!.document!, documentId: "document_123", fileName: "one.live2pet" });
     expect(state.project?.dirty).toBe(false);
     state = appReducer(state, { type: "CLEAR_ASSIGNMENT", destination: { target: "codex-pet", category: "rows", slot: "idle" } });
     expect(state.project?.dirty).toBe(true);
@@ -179,7 +206,7 @@ describe("appReducer", () => {
       project: { id: "one", name: "One", document: projectDocument(), selectedMotionId: "Idle" },
     });
     state = appReducer(state, { type: "ASSIGN_SELECTED_RECIPE", destination: { target: "codex-pet", category: "rows", slot: "idle" } });
-    state = appReducer(state, { type: "PROJECT_SAVED", document: state.project!.document!, documentId: "document_123", fileName: "one.live2pet" });
+    state = appReducer(state, { type: "PROJECT_SAVED", session: state.projectSession, document: state.project!.document!, documentId: "document_123", fileName: "one.live2pet" });
     expect(state.projectHistory.past).toHaveLength(1);
     expect(state.project?.dirty).toBe(false);
 

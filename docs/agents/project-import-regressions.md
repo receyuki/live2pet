@@ -12,6 +12,8 @@ Use the scenarios relevant to the change. Prefer synthetic fixtures; keep user m
 
 ## Drag and drop
 
+- While a build is active, all project-replacement routes must ask the user to finish or cancel it first. After completion, opening another project must clear the old package, generated preview, and Save/Install actions.
+
 - Exercise drag-enter, drag-over, drop, and drag-leave, including nested drop targets and asynchronous opening.
 - Verify project documents are opened once through the document service and are not inspected as model resources.
 - Verify overlays clear after success, failure, cancellation, and a declined project replacement.
@@ -23,3 +25,11 @@ Use the scenarios relevant to the change. Prefer synthetic fixtures; keep user m
 - Retain selection and reusable thumbnails when navigating to Map and returning to the library.
 - Keep normal library browsing reachable after opening a project; a repair to the resource-review flow must not remove that capability.
 - Keep download and cache limits effective regardless of the active search or sort order.
+
+## Asynchronous document ownership
+
+- Delay Save/Save As, edit the name, mappings, or Visual Settings, and complete the save. Only the submitted snapshot becomes the saved baseline; newer edits and undo/redo history survive.
+- Repeated Save commands are coalesced while a save is in flight. Cancel/failure leaves the current document and recovery draft intact.
+- Switch or reopen a project before Save returns. The old result must not change the new session's document, filename, dirty state, or draft.
+- A recovery draft is cleared only if it matches the saved snapshot. Build requests, progress, and results are correlated by request ID, project ID, and snapshot SHA-256; stale events cannot attach to another request.
+- Reject the same malformed `.l2pack` on both first and repeated opens. Validate cached copies too, and preserve successful concurrent openers when cleaning failed staging directories.

@@ -1,5 +1,5 @@
 import * as buildProgressModule from "../../../mapper/build-progress.js";
-import type { BuildArtifact, BuildProgressEvent, BuildSummary, BuildTarget } from "./app-host";
+import type { BuildArtifact, BuildProgressEvent, BuildRequestIdentity, BuildSummary, BuildTarget } from "./app-host";
 
 const browserBuildProgress = (globalThis as typeof globalThis & {
   Live2PetBuildProgress?: typeof buildProgressModule;
@@ -10,6 +10,9 @@ if (!progressPercent) throw new Error("Live2Pet build progress helpers are unava
 
 export type BuildStatus = "idle" | "building" | "succeeded" | "failed" | "cancelled";
 export type TargetBuildState = {
+  request: BuildRequestIdentity | null;
+  snapshot: string | null;
+  artifactSnapshot: string | null;
   status: BuildStatus;
   buildId: string | null;
   sequence: number;
@@ -22,30 +25,34 @@ export type TargetBuildState = {
 };
 export type BuildState = Record<BuildTarget, TargetBuildState>;
 
-const emptyTarget = (): TargetBuildState => ({ status: "idle", buildId: null, sequence: 0, progress: 0, stage: null, message: null, error: null, artifact: null, summary: null });
+const emptyTarget = (): TargetBuildState => ({ request: null, snapshot: null, artifactSnapshot: null, status: "idle", buildId: null, sequence: 0, progress: 0, stage: null, message: null, error: null, artifact: null, summary: null });
 export const initialBuildState = (): BuildState => ({ clawd: emptyTarget(), "codex-pet": emptyTarget() });
 
 export type BuildAction =
   | { type: "RESET" }
-  | { type: "START"; target: BuildTarget }
+  | { type: "START"; target: BuildTarget; request: BuildRequestIdentity; snapshot: string }
   | { type: "PROGRESS"; event: BuildProgressEvent }
-  | { type: "SUCCEED"; target: BuildTarget; artifact: BuildArtifact; summary: BuildSummary }
-  | { type: "FAIL"; target: BuildTarget; error: string }
-  | { type: "CANCEL"; target: BuildTarget; message?: string };
+  | { type: "SUCCEED"; target: BuildTarget; requestId: string; artifact: BuildArtifact; summary: BuildSummary }
+  | { type: "FAIL"; target: BuildTarget; requestId: string; error: string }
+  | { type: "CANCEL"; target: BuildTarget; requestId: string; message?: string };
 
 export function buildReducer(state: BuildState, action: BuildAction): BuildState {
   if (action.type === "RESET") return initialBuildState();
   const current = state[action.type === "PROGRESS" ? action.event.target : action.target];
-  if (action.type === "START") return { ...state, [action.target]: { ...current, status: "building", buildId: null, sequence: 0, progress: 0, stage: null, message: null, error: null } };
+  if (action.type === "START") {
+    const retained = current.request?.projectId === action.request.projectId ? current : emptyTarget();
+    return { ...state, [action.target]: { ...retained, request: action.request, snapshot: action.snapshot, status: "building", buildId: null, sequence: 0, progress: 0, stage: null, message: null, error: null } };
+  }
   if (action.type === "PROGRESS") {
     const { event } = action;
-    if (current.status !== "building" || (current.buildId && current.buildId !== event.buildId) || event.sequence <= current.sequence) return state;
+    if (current.status !== "building" || !current.request || current.request.requestId !== event.requestId || current.request.projectId !== event.projectId || current.request.snapshotFingerprint !== event.snapshotFingerprint || (current.buildId && current.buildId !== event.buildId) || event.sequence <= current.sequence) return state;
     const fraction = typeof event.fraction === "number" ? event.fraction : event.status === "completed" ? 1 : 0;
     const target = event.target === "codex-pet" ? "codex" : "clawd";
     const progress = Math.max(current.progress, typeof event.percent === "number" ? Math.min(99, Math.max(0, Math.round(event.percent))) : progressPercent(target, event.stage === 'render' ? 'capture' : event.stage, fraction));
     return { ...state, [event.target]: { ...current, buildId: event.buildId, sequence: event.sequence, progress, stage: event.stage, message: event.message ?? null } };
   }
-  if (action.type === "SUCCEED") return { ...state, [action.target]: { ...current, status: "succeeded", buildId: null, sequence: 0, progress: 100, stage: null, message: null, error: null, artifact: action.artifact, summary: action.summary } };
+  if (current.status !== 'building' || current.request?.requestId !== action.requestId) return state;
+  if (action.type === "SUCCEED") return { ...state, [action.target]: { ...current, status: "succeeded", buildId: null, sequence: 0, progress: 100, stage: null, message: null, error: null, artifact: action.artifact, summary: action.summary, artifactSnapshot: current.snapshot } };
   if (action.type === "FAIL") return { ...state, [action.target]: { ...current, status: "failed", buildId: null, sequence: 0, stage: null, message: null, error: action.error } };
   return { ...state, [action.target]: { ...current, status: "cancelled", buildId: null, sequence: 0, stage: null, message: action.message ?? null, error: null } };
 }

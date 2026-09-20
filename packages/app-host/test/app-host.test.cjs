@@ -4,6 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const test = require('node:test');
+const crypto = require('node:crypto');
 
 const { createProject } = require('../../project/src/index.cjs');
 const { CacheStore } = require('../../package-build/src/cache.cjs');
@@ -37,6 +38,40 @@ const {
   normalizeAcknowledgeSourceReviewRequest,
   normalizeRecentProjects,
 } = require('../src/index.cjs');
+
+test('correlates build progress and results with the exact submitted project snapshot', async () => {
+  const project = { projectId: 'fixture', name: 'Saved snapshot' };
+  const identity = { requestId: 'request_12345678', projectId: project.projectId, snapshotFingerprint: crypto.createHash('sha256').update(JSON.stringify(project)).digest('hex') };
+  const events = [];
+  const router = createAppIpcRouter({ buildProjectService: async ({ onProgress }) => {
+    onProgress({ target: 'clawd', stage: 'capture', status: 'started', ...{ requestId: 'spoofed' } });
+    return { projectId: project.projectId, targets: ['clawd'], builds: {} };
+  }, onBuildProgress: event => events.push(event) });
+  const invoke = input => router({ protocolVersion: 1, method: 'buildProject', args: [input] });
+  const built = await invoke({ project, targets: ['clawd'], ...identity });
+  assert.equal(built.ok, true);
+  for (const [key, value] of Object.entries(identity)) {
+    assert.equal(built.result[key], value);
+    assert.equal(events[0][key], value);
+  }
+  const invalid = await invoke({ project: { ...project, name: 'Changed' }, ...identity });
+  assert.equal(invalid.ok, false);
+  assert.equal(invalid.error.code, 'INVALID_BUILD_REQUEST');
+});
+
+test('a rebuild missing its requested package does not evict the previous downloadable artifact', async () => {
+  let missing = false;
+  const router = createAppIpcRouter({ buildProjectService: async () => ({ projectId: 'fixture', targets: ['clawd'], builds: { clawd: { target: 'clawd', ...(missing ? {} : { package: { format: 'zip', buffer: Buffer.from('previous package'), artifactName: 'pet.zip' } }) } } }) });
+  const input = { protocolVersion: 1, method: 'buildProject', args: [{ project: { projectId: 'fixture' }, targets: ['clawd'], optionsByTarget: { clawd: { package: true } } }] };
+  const first = await router(input);
+  assert.equal(first.ok, true);
+  missing = true;
+  const second = await router(input);
+  assert.equal(second.ok, false);
+  const retained = await router({ protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId: first.result.artifacts[0].artifactId }] });
+  assert.equal(retained.ok, true);
+  assert.equal(Buffer.from(retained.result.bytes).toString(), 'previous package');
+});
 
 test('normalizes only versioned, allowlisted App IPC requests', () => {
   assert.deepEqual(normalizeRequest({ protocolVersion: 1, method: 'getVersion', args: [] }), { protocolVersion: 1, method: 'getVersion', args: [] });

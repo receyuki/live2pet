@@ -12,6 +12,7 @@ const PREVIEW_IPC_CHANNEL = 'live2pet:preview';
 const PREVIEW_STATUS_CHANNEL = 'live2pet:preview-status';
 const APP_IPC_PROTOCOL_VERSION = 1;
 const BUILD_PROGRESS_FIELDS = [
+  'requestId', 'projectId', 'snapshotFingerprint',
   'target', 'stage', 'status', 'motionId', 'name', 'width', 'height', 'samples', 'duration',
   'total', 'completed', 'index', 'frameCount', 'concurrency', 'percent', 'fraction', 'message',
   'error',

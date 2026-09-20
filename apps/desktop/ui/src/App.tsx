@@ -47,6 +47,7 @@ import {
   clearCache,
   checkForUpdates,
   buildProject,
+  createBuildRequest,
   cancelBuild,
   clearRuntimeSettings,
   configureRuntimePath,
@@ -973,6 +974,11 @@ export function App() {
     return { ...initial, settings: { ...initial.settings, language: storedLocale(), appearance: storedAppearance() } };
   });
   const [buildState, dispatchBuild] = useReducer(buildReducer, undefined, initialBuildState);
+  const latestState = useRef(state);
+  latestState.current = state;
+  const saveInFlight = useRef(false);
+  const projectTransition = useRef(false);
+  const activeBuilds = useRef(new Set<BuildTarget>());
   const [appVersion, setAppVersion] = useState("0.1.0");
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [updateError, setUpdateError] = useState("");
@@ -1095,27 +1101,31 @@ export function App() {
     try { await openReleasePage(updateStatus.latestVersion); }
     catch (cause) { setUpdateError(cause instanceof Error ? cause.message : t('updateCheckFailed')); }
   }
-  function confirmProjectReplacement(): boolean {
-    if (!state.project?.dirty) return true;
-    if (!window.confirm(t("confirmReplaceDirtyProject"))) return false;
-    if (state.project.document) {
-      writeProjectDraft(state.project.document);
+  function beginProjectReplacement(): boolean {
+    if (projectTransition.current || importBusy) return false;
+    if (activeBuilds.current.size) { setActionFeedback(t('projectReplacementBuildBusy')); return false; }
+    const project = latestState.current.project;
+    if (project?.dirty) {
+      if (!window.confirm(t("confirmReplaceDirtyProject"))) return false;
+      if (project.document) writeProjectDraft(project.document);
     }
+    projectTransition.current = true;
     return true;
   }
   async function startNewProject() {
     if (Object.values(buildState).some(build => build.status === 'building')) { setActionFeedback(t('newProjectBuildBusy')); return; }
-    if (!confirmProjectReplacement()) return;
+    if (!beginProjectReplacement()) return;
     try { if (hasPreviewApi()) await closeLive2DPreview(); } catch { /* Closing an unavailable preview must not trap the current project. */ }
     dispatchBuild({ type: 'RESET' });
     setActionFeedback('');
     setImportError('');
     setPendingSource(null);
     dispatch({ type: 'CLOSE_PROJECT' });
+    projectTransition.current = false;
   }
 
   async function openProjectDocument(documentId?: string, inputPath?: string) {
-    if (!confirmProjectReplacement()) return;
+    if (!beginProjectReplacement()) return;
     setImportBusy(true);
     setImportError("");
     setActionFeedback("");
@@ -1152,38 +1162,51 @@ export function App() {
         dispatch({ type: "SOURCE_RELINKED", document: relinked.project, inspection: relinked.inspection, sourcePath: result.project.source.path });
       }
       if (relinked && !relinked.reviewRequired) dispatch({ type: "NAVIGATE", destination: "map" });
+      dispatchBuild({ type: 'RESET' });
       setProjectDraft(null);
       if (relinkError) setActionFeedback(relinkError);
     } catch (cause) {
       setActionFeedback(cause instanceof Error ? cause.message : t("error"));
     } finally {
+      projectTransition.current = false;
       setImportBusy(false);
     }
   }
 
   async function saveProjectDocument(saveAs = false, portable = false) {
-    if (!state.project?.document) {
+    if (saveInFlight.current) return;
+    const { project, projectSession: session } = latestState.current;
+    if (!project?.document) {
       setActionFeedback(t("saveRequiresProject"));
       return;
     }
+    const submitted = project.document;
+    saveInFlight.current = true;
     setActionFeedback(t(portable ? "savingPortable" : "savingProject"));
     setProjectSaveBusy(true);
     try {
       const result = await saveProject({
-        ...(state.project.documentId ? { documentId: state.project.documentId } : {}),
-        project: state.project.document,
+        ...(project.documentId ? { documentId: project.documentId } : {}),
+        project: submitted,
         ...(saveAs ? { saveAs: true } : {}),
         ...(portable ? { portable: true } : {}),
       });
       setRecentProjects(result.recentProjects);
-      if (result.cancelled) return;
-      dispatch({ type: "PROJECT_SAVED", document: result.project, documentId: result.documentId, fileName: result.fileName });
-      clearProjectDraft();
-      setProjectDraft(null);
+      if (latestState.current.projectSession !== session) return;
+      if (result.cancelled) { setActionFeedback(''); return; }
+      dispatch({ type: "PROJECT_SAVED", session, document: submitted, documentId: result.documentId, fileName: result.fileName });
+      const current = latestState.current.project?.document;
+      if (current && JSON.stringify(current) !== JSON.stringify(submitted)) {
+        writeProjectDraft(current);
+      } else if (JSON.stringify(readProjectDraft()?.project) === JSON.stringify(submitted)) {
+        clearProjectDraft();
+        setProjectDraft(null);
+      }
       setActionFeedback(t(portable ? "portableSaved" : "projectSaved"));
     } catch (cause) {
-      setActionFeedback(cause instanceof Error ? cause.message : t("error"));
+      if (latestState.current.projectSession === session) setActionFeedback(cause instanceof Error ? cause.message : t("error"));
     } finally {
+      saveInFlight.current = false;
       setProjectSaveBusy(false);
     }
   }
@@ -1195,33 +1218,43 @@ export function App() {
   }
 
   async function buildProjectTarget(target: BuildTarget) {
-    const document = state.project?.document;
+    if (projectTransition.current || importBusy || activeBuilds.current.has(target)) return null;
+    const { project, projectSession: session } = latestState.current;
+    const document = project?.document;
     if (!document) { setActionFeedback(t("buildRequiresProject")); return null; }
+    activeBuilds.current.add(target);
     setActionFeedback("");
-    dispatchBuild({ type: "START", target });
+    let request: Awaited<ReturnType<typeof createBuildRequest>> | undefined;
     try {
-      const result = await buildProject(document, target);
+      request = await createBuildRequest(document);
+      dispatchBuild({ type: "START", target, request, snapshot: JSON.stringify(document) });
+      const result = await buildProject(document, target, request);
+      if (latestState.current.projectSession !== session) return null;
+      if (result.requestId !== request.requestId || result.projectId !== request.projectId || result.snapshotFingerprint !== request.snapshotFingerprint) throw new Error(t('buildResultMismatch'));
       const artifact = result.artifacts.find((item) => item.target === target);
       const summary = result.builds[target];
       if (!artifact || !summary) throw new Error(t("artifactMissing"));
-      dispatchBuild({ type: "SUCCEED", target, artifact, summary });
+      dispatchBuild({ type: "SUCCEED", target, requestId: request.requestId, artifact, summary });
       return artifact;
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : t("buildFailed");
-      if (cause instanceof Error && "code" in cause && String(cause.code) === "BUILD_CANCELLED") dispatchBuild({ type: "CANCEL", target, message });
-      else dispatchBuild({ type: "FAIL", target, error: message });
+      if (!request) setActionFeedback(message);
+      else if (cause instanceof Error && "code" in cause && String(cause.code) === "BUILD_CANCELLED") dispatchBuild({ type: "CANCEL", target, requestId: request.requestId, message });
+      else dispatchBuild({ type: "FAIL", target, requestId: request.requestId, error: message });
       return null;
+    } finally {
+      activeBuilds.current.delete(target);
     }
   }
 
   async function cancelProjectBuild(target: BuildTarget) {
-    const buildId = buildState[target].buildId;
-    if (!buildId) return;
+    const { buildId, request } = buildState[target];
+    if (!buildId || !request) return;
     try {
       const result = await cancelBuild(buildId);
-      if (result.cancelled) dispatchBuild({ type: "CANCEL", target, message: t("buildCancelled") });
+      if (result.cancelled) dispatchBuild({ type: "CANCEL", target, requestId: request.requestId, message: t("buildCancelled") });
     } catch (cause) {
-      dispatchBuild({ type: "FAIL", target, error: cause instanceof Error ? cause.message : t("buildFailed") });
+      setActionFeedback(cause instanceof Error ? cause.message : t("buildFailed"));
     }
   }
   async function importSourceFiles(files: File[], directDrop = false) {
@@ -1248,29 +1281,35 @@ export function App() {
   }
 
   async function confirmPendingSource(motion: string) {
-    if (!pendingSource || !confirmProjectReplacement()) return;
-    const { sourcePath, inspection } = pendingSource;
-    const projectId = projectIdFromSourceName(inspection.source.name);
-    const checked = await inspectSource(sourcePath, projectId);
-    await refreshRendererSettings();
-    const document: Live2PetProject = {
-      format: 'live2pet-project', schemaVersion: 3, projectId, appVersion, name: checked.source.name,
-      source: { ...checked.source, path: sourcePath }, recipes: [],
-      visualSettings: { hiddenElementIds: [] },
-      targets: {
-        clawd: { profile: "clawd", mappings: {}, reactions: {}, options: {} },
-        "codex-pet": { profile: "codex-pet", mappings: {}, reactions: {}, options: {} },
-      },
-    };
-    dispatchBuild({ type: 'RESET' });
-    dispatch({ type: "OPEN_PROJECT", project: { id: projectId, name: document.name, sourcePath, document, dirty: true, inspection: checked, selectedMotionId: motion || checked.motions[0]?.id || null } });
-    dispatch({ type: "NAVIGATE", destination: "map" });
-    setPendingSource(null);
-    setProjectDraft(null);
+    if (!pendingSource || !beginProjectReplacement()) return;
+    setImportBusy(true);
+    try {
+      const { sourcePath, inspection } = pendingSource;
+      const projectId = projectIdFromSourceName(inspection.source.name);
+      const checked = await inspectSource(sourcePath, projectId);
+      await refreshRendererSettings();
+      const document: Live2PetProject = {
+        format: 'live2pet-project', schemaVersion: 3, projectId, appVersion, name: checked.source.name,
+        source: { ...checked.source, path: sourcePath }, recipes: [],
+        visualSettings: { hiddenElementIds: [] },
+        targets: {
+          clawd: { profile: "clawd", mappings: {}, reactions: {}, options: {} },
+          "codex-pet": { profile: "codex-pet", mappings: {}, reactions: {}, options: {} },
+        },
+      };
+      dispatchBuild({ type: 'RESET' });
+      dispatch({ type: "OPEN_PROJECT", project: { id: projectId, name: document.name, sourcePath, document, dirty: true, inspection: checked, selectedMotionId: motion || checked.motions[0]?.id || null } });
+      dispatch({ type: "NAVIGATE", destination: "map" });
+      setPendingSource(null);
+      setProjectDraft(null);
+    } finally {
+      projectTransition.current = false;
+      setImportBusy(false);
+    }
   }
 
   async function openLibrarySource(library: SourceLibrary, candidate: SourceLibraryCandidate, motion: string) {
-    if (!confirmProjectReplacement()) return;
+    if (!beginProjectReplacement()) return;
     setImportBusy(true);
     setImportError("");
     try {
@@ -1298,6 +1337,7 @@ export function App() {
     } catch (cause) {
       setImportError(cause instanceof Error ? cause.message : t("error"));
     } finally {
+      projectTransition.current = false;
       setImportBusy(false);
     }
   }
@@ -1305,6 +1345,9 @@ export function App() {
   async function relinkCurrentSource(files: File[], directDrop = false) {
     const project = state.project?.document;
     if (!project) return;
+    if (projectTransition.current || importBusy) return;
+    if (activeBuilds.current.size) { setActionFeedback(t('projectReplacementBuildBusy')); return; }
+    projectTransition.current = true;
     setImportBusy(true);
     setActionFeedback("");
     try {
@@ -1324,6 +1367,7 @@ export function App() {
     } catch (cause) {
       setActionFeedback(cause instanceof Error ? cause.message : t("error"));
     } finally {
+      projectTransition.current = false;
       setImportBusy(false);
     }
   }
@@ -1345,7 +1389,7 @@ export function App() {
   }
 
   async function recoverProjectDraft() {
-    if (!projectDraft || !confirmProjectReplacement()) return;
+    if (!projectDraft || !beginProjectReplacement()) return;
     setImportBusy(true);
     setImportError("");
     setActionFeedback("");
@@ -1376,10 +1420,12 @@ export function App() {
         dispatch({ type: "SOURCE_RELINKED", document: relinked.project, inspection: relinked.inspection, sourcePath: projectDraft.project.source.path });
         if (!relinked.reviewRequired) dispatch({ type: "NAVIGATE", destination: "map" });
       }
+      dispatchBuild({ type: 'RESET' });
       setProjectDraft(null);
     } catch (cause) {
       setActionFeedback(cause instanceof Error ? cause.message : t("error"));
     } finally {
+      projectTransition.current = false;
       setImportBusy(false);
     }
   }
