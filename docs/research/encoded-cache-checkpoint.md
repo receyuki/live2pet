@@ -68,8 +68,9 @@ still acquire no renderer. Any cheaper reset must first prove equivalent output.
 - Native bounds-analysis, lower-level transport overhead, and encoder queue-depth
   instrumentation. Existing numeric timings describe their measured boundaries,
   not every internal operation.
-- Current permitted native Cubism 2 and Spine fixtures. Synthetic adapter/cache
-  tests are not native-model acceptance.
+- Expand the native scenario matrix beyond the cold/warm fixtures below, including
+  mixed mappings and cancellation/retry on legacy Cubism and Spine. Synthetic
+  adapter/cache tests alone do not establish those native outcomes.
 
 The user subsequently accepted the generated Clawd theme visually. That check
 is complete for this fixture; it does not substitute for native Cubism 2/Spine
@@ -105,3 +106,40 @@ crash report was found. Whether that closure was user-initiated is unconfirmed,
 so the interrupted run is not counted as complete. A separate reproducible
 destroyed-owner preview-cleanup error was fixed and its native close smoke passed;
 that does not establish the cause of the earlier interruption.
+
+### Native Cubism 2 and Spine follow-up — `eadf446`
+
+The user identified an existing local Source Library containing both generations.
+Read-only inspection found a Cubism 2 directory, a Cubism 2 PCK, a Spine 4.1.11
+binary model and a Spine 3.8.95 binary model. The directory and Spine 4.1 model
+were used for native builds; the PCK was inspected but not built in this run.
+Spine 3.8 remains outside the installed/supported 4.x runtime-pack scope and
+returns `UNSUPPORTED_SPINE_VERSION`; this is not evidence of damaged model data.
+
+All builds used isolated App profiles, verified existing local runtimes, public
+Desktop build IPC, Balanced output and in-memory mappings. Original model files
+were not changed. The Spine driver copied only the installed 4.1 pack into the
+temporary profile and verified it against the App's pinned digests before loading.
+Native loading hydrated 171 Motions from the binary model. It then exercised
+three selected Motions, not all 171; the figures are not all-model guarantees.
+
+| Native target | Cold seconds (three repetitions) | Warm seconds (same repetitions) | Cold / warm captured frames | Warm encoded hits |
+| --- | --- | --- | --- | --- |
+| Cubism 2 → Clawd | 22.14 / 25.64 / 31.33 | 4.20 / 6.14 / 5.17 | 220 / 0 | 3 |
+| Spine 4.1 → Clawd | 25.23 / 23.93 / 26.78 | 0.37 / 0.47 / 0.44 | 129 / 0 | 3 |
+
+Every warm build performed zero equivalent capture/encoding. All three Clawd
+WebP payloads matched across all six builds within each fixture, including
+dimensions, alpha, delays and decoded sample pixels. Samples were nonempty.
+These are local repeated observations, not controlled cross-machine benchmarks;
+the legacy series partly overlapped the separate Spine catalog probe.
+
+A further Spine → Codex sprite-V2 pair completed in 20.48 s cold and 0.35 s warm.
+Cold captured 237 frames and encoded one atlas; warm captured/encoded none and
+reused one atlas. Atlas bytes and inspected pixels/metadata matched exactly.
+This pair is one repetition, not three. No installed target host was modified.
+
+The fixture-availability blocker is resolved. #19 remains open for the outstanding
+instrumentation and broader per-renderer scenario matrix; no production code or
+runtime distribution policy was changed by this acceptance run. Models, runtimes,
+temporary drivers and generated packages remain local and are not published.
