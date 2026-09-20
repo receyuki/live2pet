@@ -110,6 +110,8 @@ open apps/desktop/out/Live2Pet-darwin-*/Live2Pet.app
 
 保存期间可以继续编辑。生成的包只归属于当前项目，修改后会标注旧版本结果；切换项目之前，请先完成或取消正在进行的构建。
 
+重复构建会复用本地限额缓存中仍然有效的动画资源。仅重命名宠物无需重新渲染；修改 Clawd 动画时，只构建缺失的资源。
+
 Spine 支持仍在预览阶段。PCK 是否可用取决于其内容和封装方式。[详细兼容性与限制 →](docs/guides/user-guide.zh-CN.md#compatibility)
 
 <a id="runtime-setup"></a>

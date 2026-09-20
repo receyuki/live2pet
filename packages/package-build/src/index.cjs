@@ -385,6 +385,24 @@ function rendererMotionDescriptor(renderer, motionId) {
   return null;
 }
 
+function planTargetRecipes(project, targetId, render) {
+  const normalized = validateProject(project);
+  assertProjectBuildable(normalized);
+  const target = normalized.targets[targetId];
+  if (!target) fail('INVALID_BUILD_TARGETS', 'Unknown Target Profile.');
+  const expressionByMotion = resolveProjectRecipeExpressions(normalized, target, targetId);
+  const motionIds = targetId === 'clawd'
+    ? collectClawdMotionIds(createClawdTarget({ sleepMode: target.options.sleepMode || 'direct', states: target.mappings, reactions: target.reactions }), target.options.behavior)
+    : mappedMotionIds(target.mappings);
+  const configuredRender = render || { preset: target.renderPreset || 'balanced', ...target.options?.renderOverrides };
+  const selection = resolveTargetRenderPreset(targetId, configuredRender);
+  return {
+    motions: motionIds.map(motionId => ({ motionId, expressionId: expressionByMotion[motionId] || null })),
+    render: { ...selection.settings, ...configuredRender, preset: selection.name },
+    visualSettings: normalizeBuildVisualSettings(normalized.visualSettings),
+  };
+}
+
 async function renderMappedMotions({ renderer, motionIds, render = {}, signal, onProgress, target, cache, cacheContext, expressionByMotion = {}, visualSettings } = {}) {
   if (!renderer || typeof renderer.captureRgba !== 'function') fail('RENDERER_REQUIRED', 'A renderer implementing captureRgba is required when build inputs do not include captured frames.');
   if (!Array.isArray(motionIds) || !motionIds.length) fail('MOTION_MAPPING_REQUIRED', `No ${target || 'target'} Motion mappings are available for renderer capture.`);
@@ -827,7 +845,8 @@ async function createClawdThemeZip({ themeId, manifest, assets, readme, zipModul
 
 async function buildClawdTheme(input = {}, options = {}) {
   const mapping = input.mapping || input;
-  const framesByMotion = input.framesByMotion || input.frames;
+  const framesByMotion = input.framesByMotion || input.frames || (input.encodedByMotion ? {} : null);
+  const encodedByMotion = input.encodedByMotion || {};
   const signal = options.signal || input.signal;
   const onProgress = options.onProgress || input.onProgress;
   const render = options.render || (options.renderPreset ? { preset: options.renderPreset } : {});
@@ -844,7 +863,7 @@ async function buildClawdTheme(input = {}, options = {}) {
   const target = createClawdTarget(mapping);
   const motionIds = collectClawdMotionIds(target, input.behavior);
   if (!framesByMotion || typeof framesByMotion !== 'object' || Array.isArray(framesByMotion)) fail('INVALID_CLAWD_FRAME_SET', 'framesByMotion must be an object keyed by Motion id.');
-  for (const motionId of motionIds) if (!Object.hasOwn(framesByMotion, motionId)) fail('MISSING_CLAWD_FRAME_SET', `${motionId} is mapped but has no captured frames.`);
+  for (const motionId of motionIds) if (!Object.hasOwn(framesByMotion, motionId) && !Object.hasOwn(encodedByMotion, motionId)) fail('MISSING_CLAWD_FRAME_SET', `${motionId} is mapped but has no captured frames.`);
   const { themeId, metadata } = normalizeClawdMetadata(input.metadata || {});
   const artifactName = createArtifactFilename({ packageId: themeId, target: 'clawd' });
   progress(onProgress, CLAWD_STAGES[0], 'completed', { motions: motionIds.length });
@@ -858,6 +877,18 @@ async function buildClawdTheme(input = {}, options = {}) {
   const usedSlugs = new Set();
   const jobs = motionIds.map((motionId, index) => {
     checkCancelled(signal);
+    const ready = encodedByMotion[motionId];
+    if (ready) {
+      if (ready.format !== 'webp' || !Buffer.isBuffer(ready.buffer) || !ready.buffer.length
+        || !Number.isInteger(ready.width) || ready.width < 1 || ready.width > MAX_RGBA_FRAME_DIMENSION
+        || !Number.isInteger(ready.height) || ready.height < 1 || ready.height > MAX_RGBA_FRAME_DIMENSION
+        || !Number.isInteger(ready.frameCount) || ready.frameCount < 1 || ready.frameCount > MAX_ENCODE_FRAMES
+        || !Array.isArray(ready.delays) || ready.delays.length !== ready.frameCount
+        || ready.delays.some(delay => !Number.isInteger(delay) || delay < 1 || delay > 60000)) {
+        fail('INVALID_ENCODED_ASSET', `The encoded animation for ${motionId} is invalid.`);
+      }
+      return { motionId, index, ready };
+    }
     const frameSet = normalizeClawdFrameSet(framesByMotion[motionId], motionId, renderSelection.settings);
     const expectedExpressionId = Object.hasOwn(expressionByMotion, motionId) ? (expressionByMotion[motionId] || null) : null;
     if (frameSet.expressionId !== expectedExpressionId) {
@@ -886,8 +917,13 @@ async function buildClawdTheme(input = {}, options = {}) {
     checkCancelled(signal);
     const { motionId, index, frameSet, firstFrame, delays, cacheKey } = job;
     progress(onProgress, CLAWD_STAGES[1], 'motion-started', { motionId, index, total: motionIds.length });
-    let encoded = null;
+    let encoded = job.ready || null;
     let cacheStatus = cacheEnabled ? 'miss' : 'disabled';
+    if (encoded) {
+      cacheStats.enabled = true;
+      cacheStats.hits += 1;
+      cacheStatus = 'hit';
+    }
     if (cacheKey) {
       const cached = cache.get(cacheKey);
       if (cached) {
@@ -911,6 +947,7 @@ async function buildClawdTheme(input = {}, options = {}) {
       if (cacheKey) cache.put(cacheKey, encodeAsset({ format: encoded.format, width: encoded.width, height: encoded.height, frameCount: encoded.frameCount, delays: encoded.delays, bytes: encoded.buffer }), { projectId: cacheContext.projectId, sourceFingerprint: cacheContext.sourceFingerprint, artifact: 'encoded-webp' });
     }
     checkCancelled(signal);
+    if (!job.ready) await options.onEncodedAsset?.(motionId, encoded);
     completedEncodes += 1;
     progress(onProgress, CLAWD_STAGES[1], 'motion-completed', { motionId, index, completed: completedEncodes, total: motionIds.length, fraction: completedEncodes / motionIds.length, cache: cacheStatus, frameCount: encoded.frameCount });
     return { motionId, encoded };
@@ -993,41 +1030,59 @@ async function buildCodexPet(input = {}, options = {}) {
   const cacheStats = { enabled: cacheEnabled, hits: 0, misses: 0 };
   checkCancelled(signal);
 
-  progress(onProgress, STAGES[0], 'started');
-  const selection = selectCodexFrameSets({ ...mapping, candidatesByRow }, options.selection || {});
-  checkCancelled(signal);
-  progress(onProgress, STAGES[0], 'completed', { rows: Object.keys(selection.frameSets).length });
-
-  progress(onProgress, STAGES[1], 'started');
-  const atlasPlan = createCodexAtlasPlan({ ...mapping, framesByRow: selection.frameSets });
-  checkCancelled(signal);
-  progress(onProgress, STAGES[1], 'completed', { cells: atlasPlan.cells.length });
-
-  progress(onProgress, STAGES[2], 'started');
-  const atlas = composeCodexAtlasRgba(atlasPlan, captureMap(selection.frameSets));
-  if (spriteVersionNumber === 2) {
-    const rgba = new Uint8Array(spriteAtlas.width * spriteAtlas.height * 4);
-    rgba.set(atlas.rgba);
-    // Compatibility mode: all look directions use the first idle pose, not an invented animation.
-    for (let direction = 0; direction < 16; direction += 1) {
-      const x = direction % 8 * ATLAS.cellWidth;
-      const y = (9 + Math.floor(direction / 8)) * ATLAS.cellHeight;
-      for (let row = 0; row < ATLAS.cellHeight; row += 1) {
-        const source = row * ATLAS.width * 4;
-        rgba.set(atlas.rgba.subarray(source, source + ATLAS.cellWidth * 4), ((y + row) * spriteAtlas.width + x) * 4);
-      }
+  const ready = input.encodedAtlas;
+  let selection;
+  let atlasPlan;
+  let atlas;
+  if (ready) {
+    if (!ready.encoded || ready.encoded.format !== 'webp' || !Buffer.isBuffer(ready.encoded.buffer)
+      || ready.encoded.width !== spriteAtlas.width || ready.encoded.height !== spriteAtlas.height || ready.encoded.frameCount !== 1
+      || !Array.isArray(ready.rows) || ready.rows.length !== 9 || !ready.atlas || ready.atlas.width !== spriteAtlas.width || ready.atlas.height !== spriteAtlas.height) {
+      fail('INVALID_ENCODED_ASSET', 'The encoded Codex atlas does not match the target geometry.');
     }
-    atlas.rgba = rgba;
-    atlas.height = spriteAtlas.height;
-    atlas.occupiedCells += 16;
+    selection = { selections: ready.selections };
+    atlas = ready.atlas;
+  } else {
+    progress(onProgress, STAGES[0], 'started');
+    selection = selectCodexFrameSets({ ...mapping, candidatesByRow }, options.selection || {});
+    checkCancelled(signal);
+    progress(onProgress, STAGES[0], 'completed', { rows: Object.keys(selection.frameSets).length });
+
+    progress(onProgress, STAGES[1], 'started');
+    atlasPlan = createCodexAtlasPlan({ ...mapping, framesByRow: selection.frameSets });
+    checkCancelled(signal);
+    progress(onProgress, STAGES[1], 'completed', { cells: atlasPlan.cells.length });
+
+    progress(onProgress, STAGES[2], 'started');
+    atlas = composeCodexAtlasRgba(atlasPlan, captureMap(selection.frameSets));
+    if (spriteVersionNumber === 2) {
+      const rgba = new Uint8Array(spriteAtlas.width * spriteAtlas.height * 4);
+      rgba.set(atlas.rgba);
+      // Compatibility mode: all look directions use the first idle pose, not an invented animation.
+      for (let direction = 0; direction < 16; direction += 1) {
+        const x = direction % 8 * ATLAS.cellWidth;
+        const y = (9 + Math.floor(direction / 8)) * ATLAS.cellHeight;
+        for (let row = 0; row < ATLAS.cellHeight; row += 1) {
+          const source = row * ATLAS.width * 4;
+          rgba.set(atlas.rgba.subarray(source, source + ATLAS.cellWidth * 4), ((y + row) * spriteAtlas.width + x) * 4);
+        }
+      }
+      atlas.rgba = rgba;
+      atlas.height = spriteAtlas.height;
+      atlas.occupiedCells += 16;
+    }
+    checkCancelled(signal);
+    progress(onProgress, STAGES[2], 'completed', { occupiedCells: atlas.occupiedCells, transparentCells: atlas.transparentCells });
   }
-  checkCancelled(signal);
-  progress(onProgress, STAGES[2], 'completed', { occupiedCells: atlas.occupiedCells, transparentCells: atlas.transparentCells });
 
   const packageRequested = options.package === true;
   const encodeRequested = packageRequested || options.encode === true;
-  let encoded = null;
-  if (encodeRequested) {
+  let encoded = ready?.encoded || null;
+  if (encoded) {
+    cacheStats.enabled = true;
+    cacheStats.hits = 1;
+    progress(onProgress, STAGES[3], 'completed', { format: encoded.format, byteLength: encoded.buffer.length, cacheHits: 1, cacheMisses: 0 });
+  } else if (encodeRequested) {
     progress(onProgress, STAGES[3], 'started');
     const quality = options.quality ?? 80;
     const alphaQuality = options.alphaQuality ?? 100;
@@ -1081,7 +1136,7 @@ async function buildCodexPet(input = {}, options = {}) {
     spriteVersionNumber,
     ...(spriteVersionNumber === 2 ? { gaze: { mode: 'neutral', directions: 16, rows: [9, 10] } } : {}),
     atlas: { ...spriteAtlas },
-    rows: atlasPlan.rows.map((row) => ({
+    rows: ready?.rows || atlasPlan.rows.map((row) => ({
       id: row.id,
       row: row.row,
       frameCount: row.frames.length,
@@ -1099,6 +1154,11 @@ async function buildCodexPet(input = {}, options = {}) {
     spritesheet: { path: 'spritesheet.webp', format: 'webp', width: atlas.width, height: atlas.height, frameCount: 1, ...(encoded ? { byteLength: encoded.buffer.byteLength } : {}) },
   });
   if (!validation.ok) fail('TARGET_VALIDATION_FAILED', 'The generated Codex Pet failed Target Profile validation.', { target: 'codex-pet', errors: validation.errors });
+  if (encoded && !ready && options.onEncodedAtlas) {
+    const { rgba: _rgba, ...atlasSummary } = atlas;
+    const selections = Object.fromEntries(Object.entries(selection.selections).map(([row, { frames, ...details }]) => [row, { ...details, frames: frames.map(frameMetadata) }]));
+    await options.onEncodedAtlas({ encoded, rows: manifest.rows, selections, atlas: atlasSummary });
+  }
 
   progress(onProgress, STAGES[5], 'started');
   const preview = createCodexPreview({ manifest, selections: selection.selections });
@@ -1187,10 +1247,10 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
     if (renderer) {
       if (targetId === 'clawd' && !targetInput.framesByMotion && !targetInput.frames) {
         await applyRendererVisualSettings(renderer, projectVisualSettings, targetId);
-        const ids = mappedMotionIds({ ...targetProject.mappings, ...targetProject.reactions });
-        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, visualSettings: projectVisualSettings, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext });
+        const ids = planTargetRecipes(normalizedProject, targetId, configuredRender).motions.map(recipe => recipe.motionId).filter(id => !targetInput.encodedByMotion?.[id]);
+        const framesByMotion = ids.length ? await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, visualSettings: projectVisualSettings, render: targetInput.render || (targetInput.renderPreset ? { preset: targetInput.renderPreset } : targetOptions.render), signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext }) : {};
         renderedInput = { ...targetInput, framesByMotion };
-      } else if (targetId === 'codex-pet' && !targetInput.candidatesByRow && !targetInput.candidates) {
+      } else if (targetId === 'codex-pet' && !targetInput.candidatesByRow && !targetInput.candidates && !targetInput.encodedAtlas) {
         await applyRendererVisualSettings(renderer, projectVisualSettings, targetId);
         targetOptions.selection = { ...targetOptions.selection, preserveTiming: true };
         const ids = mappedMotionIds(targetProject.mappings);
@@ -1204,6 +1264,7 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
       result = await buildClawdTheme({
         mapping: { sleepMode: targetProject.options.sleepMode || 'direct', states: targetProject.mappings, reactions: targetProject.reactions },
         framesByMotion: renderedInput.framesByMotion || renderedInput.frames,
+        encodedByMotion: renderedInput.encodedByMotion,
         expressionByMotion,
         behavior: targetProject.options.behavior,
         metadata: metadataByTarget[targetId] || renderedInput.metadata || defaultMetadata,
@@ -1213,6 +1274,7 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
       result = await buildCodexPet({
         mapping: { mappings: targetProject.mappings },
         candidatesByRow: renderedInput.candidatesByRow || renderedInput.candidates,
+        encodedAtlas: renderedInput.encodedAtlas,
         metadata: metadataByTarget[targetId] || renderedInput.metadata || defaultMetadata,
       }, targetOptions);
     }
@@ -1279,6 +1341,7 @@ module.exports = {
   encodeAnimatedWebp,
   encodeCaptureSet,
   renderMappedMotions,
+  planTargetRecipes,
   resolveTargetRenderPreset,
   decodeFrameSet,
   encodeFrameSet,

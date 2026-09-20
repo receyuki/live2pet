@@ -147,7 +147,7 @@ async function pageInitializeVisualElements() {
   };
   runtime.prepareVisualCapture = async motionId => {
     if (!hidden.size) return;
-    const key = JSON.stringify([motionId, runtime.state.expressionId ?? null]);
+    const key = JSON.stringify([motionId, runtime.state.expressionId ?? null, runtime.app.renderer.width, runtime.app.renderer.height]);
     if (captureKey === key) return;
     if (captureBounds.has(key)) {
       runtime.visualBounds = captureBounds.get(key);

@@ -12,7 +12,7 @@ test('injects one hosted renderer into targets that lack captured inputs', async
   const service = createHostedBuildService({
     previewSession: {
       withRenderer: async (identity, operation) => {
-        assert.deepEqual(identity, { projectId: 'project-1', sourceFingerprint: FINGERPRINT, bounds: { x: 0, y: 0, width: 768, height: 768 } });
+        assert.deepEqual(identity, { projectId: 'project-1', sourceFingerprint: FINGERPRINT, bounds: { x: 0, y: 0, width: 768, height: 768 }, fresh: true });
         return operation(renderer);
       },
     },

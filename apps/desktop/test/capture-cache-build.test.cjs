@@ -6,6 +6,9 @@ const test = require('node:test');
 
 const { CacheStore, createCacheKey } = require('../../../packages/package-build/src/index.cjs');
 const { digestVisualSettings } = require('../../../packages/project/src/index.cjs');
+const { createProject } = require('../../../packages/project/src/index.cjs');
+const { SyntheticRenderer } = require('../../../packages/renderer/src/index.cjs');
+const { buildProjectTargets } = require('../../../packages/package-build/src/index.cjs');
 const { createCaptureCacheBuildService, mappedMotionIds } = require('../capture-cache-build.cjs');
 
 function project() {
@@ -21,6 +24,32 @@ function project() {
     },
   };
 }
+
+test('hosted Spine builds reuse bounded raw and encoded caches with a pinned runtime identity', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-spine-cache-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const cache = new CacheStore({ rootDir: root, maxBytes: 1024 * 1024 });
+  const renderer = new SyntheticRenderer();
+  await renderer.load({ motions: [{ id: 'idle', duration: 0.1 }] });
+  renderer.source = { format: 'spine', runtimeLine: '4.2', motions: [{ id: 'idle', duration: 0.1 }] };
+  const service = createCaptureCacheBuildService({
+    buildProjectTargets,
+    getCaptureCacheService: () => ({}),
+    getEncodedCache: () => cache,
+    resolveEncodedCacheContext: async () => ({ runtimeVersion: 'b'.repeat(64), rendererVersion: 'spine-player-v1', targetVersion: '1', encoderVersion: 'sharp-test' }),
+  });
+  const current = createProject({ projectId: 'spine-cache', name: 'Spine', source: { kind: 'spine-directory', name: 'fixture', fingerprint: 'a'.repeat(64) }, targets: {
+    clawd: { mappings: { idle: 'motion:idle', thinking: 'motion:idle', working: 'motion:idle', sleeping: 'motion:idle' } },
+  } });
+  const events = [];
+  const input = { project: current, targets: ['clawd'], inputsByTarget: { clawd: { renderer, render: { preset: 'compact', width: 128, height: 128, samples: 2 } } }, onProgress: event => events.push(event) };
+  await service(input);
+  events.length = 0;
+  const warm = await service(input);
+  assert.equal(warm.builds.clawd.cache.hits, 1);
+  assert.equal(events.some(event => event.stage === 'render' && event.cache === 'hit'), true);
+  assert.equal(events.some(event => event.stage === 'render' && event.status === 'started'), false);
+});
 
 function plan(motions, overrides = {}) {
   const recipesByMotion = Object.fromEntries(motions.map((motionId) => [motionId, {

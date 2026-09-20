@@ -14,7 +14,8 @@ test('desktop shell pins the HeroUI entrypoint and keeps navigation and IPC narr
   assert.match(main, /protocol\.registerSchemesAsPrivileged/);
   assert.match(main, /defaultSession\.protocol\.handle\(RUNTIME_PROTOCOL_SCHEME/);
   assert.match(main, /createRuntimeProtocolHandler/);
-  assert.match(main, /buildProjectService: buildProjectWithHostedRenderer/);
+  assert.match(main, /buildProjectService: buildProjectWithPlan/);
+  assert.match(main, /buildProject: buildProjectWithHostedRenderer/);
   assert.match(main, /createHostedBuildService/);
   assert.match(main, /buildProject: buildProjectWithCaptureCache/);
   assert.match(main, /getCaptureCacheService/);

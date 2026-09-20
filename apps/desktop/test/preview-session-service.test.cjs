@@ -285,6 +285,15 @@ test('renderer crash settles an in-flight status poll so Retry is not queued for
   await service.close();
 });
 
+test('fresh build capture replaces a matching interactive preview at fixed bounds', async () => {
+  const { service, calls } = fixture();
+  await service.open({ projectId: 'project-1', sourceFingerprint: FINGERPRINT, bounds: { x: 0, y: 0, width: 300, height: 200 } });
+  await service.withRenderer({ projectId: 'project-1', sourceFingerprint: FINGERPRINT, fresh: true, bounds: { x: 0, y: 0, width: 768, height: 768 } }, async () => null);
+  assert.equal(calls.filter(call => call[0] === 'adapter.load').length, 2);
+  assert.deepEqual(service.getStatus().bounds, { x: 0, y: 0, width: 768, height: 768 });
+  assert.equal(service.getStatus().visible, false);
+});
+
 test('withRenderer reuses a matching session, hides it, and serializes preview commands', async () => {
   const { adapter, calls, service, view } = fixture();
   await service.open({ projectId: 'project-1', sourceFingerprint: FINGERPRINT, bounds: { x: 0, y: 0, width: 512, height: 512 } });

@@ -16,6 +16,7 @@
     "prepare:mapper": "node scripts/stage-mapper-assets.cjs",
     "prepare:renderer": "node scripts/prepare-preload.cjs && node scripts/stage-renderer-assets.cjs",
     "benchmark:capture": "node scripts/benchmark-capture-transport.cjs",
+    "benchmark:project": "node scripts/benchmark-project-build.cjs",
     "package:mac": "pnpm prepare:renderer && pnpm build:renderer && node scripts/package-macos.cjs",
     "package:win": "pnpm prepare:renderer && pnpm build:renderer && node scripts/package-windows.cjs",
     "preview:shell": "pnpm start",

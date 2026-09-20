@@ -456,8 +456,12 @@ function pageCapture(motionId, time, width, height, priority, binary = false) {
     model.unregisterInteraction?.();
     if (focus) for (const key of ['targetX', 'targetY', 'x', 'y', 'vx', 'vy']) focus[key] = 0;
     try {
-      await runtime.prepareVisualCapture?.(motionId);
       runtime.app.stop();
+      if (width !== runtime.app.renderer.width || height !== runtime.app.renderer.height) {
+        runtime.app.renderer.resize(width, height);
+        runtime.fit();
+      }
+      await runtime.prepareVisualCapture?.(motionId);
       const captureTime = Math.min(Math.max(0, time), motion.duration);
       const restart = runtime.state.motionId !== motionId || captureTime <= runtime.state.time;
       const previousTime = restart ? 0 : runtime.state.time;
@@ -465,10 +469,6 @@ function pageCapture(motionId, time, width, height, priority, binary = false) {
       runtime.state.motionId = motion.id;
       runtime.state.time = captureTime;
       runtime.state.playing = true;
-      if (width !== runtime.app.renderer.width || height !== runtime.app.renderer.height) {
-        runtime.app.renderer.resize(width, height);
-        runtime.fit();
-      }
       // Capture uses source time and a neutral focus, independent of preview
       // speed, wall time, and the user's latest pointer position.
       const elapsedMilliseconds = Math.max(0, (captureTime - previousTime) * 1000);

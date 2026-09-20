@@ -15,7 +15,7 @@ function fail(code, message) {
 function hasCapturedInput(target, input = {}) {
   if (input.renderer) return true;
   if (target === 'clawd') return Boolean(input.framesByMotion || input.frames);
-  return Boolean(input.candidatesByRow || input.candidates);
+  return Boolean(input.candidatesByRow || input.candidates || input.encodedAtlas);
 }
 
 function normalizeIdentity(project) {
@@ -63,7 +63,7 @@ function createHostedBuildService({ previewSession, buildProject, captureBounds 
     const identity = normalizeIdentity(input.project);
     return runCaptured(async () => {
       try {
-        return await previewSession.withRenderer({ ...identity, bounds: captureBounds }, async (renderer) => {
+        return await previewSession.withRenderer({ ...identity, bounds: captureBounds, fresh: true }, async (renderer) => {
           const hostedInputs = { ...inputsByTarget };
           for (const target of missingRendererTargets) hostedInputs[target] = { ...(hostedInputs[target] || {}), renderer };
           return buildProject({ ...input, inputsByTarget: hostedInputs });

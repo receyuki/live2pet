@@ -54,6 +54,43 @@ function mapping() {
   };
 }
 
+test('repackages verified Clawd animations under the current name without raw frames or encoding', async () => {
+  const encodedByMotion = {};
+  const cold = await buildClawdTheme({ mapping: clawdMapping(), framesByMotion: clawdFrames() }, {
+    package: true,
+    onEncodedAsset: (motionId, asset) => { encodedByMotion[motionId] = asset; },
+  });
+  const warm = await buildClawdTheme({ mapping: clawdMapping(), encodedByMotion, metadata: { id: 'renamed', name: 'Renamed' } }, {
+    package: true,
+    sharpFactory: () => { throw new Error('A verified encoded animation must not be encoded again.'); },
+  });
+  assert.equal(warm.validation.ok, true);
+  assert.equal(warm.artifactName, 'renamed-clawd.zip');
+  assert.deepEqual(warm.assets.map(({ file, ...asset }) => asset), cold.assets.map(({ file, ...asset }) => asset));
+  assert.ok(warm.assets.every(asset => asset.file.startsWith('renamed-')));
+  assert.equal(warm.cache.hits, cold.assets.length);
+});
+
+test('repackages a verified Codex atlas without selecting, composing or encoding frames', async () => {
+  let encodedAtlas;
+  const cold = await buildCodexPet({ mapping: { mappings: mapping() }, candidatesByRow: candidatesByRow() }, {
+    spriteVersionNumber: 2, package: true, onEncodedAtlas: value => { encodedAtlas = value; },
+  });
+  const events = [];
+  const warm = await buildCodexPet({ mapping: { mappings: mapping() }, encodedAtlas, metadata: { id: 'renamed', name: 'Renamed' } }, {
+    spriteVersionNumber: 2, package: true,
+    sharpFactory: () => { throw new Error('An encoded atlas must not be encoded again.'); },
+    onProgress: event => events.push(event),
+  });
+  assert.equal(warm.validation.ok, true);
+  assert.equal(warm.artifactName, 'renamed-codex-pet.zip');
+  assert.deepEqual(warm.spritesheet, cold.spritesheet);
+  assert.deepEqual(warm.manifest.rows, cold.manifest.rows);
+  assert.deepEqual(warm.preview, cold.preview);
+  assert.equal(warm.atlas.rgba, undefined);
+  assert.equal(events.some(event => ['select', 'layout', 'compose'].includes(event.stage) && event.status === 'started'), false);
+});
+
 test('builds Codex sprite V2 with sixteen neutral look cells and preserves V1 validation', async () => {
   const result = await buildCodexPet({ mapping: { mappings: mapping() }, candidatesByRow: candidatesByRow() }, { spriteVersionNumber: 2, package: true });
   assert.equal(result.manifest.spriteVersionNumber, 2);

@@ -1,4 +1,5 @@
 const path = require('node:path');
+const { createHash } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, screen, shell, WebContentsView } = require('electron');
 const { createRuntimeHelpWindowHandler } = require('./runtime-help.cjs');
@@ -24,11 +25,12 @@ const {
 const { CacheStore, SHARP_ENCODER_VERSION, buildProjectTargets } = require('@live2pet/package-build');
 const { installPackage } = require('@live2pet/installation');
 const { discoverSourcePackages, inspectSourcePackage } = require('@live2pet/source-inspector');
-const { getSpinePackStatus, installSpinePack, removeSpinePack, resolveSpinePack } = require('@live2pet/spine-pack');
+const { getSpinePackStatus, installSpinePack, removeSpinePack, resolveSpinePack, SPINE_PACKS } = require('@live2pet/spine-pack');
 const { createPreviewSessionService } = require('./preview-session-service.cjs');
 const { createCaptureCacheService } = require('./capture-cache-service.cjs');
 const { createCaptureCacheBuildService } = require('./capture-cache-build.cjs');
 const { createHostedBuildService } = require('./hosted-build-service.cjs');
+const { createPlannedBuildService } = require('./planned-build-service.cjs');
 const { RUNTIME_PROTOCOL_SCHEME, createRuntimeProtocolHandler } = require('./runtime-protocol.cjs');
 const {
   clearRuntimeSettings,
@@ -192,19 +194,27 @@ function getCaptureCacheService() {
   return captureCacheService;
 }
 
+async function resolveRendererCacheContext(plan) {
+  let runtimeVersion;
+  let rendererVersion;
+  if (plan.format === 'spine') {
+    const installed = await spinePackService.resolve(plan.runtimeLine);
+    const pinned = SPINE_PACKS.find(pack => pack.runtimeLine === installed.runtimeLine);
+    runtimeVersion = createHash('sha256').update(JSON.stringify([pinned.id, pinned.version, pinned.files.map(file => file.sha256)])).digest('hex');
+    rendererVersion = 'spine-player-capture-v1';
+  } else {
+    const runtime = await loadRuntimeForGeneration(runtimeSettingsPath(), Number(plan.cubismVersion));
+    runtimeVersion = runtime.descriptor.fingerprint;
+    rendererVersion = getCaptureCacheService().rendererVersion;
+  }
+  return { runtimeVersion, rendererVersion, targetVersion: ENCODED_CACHE_TARGET_VERSION, encoderVersion: ENCODED_CACHE_ENCODER_VERSION };
+}
+
 const buildProjectWithCaptureCache = createCaptureCacheBuildService({
   buildProjectTargets,
   getCaptureCacheService,
   getEncodedCache: getCaptureCacheStore,
-  resolveEncodedCacheContext: async ({ plan }) => {
-    const runtime = await loadRuntimeForGeneration(runtimeSettingsPath(), Number(plan.cubismVersion));
-    return {
-      runtimeVersion: runtime.descriptor.fingerprint,
-      rendererVersion: getCaptureCacheService().rendererVersion,
-      targetVersion: ENCODED_CACHE_TARGET_VERSION,
-      encoderVersion: ENCODED_CACHE_ENCODER_VERSION,
-    };
-  },
+  resolveEncodedCacheContext: ({ plan }) => resolveRendererCacheContext(plan),
 });
 
 const buildProjectWithHostedRenderer = createHostedBuildService({
@@ -215,6 +225,20 @@ const buildProjectWithHostedRenderer = createHostedBuildService({
     },
   },
   buildProject: buildProjectWithCaptureCache,
+});
+
+const buildProjectWithPlan = createPlannedBuildService({
+  getCache: getCaptureCacheStore,
+  buildProject: buildProjectWithHostedRenderer,
+  resolveContext: async (project) => {
+    const record = sourceRegistry.get(project.projectId);
+    if (!record) throw Object.assign(new Error('The project Source Package is no longer available.'), { code: 'PREVIEW_SOURCE_NOT_FOUND' });
+    // Re-inspect the selected files even for a complete encoded-cache hit.
+    // A cached registry record is not evidence that the files are unchanged.
+    const manifest = await sourceInspectionService({ inputPath: record.inputPath, modelConfig: project.source.modelConfig });
+    if (manifest.source.fingerprint !== project.source.fingerprint) throw Object.assign(new Error('The Source Package changed. Reopen the project to review its mappings.'), { code: 'PREVIEW_SOURCE_MISMATCH' });
+    return resolveRendererCacheContext({ format: manifest.model.format, runtimeLine: manifest.model.runtimeLine, cubismVersion: manifest.model.cubism });
+  },
 });
 
 let targetInstallationService;
@@ -350,7 +374,7 @@ function registerIpc() {
     runtimeSettingsService,
     spinePackService,
     captureCacheService: getCaptureCacheService(),
-    buildProjectService: buildProjectWithHostedRenderer,
+    buildProjectService: buildProjectWithPlan,
     installPackageService: installPackage,
     installRootPickerService: chooseInstallRoot,
     targetInstallationService: getTargetInstallationService(),

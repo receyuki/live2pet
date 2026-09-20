@@ -33,6 +33,9 @@ Opt-in real-renderer tests report skips when local model/runtime inputs are
 absent. `pnpm typecheck` checks JavaScript syntax file by file and then UI
 TypeScript; the two scopes are reported separately.
 
+For opt-in real-project performance and output comparisons, see
+[Encoded-first builds and the local benchmark](../architecture/encoded-build-cache.md).
+
 ```sh
 pnpm --filter @live2pet/desktop package:mac
 pnpm --filter @live2pet/desktop smoke:mac

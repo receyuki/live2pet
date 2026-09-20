@@ -6,6 +6,17 @@ GitHub Releases.
 
 ## [Unreleased]
 
+### Performance
+
+- Reuse verified Clawd animations and Codex atlases before opening a renderer
+  or decoding raw-frame caches. Metadata-only edits keep the same pixels;
+  mixed Clawd builds capture only missing animations.
+- Enable hosted Spine builds to use the bounded capture and encoded caches
+  with pinned runtime identities. Cache revisions do not change project or
+  Source Package fingerprints.
+- Start build capture from a fixed hidden renderer state and measure hidden
+  part bounds at the requested output dimensions, independently of preview size.
+
 ### Fixes
 
 - Keep preview commands attached to their owning page during rapid model

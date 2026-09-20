@@ -441,6 +441,7 @@ function createPreviewSessionService({
       : normalizeBounds(input.bounds);
     return enqueue(async () => {
       const matches = state === SESSION_STATES.ready
+        && input.fresh !== true
         && adapter
         && projectId === requestedProjectId
         && sourceFingerprint === requestedFingerprint;
