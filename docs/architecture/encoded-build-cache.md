@@ -88,3 +88,7 @@ counts at the first, middle and last encoded frames. CI uses public synthetic
 models and checks behavior, never machine-dependent timing thresholds. Full
 phase-specific preparation/bounds/cache/ZIP/memory instrumentation is still part
 of #19; this harness does not claim to measure uninstrumented subphases.
+
+See the [2026-09-20 checkpoint](../research/encoded-cache-checkpoint.md) for
+qualified local measurements, the native-state parity finding and remaining
+acceptance work.
