@@ -623,9 +623,29 @@ test('creates a two-file ZIP that can be read back with zip.js', async () => {
   const reader = new zip.ZipReader(new zip.Uint8ArrayReader(artifact.buffer));
   const entries = await reader.getEntries();
   assert.deepEqual(entries.map((entry) => entry.filename), ['pet.json', 'spritesheet.webp']);
+  assert.equal(entries[0].compressionMethod, 8);
+  assert.equal(entries[1].compressionMethod, 0);
   assert.equal(await entries[0].getData(new zip.TextWriter()), '{\n  "schemaVersion": 1,\n  "target": "codex-pet"\n}\n');
   assert.deepEqual(await entries[1].getData(new zip.Uint8ArrayWriter()), Uint8Array.from([0x52, 0x49, 0x46, 0x46]));
   await reader.close();
+});
+
+test('stores Clawd WebP bytes unchanged while compressing manifests and documentation', async () => {
+  const zip = require('@zip.js/zip.js');
+  const bytes = Uint8Array.from([0x52, 0x49, 0x46, 0x46, 0, 1, 2, 255]);
+  const artifact = await createClawdThemeZip({ themeId: 'stored-media', manifest: { name: 'Stored Media' }, assets: { 'idle.webp': bytes } });
+  const reader = new zip.ZipReader(new zip.Uint8ArrayReader(artifact.buffer));
+  try {
+    const entries = await reader.getEntries();
+    assert.deepEqual(entries.map(entry => [entry.filename, entry.compressionMethod]), [
+      ['stored-media/theme.json', 8],
+      ['stored-media/README.md', 8],
+      ['stored-media/assets/idle.webp', 0],
+    ]);
+    assert.deepEqual(await entries[2].getData(new zip.Uint8ArrayWriter()), bytes);
+  } finally {
+    await reader.close();
+  }
 });
 
 test('reports unavailable or malformed WebP encoder inputs with typed errors', async () => {

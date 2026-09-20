@@ -642,7 +642,7 @@ async function createCodexPetZip({ manifest, spritesheet, zipModule } = {}) {
   try {
     const writer = new zip.ZipWriter(new zip.Uint8ArrayWriter('application/zip'));
     await writer.add('pet.json', new zip.Uint8ArrayReader(petJson));
-    await writer.add('spritesheet.webp', new zip.Uint8ArrayReader(spriteBytes));
+    await writer.add('spritesheet.webp', new zip.Uint8ArrayReader(spriteBytes), { level: 0 });
     const data = await writer.close();
     const buffer = normalizeZipBytes(data, 'ZIP output');
     if (!buffer.length) fail('ZIP_BUILDER_INVALID_OUTPUT', 'The ZIP builder returned an empty archive.');
@@ -862,7 +862,7 @@ async function createClawdThemeZip({ themeId, manifest, assets, readme, zipModul
     const files = [`${root}/theme.json`, `${root}/README.md`, ...entries.map(entry => `${root}/assets/${entry.name}`)];
     await writer.add(`${root}/theme.json`, new zip.Uint8ArrayReader(petJson));
     await writer.add(`${root}/README.md`, new zip.Uint8ArrayReader(Buffer.from(readmeText, 'utf8')));
-    for (const entry of entries) await writer.add(`${root}/assets/${entry.name}`, new zip.Uint8ArrayReader(entry.bytes));
+    for (const entry of entries) await writer.add(`${root}/assets/${entry.name}`, new zip.Uint8ArrayReader(entry.bytes), { level: 0 });
     const data = await writer.close();
     const buffer = normalizeZipBytes(data, 'ZIP output');
     if (!buffer.length) fail('ZIP_BUILDER_INVALID_OUTPUT', 'The ZIP builder returned an empty archive.');
