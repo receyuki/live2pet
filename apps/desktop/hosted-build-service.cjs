@@ -63,7 +63,8 @@ function createHostedBuildService({ previewSession, buildProject, captureBounds 
     const identity = normalizeIdentity(input.project);
     return runCaptured(async () => {
       try {
-        return await previewSession.withRenderer({ ...identity, bounds: captureBounds, fresh: true }, async (renderer) => {
+        return await previewSession.withRenderer({ ...identity, bounds: captureBounds, fresh: true, ...(input.verifyBuildContext ? { verifyBuildContext: input.verifyBuildContext } : {}) }, async (renderer) => {
+          await input.verifyBuildContext?.();
           const hostedInputs = { ...inputsByTarget };
           for (const target of missingRendererTargets) hostedInputs[target] = { ...(hostedInputs[target] || {}), renderer };
           return buildProject({ ...input, inputsByTarget: hostedInputs });

@@ -11,6 +11,15 @@ const {
 
 const FINGERPRINT = 'a'.repeat(64);
 
+test('build validation sees the runtime selected for loading before creating a renderer', async () => {
+  const { service, calls } = fixture({ runtime: { runtimePath: '/private/runtime/core.js', descriptor: { fingerprint: 'b'.repeat(64) } } });
+  await assert.rejects(service.withRenderer({ projectId: 'fixture', sourceFingerprint: FINGERPRINT, fresh: true, verifyBuildContext: selected => {
+    assert.equal(selected.runtimeVersion, 'b'.repeat(64));
+    throw Object.assign(new Error('Runtime changed'), { code: 'BUILD_INPUT_CHANGED' });
+  } }, () => assert.fail('must not capture from a mismatched runtime')), { code: 'BUILD_INPUT_CHANGED' });
+  assert.equal(calls.some(call => call[0] === 'adapter.load'), false);
+});
+
 function manifest(overrides = {}) {
   return {
     source: { kind: 'standard-directory', fingerprint: FINGERPRINT, modelConfig: 'character.model3.json' },

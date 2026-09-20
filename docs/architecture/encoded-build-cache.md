@@ -21,6 +21,12 @@ still regenerates names, metadata, manifests, previews and validated packages.
   its per-Motion envelope cache also distinguishes output dimensions.
 - Supplied frames, candidates or custom renderer instances bypass the planned
   fast path: a model digest alone does not identify those inputs.
+- The plan revalidates identity after acquiring the renderer, before encoded
+  cache writes and before publishing the result. Live2D also checks the runtime
+  selected during loading. A changed input fails with `BUILD_INPUT_CHANGED`
+  rather than saving new pixels under an earlier runtime key.
+- Planned builds own encoded persistence; the inner encoded cache remains for
+  supplied captures. One animation is not stored under both encoded identities.
 
 Full encoded hits need no native view, captures, raw-frame decoding or encoding.
 Mixed Clawd hits only capture missing Motions. The normal capture cache can still

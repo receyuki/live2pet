@@ -110,7 +110,7 @@ async function run() {
         const sample = () => {
           if (pendingSample) return;
           pendingSample = app.evaluate(({ app }) => app.getAppMetrics().reduce((sum, item) => sum + (item.memory.workingSetSize || 0), 0))
-            .then(value => { peakWorkingSetKiB = Math.max(peakWorkingSetKiB, value); memorySamples++; }).finally(() => { pendingSample = null; });
+            .then(value => { peakWorkingSetKiB = Math.max(peakWorkingSetKiB, value); memorySamples++; }).catch(() => { /* App failure is reported by the build invocation. */ }).finally(() => { pendingSample = null; });
         };
         sample();
         const timer = setInterval(sample, 500);

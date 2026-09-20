@@ -36,6 +36,14 @@ function createPlannedBuildService({ getCache, resolveContext, buildProject }) {
     const inputsByTarget = { ...input.inputsByTarget };
     const optionsByTarget = { ...input.optionsByTarget };
     let context;
+    const verifyBuildContext = async (selected = {}) => {
+      if (!context) return;
+      const current = await resolveContext(input.project);
+      if (['runtimeVersion', 'rendererVersion', 'targetVersion', 'encoderVersion'].some(key => current[key] !== context[key])
+        || (selected.runtimeVersion && selected.runtimeVersion !== context.runtimeVersion)) {
+        throw Object.assign(new Error('Build inputs changed. Retry with the current source and runtime.'), { code: 'BUILD_INPUT_CHANGED' });
+      }
+    };
     const cache = getCache();
     for (const target of targets) {
       const original = inputsByTarget[target] || {};
@@ -69,7 +77,8 @@ function createPlannedBuildService({ getCache, resolveContext, buildProject }) {
           try { inputsByTarget[target] = { ...original, encodedAtlas: decodeAtlas(cached.data, spriteVersionNumber) }; }
           catch { cache.removeFiles?.(key.digest); }
         }
-        optionsByTarget[target] = { ...options, ...context, onEncodedAtlas: value => {
+        optionsByTarget[target] = { ...options, ...context, onEncodedAtlas: async value => {
+          await verifyBuildContext();
           try { store(key, encodeAtlas(value)); } catch { /* Cache writes are optional. */ }
         } };
         continue;
@@ -90,12 +99,15 @@ function createPlannedBuildService({ getCache, resolveContext, buildProject }) {
       optionsByTarget[target] = { ...options, ...context, onEncodedAsset: async (motionId, asset) => {
         const key = keys.get(motionId);
         if (!key) return;
+        await verifyBuildContext();
         try {
           store(key, encodeAsset({ ...asset, bytes: asset.buffer }));
         } catch { /* A cache write must not invalidate a successful capture. */ }
       } };
     }
-    return buildProject({ ...input, inputsByTarget, optionsByTarget });
+    const result = await buildProject({ ...input, inputsByTarget, optionsByTarget, verifyBuildContext });
+    await verifyBuildContext();
+    return result;
   };
 }
 

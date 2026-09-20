@@ -314,7 +314,11 @@ function createPreviewSessionService({
       if (!isSpine && ![2, 3, 4, 5].includes(cubismVersion)) fail('UNSUPPORTED_CUBISM_VERSION', 'The Source Package has an unsupported Cubism generation.');
       if (isSpine && typeof resolveSpinePack !== 'function') fail('SPINE_PACK_REQUIRED', 'Install matching Spine support before opening this preview.');
       const spinePack = isSpine ? await resolveSpinePack(record.manifest.model.runtimeLine) : null;
-      const runtimePath = isSpine ? null : normalizeRuntime(await resolveRuntime(cubismVersion));
+      const runtime = isSpine ? null : await resolveRuntime(cubismVersion);
+      const runtimePath = isSpine ? null : normalizeRuntime(runtime);
+      // Bind build validation to the runtime selected for this load, even if
+      // settings change again while the page is being initialized.
+      await input.verifyBuildContext?.({ runtimeVersion: runtime?.descriptor?.fingerprint });
       const kind = sourceKind(record);
       const inputPath = record.inputPath || record.sourceRoot || record.pckPath;
       let sourceOptions;
@@ -445,7 +449,7 @@ function createPreviewSessionService({
         && adapter
         && projectId === requestedProjectId
         && sourceFingerprint === requestedFingerprint;
-      if (!matches) await openNow({ projectId: requestedProjectId, sourceFingerprint: requestedFingerprint, bounds: requestedBounds, visible: false });
+      if (!matches) await openNow({ projectId: requestedProjectId, sourceFingerprint: requestedFingerprint, bounds: requestedBounds, visible: false, verifyBuildContext: input.verifyBuildContext });
       else if (visible) await layoutNow({ visible: false });
       if (state !== SESSION_STATES.ready || !adapter) fail('PREVIEW_NOT_READY', 'Preview renderer is not ready for capture.');
       return operation(adapter);

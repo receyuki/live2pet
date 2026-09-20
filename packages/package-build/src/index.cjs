@@ -856,8 +856,8 @@ async function buildClawdTheme(input = {}, options = {}) {
   const cacheContext = withVisualSettingsCacheContext(rawCacheContext, visualSettingsIdentity.settings, visualSettingsIdentity.digest);
   const expressionByMotion = input.expressionByMotion || options.expressionByMotion || {};
   const cache = options.cache;
-  const cacheEnabled = encodedCacheIdentityAvailable(cache, cacheContext);
-  const cacheStats = { enabled: cacheEnabled, hits: 0, misses: 0 };
+  const cacheEnabled = !options.onEncodedAsset && encodedCacheIdentityAvailable(cache, cacheContext);
+  const cacheStats = { enabled: cacheEnabled || typeof options.onEncodedAsset === 'function', hits: 0, misses: 0 };
   checkCancelled(signal);
   progress(onProgress, CLAWD_STAGES[0], 'started');
   const target = createClawdTarget(mapping);
@@ -918,7 +918,7 @@ async function buildClawdTheme(input = {}, options = {}) {
     const { motionId, index, frameSet, firstFrame, delays, cacheKey } = job;
     progress(onProgress, CLAWD_STAGES[1], 'motion-started', { motionId, index, total: motionIds.length });
     let encoded = job.ready || null;
-    let cacheStatus = cacheEnabled ? 'miss' : 'disabled';
+    let cacheStatus = cacheStats.enabled ? 'miss' : 'disabled';
     if (encoded) {
       cacheStats.enabled = true;
       cacheStats.hits += 1;
@@ -941,7 +941,7 @@ async function buildClawdTheme(input = {}, options = {}) {
     }
     if (!encoded) {
       checkCancelled(signal);
-      if (cacheEnabled) cacheStats.misses += 1;
+      if (cacheStats.enabled) cacheStats.misses += 1;
       encoded = await encodeAnimatedWebp({ ...frameSet, width: firstFrame && firstFrame.width, height: firstFrame && firstFrame.height }, { sharpFactory: options.sharpFactory, signal });
       checkCancelled(signal);
       if (cacheKey) cache.put(cacheKey, encodeAsset({ format: encoded.format, width: encoded.width, height: encoded.height, frameCount: encoded.frameCount, delays: encoded.delays, bytes: encoded.buffer }), { projectId: cacheContext.projectId, sourceFingerprint: cacheContext.sourceFingerprint, artifact: 'encoded-webp' });
@@ -1026,8 +1026,8 @@ async function buildCodexPet(input = {}, options = {}) {
   const visualSettingsIdentity = resolveVisualSettings(options.visualSettings !== undefined ? options.visualSettings : input.visualSettings, rawCacheContext);
   const cacheContext = withVisualSettingsCacheContext(rawCacheContext, visualSettingsIdentity.settings, visualSettingsIdentity.digest);
   const cache = options.cache;
-  const cacheEnabled = encodedCacheIdentityAvailable(cache, cacheContext);
-  const cacheStats = { enabled: cacheEnabled, hits: 0, misses: 0 };
+  const cacheEnabled = !options.onEncodedAtlas && encodedCacheIdentityAvailable(cache, cacheContext);
+  const cacheStats = { enabled: cacheEnabled || typeof options.onEncodedAtlas === 'function', hits: 0, misses: 0 };
   checkCancelled(signal);
 
   const ready = input.encodedAtlas;
@@ -1116,7 +1116,7 @@ async function buildCodexPet(input = {}, options = {}) {
       }
     }
     if (!encoded) {
-      if (cacheEnabled) cacheStats.misses += 1;
+      if (cacheStats.enabled) cacheStats.misses += 1;
       encoded = await encodeAnimatedWebp({ frames: [{ width: atlas.width, height: atlas.height, rgba: atlas.rgba }], width: atlas.width, height: atlas.height, quality, alphaQuality, lossless }, { sharpFactory: options.sharpFactory, signal });
       if (cacheKey) cache.put(cacheKey, encodeAsset({ format: encoded.format, width: encoded.width, height: encoded.height, frameCount: encoded.frameCount, delays: encoded.delays, bytes: encoded.buffer }), { projectId: cacheContext.projectId, sourceFingerprint: cacheContext.sourceFingerprint, artifact: 'encoded-webp' });
     }
