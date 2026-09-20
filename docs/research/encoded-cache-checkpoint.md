@@ -143,3 +143,33 @@ The fixture-availability blocker is resolved. #19 remains open for the outstandi
 instrumentation and broader per-renderer scenario matrix; no production code or
 runtime distribution policy was changed by this acceptance run. Models, runtimes,
 temporary drivers and generated packages remain local and are not published.
+
+## Native measurement checkpoint
+
+The shared opt-in benchmark now stages a verified local Spine pack and hydrates
+its catalog through public preview IPC. Native capture adds numeric-only timing
+for capture roundtrips, bounds work inside capture, drawing, readback, alpha scans
+and candidate analysis; encoding reports asset-operation queue peaks. These are
+nested measurements, not additive phases or counts of native codec threads.
+
+A further Spine 4.1 run completed all five requested scenarios with the existing
+three-Motion fixture. This is one repetition, supplementing (not replacing) the
+three cold/warm repetitions above:
+
+| Scenario | Public build IPC seconds | Captured frames | Encoded hits |
+| --- | --- | --- | --- |
+| Cold Clawd | 21.41 | 129 | 0 |
+| Warm Clawd | 0.28 | 0 | 3 |
+| Metadata-only Clawd | 0.28 | 0 | 3 |
+| Sequential Codex V2 | 18.99 | 237 | 0 |
+| Cancel then retry Clawd | 25.73 | 129 | 0 |
+
+Warm, renamed and retry WebPs matched the cold reference exactly, including
+decoded sample pixels, transparency, dimensions and delays. Cancellation was
+acknowledged before retry. Native measured-frame counts were 129 for each cold
+Clawd capture and 237 for Codex; warm/renamed reports correctly omit native
+measurements. Cold Clawd reported 304,349,184 validated RGBA bytes, a pending
+asset peak of three and an active asset peak of two. This payload count excludes
+IPC serialization overhead. No quality, frame rate, cache identity or rendering
+order changed in this instrumentation checkpoint. Broader mixed-hit native
+scenario coverage remains outstanding before closing #19.

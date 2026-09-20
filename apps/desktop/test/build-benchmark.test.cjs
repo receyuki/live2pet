@@ -95,3 +95,11 @@ test('benchmark retry measurements exclude late progress from a cancelled reques
   assert.equal(result.capturedFrames, 1);
   assert.deepEqual(result.stageIntervals.map(value => [value.startMs, value.endMs]), [[0, 20]]);
 });
+test('benchmark accepts inspected Spine JSON and hydrated binary catalogs, but rejects failed preview', () => {
+  const { verifySpineBenchmarkMotions } = require('../scripts/benchmark-project-build.cjs');
+  const inspection = { motions: [{ id: 'idle' }] };
+  verifySpineBenchmarkMotions({ state: 'ready' }, inspection, ['idle']);
+  verifySpineBenchmarkMotions({ state: 'ready', catalog: inspection }, { motions: [] }, ['idle']);
+  assert.throws(() => verifySpineBenchmarkMotions({ state: 'failed' }, inspection, ['idle']), /preview/);
+  assert.throws(() => verifySpineBenchmarkMotions({ state: 'ready' }, inspection, ['missing']), /Motion/);
+});

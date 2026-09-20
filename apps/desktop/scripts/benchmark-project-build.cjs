@@ -88,6 +88,12 @@ async function inspectPackage(bytes) {
   } finally { await reader.close(); }
 }
 
+function verifySpineBenchmarkMotions(preview, inspection, motions) {
+  assert.equal(preview.state, 'ready', 'Spine benchmark preview did not become ready.');
+  const catalog = preview.catalog?.motions ?? inspection.motions;
+  for (const id of motions) assert.ok(catalog.some(motion => motion.id === id), 'Benchmark Motion is absent from the source catalog.');
+}
+
 async function run() {
   const { _electron } = require('playwright');
   const inputPath = process.env.LIVE2PET_BENCH_PROJECT;
@@ -146,7 +152,7 @@ async function run() {
     project = linked.project;
     if (spinePackRoot) {
       const preview = await invoke('openPreview', { projectId: project.projectId, sourceFingerprint: project.source.fingerprint, bounds: { x: 0, y: 0, width: 768, height: 768 }, visible: false });
-      for (const id of motions) assert.ok(preview.catalog.motions.some(motion => motion.id === id), 'Benchmark Motion is absent from the hydrated catalog.');
+      verifySpineBenchmarkMotions(preview, linked.inspection, motions);
       await invoke('closePreview');
     }
     // This modifies only the in-memory test snapshot, never the input file.
@@ -221,4 +227,4 @@ async function run() {
 }
 
 if (require.main === module) run().catch(error => { console.error(`${error.code || 'BENCHMARK_FAILED'}: ${error.message}`); process.exitCode = 1; });
-module.exports = { summarizeProgress, inspectPackage, readArtifactChunk, cancelDuringCapture };
+module.exports = { summarizeProgress, inspectPackage, readArtifactChunk, cancelDuringCapture, verifySpineBenchmarkMotions };
