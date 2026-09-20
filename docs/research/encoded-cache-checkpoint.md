@@ -65,9 +65,9 @@ still acquire no renderer. Any cheaper reset must first prove equivalent output.
 
 - Three comparable repetitions on the final implementation, including renamed
   output and sequential targets. Older order-dependent measurements do not count.
-- Native bounds-analysis, lower-level transport overhead, and encoder queue-depth
-  instrumentation. Existing numeric timings describe their measured boundaries,
-  not every internal operation.
+- Native bounds and encoder queue-depth instrumentation is now present (see the
+  measurement checkpoint below). Capture roundtrip includes transport; isolated
+  serialization overhead is not measured independently.
 - Expand the native scenario matrix beyond the cold/warm fixtures below, including
   mixed mappings and cancellation/retry on legacy Cubism and Spine. Synthetic
   adapter/cache tests alone do not establish those native outcomes.
@@ -173,3 +173,19 @@ asset peak of three and an active asset peak of two. This payload count excludes
 IPC serialization overhead. No quality, frame rate, cache identity or rendering
 order changed in this instrumentation checkpoint. Broader mixed-hit native
 scenario coverage remains outstanding before closing #19.
+
+Cubism 2 also completed one expanded six-scenario repetition with the existing
+directory fixture: cold 27.89 s, warm 5.27 s, renamed 6.09 s, one Motion changed
+29.90 s, sequential Codex V2 4.34 s, and cancellation/retry 34.55 s. Warm and
+renamed builds captured no frames; replacing one Motion reused two encoded
+assets and captured only the missing Motion's 108 frames. The two retained WebP
+hashes matched the cold reference. Cold and retry captured 220 frames; retry,
+warm and renamed outputs passed exact WebP and decoded-sample parity checks.
+Codex captured 237 frames. This is a correctness matrix, not a throughput promise;
+the changed Motion has different content and is not a like-for-like speed test.
+
+Verification at this checkpoint: 400 Node and 190 UI tests passed, three opt-in
+tests skipped; the additional benchmark-catalog regression passed with all seven
+benchmark tests. Typechecking, source-release checks and macOS x64 packaged
+startup passed. Independent Standards review reported no findings; the Spec
+review's optional-catalog bug was fixed and rechecked with no remaining findings.
