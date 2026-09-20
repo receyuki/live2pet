@@ -65,12 +65,11 @@ still acquire no renderer. Any cheaper reset must first prove equivalent output.
 
 - Three comparable repetitions on the final implementation, including renamed
   output and sequential targets. Older order-dependent measurements do not count.
-- Fine-grained preparation, model loading, bounds, cache I/O and validation
-  instrumentation; actual transferred bytes and queue depth.
-- Cancellation/retry scenarios and current permitted native Cubism 2 and Spine
-  fixtures. Synthetic adapter/cache tests are not native-model acceptance.
-- Visual acceptance of the generated theme in the target host, especially motion
-  starts, framing and hidden parts.
+- Native bounds-analysis, lower-level transport overhead, and encoder queue-depth
+  instrumentation. Existing numeric timings describe their measured boundaries,
+  not every internal operation.
+- Current permitted native Cubism 2 and Spine fixtures. Synthetic adapter/cache
+  tests are not native-model acceptance.
 
 The user subsequently accepted the generated Clawd theme visually. That check
 is complete for this fixture; it does not substitute for native Cubism 2/Spine
@@ -78,6 +77,28 @@ acceptance. Follow-up implementation adds monotonic operation aggregates,
 Desktop preparation/cache measurements and a public-preload cancel/retry scenario.
 The timing table above still describes the original qualified checkpoint, not
 new runs of those expanded scenarios.
+
+### Verified measurement follow-up — `72f7063`
+
+The real modern-model cancel/retry scenario completed through public Desktop IPC
+in a separate temporary profile. Cancellation was acknowledged; a retry on the
+same host produced exactly the earlier qualified cold build's three WebP payloads,
+dimensions, alpha, delays and inspected sample pixels. Request-correlated progress
+reports exactly 512 captured frames, matching 1,207,959,552 newly captured RGBA
+bytes. Artifact download transferred 51,102,362 bytes in 49 chunks.
+
+The first attempt revealed that a late event from the cancelled request could
+inflate the benchmark's retry counter. Distinct verified request identities now
+filter both cancellation listeners and retry summaries; the corrected native
+rerun passed. Output bytes were unaffected by the earlier counting error.
+
+The retry took 158.38 s while regression tests were running concurrently. This is
+correctness evidence, not a comparable throughput measurement. Cancellation
+settlement latency is not a promise that all in-flight native work stops instantly.
+The final regression passed 400 Node tests and 190 UI tests, with three opt-in
+checks skipped. Type/source-release gates and the final production macOS x64
+packaged startup/resource smoke passed. Standards and Spec reviews have no
+remaining actionable findings. #19 remains open for the outstanding matrix above.
 
 One earlier extended benchmark stopped because its main page closed; no system
 crash report was found. Whether that closure was user-initiated is unconfirmed,
