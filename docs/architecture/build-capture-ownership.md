@@ -54,3 +54,25 @@ add byte-budgeted admission/backpressure, release consumed raw frames, and measu
 many-Motion and large-texture workloads before claiming bounded-memory speedups.
 
 The measured ZIP recompression bottleneck remains separate work in #21.
+
+### Native checkpoint
+
+A permitted Spine 4.1 fixture completed cold Clawd, warm Clawd, sequential Codex
+V2, and capture cancellation/retry through public Desktop IPC in an isolated
+profile. Captured frame counts were 129 / 0 / 237 / 129 respectively. Every
+scenario's WebP bytes, dimensions, alpha, delays and decoded sample pixels matched
+the accepted #19 baseline exactly. This verifies output stability, not a new
+throughput or memory bound. Private fixtures, runtimes and generated packages
+remain outside the repository.
+
+A second native check closed the preview from a Clawd encode-start event and then
+submitted a Codex V2 request on the same Desktop instance. Preview closure
+completed before the Clawd build settled. Both packages validated and matched
+the #19 encoded bytes and decoded samples exactly, confirming that downstream
+work no longer depends on the native view remaining alive.
+
+Checkpoint verification: 409 Node tests and 190 UI tests passed, with three
+opt-in tests skipped. Typechecking, source-release asset checks and the macOS x64
+packaged startup smoke passed. Independent Standards and Spec reviews reported
+no remaining findings for this checkpoint. The full #20 issue remains open for
+byte-budgeted admission, per-Motion overlap and memory/throughput acceptance.
