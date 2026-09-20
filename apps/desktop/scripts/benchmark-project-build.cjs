@@ -7,6 +7,17 @@ const os = require('node:os');
 const path = require('node:path');
 const { performance } = require('node:perf_hooks');
 
+// Executed inside the App renderer by Playwright.
+async function readArtifactChunk({ artifactId, offset }) {
+  const response = await window.live2pet.getBuildArtifact(artifactId, offset);
+  if (!response.ok) throw new Error(response.error.message);
+  // Avoid Playwright's per-number serialization for multi-MiB arrays.
+  const bytes = response.result.bytes;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 32768) binary += String.fromCharCode(...bytes.subarray(i, i + 32768));
+  return { nextOffset: response.result.nextOffset, base64: btoa(binary) };
+}
+
 function summarizeProgress(events) {
   const stageIntervals = [];
   const starts = new Map();
@@ -31,7 +42,7 @@ function summarizeProgress(events) {
 async function inspectPackage(bytes) {
   const { ZipReader, Uint8ArrayReader, Uint8ArrayWriter } = require('@zip.js/zip.js');
   const sharp = require('sharp');
-  const reader = new ZipReader(new Uint8ArrayReader(bytes));
+  const reader = new ZipReader(new Uint8ArrayReader(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)));
   try {
     const images = [];
     for (const entry of await reader.getEntries()) {
@@ -76,6 +87,7 @@ async function run() {
   try {
     const packaged = process.env.LIVE2PET_APP_EXECUTABLE;
     app = await _electron.launch({ executablePath: packaged || require('electron'), args: [...(packaged ? [] : [desktop]), `--user-data-dir=${profile}`], timeout: 30000 });
+    assert.equal(fs.realpathSync(await app.evaluate(({ app }) => app.getPath('userData'))), fs.realpathSync(profile), 'Never run a benchmark against the normal App profile.');
     const page = await app.firstWindow();
     await page.waitForFunction(() => Boolean(window.live2pet));
     const invoke = async (method, input) => {
@@ -125,15 +137,12 @@ async function run() {
         const events = await page.evaluate(() => { window.__benchmarkUnsubscribe(); return window.__benchmarkEvents; });
         const build = built.builds[target];
         assert.equal(build.validation.ok, true);
+        console.log(JSON.stringify({ repetition, scenario, totalMs, cache: build.cache, state: 'built; inspecting artifact' }));
         const artifact = built.artifacts[0];
         const chunks = [];
         for (let offset = 0; offset < artifact.byteLength;) {
-          const chunk = await page.evaluate(async ({ artifactId, offset }) => {
-            const response = await window.live2pet.getBuildArtifact({ artifactId, offset });
-            if (!response.ok) throw new Error(response.error.message);
-            return { ...response.result, bytes: Array.from(response.result.bytes) };
-          }, { artifactId: artifact.artifactId, offset });
-          chunks.push(Buffer.from(chunk.bytes)); offset = chunk.nextOffset;
+          const chunk = await page.evaluate(readArtifactChunk, { artifactId: artifact.artifactId, offset });
+          chunks.push(Buffer.from(chunk.base64, 'base64')); offset = chunk.nextOffset;
         }
         const bytes = Buffer.concat(chunks);
         fs.writeFileSync(path.join(output, `${repetition}-${scenario}.zip`), bytes, { mode: 0o600 });
@@ -156,4 +165,4 @@ async function run() {
 }
 
 if (require.main === module) run().catch(error => { console.error(`${error.code || 'BENCHMARK_FAILED'}: ${error.message}`); process.exitCode = 1; });
-module.exports = { summarizeProgress, inspectPackage };
+module.exports = { summarizeProgress, inspectPackage, readArtifactChunk };
