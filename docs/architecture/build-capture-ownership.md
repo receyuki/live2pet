@@ -177,3 +177,8 @@ fell about 6.9%, and mean sampled peak about 16%. The two resident-Motion ceilin
 was retained, with no reservations remaining at completion. These are small
 local comparisons, not cross-platform performance guarantees; Windows and
 Apple Silicon acceptance remains a separate #22 gate.
+
+A native 12-Motion cancellation/retry check acknowledged cancellation in 3.9 ms.
+The retry completed all 345 frames in 53.71 s, released every reservation, and
+matched all twelve baseline image records exactly. Acknowledgement latency is
+not a claim that an in-flight native operation can be forcibly interrupted.
