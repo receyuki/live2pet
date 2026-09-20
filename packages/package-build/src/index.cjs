@@ -36,6 +36,7 @@ const {
 } = require('./capture-cache.cjs');
 const { decodeAsset, encodeAsset, ASSET_CACHE_SCHEMA_VERSION, AssetCacheError } = require('./asset-cache.cjs');
 const { createInflate } = require('node:zlib');
+const { createCapturePipeline } = require('./capture-pipeline.cjs');
 
 const BUILD_CONTRACT_VERSION = 1;
 const SHARP_ENCODER_VERSION = 'sharp-0.34.5';
@@ -124,6 +125,7 @@ function createBuildReport({ build, projectId, source } = {}) {
       stages: Object.fromEntries(Object.entries(build.timings.stages || {}).filter(([, value]) => Number.isInteger(value) && value >= 0)),
       ...Object.fromEntries(['capturePreparationMs', 'rawCacheReadMs', 'rawCacheDecodeMs', 'rawCacheWriteMs', 'capturedRgbaBytes'].filter(key => Number.isFinite(build.timings[key]) && build.timings[key] >= 0).map(key => [key, build.timings[key]])),
       ...(build.timings.encodeMotions ? { encodeMotions: Object.fromEntries(['completed', 'encoded', 'cacheHits', 'operationTotalMs', 'operationMaxMs', 'peakPending', 'peakActive'].map(key => [key, Number.isFinite(build.timings.encodeMotions[key]) && build.timings.encodeMotions[key] >= 0 ? build.timings.encodeMotions[key] : 0])) } : {}),
+      ...(build.timings.pipeline ? { pipeline: Object.fromEntries(Object.entries(build.timings.pipeline).filter(([key, value]) => ['budgetBytes', 'peakReservedBytes', 'peakResidentMotions', 'maxMotionReservationBytes', 'oversizedMotions', 'waitMs', 'reservedBytes'].includes(key) && Number.isFinite(value) && value >= 0)) } : {}),
       ...(build.timings.capture ? { capture: Object.fromEntries(Object.entries(build.timings.capture).filter(([key, value]) => ['captureRoundtripMs', 'alphaBoundsMs', 'candidateAnalysisMs', 'rgbaBytes', 'nativeBoundsPreparationMs', 'nativeRenderMs', 'nativeReadbackMs', 'nativeMeasuredFrames'].includes(key) && Number.isFinite(value) && value >= 0)) } : {}),
     } : null,
     warnings: Array.isArray(build.warnings) ? build.warnings.map((warning) => ({ ...warning })) : [],
@@ -407,6 +409,21 @@ function planTargetRecipes(project, targetId, render) {
   };
 }
 
+function motionCaptureSampling(renderer, motionId, render, target, preset) {
+  const descriptor = rendererMotionDescriptor(renderer, motionId);
+  const configuredDuration = render.durations && Object.prototype.hasOwnProperty.call(render.durations, motionId)
+    ? render.durations[motionId]
+    : descriptor && descriptor.duration;
+  const sourceDuration = configuredDuration == null ? 1 : Number(configuredDuration);
+  if (!Number.isFinite(sourceDuration) || sourceDuration < 0 || sourceDuration > 3600) fail('INVALID_MOTION_DURATION', `Motion ${motionId} has no valid duration for renderer capture.`);
+  const duration = target === 'codex-pet' ? Math.min(sourceDuration, Math.max(...Object.values(CODEX_PROFILE.frameDurations).map((delays) => delays.reduce((a, b) => a + b, 0) / 1000))) : sourceDuration;
+  const configuredSamples = Number.isInteger(render.samples) ? render.samples : null;
+  const samples = configuredSamples || (target === 'codex-pet'
+    ? Math.max(2, Math.ceil(duration * preset.samplesPerSecond))
+    : Math.max(2, Math.ceil(duration * preset.fps)));
+  return { duration, samples, configuredSamples };
+}
+
 async function renderMappedMotions({ renderer, motionIds, render = {}, signal, onProgress, target, cache, cacheContext, expressionByMotion = {}, visualSettings, captureTimings } = {}) {
   if (!renderer || typeof renderer.captureRgba !== 'function') fail('RENDERER_REQUIRED', 'A renderer implementing captureRgba is required when build inputs do not include captured frames.');
   if (!Array.isArray(motionIds) || !motionIds.length) fail('MOTION_MAPPING_REQUIRED', `No ${target || 'target'} Motion mappings are available for renderer capture.`);
@@ -414,23 +431,13 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
   const { name: presetName, settings: preset } = resolveTargetRenderPreset(target, render);
   const width = Number.isInteger(render.width) ? render.width : preset.width;
   const height = Number.isInteger(render.height) ? render.height : preset.height;
-  const configuredSamples = Number.isInteger(render.samples) ? render.samples : null;
   const framesByMotion = {};
   const cacheEnabled = cache && typeof cache.get === 'function' && typeof cache.put === 'function' && cacheContext && typeof cacheContext === 'object'
     && typeof cacheContext.sourceFingerprint === 'string' && typeof cacheContext.runtimeVersion === 'string'
     && typeof cacheContext.rendererVersion === 'string' && typeof cacheContext.targetVersion === 'string';
   for (const motionId of motionIds) {
     checkCancelled(signal);
-    const descriptor = rendererMotionDescriptor(renderer, motionId);
-    const configuredDuration = render.durations && Object.prototype.hasOwnProperty.call(render.durations, motionId)
-      ? render.durations[motionId]
-      : descriptor && descriptor.duration;
-    const sourceDuration = configuredDuration == null ? 1 : Number(configuredDuration);
-    if (!Number.isFinite(sourceDuration) || sourceDuration < 0 || sourceDuration > 3600) fail('INVALID_MOTION_DURATION', `Motion ${motionId} has no valid duration for renderer capture.`);
-    const duration = target === 'codex-pet' ? Math.min(sourceDuration, Math.max(...Object.values(CODEX_PROFILE.frameDurations).map((delays) => delays.reduce((a, b) => a + b, 0) / 1000))) : sourceDuration;
-    const samples = configuredSamples || (target === 'codex-pet'
-      ? Math.max(2, Math.ceil(duration * preset.samplesPerSecond))
-      : Math.max(2, Math.ceil(duration * preset.fps)));
+    const { duration, samples, configuredSamples } = motionCaptureSampling(renderer, motionId, render, target, preset);
     const expressionId = Object.hasOwn(expressionByMotion, motionId)
       ? expressionByMotion[motionId]
       : (cacheContext?.expressionId || null);
@@ -873,7 +880,8 @@ async function createClawdThemeZip({ themeId, manifest, assets, readme, zipModul
 
 async function buildClawdTheme(input = {}, options = {}) {
   const mapping = input.mapping || input;
-  const framesByMotion = input.framesByMotion || input.frames || (input.encodedByMotion ? {} : null);
+  const withFrameSet = typeof input.withFrameSet === 'function' ? input.withFrameSet : null;
+  const framesByMotion = input.framesByMotion || input.frames || (input.encodedByMotion || withFrameSet ? {} : null);
   const encodedByMotion = input.encodedByMotion || {};
   const signal = options.signal || input.signal;
   const onProgress = options.onProgress || input.onProgress;
@@ -891,7 +899,7 @@ async function buildClawdTheme(input = {}, options = {}) {
   const target = createClawdTarget(mapping);
   const motionIds = collectClawdMotionIds(target, input.behavior);
   if (!framesByMotion || typeof framesByMotion !== 'object' || Array.isArray(framesByMotion)) fail('INVALID_CLAWD_FRAME_SET', 'framesByMotion must be an object keyed by Motion id.');
-  for (const motionId of motionIds) if (!Object.hasOwn(framesByMotion, motionId) && !Object.hasOwn(encodedByMotion, motionId)) fail('MISSING_CLAWD_FRAME_SET', `${motionId} is mapped but has no captured frames.`);
+  for (const motionId of motionIds) if (!withFrameSet && !Object.hasOwn(framesByMotion, motionId) && !Object.hasOwn(encodedByMotion, motionId)) fail('MISSING_CLAWD_FRAME_SET', `${motionId} is mapped but has no captured frames.`);
   const { themeId, metadata } = normalizeClawdMetadata(input.metadata || {});
   const artifactName = createArtifactFilename({ packageId: themeId, target: 'clawd' });
   progress(onProgress, CLAWD_STAGES[0], 'completed', { motions: motionIds.length });
@@ -903,21 +911,8 @@ async function buildClawdTheme(input = {}, options = {}) {
   const assets = {};
   const assetReports = [];
   const usedSlugs = new Set();
-  const jobs = motionIds.map((motionId, index) => {
-    checkCancelled(signal);
-    const ready = encodedByMotion[motionId];
-    if (ready) {
-      if (ready.format !== 'webp' || !Buffer.isBuffer(ready.buffer) || !ready.buffer.length
-        || !Number.isInteger(ready.width) || ready.width < 1 || ready.width > MAX_RGBA_FRAME_DIMENSION
-        || !Number.isInteger(ready.height) || ready.height < 1 || ready.height > MAX_RGBA_FRAME_DIMENSION
-        || !Number.isInteger(ready.frameCount) || ready.frameCount < 1 || ready.frameCount > MAX_ENCODE_FRAMES
-        || !Array.isArray(ready.delays) || ready.delays.length !== ready.frameCount
-        || ready.delays.some(delay => !Number.isInteger(delay) || delay < 1 || delay > 60000)) {
-        fail('INVALID_ENCODED_ASSET', `The encoded animation for ${motionId} is invalid.`);
-      }
-      return { motionId, index, ready };
-    }
-    const frameSet = normalizeClawdFrameSet(framesByMotion[motionId], motionId, renderSelection.settings);
+  const prepareFrameSet = (value, motionId) => {
+    const frameSet = normalizeClawdFrameSet(value, motionId, renderSelection.settings);
     const expectedExpressionId = Object.hasOwn(expressionByMotion, motionId) ? (expressionByMotion[motionId] || null) : null;
     if (frameSet.expressionId !== expectedExpressionId) {
       fail('RECIPE_CAPTURE_MISMATCH', `Captured frames for ${motionId} use Expression ${frameSet.expressionId || 'none'}, but the project recipe requires ${expectedExpressionId || 'none'}.`);
@@ -938,44 +933,66 @@ async function buildClawdTheme(input = {}, options = {}) {
       },
       visualSettingsDigest: visualSettingsIdentity.digest,
     }) : null;
-    return { motionId, index, frameSet, firstFrame, delays, cacheKey };
+    return { frameSet, firstFrame, delays, cacheKey };
+  };
+  const jobs = motionIds.map((motionId, index) => {
+    checkCancelled(signal);
+    const ready = encodedByMotion[motionId];
+    if (ready) {
+      if (ready.format !== 'webp' || !Buffer.isBuffer(ready.buffer) || !ready.buffer.length
+        || !Number.isInteger(ready.width) || ready.width < 1 || ready.width > MAX_RGBA_FRAME_DIMENSION
+        || !Number.isInteger(ready.height) || ready.height < 1 || ready.height > MAX_RGBA_FRAME_DIMENSION
+        || !Number.isInteger(ready.frameCount) || ready.frameCount < 1 || ready.frameCount > MAX_ENCODE_FRAMES
+        || !Array.isArray(ready.delays) || ready.delays.length !== ready.frameCount
+        || ready.delays.some(delay => !Number.isInteger(delay) || delay < 1 || delay > 60000)) {
+        fail('INVALID_ENCODED_ASSET', `The encoded animation for ${motionId} is invalid.`);
+      }
+      return { motionId, index, ready };
+    }
+    return withFrameSet ? { motionId, index } : { motionId, index, ...prepareFrameSet(framesByMotion[motionId], motionId) };
   });
   let completedEncodes = 0;
   const encodedResults = await mapConcurrentOrdered(jobs, encodingConcurrency, async (job) => {
     checkCancelled(signal);
-    const { motionId, index, frameSet, firstFrame, delays, cacheKey } = job;
-    progress(onProgress, CLAWD_STAGES[1], 'motion-started', { motionId, index, total: motionIds.length });
-    let encoded = job.ready || null;
+    const { motionId, index } = job;
     let cacheStatus = cacheStats.enabled ? 'miss' : 'disabled';
-    if (encoded) {
-      cacheStats.enabled = true;
-      cacheStats.hits += 1;
-      cacheStatus = 'hit';
-    }
-    if (cacheKey) {
-      const cached = cache.get(cacheKey);
-      if (cached) {
-        try {
-          const decoded = decodeAsset(cached.data);
-          if (firstFrame && decoded.format === 'webp' && decoded.width === firstFrame.width && decoded.height === firstFrame.height && decoded.frameCount === frameSet.frames.length && decoded.delays.length === delays.length) {
-            encoded = { format: decoded.format, buffer: decoded.bytes, frameCount: decoded.frameCount, width: decoded.width, height: decoded.height, delays: decoded.delays, info: null };
-            cacheStats.hits += 1;
-            cacheStatus = 'hit';
+    const encodeFrameSet = async ({ frameSet, firstFrame, delays, cacheKey }) => {
+      progress(onProgress, CLAWD_STAGES[1], 'motion-started', { motionId, index, total: motionIds.length });
+      let encoded = job.ready || null;
+      if (encoded) {
+        cacheStats.enabled = true;
+        cacheStats.hits += 1;
+        cacheStatus = 'hit';
+      }
+      if (cacheKey) {
+        const cached = cache.get(cacheKey);
+        if (cached) {
+          try {
+            const decoded = decodeAsset(cached.data);
+            if (firstFrame && decoded.format === 'webp' && decoded.width === firstFrame.width && decoded.height === firstFrame.height && decoded.frameCount === frameSet.frames.length && decoded.delays.length === delays.length) {
+              encoded = { format: decoded.format, buffer: decoded.bytes, frameCount: decoded.frameCount, width: decoded.width, height: decoded.height, delays: decoded.delays, info: null };
+              cacheStats.hits += 1;
+              cacheStatus = 'hit';
+            }
+          } catch (error) {
+            if (error instanceof AssetCacheError && typeof cache.removeFiles === 'function') cache.removeFiles(cacheKey.digest);
           }
-        } catch (error) {
-          if (error instanceof AssetCacheError && typeof cache.removeFiles === 'function') cache.removeFiles(cacheKey.digest);
         }
       }
-    }
-    if (!encoded) {
+      if (!encoded) {
+        checkCancelled(signal);
+        if (cacheStats.enabled) cacheStats.misses += 1;
+        encoded = await encodeAnimatedWebp({ ...frameSet, width: firstFrame && firstFrame.width, height: firstFrame && firstFrame.height }, { sharpFactory: options.sharpFactory, signal });
+        checkCancelled(signal);
+        if (cacheKey) cache.put(cacheKey, encodeAsset({ format: encoded.format, width: encoded.width, height: encoded.height, frameCount: encoded.frameCount, delays: encoded.delays, bytes: encoded.buffer }), { projectId: cacheContext.projectId, sourceFingerprint: cacheContext.sourceFingerprint, artifact: 'encoded-webp' });
+      }
       checkCancelled(signal);
-      if (cacheStats.enabled) cacheStats.misses += 1;
-      encoded = await encodeAnimatedWebp({ ...frameSet, width: firstFrame && firstFrame.width, height: firstFrame && firstFrame.height }, { sharpFactory: options.sharpFactory, signal });
-      checkCancelled(signal);
-      if (cacheKey) cache.put(cacheKey, encodeAsset({ format: encoded.format, width: encoded.width, height: encoded.height, frameCount: encoded.frameCount, delays: encoded.delays, bytes: encoded.buffer }), { projectId: cacheContext.projectId, sourceFingerprint: cacheContext.sourceFingerprint, artifact: 'encoded-webp' });
-    }
-    checkCancelled(signal);
-    if (!job.ready) await options.onEncodedAsset?.(motionId, encoded);
+      if (!job.ready) await options.onEncodedAsset?.(motionId, encoded);
+      return encoded;
+    };
+    const encoded = withFrameSet && !job.ready
+      ? await withFrameSet(motionId, value => encodeFrameSet(prepareFrameSet(value, motionId)))
+      : await encodeFrameSet(job);
     completedEncodes += 1;
     progress(onProgress, CLAWD_STAGES[1], 'motion-completed', { motionId, index, completed: completedEncodes, total: motionIds.length, fraction: completedEncodes / motionIds.length, cache: cacheStatus, frameCount: encoded.frameCount });
     return { motionId, encoded };
@@ -1294,47 +1311,86 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
     targetOptions.render = configuredRender;
     const renderer = targetInput.renderer || targetOptions.renderer;
     let renderedInput = targetInput;
-    const needsCapture = targetId === 'clawd'
-      ? !targetInput.framesByMotion && !targetInput.frames
-      : !targetInput.candidatesByRow && !targetInput.candidates && !targetInput.encodedAtlas;
-    if (needsCapture && (renderer || targetInput.withCaptureRenderer)) {
-      const ids = targetId === 'clawd'
-        ? planTargetRecipes(normalizedProject, targetId, configuredRender).motions.map(recipe => recipe.motionId).filter(id => !targetInput.encodedByMotion?.[id])
-        : mappedMotionIds(targetProject.mappings);
-      const capture = async (renderer, captureCacheOptions = {}) => {
-        if (Object.hasOwn(captureCacheOptions, 'cache')) targetOptions.cache = captureCacheOptions.cache;
-        if (captureCacheOptions.cacheContext) targetOptions.cacheContext = withVisualSettingsCacheContext(captureCacheOptions.cacheContext, projectVisualSettings, projectVisualSettingsDigest);
-        await applyRendererVisualSettings(renderer, projectVisualSettings, targetId);
-        const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, visualSettings: projectVisualSettings, render: configuredRender, signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext, captureTimings });
-        if (targetId === 'clawd') return { ...targetInput, framesByMotion };
-        targetOptions.selection = { ...targetOptions.selection, preserveTiming: true };
-        const candidatesByRow = Object.fromEntries(Object.entries(targetProject.mappings).map(([row, value]) => [row, framesByMotion[value.slice(7)]?.frames || []]));
-        return { ...targetInput, candidatesByRow };
-      };
-      // The lease owns only renderer-dependent work. Encoding and packaging use
-      // detached frames after its owner has released the native renderer.
-      renderedInput = !ids.length ? { ...targetInput, framesByMotion: {} }
-        : targetInput.withCaptureRenderer ? await targetInput.withCaptureRenderer(capture)
-          : await capture(renderer);
-    }
+    let capturePipeline;
+    let buildError;
     let result;
-    if (targetId === 'clawd') {
-      result = await buildClawdTheme({
-        mapping: { sleepMode: targetProject.options.sleepMode || 'direct', states: targetProject.mappings, reactions: targetProject.reactions },
-        framesByMotion: renderedInput.framesByMotion || renderedInput.frames,
-        encodedByMotion: renderedInput.encodedByMotion,
-        expressionByMotion,
-        behavior: targetProject.options.behavior,
-        metadata: metadataByTarget[targetId] || renderedInput.metadata || defaultMetadata,
-        readme: renderedInput.readme,
-      }, targetOptions);
-    } else {
-      result = await buildCodexPet({
-        mapping: { mappings: targetProject.mappings },
-        candidatesByRow: renderedInput.candidatesByRow || renderedInput.candidates,
-        encodedAtlas: renderedInput.encodedAtlas,
-        metadata: metadataByTarget[targetId] || renderedInput.metadata || defaultMetadata,
-      }, targetOptions);
+    const needsCapture = targetId === 'clawd'
+      ? !targetInput.framesByMotion && !targetInput.frames && !targetInput.withFrameSet
+      : !targetInput.candidatesByRow && !targetInput.candidates && !targetInput.encodedAtlas;
+    try {
+      if (needsCapture && (renderer || targetInput.withCaptureRenderer)) {
+        const ids = targetId === 'clawd'
+          ? planTargetRecipes(normalizedProject, targetId, configuredRender).motions.map(recipe => recipe.motionId).filter(id => !targetInput.encodedByMotion?.[id])
+          : mappedMotionIds(targetProject.mappings);
+        const prepare = async (renderer, captureCacheOptions = {}, captureSignal = signal) => {
+          if (Object.hasOwn(captureCacheOptions, 'cache')) targetOptions.cache = captureCacheOptions.cache;
+          if (captureCacheOptions.cacheContext) targetOptions.cacheContext = withVisualSettingsCacheContext(captureCacheOptions.cacheContext, projectVisualSettings, projectVisualSettingsDigest);
+          await applyRendererVisualSettings(renderer, projectVisualSettings, targetId);
+          checkCancelled(captureSignal);
+        };
+        const capture = async (renderer, captureCacheOptions = {}) => {
+          await prepare(renderer, captureCacheOptions);
+          const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, visualSettings: projectVisualSettings, render: configuredRender, signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext, captureTimings });
+          if (targetId === 'clawd') return { ...targetInput, framesByMotion };
+          targetOptions.selection = { ...targetOptions.selection, preserveTiming: true };
+          const candidatesByRow = Object.fromEntries(Object.entries(targetProject.mappings).map(([row, value]) => [row, framesByMotion[value.slice(7)]?.frames || []]));
+          return { ...targetInput, candidatesByRow };
+        };
+        if (targetId === 'clawd' && ids.length > 1) {
+          const { settings: preset } = resolveTargetRenderPreset(targetId, configuredRender);
+          capturePipeline = createCapturePipeline({
+            motionIds: ids,
+            withRenderer: consume => targetInput.withCaptureRenderer ? targetInput.withCaptureRenderer(consume) : consume(renderer),
+            prepare,
+            estimateBytes(renderer, motionId) {
+              const { samples } = motionCaptureSampling(renderer, motionId, configuredRender, targetId, preset);
+              const width = Number.isInteger(configuredRender.width) ? configuredRender.width : preset.width;
+              const height = Number.isInteger(configuredRender.height) ? configuredRender.height : preset.height;
+              return width * height * 4 * samples * 4 + 64 * 1024 * 1024;
+            },
+            async capture(renderer, motionId, index, captureSignal) {
+              const framesByMotion = await renderMappedMotions({ renderer, motionIds: [motionId], expressionByMotion, visualSettings: projectVisualSettings, render: configuredRender, signal: captureSignal, onProgress: event => targetOptions.onProgress({ ...event, ...(Number.isFinite(event.fraction) ? { fraction: (index + event.fraction) / ids.length } : {}) }), target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext, captureTimings });
+              return framesByMotion[motionId];
+            },
+            signal,
+            budgetBytes: targetOptions.captureBudgetBytes,
+          });
+          await capturePipeline.ready;
+          renderedInput = { ...targetInput, withFrameSet: capturePipeline.withFrameSet };
+        } else {
+          // Single-Motion capture releases the renderer before encoding.
+          renderedInput = !ids.length ? { ...targetInput, framesByMotion: {} }
+            : targetInput.withCaptureRenderer ? await targetInput.withCaptureRenderer(capture)
+              : await capture(renderer);
+        }
+      }
+      if (targetId === 'clawd') {
+        result = await buildClawdTheme({
+          mapping: { sleepMode: targetProject.options.sleepMode || 'direct', states: targetProject.mappings, reactions: targetProject.reactions },
+          framesByMotion: renderedInput.framesByMotion || renderedInput.frames,
+          encodedByMotion: renderedInput.encodedByMotion,
+          withFrameSet: renderedInput.withFrameSet,
+          expressionByMotion,
+          behavior: targetProject.options.behavior,
+          metadata: metadataByTarget[targetId] || renderedInput.metadata || defaultMetadata,
+          readme: renderedInput.readme,
+        }, targetOptions);
+      } else {
+        result = await buildCodexPet({
+          mapping: { mappings: targetProject.mappings },
+          candidatesByRow: renderedInput.candidatesByRow || renderedInput.candidates,
+          encodedAtlas: renderedInput.encodedAtlas,
+          metadata: metadataByTarget[targetId] || renderedInput.metadata || defaultMetadata,
+        }, targetOptions);
+      }
+    } catch (error) {
+      buildError = error;
+      throw error;
+    } finally {
+      if (capturePipeline) {
+        try { await capturePipeline.finish(buildError); }
+        catch (error) { if (!buildError) throw error; }
+      }
     }
     // Preserve the existing integer millisecond fields; operation aggregates
     // retain sub-millisecond resolution for short/cache-hit operations.
@@ -1343,6 +1399,7 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
       stages: Object.fromEntries(Object.entries(stageDurations).map(([stage, duration]) => [stage, Math.ceil(duration)])),
       encodeMotions,
       ...captureTimings,
+      ...(capturePipeline ? { pipeline: capturePipeline.metrics } : {}),
     };
     result.report = createBuildReport({ build: result, projectId: normalizedProject.projectId, source: normalizedProject.source });
     builds[targetId] = result;

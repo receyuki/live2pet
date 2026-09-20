@@ -716,7 +716,7 @@ test('buildProjectTargets can render mapped Motions through the shared renderer 
   assert.ok(events.includes('codex-pet:render:completed'));
 });
 
-test('buildProjectTargets releases a capture renderer before encoding both target packages', async () => {
+test('buildProjectTargets releases a capture renderer before assembling both target packages', async () => {
   const project = createProject({ projectId: 'capture-lease', name: 'Capture lease', source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'fixture' }, targets: {
     clawd: { profile: 'clawd', mappings: clawdMapping().states, reactions: clawdMapping().reactions, options: { sleepMode: 'direct' } },
     'codex-pet': { profile: 'codex-pet', mappings: mapping(), reactions: {}, options: {} },
@@ -733,7 +733,7 @@ test('buildProjectTargets releases a capture renderer before encoding both targe
     try { return await capture(renderer); } finally { active = false; }
   };
   const leased = await buildProjectTargets({ project, optionsByTarget, inputsByTarget: { clawd: { withCaptureRenderer, render }, 'codex-pet': { withCaptureRenderer, render } }, onProgress: event => {
-    if (['encode', 'compose', 'package'].includes(event.stage)) assert.equal(active, false);
+    if (['compose', 'package'].includes(event.stage) || (event.target === 'codex-pet' && event.stage === 'encode')) assert.equal(active, false);
   } });
   assert.equal(leases, 2);
   assert.deepEqual(leased.builds.clawd.assets, direct.builds.clawd.assets);

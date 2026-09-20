@@ -1,14 +1,16 @@
 # Capture-scoped renderer ownership
 
-This is the first checkpoint of [#20](https://github.com/receyuki/live2pet/issues/20),
-not the completed byte-bounded capture/encoding pipeline.
+The second checkpoint of [#20](https://github.com/receyuki/live2pet/issues/20)
+adds byte-budgeted Clawd capture/encoding. Full performance acceptance remains open.
 
 ## Boundary
 
 Desktop supplies each uncaptured target with `withCaptureRenderer(operation)`.
 The shared Package Build calls it for Visual Settings, bounds preparation and
-capture, then receives owned RGBA candidates. Encoding, atlas composition and ZIP
-assembly run after that operation and its exclusive renderer lease settle.
+capture, then receives owned RGBA candidates. Multi-Motion Clawd encoding can
+overlap subsequent captures; the final Motion waits for the lease to settle.
+Atlas composition and ZIP assembly run outside the lease. Single-Motion Clawd
+and Codex retain their capture-then-encode path.
 Direct renderer inputs remain supported for headless callers. Already captured
 inputs and complete encoded-cache hits do not acquire a lease.
 
@@ -38,20 +40,44 @@ the caller's request/snapshot ownership. It does not report another target as
 queued while that target is encoding. Renderer queue/acquisition timings retain
 their existing numeric report fields.
 
+## Clawd admission and backpressure
+
+One ordered producer hands off each missing Motion to its encoder and waits when
+the shared admission pool is full. The default pool admits at most two raw Motion
+sets across multi-Motion builds, under a 512 MiB **estimated working-byte budget**.
+The estimate is four times sampled RGBA bytes plus 64 MiB per Motion, accounting
+conservatively for frame storage, stack copies and codec/cache scratch space.
+It is not a process RSS limit: textures, Chromium, encoded assets and native
+allocator retention are outside this accounting. Native overhead calibration is
+still pending; do not interpret the estimate as a measured hard memory bound.
+
+A Motion exceeding the budget is admitted alone, without changing resolution,
+frame rate or full-duration atomic WebP encoding. Its reservation is reported
+separately. Reservations cover capture, raw-cache persistence, encoding and
+encoded-cache persistence, then release the frame references. Already encoded
+assets bypass the producer. Cancellation removes waiting admissions, releases
+unconsumed handoffs and waits for active capture to settle before cleanup.
+
+`timings.pipeline` reports per-build `budgetBytes`, `peakReservedBytes`,
+`peakResidentMotions`, `maxMotionReservationBytes`, `oversizedMotions`, `waitMs`
+and final `reservedBytes`. The last field must be zero after success. The optional
+core `captureBudgetBytes` override creates a separate pool for deterministic
+tests/headless callers; the Desktop default shares one process-wide pool.
+Externally supplied frames and the single-Motion/Codex paths are not budgeted.
+
 ## Verification and remaining work
 
 Public build regressions verify byte-identical direct/leased output for Clawd and
 Codex, capture bypass for supplied assets, late verified cache identity, and no
-compose/encode/package stage under the lease. Desktop tests hold one encode open
+compose/package stage under the lease. Desktop tests hold one encode open
 while another capture completes, assert a single active capture, close a real
 preview-session service during encoding, and exercise queued/active cancellation.
 The existing planned-cache and runtime-change regressions remain applicable.
 
-This checkpoint still collects all raw candidates required by a target before
-encoding. It does not cap aggregate memory of concurrent downstream requests or
-stream individual Motions through an encoder. The remaining #20 checkpoint must
-add byte-budgeted admission/backpressure, release consumed raw frames, and measure
-many-Motion and large-texture workloads before claiming bounded-memory speedups.
+Public pipeline tests cover early encoding, oversized admission, byte-identical
+outputs, cancellation, storage/acquisition/capture failures and immediate retry.
+The remaining #20 acceptance includes many-Motion and large-texture repeated
+measurements, native overhead calibration and cross-request peak-memory evidence.
 
 The measured ZIP recompression bottleneck remains separate work in #21.
 
@@ -71,8 +97,13 @@ completed before the Clawd build settled. Both packages validated and matched
 the #19 encoded bytes and decoded samples exactly, confirming that downstream
 work no longer depends on the native view remaining alive.
 
-Checkpoint verification: 409 Node tests and 190 UI tests passed, with three
+First-checkpoint verification: 409 Node tests and 190 UI tests passed, with three
 opt-in tests skipped. Typechecking, source-release asset checks and the macOS x64
 packaged startup smoke passed. Independent Standards and Spec reviews reported
-no remaining findings for this checkpoint. The full #20 issue remains open for
-byte-budgeted admission, per-Motion overlap and memory/throughput acceptance.
+no remaining findings for that checkpoint. The full #20 issue remains open for
+the remaining memory/throughput acceptance.
+
+Second-checkpoint Spine smoke: cold/warm/cancel-retry output bytes and decoded
+samples matched the accepted baseline. Cold build took 22.00 s versus 22.62 s
+in the previous checkpoint; sampled process-group peak was 1,694,220 versus
+1,750,852 KiB. These are single runs, not a statistically established speedup.
