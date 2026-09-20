@@ -22,6 +22,17 @@ pnpm release:check
 
 ## Build desktop Apps
 
+Startup and packaging automatically run `prepare:renderer`: this generates the
+sandboxed preload and stages the pinned rendering adapters with their notices.
+They do not depend on the reference Mapper HTML. To use the separate browser
+reference, run `pnpm --filter @live2pet/desktop prepare:mapper` and open
+`apps/desktop/mapper-dist/index.html`.
+
+`pnpm test` reports discovered production Node and UI suites (including Spine).
+Opt-in real-renderer tests report skips when local model/runtime inputs are
+absent. `pnpm typecheck` checks JavaScript syntax file by file and then UI
+TypeScript; the two scopes are reported separately.
+
 ```sh
 pnpm --filter @live2pet/desktop package:mac
 pnpm --filter @live2pet/desktop smoke:mac

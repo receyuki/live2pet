@@ -11,6 +11,7 @@ node_modules/
 /apps/desktop/make/
 /apps/desktop/mapper-dist/
 /apps/desktop/renderer-dist/
+/apps/desktop/renderer-vendor/
 /apps/desktop/assets/icon-concept-*.png
 /apps/desktop/assets/icon-source.png
 

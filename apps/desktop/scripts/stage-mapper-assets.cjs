@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { RENDERER_ASSETS, stageRendererAssets } = require('./stage-renderer-assets.cjs');
 
 const SOURCE_MAPPER = path.resolve(__dirname, '../../mapper/index.html');
 const DEFAULT_OUTPUT = path.resolve(__dirname, '../mapper-dist');
@@ -24,38 +25,7 @@ const SUPPORT_FILES = Object.freeze([
 ]);
 
 const ASSETS = Object.freeze([
-  {
-    source: path.resolve(__dirname, '../../../packages/live2d-exporter/node_modules/pixi.js/dist/browser/pixi.min.js'),
-    target: 'vendor/pixi.min.js',
-    packageName: 'pixi.js',
-    version: '6.5.10',
-    license: 'MIT',
-    licenseSource: path.resolve(__dirname, '../../../packages/live2d-exporter/node_modules/pixi.js/LICENSE'),
-  },
-  {
-    source: path.resolve(__dirname, '../../../packages/live2d-exporter/node_modules/@pixi/unsafe-eval/dist/browser/unsafe-eval.min.js'),
-    target: 'vendor/unsafe-eval.min.js',
-    packageName: '@pixi/unsafe-eval',
-    version: '6.5.10',
-    license: 'MIT',
-    licenseSource: path.resolve(__dirname, '../../../packages/live2d-exporter/node_modules/@pixi/unsafe-eval/LICENSE'),
-  },
-  {
-    source: path.resolve(__dirname, '../../../packages/live2d-exporter/node_modules/pixi-live2d-display/dist/cubism4.min.js'),
-    target: 'vendor/cubism4.min.js',
-    packageName: 'pixi-live2d-display',
-    version: '0.4.0',
-    license: 'MIT',
-    licenseSource: path.resolve(__dirname, '../../../packages/live2d-exporter/node_modules/pixi-live2d-display/LICENSE'),
-  },
-  {
-    source: path.resolve(__dirname, '../../../packages/live2d-exporter/node_modules/pixi-live2d-display/dist/cubism2.min.js'),
-    target: 'vendor/cubism2.min.js',
-    packageName: 'pixi-live2d-display',
-    version: '0.4.0',
-    license: 'MIT',
-    licenseSource: path.resolve(__dirname, '../../../packages/live2d-exporter/node_modules/pixi-live2d-display/LICENSE'),
-  },
+  ...RENDERER_ASSETS,
   {
     source: path.resolve(__dirname, '../../../node_modules/.pnpm/@zip.js+zip.js@2.7.57/node_modules/@zip.js/zip.js/dist/zip-no-worker.min.js'),
     target: 'vendor/zip-no-worker.min.js',
@@ -101,69 +71,30 @@ function copyFile(source, destination) {
 
 function stageMapperAssets(output = DEFAULT_OUTPUT) {
   if (!path.isAbsolute(output)) fail('Mapper staging output must be an absolute path.');
-  if (!fs.statSync(SOURCE_MAPPER).isFile()) fail('The shared Mapper document is missing.');
+  if (!fs.statSync(SOURCE_MAPPER, { throwIfNoEntry: false })?.isFile()) fail('The shared Mapper document is missing.');
   for (const file of SUPPORT_FILES) {
     if (!fs.statSync(file.source, { throwIfNoEntry: false })?.isFile()) fail(`The shared Mapper support file is missing: ${file.target}`);
   }
-
-  for (const asset of ASSETS) {
-    if (!fs.statSync(asset.source, { throwIfNoEntry: false })?.isFile()) {
-      fail(`The local ${asset.packageName} ${asset.version} browser asset is missing: ${asset.target}`);
-    }
-    if (!fs.statSync(asset.licenseSource, { throwIfNoEntry: false })?.isFile()) {
-      fail(`The local ${asset.packageName} license file is missing.`);
-    }
-  }
-
-  const parent = path.dirname(output);
-  fs.mkdirSync(parent, { recursive: true });
-  const staging = fs.mkdtempSync(path.join(parent, `${path.basename(output)}-`), { encoding: 'utf8' });
+  fs.mkdirSync(path.dirname(output), { recursive: true });
+  const staging = fs.mkdtempSync(path.join(path.dirname(output), `${path.basename(output)}-`));
   try {
+    const assets = stageRendererAssets(staging, ASSETS);
     let mapperHtml = fs.readFileSync(SOURCE_MAPPER, 'utf8');
     for (const [from, to] of REPLACEMENTS) mapperHtml = mapperHtml.replaceAll(from, to);
-    if (mapperHtml.includes('../../packages/') || mapperHtml.includes('../../node_modules/')) {
-      fail('The staged Mapper still contains a workspace-relative dependency path.');
-    }
-    if (/<script[^>]+live2dcubismcore/i.test(mapperHtml)) {
-      fail('Cubism Core must remain user-provided and cannot be staged.');
-    }
+    if (mapperHtml.includes('../../packages/') || mapperHtml.includes('../../node_modules/')) fail('The staged Mapper still contains a workspace-relative dependency path.');
+    if (/<script[^>]+live2dcubismcore/i.test(mapperHtml)) fail('Cubism Core must remain user-provided and cannot be staged.');
     fs.writeFileSync(path.join(staging, 'index.html'), mapperHtml, 'utf8');
     for (const file of SUPPORT_FILES) copyFile(file.source, path.join(staging, file.target));
-
-    const manifest = {
-      schemaVersion: 1,
-      source: 'apps/mapper/index.html',
-      runtimePolicy: 'Cubism Core and legacy runtimes are user-provided and are never staged.',
-      supportFiles: SUPPORT_FILES.map((file) => ({ path: file.target, sha256: sha256(path.join(staging, file.target)) })),
-      assets: ASSETS.map((asset) => {
-        const destination = path.join(staging, asset.target);
-        copyFile(asset.source, destination);
-        return {
-          path: asset.target,
-          package: asset.packageName,
-          version: asset.version,
-          license: asset.license,
-          sha256: sha256(destination),
-        };
-      }),
-    };
-    const notices = [];
-    for (const asset of ASSETS) {
-      const key = `${asset.packageName}@${asset.version}`;
-      if (notices.some((notice) => notice.key === key)) continue;
-      const licensePath = path.join(staging, 'licenses', `${asset.packageName.replaceAll('/', '_')}@${asset.version}.txt`);
-      copyFile(asset.licenseSource, licensePath);
-      notices.push({ key, packageName: asset.packageName, version: asset.version, license: asset.license, path: path.relative(staging, licensePath).replaceAll(path.sep, '/') });
-    }
-    manifest.licenses = notices.map(({ key, ...notice }) => notice);
-    fs.writeFileSync(path.join(staging, 'asset-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-
+    const manifestPath = path.join(staging, 'asset-manifest.json');
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    manifest.source = 'apps/mapper/index.html';
+    manifest.supportFiles = SUPPORT_FILES.map(file => ({ path: file.target, sha256: sha256(path.join(staging, file.target)) }));
+    fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
     fs.rmSync(output, { recursive: true, force: true });
     fs.renameSync(staging, output);
-    return { output, assets: manifest.assets, licenses: manifest.licenses };
-  } catch (error) {
+    return { ...assets, output };
+  } finally {
     fs.rmSync(staging, { recursive: true, force: true });
-    throw error;
   }
 }
 

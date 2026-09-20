@@ -104,16 +104,15 @@ run:
 pnpm --filter @live2pet/desktop preview:shell
 ```
 
-This preview reads and updates the same App-owned runtime library and build
-cache through the existing typed preload API. It does not bundle a model or a
-Cubism runtime, and it does not replace the default `start` entrypoint yet.
-Source import, live preview, mapping persistence, and package generation remain
-on the current Mapper until each workflow is migrated and accepted.
+This is an alias of the default HeroUI App entrypoint. It reads and updates
+the App-owned runtime library and build cache through the sandboxed preload.
+No model or Cubism runtime is bundled.
 
-Before a package build, stage the browser dependencies into a self-contained Mapper bundle:
+Startup and packaging prepare production renderer dependencies automatically.
+To prepare them separately:
 
 ```text
-pnpm --filter @live2pet/desktop prepare:mapper
+pnpm --filter @live2pet/desktop prepare:renderer
 ```
 
 ## Build unsigned desktop previews
@@ -126,7 +125,7 @@ pnpm --filter @live2pet/desktop run package:mac
 pnpm --filter @live2pet/desktop run smoke:mac
 ```
 
-The first command stages the Mapper, creates an isolated production dependency
+The first command stages the production renderer, creates an isolated production dependency
 tree, and writes `apps/desktop/out/Live2Pet-darwin-<arch>/Live2Pet.app`. The
 deployment-only dependency tree is hoisted so Sharp and its platform-specific
 `@img` libraries can be unpacked from ASAR without changing the workspace's

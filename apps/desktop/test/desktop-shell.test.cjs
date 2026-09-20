@@ -7,7 +7,6 @@ const root = path.resolve(__dirname, '..');
 
 test('desktop shell pins the HeroUI entrypoint and keeps navigation and IPC narrow', () => {
   const main = fs.readFileSync(path.join(root, 'main.cjs'), 'utf8');
-  const preload = fs.readFileSync(path.join(root, 'preload.cjs'), 'utf8');
   const styles = fs.readFileSync(path.join(root, 'ui/src/styles.css'), 'utf8');
   assert.match(main, /const PACKAGED_RENDERER_PATH = path\.join\(process\.resourcesPath, 'renderer-dist', 'index\.html'\);/);
   assert.match(main, /return app\.isPackaged \? PACKAGED_RENDERER_PATH : DEVELOPMENT_RENDERER_PATH;/);
@@ -43,23 +42,9 @@ test('desktop shell pins the HeroUI entrypoint and keeps navigation and IPC narr
   assert.doesNotMatch(main, /nodeIntegration:\s*true/);
   assert.match(main, /backgroundThrottling:\s*true/);
   assert.doesNotMatch(main, /backgroundThrottling:\s*false/);
-  assert.match(preload, /contextBridge\.exposeInMainWorld\('live2pet'/);
-  assert.match(preload, /const APP_IPC_CHANNEL = 'live2pet:app';/);
-  assert.match(preload, /const APP_IPC_PROTOCOL_VERSION = 1;/);
-  assert.match(preload, /const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';/);
-  assert.match(preload, /const APP_COMMAND_CHANNEL = 'live2pet:command';/);
-  assert.match(preload, /new Set\(\['new', 'open', 'save', 'settings', 'build', 'setup', 'undo', 'redo'\]\)/);
-  assert.match(preload, /webUtils\.getPathForFile/);
-  assert.match(preload, /getFilePath,/);
-  for (const method of ['getVersion', 'checkForUpdates', 'openReleasePage', 'inspectSource', 'relinkSource', 'acknowledgeSourceReview', 'getRuntimeSettings', 'configureRuntime', 'clearRuntimeSettings', 'buildProject', 'cancelBuild', 'getBuildArtifact', 'chooseInstallRoot', 'installArtifact', 'getCaptureCacheStatus', 'putCaptureCache', 'getBuildCacheStatus', 'clearBuildCache']) {
-    assert.match(preload, new RegExp(`invoke\\('${method}'`));
-  }
-  for (const method of ['getRecentProjects', 'clearRecentProjects', 'openProject', 'saveProject']) assert.match(preload, new RegExp(`invoke\\('${method}'`));
-  for (const method of ['getOutputSettings', 'configureOutputSettings', 'saveBuildArtifact']) assert.match(preload, new RegExp(`invoke\\('${method}'`));
   assert.match(main, /packageOutputService: getPackageOutputService\(\)/);
   assert.match(main, /dialog\.showSaveDialog\(mainWindow/);
   assert.match(main, /showOverwriteConfirmation/);
-  assert.match(preload, /onAppCommand,/);
   assert.match(main, /Menu\.setApplicationMenu\(Menu\.buildFromTemplate\(template\)\)/);
   assert.match(main, /accelerator: 'CommandOrControl\+O'/);
   assert.match(main, /accelerator: 'CommandOrControl\+N'/);
@@ -72,12 +57,7 @@ test('desktop shell pins the HeroUI entrypoint and keeps navigation and IPC narr
   assert.match(main, /sendAppCommand\('redo'\)/);
   assert.match(main, /loadWindowBounds\(windowStatePath\(\), screen\.getAllDisplays\(\)/);
   assert.match(main, /mainWindow\.on\('resize', windowStateWriter\.schedule\)/);
-  assert.doesNotMatch(preload, /MapperSession|RendererPreview|getSkillStatus|installSkill|rendererCommand/);
-  assert.match(preload, /getBuildArtifact: \(artifactId, offset = 0\) => invoke\('getBuildArtifact', \{ artifactId, offset \}\)/);
   assert.match(main, /webContents\.on\('render-process-gone'/);
-  assert.match(preload, /onBuildProgress/);
-  assert.doesNotMatch(preload, /require\(['"]\.\.\/\.\.\/packages\/app-host/);
-  assert.doesNotMatch(preload, /exposeInMainWorld\([^,]+,\s*\{\s*ipcRenderer/);
   assert.match(styles, /\.settings-sidebar\{min-width:0;overflow-y:auto;overflow-x:hidden\}/);
 });
 
@@ -94,8 +74,8 @@ test('desktop package keeps Electron and future Forge settings explicit', () => 
   assert.equal(manifest.devDependencies.electron, '44.0.0');
   assert.equal(manifest.productName, 'Live2Pet');
   assert.equal(manifest.devDependencies['@electron/packager'], '20.3.0');
-  assert.equal(manifest.scripts.start, 'pnpm prepare:mapper && pnpm build:renderer && electron .');
-  assert.equal(manifest.scripts['package:mac'], 'pnpm prepare:mapper && pnpm build:renderer && node scripts/package-macos.cjs');
+  assert.equal(manifest.scripts.start, 'pnpm prepare:renderer && pnpm build:renderer && electron .');
+  assert.equal(manifest.scripts['package:mac'], 'pnpm prepare:renderer && pnpm build:renderer && node scripts/package-macos.cjs');
   assert.equal(manifest.scripts['smoke:mac'], 'node scripts/smoke-packaged-app.cjs');
   assert.match(forge, /asar:\s*\{\s*unpack:\s*'\*\*\/node_modules\/\{sharp,@img\}\/\*\*\/\*'\s*\}/);
   assert.match(forge, /executableName:\s*'Live2Pet'/);
@@ -103,7 +83,7 @@ test('desktop package keeps Electron and future Forge settings explicit', () => 
   assert.match(main, /app\.setName\(APP_NAME\)/);
   assert.match(main, /APP_DEV_ICON_PATH = path\.resolve\(__dirname, 'assets', 'icon\.png'\)/);
   assert.match(main, /app\.dock\.setIcon\(APP_DEV_ICON_PATH\)/);
-  assert.match(forge, /extraResource:\s*\[path\.resolve\(__dirname, 'mapper-dist'\), path\.resolve\(__dirname, 'renderer-dist'\)\]/);
+  assert.match(forge, /extraResource:\s*\[path\.resolve\(__dirname, 'renderer-vendor'\), path\.resolve\(__dirname, 'renderer-dist'\)\]/);
   assert.doesNotMatch(forge, /live2pet-skill|renderer\.html/);
   assert.equal(manifest.scripts['prepare:mapper'], 'node scripts/stage-mapper-assets.cjs');
 });

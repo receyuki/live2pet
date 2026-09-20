@@ -1,8 +1,10 @@
 # Third-party notices
 
-The `prepare:mapper` staging step copies the following browser assets into the
-development or packaged Mapper bundle. The staging output includes the
-corresponding upstream license text under `licenses/`.
+The `prepare:renderer` staging step copies the rendering adapters below into
+the production Desktop App, with upstream license text under `licenses/`.
+The separate `prepare:mapper` command also stages the ZIP browser helper for
+the reference Mapper. ZIP code used by the production App is included through
+its normal dependency and UI build, with notices alongside those artifacts.
 
 | Package | Version | License | Upstream |
 | --- | --- | --- | --- |

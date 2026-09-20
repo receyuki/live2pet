@@ -30,7 +30,7 @@ jobs:
         run: corepack enable && corepack prepare pnpm@11.19.0 --activate
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
-      - name: Test, typecheck, and inspect release contents
+      - name: Test all supported suites, check JS syntax and UI types, and inspect release contents
         run: pnpm test && pnpm typecheck && pnpm release:check
       - name: Validate tagged release metadata
         if: github.ref_type == 'tag'

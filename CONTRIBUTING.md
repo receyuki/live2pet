@@ -24,8 +24,15 @@ Install the pinned workspace dependencies with pnpm, then run:
 pnpm test
 pnpm typecheck
 pnpm release:check
-pnpm --filter @live2pet/desktop prepare:mapper
+pnpm --filter @live2pet/desktop prepare:renderer
 ```
+
+`pnpm test` discovers supported workspace package suites, including Spine,
+and reports the Node and UI suites it runs. `pnpm typecheck` checks each
+production JavaScript file for syntax, then runs the UI TypeScript compiler;
+it does not type-check untyped domain JavaScript. Generated and reference-only
+code is excluded. See the [bridge boundary](docs/architecture/desktop-bridge.md)
+for the maintained preload source and its executable sandbox checks.
 
 The Cubism 2 renderer integration test is opt-in and must use files that you
 are licensed to run locally. Set `LIVE2PET_CUBISM2_RUNTIME` and

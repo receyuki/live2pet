@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { stageRendererAssets } = require('../scripts/stage-renderer-assets.cjs');
 
 const {
   WINDOWS_ICON_PATH,
@@ -36,7 +37,8 @@ test('Windows bundle verification requires the native Sharp module', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-win-bundle-'));
   const resources = path.join(root, 'resources');
   try {
-    for (const relative of ['mapper-dist/index.html', 'renderer-dist/index.html', 'renderer-dist/THIRD-PARTY-LICENSES.md', 'renderer-dist/licenses/@heroui_styles.txt', 'renderer-dist/licenses/tailwindcss.txt', 'app.asar', 'app.asar.unpacked/node_modules/@img/sharp-win32-x64/lib/sharp-win32-x64.node']) {
+    stageRendererAssets(path.join(resources, 'renderer-vendor'));
+    for (const relative of ['renderer-dist/index.html', 'renderer-dist/THIRD-PARTY-LICENSES.md', 'renderer-dist/licenses/@heroui_styles.txt', 'renderer-dist/licenses/tailwindcss.txt', 'app.asar', 'app.asar.unpacked/node_modules/@img/sharp-win32-x64/lib/sharp-win32-x64.node']) {
       const absolute = path.join(resources, relative);
       fs.mkdirSync(path.dirname(absolute), { recursive: true });
       fs.writeFileSync(absolute, 'test');

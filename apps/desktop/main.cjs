@@ -127,8 +127,8 @@ const spinePackService = Object.freeze({
 
 function previewVendorPaths(cubismVersion) {
   const vendorRoot = app.isPackaged
-    ? path.join(process.resourcesPath, 'mapper-dist', 'vendor')
-    : path.resolve(__dirname, 'mapper-dist', 'vendor');
+    ? path.join(process.resourcesPath, 'renderer-vendor', 'vendor')
+    : path.resolve(__dirname, 'renderer-vendor', 'vendor');
   return {
     pixi: path.join(vendorRoot, 'pixi.min.js'),
     unsafeEval: path.join(vendorRoot, 'unsafe-eval.min.js'),

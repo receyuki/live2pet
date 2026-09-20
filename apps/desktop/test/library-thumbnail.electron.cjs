@@ -17,7 +17,7 @@ app.whenReady().then(async () => {
         ? { resolveSpinePack: async () => ({ scriptPath: process.env.LIVE2PET_SPINE_SCRIPT, stylePath: process.env.LIVE2PET_SPINE_STYLE }) }
         : process.env.LIVE2PET_SPINE_PACK_ROOT ? { resolveSpinePack: line => resolveSpinePack(process.env.LIVE2PET_SPINE_PACK_ROOT, line) } : {}),
       vendorPaths: version => {
-        const root = path.resolve(__dirname, '../mapper-dist/vendor');
+        const root = path.resolve(__dirname, '../renderer-vendor/vendor');
         return { pixi: path.join(root, 'pixi.min.js'), unsafeEval: path.join(root, 'unsafe-eval.min.js'), live2dAdapter: path.join(root, version === 2 ? 'cubism2.min.js' : 'cubism4.min.js') };
       },
     });

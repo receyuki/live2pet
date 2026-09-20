@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { stageRendererAssets } = require('../scripts/stage-renderer-assets.cjs');
 
 const {
   APP_ICON_PATH,
@@ -115,13 +116,18 @@ test('bundle verification requires staged resources, unpacked Sharp, and no user
   const appPath = path.join(root, 'Live2Pet.app');
   const resources = path.join(appPath, 'Contents', 'Resources');
   try {
-    for (const relative of ['mapper-dist/index.html', 'renderer-dist/index.html', 'renderer-dist/THIRD-PARTY-LICENSES.md', 'renderer-dist/licenses/@heroui_styles.txt', 'renderer-dist/licenses/tailwindcss.txt', 'app.asar', 'app.asar.unpacked/node_modules/@img/sharp-darwin-x64/lib/sharp-darwin-x64.node']) {
+    stageRendererAssets(path.join(resources, 'renderer-vendor'));
+    for (const relative of ['renderer-dist/index.html', 'renderer-dist/THIRD-PARTY-LICENSES.md', 'renderer-dist/licenses/@heroui_styles.txt', 'renderer-dist/licenses/tailwindcss.txt', 'app.asar', 'app.asar.unpacked/node_modules/@img/sharp-darwin-x64/lib/sharp-darwin-x64.node']) {
       const absolute = path.join(resources, relative);
       fs.mkdirSync(path.dirname(absolute), { recursive: true });
       fs.writeFileSync(absolute, 'test');
     }
     assert.equal(verifyBundleLayout(appPath).nativeSharp, true);
-    assert.deepEqual(verifyBundleLayout(appPath).resources, ['mapper-dist', 'renderer-dist']);
+    assert.deepEqual(verifyBundleLayout(appPath).resources, ['renderer-vendor', 'renderer-dist']);
+    const adapter = path.join(resources, 'renderer-vendor/vendor/cubism2.min.js');
+    fs.renameSync(adapter, `${adapter}.missing`);
+    assert.throws(() => verifyBundleLayout(appPath), (error) => error.code === 'PACKAGE_LAYOUT_INVALID');
+    fs.renameSync(`${adapter}.missing`, adapter);
     const license = path.join(resources, 'renderer-dist/THIRD-PARTY-LICENSES.md');
     fs.renameSync(license, `${license}.missing`);
     assert.throws(() => verifyBundleLayout(appPath), (error) => error.code === 'PACKAGE_LAYOUT_INVALID');

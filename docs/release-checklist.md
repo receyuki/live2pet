@@ -10,11 +10,12 @@ macOS or Windows release.
       inventory, and third-party notices are present and current.
 - [ ] `pnpm test` passes with synthetic fixtures; opt-in renderer tests remain
       local and are not required by public CI.
-- [ ] `pnpm typecheck` passes.
+- [ ] `pnpm typecheck` passes for both JavaScript syntax and UI TypeScript.
 - [ ] `pnpm release:check` passes with no model, runtime, example, generated
       package, secret, token, binary, or unrelated absolute-path entry.
-- [ ] `pnpm --filter @live2pet/desktop prepare:mapper` stages only the pinned
-      browser assets and license notices.
+- [ ] `pnpm --filter @live2pet/desktop prepare:renderer` generates the sandboxed
+      preload and stages only the pinned renderer assets and license notices;
+      production packaging does not require reference Mapper HTML.
 - [ ] The source archive contains no `examples/`, `archive/`, `artifacts/`,
       `.pck`, `.lpk`, `.moc`, `.moc3`, `.webp`, or `.zip` input.
 - [ ] The source archive contains no downloaded Spine renderer pack, proprietary

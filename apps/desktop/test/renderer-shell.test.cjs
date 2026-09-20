@@ -17,7 +17,7 @@ test('HeroUI is the default development and packaged Electron renderer', () => {
   assert.match(previewService, /require\('@live2pet\/renderer'\)/);
   assert.doesNotMatch(previewService, /require\('\.\.\/\.\.\/packages\//);
   assert.equal(manifest.scripts['preview:shell'], 'pnpm start');
-  assert.match(manifest.scripts.start, /prepare:mapper.*build:renderer.*electron \./);
+  assert.match(manifest.scripts.start, /prepare:renderer.*build:renderer.*electron \./);
   assert.match(main, /DEVELOPMENT_RENDERER_PATH = path\.resolve\(__dirname, 'renderer-dist\/index\.html'\)/);
   assert.match(main, /return app\.isPackaged \? PACKAGED_RENDERER_PATH : DEVELOPMENT_RENDERER_PATH/);
   assert.doesNotMatch(main, /UI_PREVIEW_ARGUMENT|DEVELOPMENT_MAPPER_PATH|PACKAGED_MAPPER_PATH/);

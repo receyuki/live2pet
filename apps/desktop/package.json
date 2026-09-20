@@ -14,14 +14,15 @@
   "scripts": {
     "build:renderer": "vite build --config vite.config.mts",
     "prepare:mapper": "node scripts/stage-mapper-assets.cjs",
+    "prepare:renderer": "node scripts/prepare-preload.cjs && node scripts/stage-renderer-assets.cjs",
     "benchmark:capture": "node scripts/benchmark-capture-transport.cjs",
-    "package:mac": "pnpm prepare:mapper && pnpm build:renderer && node scripts/package-macos.cjs",
-    "package:win": "pnpm prepare:mapper && pnpm build:renderer && node scripts/package-windows.cjs",
+    "package:mac": "pnpm prepare:renderer && pnpm build:renderer && node scripts/package-macos.cjs",
+    "package:win": "pnpm prepare:renderer && pnpm build:renderer && node scripts/package-windows.cjs",
     "preview:shell": "pnpm start",
     "smoke:mac": "node scripts/smoke-packaged-app.cjs",
-    "start": "pnpm prepare:mapper && pnpm build:renderer && electron .",
+    "start": "pnpm prepare:renderer && pnpm build:renderer && electron .",
     "test:ui": "vitest run --config vite.config.mts",
-    "typecheck": "node --check main.cjs preload.cjs forge.config.cjs scripts/*.cjs && pnpm typecheck:ui",
+    "typecheck": "node ../../scripts/workspace-checks.cjs syntax --scope desktop && pnpm typecheck:ui",
     "typecheck:ui": "tsc -p tsconfig.ui.json --noEmit"
   },
   "dependencies": {

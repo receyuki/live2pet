@@ -130,7 +130,7 @@ Spine support remains in preview. PCK support depends on its contents and packag
 
 - **Using the App:** [User guide & FAQ](docs/guides/user-guide.md)
 - **What's next:** [Issues](https://github.com/receyuki/live2pet/issues) · [V1 plan](docs/plans/live2pet-v1-implementation-plan.md)
-- **Building together:** [Contributing](CONTRIBUTING.md) · [Developer guide](docs/guides/development.md)
+- **Building together:** [Contributing](CONTRIBUTING.md) · [Local development, verification & packaging](docs/guides/development.md)
 - **Security:** [Report a vulnerability](SECURITY.md)
 
 Built with Electron, React, TypeScript, and HeroUI. Licensed under [Apache-2.0](LICENSE).

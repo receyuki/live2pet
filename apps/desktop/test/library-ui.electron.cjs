@@ -17,7 +17,7 @@ app.whenReady().then(async () => {
     ownerWindow: window,
     createView: () => new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } }),
     resolveRuntime: version => loadRuntimeForGeneration(process.env.LIVE2PET_RUNTIME_SETTINGS, version),
-    vendorPaths: version => { const vendor = path.resolve(__dirname, '../mapper-dist/vendor'); return { pixi: path.join(vendor, 'pixi.min.js'), unsafeEval: path.join(vendor, 'unsafe-eval.min.js'), live2dAdapter: path.join(vendor, version === 2 ? 'cubism2.min.js' : 'cubism4.min.js') }; },
+    vendorPaths: version => { const vendor = path.resolve(__dirname, '../renderer-vendor/vendor'); return { pixi: path.join(vendor, 'pixi.min.js'), unsafeEval: path.join(vendor, 'unsafe-eval.min.js'), live2dAdapter: path.join(vendor, version === 2 ? 'cubism2.min.js' : 'cubism4.min.js') }; },
   };
   const preview = createPreviewSessionService({ ...previewOptions, resolveSource: () => previewSource });
   ipcMain.handle('live2pet:preview', async (_event, request) => {
@@ -33,7 +33,7 @@ app.whenReady().then(async () => {
       ownerWindow: window,
       createView: () => new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } }),
       resolveRuntime: version => loadRuntimeForGeneration(process.env.LIVE2PET_RUNTIME_SETTINGS, version),
-      vendorPaths: version => { const vendor = path.resolve(__dirname, '../mapper-dist/vendor'); return { pixi: path.join(vendor, 'pixi.min.js'), unsafeEval: path.join(vendor, 'unsafe-eval.min.js'), live2dAdapter: path.join(vendor, version === 2 ? 'cubism2.min.js' : 'cubism4.min.js') }; },
+      vendorPaths: version => { const vendor = path.resolve(__dirname, '../renderer-vendor/vendor'); return { pixi: path.join(vendor, 'pixi.min.js'), unsafeEval: path.join(vendor, 'unsafe-eval.min.js'), live2dAdapter: path.join(vendor, version === 2 ? 'cubism2.min.js' : 'cubism4.min.js') }; },
     }),
   });
   ipcMain.handle('live2pet:app', async (_event, request) => {

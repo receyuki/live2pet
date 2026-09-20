@@ -2,10 +2,11 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { RENDERER_ASSETS } = require('./stage-renderer-assets.cjs');
 
 const repositoryRoot = path.resolve(__dirname, '../../..');
 const desktopRoot = path.resolve(__dirname, '..');
-const mapperRoot = path.join(desktopRoot, 'mapper-dist');
+const vendorRoot = path.join(desktopRoot, 'renderer-vendor');
 const rendererRoot = path.join(desktopRoot, 'renderer-dist');
 const outputRoot = path.join(desktopRoot, 'out');
 const APP_VERSION = require(path.join(desktopRoot, 'package.json')).version;
@@ -44,13 +45,13 @@ function requireDirectory(directory, code, message) {
 }
 
 function copyResources(tempRoot) {
-  requireDirectory(mapperRoot, 'MAPPER_NOT_STAGED', 'Stage the Mapper assets before packaging the App.');
+  requireDirectory(vendorRoot, 'RENDERER_VENDOR_NOT_STAGED', 'Stage production renderer assets before packaging the App.');
   requireDirectory(rendererRoot, 'RENDERER_NOT_BUILT', 'Build the HeroUI renderer before packaging the App.');
   const resourcesRoot = path.join(tempRoot, 'resources');
-  const mapperTarget = path.join(resourcesRoot, 'mapper-dist');
+  const vendorTarget = path.join(resourcesRoot, 'renderer-vendor');
   const rendererTarget = path.join(resourcesRoot, 'renderer-dist');
   fs.mkdirSync(resourcesRoot, { recursive: true });
-  fs.cpSync(mapperRoot, mapperTarget, { recursive: true, dereference: true });
+  fs.cpSync(vendorRoot, vendorTarget, { recursive: true, dereference: true });
   fs.cpSync(rendererRoot, rendererTarget, { recursive: true, dereference: true });
   if (!fs.existsSync(path.join(rendererTarget, RENDERER_LICENSE_FILE))) fail('RENDERER_LICENSES_MISSING', 'Rebuild the renderer with its bundled dependency license report.');
   const licensesRoot = path.join(rendererTarget, 'licenses');
@@ -62,11 +63,11 @@ function copyResources(tempRoot) {
     if (!license) fail('RENDERER_LICENSES_MISSING', `Missing stylesheet license for ${name}.`);
     fs.copyFileSync(path.join(dependencyRoot, license), path.join(licensesRoot, `${name.replace('/', '_')}.txt`));
   }
-  return [mapperTarget, rendererTarget];
+  return [vendorTarget, rendererTarget];
 }
 
 function verifyProductionStage(stageRoot) {
-  const redundant = ['assets', 'ui', 'renderer-dist', 'mapper-dist', 'node_modules/react', 'node_modules/react-dom', 'node_modules/lucide-react', 'node_modules/@heroui'];
+  const redundant = ['assets', 'ui', 'renderer-dist', 'renderer-vendor', 'mapper-dist', 'node_modules/react', 'node_modules/react-dom', 'node_modules/lucide-react', 'node_modules/@heroui'];
   const found = redundant.filter(relative => fs.existsSync(path.join(stageRoot, relative)));
   if (found.length) fail('REDUNDANT_PACKAGE_CONTENT', 'The production stage contains renderer-only dependencies or local design assets.', { entries: found });
 }
@@ -84,7 +85,7 @@ function deployProductionStage(stageRoot, environment = process.env) {
     stageRoot,
   ], { cwd: repositoryRoot, env: environment, stdio: 'inherit' });
 
-  for (const relative of ['mapper-dist', 'renderer-dist', 'ui', 'test', 'scripts', 'out', 'make', 'forge.config.cjs']) {
+  for (const relative of ['mapper-dist', 'renderer-vendor', 'renderer-dist', 'ui', 'test', 'scripts', 'out', 'make', 'forge.config.cjs']) {
     fs.rmSync(path.join(stageRoot, relative), { recursive: true, force: true });
   }
   const internalPackages = path.join(stageRoot, 'node_modules', '@live2pet');
@@ -150,7 +151,9 @@ function walkFiles(root, prefix = '') {
 function verifyResourcesLayout(resources, { sharpPattern = /sharp-darwin-(?:x64|arm64)\.node$/i, requiredSharpPatterns = [] } = {}) {
   const required = [
     path.join(resources, 'app.asar'),
-    path.join(resources, 'mapper-dist', 'index.html'),
+    path.join(resources, 'renderer-vendor', 'asset-manifest.json'),
+    ...RENDERER_ASSETS.map(asset => path.join(resources, 'renderer-vendor', asset.target)),
+    ...RENDERER_ASSETS.map(asset => path.join(resources, 'renderer-vendor', 'licenses', `${asset.packageName.replaceAll('/', '_')}@${asset.version}.txt`)),
     path.join(resources, 'renderer-dist', 'index.html'),
     path.join(resources, 'renderer-dist', RENDERER_LICENSE_FILE),
     ...RENDERER_STYLE_LICENSES.map(name => path.join(resources, 'renderer-dist', 'licenses', `${name.replace('/', '_')}.txt`)),
@@ -168,7 +171,7 @@ function verifyResourcesLayout(resources, { sharpPattern = /sharp-darwin-(?:x64|
   const missingSharp = requiredSharpPatterns.filter((pattern) => !nativeEntries.some((entry) => pattern.test(entry)));
   if (missingSharp.length) fail('SHARP_NATIVE_BINARY_MISSING', 'The packaged App does not contain every required Sharp architecture.', { missingArchitectures: missingSharp.length });
   return {
-    resources: ['mapper-dist', 'renderer-dist'],
+    resources: ['renderer-vendor', 'renderer-dist'],
     nativeSharp: true,
     forbiddenAssetCount: 0,
   };

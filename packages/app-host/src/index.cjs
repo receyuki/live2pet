@@ -8,7 +8,7 @@ const APP_IPC_CHANNEL = 'live2pet:app';
 const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';
 const APP_LIBRARY_DOWNLOAD_PROGRESS_CHANNEL = 'live2pet:library-download-progress';
 const APP_COMMAND_CHANNEL = 'live2pet:command';
-const APP_COMMANDS = Object.freeze(['new', 'open', 'save', 'settings', 'build', 'setup']);
+const { createAppPreloadApi, APP_COMMANDS } = require('./preload-api.cjs');
 const APP_BUILD_ARTIFACT_CHUNK_BYTES = 1024 * 1024;
 const APP_INSTALL_LOCATION_LIMIT = 8;
 const APP_SOURCE_INSPECTION_PROGRESS_STAGE = 'inspect';
@@ -141,13 +141,6 @@ function normalizeBuildProgressEvent(event) {
   return normalized;
 }
 
-function normalizeBuildProgressPayload(payload) {
-  if (!isRecord(payload)) return null;
-  if (payload.protocolVersion !== APP_IPC_PROTOCOL_VERSION || typeof payload.buildId !== 'string' || !payload.buildId.trim() || !Number.isInteger(payload.sequence) || payload.sequence < 1) return null;
-  const event = normalizeBuildProgressEvent(payload);
-  if (!event) return null;
-  return { protocolVersion: APP_IPC_PROTOCOL_VERSION, buildId: payload.buildId.trim().slice(0, 128), sequence: payload.sequence, ...event };
-}
 
 function normalizeBuildRequest(value) {
   if (!isRecord(value)) fail('INVALID_BUILD_REQUEST', 'App Package Build input must be an object.');
@@ -1066,105 +1059,6 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
   return route;
 }
 
-function createAppPreloadApi({ ipcRenderer, channel = APP_IPC_CHANNEL, getFilePath = null } = {}) {
-  if (!ipcRenderer || typeof ipcRenderer.invoke !== 'function') fail('INVALID_APP_PRELOAD', 'App preload API requires ipcRenderer.invoke.');
-  if (typeof channel !== 'string' || !channel.trim()) fail('INVALID_APP_PRELOAD', 'App IPC channel must be a non-empty string.');
-  const invoke = (method, ...args) => ipcRenderer.invoke(channel, { protocolVersion: APP_IPC_PROTOCOL_VERSION, method, args });
-  const onAppCommand = (listener) => {
-    if (typeof listener !== 'function') throw new TypeError('onAppCommand requires a function listener.');
-    if (typeof ipcRenderer.on !== 'function' || typeof ipcRenderer.removeListener !== 'function') throw new TypeError('onAppCommand requires Electron event listener support.');
-    const handler = (_event, command) => { if (APP_COMMANDS.includes(command)) listener(command); };
-    ipcRenderer.on(APP_COMMAND_CHANNEL, handler);
-    let active = true;
-    return () => {
-      if (!active) return;
-      active = false;
-      ipcRenderer.removeListener(APP_COMMAND_CHANNEL, handler);
-    };
-  };
-  const onBuildProgress = (listener) => {
-    if (typeof listener !== 'function') throw new TypeError('onBuildProgress requires a function listener.');
-    if (typeof ipcRenderer.on !== 'function' || typeof ipcRenderer.removeListener !== 'function') throw new TypeError('onBuildProgress requires Electron event listener support.');
-    const handler = (_event, payload) => {
-      const normalized = normalizeBuildProgressPayload(payload);
-      if (normalized) listener(Object.freeze(normalized));
-    };
-    ipcRenderer.on(APP_BUILD_PROGRESS_CHANNEL, handler);
-    let active = true;
-    return () => {
-      if (!active) return;
-      active = false;
-      ipcRenderer.removeListener(APP_BUILD_PROGRESS_CHANNEL, handler);
-    };
-  };
-  const onLibraryDownloadProgress = (listener) => {
-    if (typeof listener !== 'function') throw new TypeError('onLibraryDownloadProgress requires a function listener.');
-    if (typeof ipcRenderer.on !== 'function' || typeof ipcRenderer.removeListener !== 'function') throw new TypeError('onLibraryDownloadProgress requires Electron event listener support.');
-    const handler = (_event, payload) => {
-      const normalized = normalizeLibraryDownloadProgressPayload(payload);
-      if (normalized) listener(Object.freeze(normalized));
-    };
-    ipcRenderer.on(APP_LIBRARY_DOWNLOAD_PROGRESS_CHANNEL, handler);
-    let active = true;
-    return () => {
-      if (!active) return;
-      active = false;
-      ipcRenderer.removeListener(APP_LIBRARY_DOWNLOAD_PROGRESS_CHANNEL, handler);
-    };
-  };
-  const resolveFilePath = (file) => {
-    if (typeof getFilePath !== 'function') return null;
-    try {
-      const value = getFilePath(file);
-      return typeof value === 'string' && value ? value : null;
-    } catch {
-      return null;
-    }
-  };
-  return Object.freeze({
-    getVersion: () => invoke('getVersion'),
-    checkForUpdates: () => invoke('checkForUpdates'),
-    openReleasePage: (version) => invoke('openReleasePage', { version }),
-    getRecentProjects: () => invoke('getRecentProjects'),
-    clearRecentProjects: () => invoke('clearRecentProjects', { confirmClear: true }),
-    openProject: (input = {}) => invoke('openProject', input),
-    saveProject: (input) => invoke('saveProject', input),
-    openSourceLibrary: (inputPath) => inputPath ? invoke('openSourceLibrary', { inputPath }) : invoke('openSourceLibrary'),
-    openGitHubLibrary: (input) => invoke('openGitHubLibrary', input),
-    downloadSourceLibrary: (libraryId) => invoke('downloadSourceLibrary', { libraryId }),
-    inspectLibrarySource: (input) => invoke('inspectLibrarySource', input),
-    getLibraryThumbnail: (input) => invoke('getLibraryThumbnail', input),
-    getSourceLibraryCacheStatus: () => invoke('getSourceLibraryCacheStatus'),
-    configureSourceLibraryCache: (maxBytes) => invoke('configureSourceLibraryCache', { maxBytes }),
-    clearSourceLibraryCache: () => invoke('clearSourceLibraryCache', { confirmClear: true }),
-    onLibraryDownloadProgress,
-    onAppCommand,
-    inspectSource: (input) => invoke('inspectSource', input),
-    relinkSource: (input) => invoke('relinkSource', input),
-    acknowledgeSourceReview: (input) => invoke('acknowledgeSourceReview', input),
-    getRuntimeSettings: () => invoke('getRuntimeSettings'),
-    configureRuntime: (input) => invoke('configureRuntime', input),
-    clearRuntimeSettings: (input) => input === undefined ? invoke('clearRuntimeSettings') : invoke('clearRuntimeSettings', input),
-    getSpinePackStatus: () => invoke('getSpinePackStatus'),
-    installSpinePack: (runtimeLine) => invoke('installSpinePack', { confirmInstall: true, runtimeLine }),
-    removeSpinePack: (runtimeLine) => invoke('removeSpinePack', { runtimeLine }),
-    getCaptureCacheStatus: (input) => invoke('getCaptureCacheStatus', input),
-    getBuildCacheStatus: () => invoke('getBuildCacheStatus'),
-    clearBuildCache: (input) => invoke('clearBuildCache', input),
-    getFilePath: resolveFilePath,
-    buildProject: (input) => invoke('buildProject', input),
-    cancelBuild: (buildId) => invoke('cancelBuild', { buildId }),
-    onBuildProgress,
-    getBuildArtifact: (artifactId, offset = 0) => invoke('getBuildArtifact', { artifactId, offset }),
-    getOutputSettings: () => invoke('getOutputSettings'),
-    configureOutputSettings: (input) => invoke('configureOutputSettings', input),
-    saveBuildArtifact: (artifactId) => invoke('saveBuildArtifact', { artifactId }),
-    chooseInstallRoot: (target) => invoke('chooseInstallRoot', { target }),
-    getTargetInstallations: () => invoke('getTargetInstallations'),
-    configureTargetInstallation: (input) => invoke('configureTargetInstallation', input),
-    installArtifact: (request) => invoke('installArtifact', request),
-  });
-}
 
 function createAppWindowOptions({ preload, width = 1280, height = 860, show = false } = {}) {
   if (typeof preload !== 'string' || !preload.trim()) fail('INVALID_APP_WINDOW', 'A preload path is required for the App window.');
@@ -1222,7 +1116,6 @@ module.exports = {
   normalizeInstallRequest,
   normalizeInstallRootRequest,
   normalizeBuildProgressEvent,
-  normalizeBuildProgressPayload,
   normalizeLibraryDownloadProgressPayload,
   summarizeBuild,
   summarizeBuildTargets,
