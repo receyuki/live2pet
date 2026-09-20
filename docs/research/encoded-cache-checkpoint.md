@@ -241,6 +241,10 @@ ZIP/validation, total IPC time, payload/chunk counts and sampled process memory.
 Nested intervals are not additive; serialization overhead is not independently
 isolated. There is no telemetry, native-runtime redistribution or throughput SLA.
 
+Final regression run: 401 Node tests and 190 UI tests passed; three opt-in tests
+were skipped. CommonJS syntax and UI TypeScript checks also passed. No product
+code changed during the final native acceptance run.
+
 The next implementation is #20: shorten exclusive renderer ownership to capture,
 then add an in-flight byte budget and backpressure for overlapping capture and
 encoding. This is not implemented by #19. Redundant ZIP recompression stays in
