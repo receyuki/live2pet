@@ -9,6 +9,45 @@ const { CacheStore, buildProjectTargets } = require('../../../packages/package-b
 const { createHostedBuildService } = require('../hosted-build-service.cjs');
 const { createPlannedBuildService } = require('../planned-build-service.cjs');
 const { createCaptureCacheBuildService } = require('../capture-cache-build.cjs');
+const { inspectPackage } = require('../scripts/benchmark-project-build.cjs');
+
+test('mixed encoded hits preserve pixels when the renderer carries state between Motions', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-motion-isolation-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  let cache = new CacheStore({ rootDir: path.join(root, 'warm'), maxBytes: 1024 * 1024 });
+  class StatefulRenderer extends SyntheticRenderer {
+    history = 0;
+    async prepareCapture() { this.history = 0; }
+    captureRgba(options) {
+      const frame = super.captureRgba(options);
+      for (let i = 0; i < frame.rgba.length; i += 4) if (frame.rgba[i + 3]) frame.rgba[i] = 20 + this.history * 20;
+      this.history++;
+      return frame;
+    }
+  }
+  const build = createPlannedBuildService({
+    getCache: () => cache,
+    resolveContext: async () => ({ runtimeVersion: 'b'.repeat(64), rendererVersion: 'synthetic-1', encoderVersion: 'sharp-test', targetVersion: '1' }),
+    buildProject: createHostedBuildService({
+      previewSession: { withRenderer: async (_input, run) => {
+        const renderer = new StatefulRenderer();
+        await renderer.load({ motions: ['idle', 'wave', 'jump'].map(id => ({ id, duration: 0.1 })) });
+        return run(renderer);
+      } }, buildProject: buildProjectTargets,
+    }),
+  });
+  const project = createProject({ projectId: 'isolation', name: 'Isolation', source: { kind: 'standard-directory', name: 'fixture', fingerprint: 'a'.repeat(64) }, targets: {
+    clawd: { mappings: { idle: 'motion:idle', thinking: 'motion:wave', working: 'motion:wave', sleeping: 'motion:idle' } },
+  } });
+  const input = { project, targets: ['clawd'], inputsByTarget: { clawd: { render: { preset: 'compact', width: 128, height: 128, samples: 2 } } }, optionsByTarget: { clawd: { package: true } } };
+  await build(input);
+  project.targets.clawd.mappings.thinking = 'motion:jump';
+  const mixed = await build(input);
+  assert.equal(mixed.builds.clawd.cache.hits, 2);
+  cache = new CacheStore({ rootDir: path.join(root, 'cold'), maxBytes: 1024 * 1024 });
+  const reference = await build(input);
+  assert.deepEqual(await inspectPackage(mixed.builds.clawd.package.buffer), await inspectPackage(reference.builds.clawd.package.buffer));
+});
 
 for (const changeAt of ['acquisition', 'encoding', 'publication', 'selected-runtime']) {
   test(`runtime changes at ${changeAt} cannot publish an earlier identity`, async t => {

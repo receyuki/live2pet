@@ -460,6 +460,11 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
       }
     }
     const motionIndex = motionIds.indexOf(motionId);
+    if (typeof renderer.prepareCapture === 'function') {
+      await renderer.prepareCapture();
+      await applyRendererVisualSettings(renderer, visualSettingsIdentity.settings, target);
+      checkCancelled(signal);
+    }
     progress(onProgress, 'render', 'started', { target, motionId, width, height, samples, duration, fraction: motionIndex / motionIds.length });
     const result = await sampleMotionCandidates(renderer, { motionId, duration, samples, width, height, includeEndpoint: target !== 'clawd', expressionId, signal, onFrame: ({ completed, total }) => progress(onProgress, 'render', 'frame-completed', { target, motionId, completed, total, fraction: (motionIndex + completed / total) / motionIds.length }) });
     checkCancelled(signal);

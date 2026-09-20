@@ -201,7 +201,7 @@ async function resolveRendererCacheContext(plan) {
     const installed = await spinePackService.resolve(plan.runtimeLine);
     const pinned = SPINE_PACKS.find(pack => pack.runtimeLine === installed.runtimeLine);
     runtimeVersion = createHash('sha256').update(JSON.stringify([pinned.id, pinned.version, pinned.files.map(file => file.sha256)])).digest('hex');
-    rendererVersion = 'spine-player-capture-v1';
+    rendererVersion = 'spine-player-capture-v2';
   } else {
     const runtime = await loadRuntimeForGeneration(runtimeSettingsPath(), Number(plan.cubismVersion));
     runtimeVersion = runtime.descriptor.fingerprint;

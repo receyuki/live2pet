@@ -257,6 +257,23 @@ test('Pixi Live2D adapter bridges the shared contract without bundling a runtime
   assert.ok(page.calls.some((call) => call.name === 'pageCapture'));
 });
 
+for (const cubismVersion of [2, 4]) test(`Cubism ${cubismVersion} prepares an independent inactive capture recipe`, async () => {
+  const page = new FakePixiPage();
+  const Adapter = cubismVersion === 2 ? LegacyPixiLive2dAdapter : PixiLive2dAdapter;
+  const renderer = new Adapter({ page });
+  await renderer.load({ ...pixiSource(), cubismVersion });
+  await renderer.playMotion('Base:wave', { loop: false, speed: 2, start: 0.25 });
+  await renderer.setExpression('smile');
+  await renderer.prepareCapture();
+  assert.equal(renderer.getState().time, 0);
+  assert.equal(renderer.getState().expressionId, null);
+  assert.equal(renderer.getState().playing, false);
+  assert.equal(page.calls.filter(call => call.name === 'pageLoad').length, 2);
+  assert.equal(page.calls.filter(call => call.name === 'pageUnload').length, 1);
+  assert.equal(page.calls.at(-1).args[0], false);
+  assert.equal((await renderer.captureRgba({ width: 8, height: 4, motionId: 'Base:wave', time: 0 })).rgba.length, 128);
+});
+
 test('Pixi binary capture preserves exact bytes, honors view offsets, and rejects truncated frames', async () => {
   const page = new FakePixiPage();
   page.supportsBinaryResults = true;
@@ -526,6 +543,12 @@ test('Spine serialized preview keeps inactive and manual playback stopped and re
   await renderer.playMotion('idle', { loop: false, start: 0.9 });
   assert.equal((await renderer.step(0.2)).time, 1);
   assert.equal(player.stopRequestAnimationFrame, true);
+  const previousPlayer = player;
+  await renderer.prepareCapture();
+  assert.notEqual(player, previousPlayer);
+  assert.equal(previousPlayer.stopRequestAnimationFrame, true);
+  assert.equal(player.stopRequestAnimationFrame, true);
+  assert.equal((await renderer.readState()).time, 0);
   await renderer.unload();
 
   const manual = new SpinePlayerAdapter({ page, playbackMode: 'manual' });

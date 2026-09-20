@@ -216,6 +216,13 @@ class SpinePlayerAdapter {
   async load(source) { if (source?.format !== 'spine' || !supportsSpineRuntime(source.runtimeLine) || !Array.isArray(source.motions)) fail('INVALID_RENDER_SOURCE', 'A supported Spine 4.x renderer source is required.'); const loaded = await this.evaluate(pageLoad, source, this.options); this.state = loaded.state; this.source = { ...source, motions: loaded.motions }; this.visualElements = loaded.slots; return { contractVersion: 1, motionCount: this.source.motions.length, expressionCount: 0 }; }
   async unload() { if (this.source) await this.evaluate(pageUnload); this.source = null; this.visualElements = []; this.state = { loaded: false, motionId: null, expressionId: null, time: 0, playing: false, loop: true, speed: 1 }; }
   async setActive(active) { this.requireLoaded(); this.state = await this.evaluate(pageSetActive, Boolean(active)); return this.getState(); }
+  async prepareCapture() {
+    this.requireLoaded();
+    const source = this.source;
+    await this.unload();
+    await this.load(source);
+    await this.setActive(false);
+  }
   getVisualElements() { this.requireLoaded(); return this.visualElements.map((item) => ({ ...item })); }
   getMotions() { this.requireLoaded(); return this.source.motions.map((item) => ({ ...item })); }
   async getVisualElementThumbnail(id) { this.requireLoaded(); if (!this.visualElements.some((item) => item.id === id)) fail('VISUAL_ELEMENT_NOT_FOUND', 'Spine Slot is not available.'); return this.evaluate(pageThumbnail, id); }

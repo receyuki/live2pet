@@ -560,6 +560,17 @@ class PixiLive2dAdapter {
     this.visualElements = [];
   }
 
+  async prepareCapture() {
+    this.requireLoaded();
+    // Native Motion/physics state is not fully represented by parameter values.
+    // Reload within the same view so each independently cached recipe starts
+    // from the authored initial model, regardless of which recipes were skipped.
+    const source = this.source;
+    await this.unload();
+    await this.load(source);
+    await this.setActive(false);
+  }
+
   async setActive(active) {
     this.requireLoaded();
     this.state = await this.evaluate(pageSetActive, Boolean(active));

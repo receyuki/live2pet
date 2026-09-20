@@ -16,6 +16,8 @@ GitHub Releases.
   Source Package fingerprints.
 - Start build capture from a fixed hidden renderer state and measure hidden
   part bounds at the requested output dimensions, independently of preview size.
+- Isolate native model state between captured animations so partial cache reuse
+  cannot inherit a preceding Motion's parameter or physics state.
 
 ### Fixes
 

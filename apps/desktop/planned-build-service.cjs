@@ -3,7 +3,7 @@ const CODEX_PROFILE = require('@live2pet/codex-target/profile');
 
 // Independent from Project/Source Package versions: algorithm changes only
 // invalidate generated assets, never the user's source or saved mappings.
-const PLAN_VERSION = 'encoded-before-render-v1';
+const PLAN_VERSION = 'encoded-before-render-v2-isolated-motions';
 
 function encodeAtlas(value) {
   const { encoded, ...metadata } = value;

@@ -19,6 +19,12 @@ still regenerates names, metadata, manifests, previews and validated packages.
 - Missing assets use the existing serialized native renderer operation, starting
   from a fresh hidden 768 × 768 session. Live2D resizes before bounds analysis;
   its per-Motion envelope cache also distinguishes output dimensions.
+- Each missing Motion reloads the native model inside that same view, then
+  reapplies visibility and expression. Stopping or rewinding a Motion alone
+  does not restore every native physics/parameter state. Recipe isolation is
+  required so skipping a cached predecessor cannot change subsequent pixels.
+  This adds model-load work on misses; full hits still load no model. A cheaper
+  state-reset path must prove equivalent pixels before replacing this baseline.
 - Supplied frames, candidates or custom renderer instances bypass the planned
   fast path: a model digest alone does not identify those inputs.
 - The plan revalidates identity after acquiring the renderer, before encoded
