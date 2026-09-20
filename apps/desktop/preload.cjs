@@ -46,6 +46,12 @@ function createAppPreloadApi({ ipcRenderer, channel = 'live2pet:app', getFilePat
       else if (typeof value === 'boolean') normalized[key] = value;
       else if (Array.isArray(value) && value.length <= 64 && value.every((item) => (typeof item === 'string' && item.length <= 256 && !/^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(item)) || (typeof item === 'number' && Number.isFinite(item)) || typeof item === 'boolean')) normalized[key] = [...value];
     }
+    if (payload.stageFractions && typeof payload.stageFractions === 'object' && !Array.isArray(payload.stageFractions)) {
+      const fractions = Object.fromEntries(['capture', 'validate', 'encode']
+        .filter(key => Object.hasOwn(payload.stageFractions, key) && Number.isFinite(payload.stageFractions[key]))
+        .map(key => [key, Math.max(0, Math.min(1, payload.stageFractions[key]))]));
+      if (Object.keys(fractions).length) normalized.stageFractions = fractions;
+    }
     return normalized;
   };
   const onBuildProgress = (listener) => {
@@ -181,7 +187,6 @@ function createAppPreloadApi({ ipcRenderer, channel = 'live2pet:app', getFilePat
 }
 
 module.exports = { createAppPreloadApi, APP_COMMANDS };
-
 
   return module.exports;
 })();

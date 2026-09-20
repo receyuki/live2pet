@@ -34,7 +34,19 @@ test('overlapping Clawd capture and encode progress counts only completed work f
   await buildProjectTargets({ project, targets: ['clawd'], inputsByTarget: { clawd: { renderer, render: { preset: 'compact', width: 128, height: 128, samples: 2 } } },
     optionsByTarget: { clawd: { captureBudgetBytes: 1, onEncodedAsset: (id, asset) => { encodedByMotion[id] = asset; } } }, onProgress: event => events.push(event),
   });
-  const value = event => progressPercent('clawd', event.stage === 'render' ? 'capture' : event.stage, event.fraction ?? (event.status === 'completed' ? 1 : 0), event.stageFractions);
+  const { normalizeBuildProgressEvent } = require('../../../packages/app-host/src/index.cjs');
+  let api;
+  let listener;
+  require('node:vm').runInNewContext(require('node:fs').readFileSync(require('node:path').join(__dirname, '../preload.cjs'), 'utf8'), {
+    require: () => ({ contextBridge: { exposeInMainWorld: (_name, exposed) => { api = exposed; } },
+      ipcRenderer: { invoke: async () => ({}), on: (_channel, handler) => { listener = handler; }, removeListener() {} }, webUtils: {} }),
+  });
+  let delivered;
+  api.onBuildProgress(event => { delivered = event; });
+  const value = event => {
+    listener({}, { protocolVersion: 1, buildId: 'progress-build', sequence: 1, ...normalizeBuildProgressEvent(event) });
+    return progressPercent('clawd', delivered.stage === 'render' ? 'capture' : delivered.stage, delivered.fraction ?? (delivered.status === 'completed' ? 1 : 0), delivered.stageFractions);
+  };
   const encodeStart = events.find(event => event.stage === 'encode' && event.status === 'started');
   assert.ok(value(encodeStart) < 50, 'starting overlapping encode must not imply capture is finished');
   const partial = events.find(event => event.stage === 'encode' && event.status === 'motion-completed');
