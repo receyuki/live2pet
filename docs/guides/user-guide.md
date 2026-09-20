@@ -78,7 +78,12 @@ Map Clawd and Codex independently. Required states must be filled; optional stat
 
 Clawd's **80 MiB** limit is a warning: a larger ZIP can be saved, but Clawd may reject it. Lower quality, resolution, or frame rate to reduce size. Codex uses fixed-frame short loops; use Clawd for full-length motions.
 
-Installation asks for confirmation. Replacing an installed package requires explicit confirmation and keeps a backup for rollback if installation fails.
+### Installation recovery
+
+Installation asks for confirmation. Building or saving a ZIP does not install it. Replacement is staged and checked before the previous package is moved to a backup; failures then attempt to restore that backup.
+
+- **Automatic recovery failed:** the error identifies a `.live2pet-backup-…` directory in the selected pet package folder and the original package ID. Close the host App, move any incomplete destination aside, then rename the preserved backup to that ID before retrying. Do not delete the preserved backup. On macOS, press **Command–Shift–.** in Finder to show hidden directories.
+- **Installed, but backup cleanup failed:** the new installation has already been verified and remains installed. Only the leftover backup directory named in the warning may be deleted; it is not needed by the new installation and may already be partially cleaned up.
 
 ## Updates
 

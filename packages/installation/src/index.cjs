@@ -190,27 +190,62 @@ async function installPackage({ target, packageBytes, targetRoot, platform, home
   if (conflictExists && policy === 'side-by-side') ({ id: resolvedId, path: destination } = uniqueSideBySidePath(root, identity.id));
   const stage = path.join(root, `.live2pet-stage-${crypto.randomUUID()}`);
   const backup = conflictExists && policy === 'upgrade' ? path.join(root, `.live2pet-backup-${crypto.randomUUID()}`) : null;
+  let backupCreated = false;
+  let published = false;
   progress(onProgress, 'stage', 'started', { packageId: resolvedId });
   try {
     fs.mkdirSync(stage, { recursive: true, mode: 0o700 });
     writeStagedEntries(stage, installEntries);
     verifyInstalledDirectory(stage, installEntries);
     progress(onProgress, 'stage', 'completed', { packageId: resolvedId });
-    if (backup) fs.renameSync(destination, backup);
+    if (backup) {
+      fs.renameSync(destination, backup);
+      backupCreated = true;
+    }
     if (typeof beforeCommit === 'function') await beforeCommit({ phase: 'before-commit', target, packageId: resolvedId, destination });
     progress(onProgress, 'commit', 'started', { packageId: resolvedId, conflict: policy });
     fs.renameSync(stage, destination);
+    published = true;
     verifyInstalledDirectory(destination, installEntries);
-    if (backup) fs.rmSync(backup, { recursive: true, force: true });
-    progress(onProgress, 'commit', 'completed', { packageId: resolvedId, conflict: policy });
-    return { protocolVersion: PROTOCOL_VERSION, target, packageId: resolvedId, path: destination, conflict: conflictExists ? policy : 'none', files: installEntries.map((entry) => entry.name), byteLength: installEntries.reduce((total, entry) => total + entry.bytes.byteLength, 0) };
   } catch (error) {
-    try { if (fs.existsSync(destination) && (!conflictExists || backup)) fs.rmSync(destination, { recursive: true, force: true }); } catch {}
-    try { if (backup && fs.existsSync(backup) && !fs.existsSync(destination)) fs.renameSync(backup, destination); } catch {}
+    let rollbackError;
+    try {
+      if (published) fs.rmSync(destination, { recursive: true, force: true });
+      if (backupCreated) {
+        if (fs.existsSync(destination)) throw new Error('The installation destination is still occupied.');
+        fs.renameSync(backup, destination);
+      }
+    } catch (cause) { rollbackError = cause; }
     try { if (fs.existsSync(stage)) fs.rmSync(stage, { recursive: true, force: true }); } catch {}
+    if (rollbackError) {
+      const backupDirectory = backupCreated ? path.basename(backup) : null;
+      const recovery = backupDirectory
+        ? `The previous package is preserved in ${backupDirectory} inside the pet package folder. Close the host app, move any incomplete ${resolvedId} folder aside, and restore the backup as ${resolvedId} before retrying.`
+        : `Close the host app and remove the incomplete ${resolvedId} folder from the pet package folder before retrying.`;
+      fail('INSTALL_ROLLBACK_FAILED', `Installation failed and automatic recovery could not finish. ${recovery}`, {
+        cause: error.code || error.message || String(error),
+        rollbackCause: rollbackError.code || rollbackError.message || String(rollbackError),
+        packageId: resolvedId,
+        backupDirectory,
+      });
+    }
     if (error instanceof InstallationError) throw error;
     fail('INSTALL_FAILED', 'The package could not be installed.', { cause: error && error.code ? error.code : String(error && error.message ? error.message : error) });
   }
+  // Verification commits the new package; housekeeping must never roll it back.
+  let cleanupWarning;
+  if (backupCreated) {
+    try { fs.rmSync(backup, { recursive: true, force: true }); } catch {
+      cleanupWarning = { backupDirectory: path.basename(backup) };
+    }
+  }
+  progress(onProgress, 'commit', 'completed', { packageId: resolvedId, conflict: policy });
+  return {
+    protocolVersion: PROTOCOL_VERSION, target, packageId: resolvedId, path: destination,
+    conflict: conflictExists ? policy : 'none', files: installEntries.map((entry) => entry.name),
+    byteLength: installEntries.reduce((total, entry) => total + entry.bytes.byteLength, 0),
+    ...(cleanupWarning ? { cleanupWarning } : {}),
+  };
 }
 
 module.exports = {

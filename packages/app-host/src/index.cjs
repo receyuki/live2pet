@@ -558,6 +558,7 @@ function summarizeInstall(result = {}, { customRoot = false } = {}) {
     files: Array.isArray(result.files) ? [...result.files] : [],
     byteLength: result.byteLength,
     path: customRoot ? '<selected-install-root>' : '<platform-default-target-root>',
+    ...(result.cleanupWarning ? { cleanupWarning: sanitizeErrorDetail(result.cleanupWarning) } : {}),
   };
 }
 

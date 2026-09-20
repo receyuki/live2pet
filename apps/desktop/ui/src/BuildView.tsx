@@ -1,7 +1,7 @@
 import { Button, ButtonGroup, Card, Chip, ProgressBar, Input, Label, TextField } from "@heroui/react";
 import { CircleCheck, Download, FolderOpen, PackageCheck, Square, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { BuildArtifact, BuildTarget, InstallRootResult, Live2PetProject, RenderPreset, SourceInspection, TargetInstallations, ClawdRenderSettings } from "./app-host";
+import type { BuildArtifact, BuildTarget, InstallResult, InstallRootResult, Live2PetProject, RenderPreset, SourceInspection, TargetInstallations, ClawdRenderSettings } from "./app-host";
 import { chooseInstallRoot, DesktopApiError, hasBuildApi, installArtifact, getTargetInstallations, hasTargetInstallationApi } from "./app-host";
 import { downloadBuildArtifact } from "./build-artifact";
 import type { BuildState } from "./build-state";
@@ -107,14 +107,17 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
       const sizeWarning = target === 'clawd' && artifact.byteLength > CLAWD_PROFILE.package.maxBytes ? `\n\n${t('clawdSizeWarning', { size: formatBytes(artifact.byteLength), limit: formatBytes(CLAWD_PROFILE.package.maxBytes) })}` : '';
       if (!window.confirm((installPath ? t('confirmInstallAt', { filename: artifact.filename, path: installPath }) : t("confirmInstallArtifact", { filename: artifact.filename })) + warning + sizeWarning)) return;
       const request = { artifactId: artifact.artifactId, target, confirmInstall: true as const, ...(locationId ? { locationId } : {}) };
+      let installed: InstallResult;
       try {
-        await installArtifact({ ...request, conflict: 'cancel' });
+        installed = await installArtifact({ ...request, conflict: 'cancel' });
       } catch (cause) {
         if (!(cause instanceof DesktopApiError) || cause.code !== 'INSTALL_CONFLICT') throw cause;
         if (!window.confirm(t('confirmReplaceInstall', { filename: artifact.filename }))) return;
-        await installArtifact({ ...request, conflict: 'upgrade' });
+        installed = await installArtifact({ ...request, conflict: 'upgrade' });
       }
-      setFeedback((value) => ({ ...value, [target]: t("installSucceeded") }));
+      setFeedback((value) => ({ ...value, [target]: installed.cleanupWarning
+        ? t('installCleanupWarning', { value: installed.cleanupWarning.backupDirectory })
+        : t("installSucceeded") }));
     } catch (cause) {
       setFeedback((value) => ({ ...value, [target]: cause instanceof Error ? cause.message : t("buildFailed") }));
     }

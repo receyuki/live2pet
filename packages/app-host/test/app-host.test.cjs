@@ -823,7 +823,7 @@ test('installs only a current artifact after explicit confirmation and redacts t
         error.details = { path: '/Users/private/Library/Application Support/live2pet' };
         throw error;
       }
-      return { protocolVersion: 1, target: input.target, packageId: 'app-install', conflict: input.conflict, files: ['pet.json'], byteLength: 3, path: '/Users/private/Library/Application Support/live2pet/app-install' };
+      return { protocolVersion: 1, target: input.target, packageId: 'app-install', conflict: input.conflict, files: ['pet.json'], byteLength: 3, path: '/Users/private/Library/Application Support/live2pet/app-install', cleanupWarning: { backupDirectory: '.live2pet-backup-retained' } };
     },
   });
   const built = await router({ protocolVersion: 1, method: 'buildProject', args: [{ project: { projectId: 'app-install' }, targets: ['codex-pet'] }] });
@@ -839,6 +839,7 @@ test('installs only a current artifact after explicit confirmation and redacts t
   assert.equal(installed.ok, true);
   assert.equal(installed.result.path, '<platform-default-target-root>');
   assert.equal(installed.result.packageId, 'app-install');
+  assert.deepEqual(installed.result.cleanupWarning, { backupDirectory: '.live2pet-backup-retained' });
   assert.deepEqual(installed.progress, [{ stage: 'commit', status: 'completed', target: 'codex-pet' }]);
   assert.deepEqual(calls.map((input) => ({ target: input.target, conflict: input.conflict, bytes: [...input.packageBytes] })), [
     { target: 'codex-pet', conflict: 'cancel', bytes: [1, 2, 3] },
@@ -847,6 +848,44 @@ test('installs only a current artifact after explicit confirmation and redacts t
   const mismatch = await router({ protocolVersion: 1, method: 'installArtifact', args: [{ artifactId, target: 'clawd', confirmInstall: true }] });
   assert.equal(mismatch.ok, false);
   assert.equal(mismatch.error.code, 'INSTALL_TARGET_MISMATCH');
+});
+
+test('explicit App installation returns actionable recovery failure without exposing local paths', async (t) => {
+  const { createCodexPetZip } = require('../../package-build/src/index.cjs');
+  const { installPackage } = require('../../installation/src/index.cjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-install-router-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const archive = await createCodexPetZip({ manifest: { id: 'recovery-pet', displayName: 'Recovery Pet', description: 'Synthetic', spritesheetPath: 'spritesheet.webp' }, spritesheet: Uint8Array.from([1, 2, 3]) });
+  const existing = await installPackage({ target: 'codex-pet', packageBytes: archive.buffer, targetRoot: root });
+  const prior = fs.readFileSync(path.join(existing.path, 'pet.json'));
+  const rename = fs.renameSync;
+  t.mock.method(fs, 'renameSync', (from, to) => {
+    if (path.basename(from).startsWith('.live2pet-backup-')) throw Object.assign(new Error('restore denied'), { code: 'EACCES' });
+    return rename(from, to);
+  });
+  let installs = 0;
+  const router = createAppIpcRouter({
+    buildProjectService: async () => ({ projectId: 'install-recovery', targets: ['codex-pet'], builds: { 'codex-pet': { target: 'codex-pet', package: { artifactName: 'pet.zip', byteLength: archive.byteLength, buffer: archive.buffer } } } }),
+    installPackageService: (input) => {
+      installs += 1;
+      return installPackage({ ...input, targetRoot: root, beforeCommit: () => { throw new Error('publication interrupted'); } });
+    },
+  });
+  t.after(() => router.close());
+  const built = await router({ protocolVersion: 1, method: 'buildProject', args: [{ project: { projectId: 'install-recovery' }, targets: ['codex-pet'] }] });
+  assert.equal(built.ok, true);
+  const artifactId = built.result.artifacts[0].artifactId;
+  assert.equal((await router({ protocolVersion: 1, method: 'getBuildArtifact', args: [{ artifactId }] })).ok, true);
+  assert.equal(installs, 0);
+
+  const installed = await router({ protocolVersion: 1, method: 'installArtifact', args: [{ artifactId, target: 'codex-pet', conflict: 'upgrade', confirmInstall: true }] });
+  assert.equal(installs, 1);
+  assert.equal(installed.ok, false);
+  assert.equal(installed.error.code, 'INSTALL_ROLLBACK_FAILED');
+  assert.ok(installed.error.message.includes(installed.error.details.backupDirectory));
+  assert.equal(installed.error.details.packageId, 'recovery-pet');
+  assert.equal(JSON.stringify(installed).includes(root), false);
+  assert.deepEqual(fs.readFileSync(path.join(root, installed.error.details.backupDirectory, 'pet.json')), prior);
 });
 
 test('keeps a native install-folder choice behind an opaque location id', async () => {

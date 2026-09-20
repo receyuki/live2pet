@@ -157,7 +157,7 @@ export type TargetInstallation = {
   root: { path: string; source: 'manual' | 'default' | 'environment'; state: 'ready' | 'will-create' | 'not-directory' | 'unavailable' };
 };
 export type TargetInstallations = { platform: string; targets: TargetInstallation[] };
-export type InstallResult = { protocolVersion?: number; target: BuildTarget; packageId?: string; conflict?: string; files: string[]; byteLength?: number; path: '<selected-install-root>' | '<platform-default-target-root>' };
+export type InstallResult = { protocolVersion?: number; target: BuildTarget; packageId?: string; conflict?: string; files: string[]; byteLength?: number; path: '<selected-install-root>' | '<platform-default-target-root>'; cleanupWarning?: { backupDirectory: string } };
 
 export type PreviewBounds = { x: number; y: number; width: number; height: number };
 export type VisualSettings = { hiddenElementIds: string[] };

@@ -62,6 +62,162 @@ test('upgrade restores the prior installation when commit fails', async () => {
   assert.deepEqual(fs.readdirSync(root), ['demo-pet']);
 });
 
+test('upgrade preserves the installed package when staging runs out of space', async (t) => {
+  const root = tempDir();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const archive = await codexArchive();
+  await installPackage({ target: 'codex-pet', packageBytes: archive.buffer, targetRoot: root });
+  const manifest = path.join(root, 'demo-pet', 'pet.json');
+  const previous = fs.readFileSync(manifest);
+  const writeFile = fs.writeFileSync;
+  t.mock.method(fs, 'writeFileSync', (filename, ...args) => {
+    if (path.basename(path.dirname(filename)).startsWith('.live2pet-stage-')) {
+      throw Object.assign(new Error('disk full'), { code: 'ENOSPC' });
+    }
+    return writeFile(filename, ...args);
+  });
+
+  await assert.rejects(
+    () => installPackage({ target: 'codex-pet', packageBytes: archive.buffer, targetRoot: root, conflict: 'upgrade' }),
+    (error) => error.code === 'INSTALL_FAILED' && error.details.cause === 'ENOSPC',
+  );
+  assert.deepEqual(fs.readFileSync(manifest), previous);
+  assert.deepEqual(fs.readdirSync(root), ['demo-pet']);
+});
+
+test('failed restoration retains the previous package and reports how to recover it', async (t) => {
+  const root = tempDir();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const archive = await codexArchive();
+  await installPackage({ target: 'codex-pet', packageBytes: archive.buffer, targetRoot: root });
+  const prior = fs.readFileSync(path.join(root, 'demo-pet', 'pet.json'));
+  const rename = fs.renameSync;
+  t.mock.method(fs, 'renameSync', (from, to) => {
+    if (path.basename(from).startsWith('.live2pet-backup-')) {
+      throw Object.assign(new Error('restore denied'), { code: 'EACCES' });
+    }
+    return rename(from, to);
+  });
+
+  await assert.rejects(
+    () => installPackage({ target: 'codex-pet', packageBytes: archive.buffer, targetRoot: root, conflict: 'upgrade', beforeCommit: () => { throw new Error('publication interrupted'); } }),
+    (error) => {
+      assert.equal(error.code, 'INSTALL_ROLLBACK_FAILED');
+      assert.equal(error.details.cause, 'publication interrupted');
+      assert.equal(error.details.rollbackCause, 'EACCES');
+      assert.match(error.details.backupDirectory, /^\.live2pet-backup-/);
+      assert.equal(error.details.packageId, 'demo-pet');
+      assert.ok(error.message.includes(error.details.backupDirectory));
+      assert.deepEqual(fs.readFileSync(path.join(root, error.details.backupDirectory, 'pet.json')), prior);
+      return true;
+    },
+  );
+  assert.equal(fs.readdirSync(root).length, 1);
+});
+
+test('backup cleanup failure never rolls back an already verified installation', async (t) => {
+  const root = tempDir();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const archive = await codexArchive();
+  await installPackage({ target: 'codex-pet', packageBytes: archive.buffer, targetRoot: root });
+  fs.writeFileSync(path.join(root, 'demo-pet', 'spritesheet.webp'), 'old pet');
+  const remove = fs.rmSync;
+  t.mock.method(fs, 'rmSync', (directory, options) => {
+    if (path.basename(directory).startsWith('.live2pet-backup-')) {
+      remove(path.join(directory, 'pet.json'));
+      throw Object.assign(new Error('cleanup interrupted'), { code: 'EACCES' });
+    }
+    return remove(directory, options);
+  });
+
+  const result = await installPackage({ target: 'codex-pet', packageBytes: archive.buffer, targetRoot: root, conflict: 'upgrade' });
+  assert.deepEqual(fs.readFileSync(path.join(result.path, 'spritesheet.webp')), Buffer.from([1, 2, 3]));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(result.path, 'pet.json'))).id, 'demo-pet');
+  assert.match(result.cleanupWarning.backupDirectory, /^\.live2pet-backup-/);
+  assert.deepEqual(fs.readdirSync(root).sort(), [result.cleanupWarning.backupDirectory, 'demo-pet'].sort());
+});
+
+for (const target of ['codex-pet', 'clawd']) {
+  for (const phase of ['stage creation', 'staging verification', 'backup movement', 'publication', 'installed verification']) {
+    test(`${target} upgrade preserves all old files after ${phase} failure`, async (t) => {
+      const root = tempDir();
+      t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+      const archive = await (target === 'clawd' ? clawdArchive() : codexArchive());
+      const existing = await installPackage({ target, packageBytes: archive.buffer, targetRoot: root });
+      const previous = existing.files.map((name) => ({ name, bytes: fs.readFileSync(path.join(existing.path, name)) }));
+      const inStage = (filename) => path.relative(root, filename).split(path.sep)[0].startsWith('.live2pet-stage-');
+      const method = phase === 'stage creation' ? 'mkdirSync' : phase.includes('verification') ? 'statSync' : 'renameSync';
+      const operation = fs[method];
+      let injected = false;
+      t.mock.method(fs, method, (...args) => {
+        const [from, to] = args;
+        const matches = phase === 'stage creation' || phase === 'staging verification' ? inStage(from)
+          : phase === 'backup movement' ? from === existing.path
+          : phase === 'publication' ? inStage(from) && to === existing.path
+          : from.startsWith(`${existing.path}${path.sep}`);
+        if (!injected && matches) {
+          injected = true;
+          throw Object.assign(new Error(`${phase} failed`), { code: 'EIO' });
+        }
+        return operation(...args);
+      });
+      const events = [];
+
+      await assert.rejects(
+        () => installPackage({ target, packageBytes: archive.buffer, targetRoot: root, conflict: 'upgrade', onProgress: (event) => events.push(event) }),
+        (error) => error.code === 'INSTALL_FAILED' && error.details.cause === 'EIO',
+      );
+      assert.equal(injected, true);
+      for (const file of previous) assert.deepEqual(fs.readFileSync(path.join(existing.path, file.name)), file.bytes);
+      assert.deepEqual(fs.readdirSync(root), [existing.packageId]);
+      assert.equal(events.some((event) => event.stage === 'commit' && event.status === 'completed'), false);
+    });
+  }
+
+  test(`${target} upgrade publishes the replacement and removes its temporary directories`, async (t) => {
+    const root = tempDir();
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const archive = await (target === 'clawd' ? clawdArchive() : codexArchive());
+    const existing = await installPackage({ target, packageBytes: archive.buffer, targetRoot: root });
+    fs.writeFileSync(path.join(existing.path, 'old-only.txt'), 'previous package');
+    const installed = await installPackage({ target, packageBytes: archive.buffer, targetRoot: root, conflict: 'upgrade' });
+    assert.equal(installed.conflict, 'upgrade');
+    assert.equal(installed.cleanupWarning, undefined);
+    assert.equal(fs.existsSync(path.join(installed.path, 'old-only.txt')), false);
+    assert.deepEqual(fs.readdirSync(root), [installed.packageId]);
+    for (const name of installed.files) assert.ok(fs.readFileSync(path.join(installed.path, name)).length > 0);
+  });
+}
+
+test('a failed destination cleanup retains the backup instead of overwriting either copy', async (t) => {
+  const root = tempDir();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const archive = await codexArchive();
+  const existing = await installPackage({ target: 'codex-pet', packageBytes: archive.buffer, targetRoot: root });
+  fs.writeFileSync(path.join(existing.path, 'old-only.txt'), 'previous package');
+  const stat = fs.statSync;
+  const remove = fs.rmSync;
+  t.mock.method(fs, 'statSync', (filename, ...args) => {
+    if (filename === path.join(existing.path, 'pet.json')) throw Object.assign(new Error('verification interrupted'), { code: 'EIO' });
+    return stat(filename, ...args);
+  });
+  t.mock.method(fs, 'rmSync', (directory, options) => {
+    if (directory === existing.path) throw Object.assign(new Error('destination locked'), { code: 'EACCES' });
+    return remove(directory, options);
+  });
+  await assert.rejects(
+    () => installPackage({ target: 'codex-pet', packageBytes: archive.buffer, targetRoot: root, conflict: 'upgrade' }),
+    (error) => {
+      assert.equal(error.code, 'INSTALL_ROLLBACK_FAILED');
+      const backup = path.join(root, error.details.backupDirectory);
+      assert.equal(fs.readFileSync(path.join(backup, 'old-only.txt'), 'utf8'), 'previous package');
+      assert.equal(fs.existsSync(existing.path), true);
+      assert.deepEqual(fs.readdirSync(root).sort(), [error.details.backupDirectory, 'demo-pet'].sort());
+      return true;
+    },
+  );
+});
+
 test('rejects unsafe archive paths before touching the install root', async () => {
   const fakeZip = {
     ZipReader: class {

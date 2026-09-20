@@ -6,6 +6,14 @@ GitHub Releases.
 
 ## [Unreleased]
 
+### Fixes
+
+- Preserve the installed pet when an upgrade fails during staging, backup,
+  publication, or verification, including disk-full errors.
+- Retain the previous package and show recovery instructions when automatic
+  rollback fails. A leftover-backup cleanup failure no longer rolls back a
+  verified new installation and is shown as a warning instead.
+
 ### Compatibility
 
 - Windows x64 packaging and the supported desktop workflow have completed CI

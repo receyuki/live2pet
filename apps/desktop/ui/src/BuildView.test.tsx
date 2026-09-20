@@ -175,4 +175,28 @@ describe("BuildView", () => {
     expect(installArtifact).toHaveBeenNthCalledWith(1, { artifactId: 'artifact-1', target: 'clawd', conflict: 'cancel', confirmInstall: true });
     expect(installArtifact).toHaveBeenNthCalledWith(2, { artifactId: 'artifact-1', target: 'clawd', conflict: 'upgrade', confirmInstall: true });
   });
+
+  it.each(['en', 'zh-CN'] as const)('reports successful installation with a leftover backup (%s)', async (locale) => {
+    const state = initialBuildState();
+    state.clawd = { ...state.clawd, status: 'succeeded', progress: 100, artifact: { artifactId: 'artifact-1', target: 'clawd', filename: 'clawd.zip', byteLength: 3 } };
+    vi.mocked(installArtifact).mockResolvedValueOnce({ target: 'clawd', files: [], path: '<selected-install-root>', cleanupWarning: { backupDirectory: '.live2pet-backup-retained' } });
+    render(<BuildView locale={locale} project={project} inspection={inspection} runtimeReady state={state} onPreset={vi.fn()} onBuild={vi.fn()} onCancel={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole('button', { name: locale === 'en' ? 'Install Clawd Theme Package' : '安装 Clawd 主题包' }));
+
+    expect(await screen.findByText(/\.live2pet-backup-retained/)).toHaveTextContent(locale === 'en' ? 'installed' : '已安装');
+  });
+
+  it('displays recovery instructions when confirmed installation cannot roll back', async () => {
+    const state = initialBuildState();
+    state.clawd = { ...state.clawd, status: 'succeeded', progress: 100, artifact: { artifactId: 'artifact-1', target: 'clawd', filename: 'clawd.zip', byteLength: 3 } };
+    const recovery = 'Automatic recovery failed. Restore .live2pet-backup-retained as demo-pet before retrying.';
+    vi.mocked(installArtifact).mockRejectedValueOnce(new DesktopApiError('INSTALL_ROLLBACK_FAILED', recovery));
+    render(<BuildView locale="en" project={project} inspection={inspection} runtimeReady state={state} onPreset={vi.fn()} onBuild={vi.fn()} onCancel={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Install Clawd Theme Package' }));
+
+    expect(await screen.findByText(recovery)).toBeVisible();
+    expect(screen.queryByText('Package installed', { exact: true })).not.toBeInTheDocument();
+  });
 });

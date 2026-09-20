@@ -51,6 +51,7 @@
 3. **Build and enjoy** — name your pet, choose quality, then save the ZIP or install it.
 
 Your models stay local. Original source files stay unchanged.
+Replacing an installed pet requires confirmation and protects the previous package if the upgrade fails. [Installation recovery →](docs/guides/user-guide.md#installation-recovery)
 Pointer tracking is preview-only; exported Live2D frames use a stable neutral focus and 60 Hz physics integration regardless of output frame rate.
 
 ## Desktop preview
