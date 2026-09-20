@@ -457,11 +457,13 @@ function pageCapture(motionId, time, width, height, priority, binary = false) {
     if (focus) for (const key of ['targetX', 'targetY', 'x', 'y', 'vx', 'vy']) focus[key] = 0;
     try {
       runtime.app.stop();
+      const boundsStarted = performance.now();
       if (width !== runtime.app.renderer.width || height !== runtime.app.renderer.height) {
         runtime.app.renderer.resize(width, height);
         runtime.fit();
       }
       await runtime.prepareVisualCapture?.(motionId);
+      const nativeBoundsPreparationMs = performance.now() - boundsStarted;
       const captureTime = Math.min(Math.max(0, time), motion.duration);
       const restart = runtime.state.motionId !== motionId || captureTime <= runtime.state.time;
       const previousTime = restart ? 0 : runtime.state.time;
@@ -490,13 +492,17 @@ function pageCapture(motionId, time, width, height, priority, binary = false) {
         }
         runtime.model.update(Math.max(0.001, remaining));
       }
+      const renderStarted = performance.now();
       runtime.render();
+      const nativeRenderMs = performance.now() - renderStarted;
+      const readbackStarted = performance.now();
       const pixels = runtime.readPixels();
+      const nativeReadbackMs = performance.now() - readbackStarted;
       // Electron preserves typed arrays across executeJavaScript. Expanding
       // millions of channels into JS numbers makes capture serialization far
       // more expensive than the render itself. Browser-only hosts retain the
       // serializable-array path unless they explicitly support binary results.
-      return { width, height, motionId: motion.id, time: captureTime, playing: previousPlaying, rgba: binary ? pixels : Array.from(pixels) };
+      return { width, height, motionId: motion.id, time: captureTime, playing: previousPlaying, rgba: binary ? pixels : Array.from(pixels), metrics: { nativeBoundsPreparationMs, nativeRenderMs, nativeReadbackMs } };
     } finally {
       runtime.state.playing = previousPlaying;
       if (focusSnapshot) for (const [key, value] of Object.entries(focusSnapshot)) focus[key] = value;
@@ -708,7 +714,8 @@ class PixiLive2dAdapter {
     this.state.motionId = motion.id;
     this.state.time = captureTime;
     this.state.playing = capture.playing == null ? this.state.playing : Boolean(capture.playing);
-    return { contractVersion: 1, width: targetWidth, height: targetHeight, motionId: motion.id, time: captureTime, rgba };
+    const metrics = Object.fromEntries(['nativeBoundsPreparationMs', 'nativeRenderMs', 'nativeReadbackMs'].filter((key) => Number.isFinite(capture.metrics?.[key]) && capture.metrics[key] >= 0).map((key) => [key, capture.metrics[key]]));
+    return { contractVersion: 1, width: targetWidth, height: targetHeight, motionId: motion.id, time: captureTime, rgba, ...(Object.keys(metrics).length ? { metrics } : {}) };
   }
 }
 

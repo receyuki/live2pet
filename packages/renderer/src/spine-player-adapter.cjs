@@ -201,7 +201,46 @@ function pageVisualElements() { const runtime = window.__live2petSpine; return r
 function pageVisualSettings(settings) { const runtime = window.__live2petSpine; runtime.hidden = [...settings.hiddenElementIds]; runtime.pose(runtime.state.time); const bounds = runtime.readBounds(); if (bounds) runtime.fit(runtime.state.motionId); runtime.draw(); return { hiddenElementIds: [...runtime.hidden] }; }
 function pageThumbnail(id) { const runtime = window.__live2petSpine; const saved = [...runtime.hidden]; runtime.hidden = runtime.player.skeleton.slots.filter((slot) => `slot:${slot.data.name}` !== id).map((slot) => `slot:${slot.data.name}`); runtime.pose(runtime.state.time); try { if (!runtime.readBounds()) return { id, dataUrl: null }; runtime.fit(runtime.state.motionId); runtime.draw(); return { id, dataUrl: runtime.player.canvas.toDataURL('image/png') }; } finally { runtime.hidden = saved; runtime.pose(runtime.state.time); if (runtime.readBounds()) runtime.fit(runtime.state.motionId); runtime.draw(); } }
 function pageScan(id) { const runtime = window.__live2petSpine; const saved = [...runtime.hidden]; if (runtime.state.motionId !== id) { runtime.player.setAnimation(id, runtime.state.loop); runtime.state.motionId = id; runtime.state.time = 0; } runtime.pose(runtime.state.time); const full = runtime.readBounds(); const fullArea = Math.max(1, (full?.width || 0) * (full?.height || 0)); const elements = runtime.player.skeleton.slots.map((slot) => ({ id: `slot:${slot.data.name}` })); const candidates = elements.map((element) => { const bounds = runtime.slotBounds(element.id); return { id: element.id, dataUrl: null, time: runtime.state.time, areaRatio: bounds ? Math.min(1, bounds.width * bounds.height / fullArea) : 0 }; }).filter((item) => item.areaRatio >= 0.15).sort((a, b) => b.areaRatio - a.areaRatio).slice(0, 8); runtime.hidden = saved; runtime.pose(runtime.state.time); runtime.draw(); return { motionId: id, candidates }; }
-function pageCapture(id, time, width, height, binary) { const runtime = window.__live2petSpine; const canvas = runtime.player.canvas; const previousWidth = canvas.style.width, previousHeight = canvas.style.height; const dpr = window.devicePixelRatio || 1; canvas.style.width = `${width / dpr}px`; canvas.style.height = `${height / dpr}px`; try { if (runtime.state.motionId !== id) { runtime.player.setAnimation(id, runtime.state.loop); runtime.state.motionId = id; runtime.fit(id); } runtime.state.time = time; runtime.pose(time); runtime.draw(); const gl = runtime.player.context.gl; const pixels = new Uint8Array(width * height * 4); gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels); const stride = width * 4, row = new Uint8Array(stride); for (let y = 0; y < Math.floor(height / 2); y += 1) { const top = y * stride, bottom = (height - y - 1) * stride; row.set(pixels.subarray(top, top + stride)); pixels.copyWithin(top, bottom, bottom + stride); pixels.set(row, bottom); } return { width, height, motionId: id, time, rgba: binary ? pixels : Array.from(pixels) }; } finally { canvas.style.width = previousWidth; canvas.style.height = previousHeight; runtime.draw(); } }
+function pageCapture(id, time, width, height, binary) {
+  const runtime = window.__live2petSpine;
+  const canvas = runtime.player.canvas;
+  const previousWidth = canvas.style.width, previousHeight = canvas.style.height;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.width = `${width / dpr}px`;
+  canvas.style.height = `${height / dpr}px`;
+  try {
+    let nativeBoundsPreparationMs = 0;
+    if (runtime.state.motionId !== id) {
+      runtime.player.setAnimation(id, runtime.state.loop);
+      runtime.state.motionId = id;
+      const boundsStarted = performance.now();
+      runtime.fit(id);
+      nativeBoundsPreparationMs = performance.now() - boundsStarted;
+    }
+    runtime.state.time = time;
+    runtime.pose(time);
+    const renderStarted = performance.now();
+    runtime.draw();
+    const nativeRenderMs = performance.now() - renderStarted;
+    const readbackStarted = performance.now();
+    const gl = runtime.player.context.gl;
+    const pixels = new Uint8Array(width * height * 4);
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    const stride = width * 4, row = new Uint8Array(stride);
+    for (let y = 0; y < Math.floor(height / 2); y += 1) {
+      const top = y * stride, bottom = (height - y - 1) * stride;
+      row.set(pixels.subarray(top, top + stride));
+      pixels.copyWithin(top, bottom, bottom + stride);
+      pixels.set(row, bottom);
+    }
+    const nativeReadbackMs = performance.now() - readbackStarted;
+    return { width, height, motionId: id, time, rgba: binary ? pixels : Array.from(pixels), metrics: { nativeBoundsPreparationMs, nativeRenderMs, nativeReadbackMs } };
+  } finally {
+    canvas.style.width = previousWidth;
+    canvas.style.height = previousHeight;
+    runtime.draw();
+  }
+}
 
 class SpinePlayerAdapter {
   constructor({ page, ...options } = {}) {
@@ -241,7 +280,7 @@ class SpinePlayerAdapter {
   async readState() { this.requireLoaded(); this.state = await this.evaluate(pageState); return this.getState(); }
   async seek(time) { const state = await this.readState(); this.state = await this.evaluate(pageSeek, finite(time, 'Animation seek time', 0, this.motion(state.motionId).duration)); return this.getState(); }
   async getBounds({ motionId = this.state.motionId } = {}) { this.motion(motionId); return this.evaluate(pageBounds, motionId); }
-  async captureRgba({ width = this.options.width, height = this.options.height, motionId = this.state.motionId, time = this.state.time } = {}) { const motion = this.motion(motionId); const targetWidth = integer(width, 'Capture width'), targetHeight = integer(height, 'Capture height'), captureTime = finite(time, 'Capture time', 0, Math.max(0, motion.duration)); const capture = await this.evaluate(pageCapture, motionId, captureTime, targetWidth, targetHeight, this.page.supportsBinaryResults === true); const rgba = ArrayBuffer.isView(capture?.rgba) ? new Uint8Array(capture.rgba.buffer, capture.rgba.byteOffset, capture.rgba.byteLength) : Array.isArray(capture?.rgba) ? Uint8Array.from(capture.rgba) : null; if (!rgba || rgba.byteLength !== targetWidth * targetHeight * 4) fail('INVALID_RENDER_CAPTURE', 'Spine renderer returned an invalid RGBA capture.'); this.state.motionId = motionId; this.state.time = captureTime; return { contractVersion: 1, width: targetWidth, height: targetHeight, motionId, time: captureTime, rgba }; }
+  async captureRgba({ width = this.options.width, height = this.options.height, motionId = this.state.motionId, time = this.state.time } = {}) { const motion = this.motion(motionId); const targetWidth = integer(width, 'Capture width'), targetHeight = integer(height, 'Capture height'), captureTime = finite(time, 'Capture time', 0, Math.max(0, motion.duration)); const capture = await this.evaluate(pageCapture, motionId, captureTime, targetWidth, targetHeight, this.page.supportsBinaryResults === true); const rgba = ArrayBuffer.isView(capture?.rgba) ? new Uint8Array(capture.rgba.buffer, capture.rgba.byteOffset, capture.rgba.byteLength) : Array.isArray(capture?.rgba) ? Uint8Array.from(capture.rgba) : null; if (!rgba || rgba.byteLength !== targetWidth * targetHeight * 4) fail('INVALID_RENDER_CAPTURE', 'Spine renderer returned an invalid RGBA capture.'); this.state.motionId = motionId; this.state.time = captureTime; const metrics = Object.fromEntries(['nativeBoundsPreparationMs', 'nativeRenderMs', 'nativeReadbackMs'].filter((key) => Number.isFinite(capture.metrics?.[key]) && capture.metrics[key] >= 0).map((key) => [key, capture.metrics[key]])); return { contractVersion: 1, width: targetWidth, height: targetHeight, motionId, time: captureTime, rgba, ...(Object.keys(metrics).length ? { metrics } : {}) }; }
 }
 
 module.exports = {

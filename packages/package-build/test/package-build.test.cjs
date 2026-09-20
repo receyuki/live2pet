@@ -1028,6 +1028,12 @@ test('project builds distinguish capture preparation and raw cache work on cold 
   const warm = (await buildProjectTargets(input)).builds.clawd;
   assert.ok(cold.timings.capturePreparationMs > 0);
   assert.equal(cold.timings.capturedRgbaBytes, 2048);
+  assert.equal(cold.timings.capture.rgbaBytes, 2048);
+  assert.ok(cold.timings.capture.captureRoundtripMs >= 0);
+  assert.ok(cold.timings.capture.alphaBoundsMs >= 0);
+  assert.ok(cold.timings.capture.candidateAnalysisMs >= 0);
+  assert.equal(cold.timings.capture.nativeMeasuredFrames, undefined);
+  assert.equal(warm.timings.capture.rgbaBytes, 0);
   assert.equal(warm.timings.capturedRgbaBytes, 0);
   assert.ok(cold.timings.rawCacheReadMs > 0);
   assert.ok(cold.timings.rawCacheWriteMs > 0);
@@ -1064,6 +1070,8 @@ test('project builds report bounded Motion encode operation timing separately fr
     for (const id of ids) assert.equal(JSON.stringify(timing).includes(id), false);
   }
   assert.equal(cold.timings.encodeMotions.encoded, 2);
+  assert.equal(cold.timings.encodeMotions.peakPending, 2);
+  assert.ok(cold.timings.encodeMotions.peakActive >= 1 && cold.timings.encodeMotions.peakActive <= 2);
   assert.equal(cold.timings.encodeMotions.cacheHits, 0);
   assert.equal(warm.timings.encodeMotions.encoded, 0);
   assert.equal(warm.timings.encodeMotions.cacheHits, 2);

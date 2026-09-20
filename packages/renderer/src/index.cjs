@@ -92,17 +92,30 @@ async function sampleMotionCandidates(renderer, options = {}) {
   const previousExpressionId = hasExpression && typeof renderer.getState === 'function' ? renderer.getState().expressionId : null;
   if (hasExpression) await renderer.setExpression(options.expressionId == null ? null : options.expressionId);
   const candidates = [];
+  const metrics = { captureRoundtripMs: 0, alphaBoundsMs: 0, candidateAnalysisMs: 0, rgbaBytes: 0 };
   let previousRgba = null;
   let previousBounds = null;
   try {
     for (let index = 0; index < samples; index += 1) {
       if (options.signal?.aborted) fail('BUILD_CANCELLED', 'Package Build was cancelled.');
       const time = duration * (samples === 1 ? 0 : index / (options.includeEndpoint === false ? samples : samples - 1));
+      const captureStarted = performance.now();
       const capture = await renderer.captureRgba({ width, height, motionId, time });
+      metrics.captureRoundtripMs += performance.now() - captureStarted;
       if (!capture || capture.width !== width || capture.height !== height || !ArrayBuffer.isView(capture.rgba) || capture.rgba.byteLength !== width * height * 4) fail('INVALID_RENDER_CAPTURE', `Renderer returned an invalid RGBA capture for ${motionId} at sample ${index}.`);
       const rgba = new Uint8Array(capture.rgba.buffer, capture.rgba.byteOffset, capture.rgba.byteLength);
+      metrics.rgbaBytes += rgba.byteLength;
+      const nativeKeys = ['nativeBoundsPreparationMs', 'nativeRenderMs', 'nativeReadbackMs'];
+      if (nativeKeys.every((key) => Number.isFinite(capture.metrics?.[key]) && capture.metrics[key] >= 0)) {
+        for (const key of nativeKeys) metrics[key] = (metrics[key] || 0) + capture.metrics[key];
+        metrics.nativeMeasuredFrames = (metrics.nativeMeasuredFrames || 0) + 1;
+      }
+      const boundsStarted = performance.now();
       const bounds = alphaBounds(rgba, width, height);
+      metrics.alphaBoundsMs += performance.now() - boundsStarted;
+      const analysisStarted = performance.now();
       candidates.push({ id: `${motionId}#${index}`, time, bounds, visualChange: rgbaDifference(previousRgba, rgba), boundsDelta: boundsDifference(previousBounds, bounds), width, height, rgba: new Uint8Array(rgba) });
+      metrics.candidateAnalysisMs += performance.now() - analysisStarted;
       previousRgba = rgba;
       previousBounds = bounds;
       options.onFrame?.({ completed: index + 1, total: samples });
@@ -110,7 +123,7 @@ async function sampleMotionCandidates(renderer, options = {}) {
   } finally {
     if (hasExpression) await renderer.setExpression(previousExpressionId);
   }
-  return { contractVersion: CONTRACT_VERSION, motionId, expressionId: hasExpression ? (options.expressionId == null ? null : options.expressionId) : previousExpressionId, duration, samples, width, height, candidates };
+  return { contractVersion: CONTRACT_VERSION, motionId, expressionId: hasExpression ? (options.expressionId == null ? null : options.expressionId) : previousExpressionId, duration, samples, width, height, candidates, metrics };
 }
 
 function stableSeed(value) {

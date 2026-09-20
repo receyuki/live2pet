@@ -175,6 +175,10 @@ test('samples deterministic RGBA motion candidates for downstream selection', as
   assert.equal(first.candidates[0].rgba.length, 32 * 32 * 4);
   assert.ok(first.candidates.some((candidate) => candidate.visualChange > 0));
   assert.ok(first.candidates.every((candidate) => candidate.bounds && candidate.bounds.width > 0 && candidate.bounds.height > 0));
+  assert.equal(first.metrics.rgbaBytes, 20480);
+  for (const key of ['captureRoundtripMs', 'alphaBoundsMs', 'candidateAnalysisMs']) assert.ok(Number.isFinite(first.metrics[key]) && first.metrics[key] >= 0, key);
+  assert.equal(first.metrics.nativeBoundsPreparationMs, undefined);
+  assert.equal(first.metrics.nativeMeasuredFrames, undefined);
 });
 
 test('samples an Animation Recipe Expression and restores the previous preview Expression', async () => {
@@ -274,20 +278,27 @@ for (const cubismVersion of [2, 4]) test(`Cubism ${cubismVersion} prepares an in
   assert.equal((await renderer.captureRgba({ width: 8, height: 4, motionId: 'Base:wave', time: 0 })).rgba.length, 128);
 });
 
-test('Pixi binary capture preserves exact bytes, honors view offsets, and rejects truncated frames', async () => {
+test('Pixi binary capture preserves exact bytes and native measurements through candidate sampling', async () => {
   const page = new FakePixiPage();
   page.supportsBinaryResults = true;
   const evaluate = page.evaluate.bind(page);
   const pixels = new Uint8Array(8 * 4 * 4 + 16).map((_, index) => index % 256).subarray(8, -8);
   page.evaluate = async (fn, ...args) => {
     const result = await evaluate(fn, ...args);
-    if (fn.name === 'pageCapture') { assert.equal(args[5], true); result.rgba = pixels; }
+    if (fn.name === 'pageCapture') { assert.equal(args[5], true); result.rgba = pixels; result.metrics = { nativeBoundsPreparationMs: 2, nativeRenderMs: 3, nativeReadbackMs: 4, motionId: 'private', unexpected: 99 }; }
     return result;
   };
   const renderer = new PixiLive2dAdapter({ page });
   await renderer.load(pixiSource());
   const capture = await renderer.captureRgba({ width: 8, height: 4, motionId: 'Base:wave', time: 0.5 });
   assert.deepEqual(capture.rgba, pixels);
+  assert.deepEqual(capture.metrics, { nativeBoundsPreparationMs: 2, nativeRenderMs: 3, nativeReadbackMs: 4 });
+  const sampled = await sampleMotionCandidates(renderer, { motionId: 'Base:wave', duration: 0.5, samples: 2, width: 8, height: 4 });
+  assert.equal(sampled.metrics.nativeBoundsPreparationMs, 4);
+  assert.equal(sampled.metrics.nativeRenderMs, 6);
+  assert.equal(sampled.metrics.nativeReadbackMs, 8);
+  assert.equal(sampled.metrics.nativeMeasuredFrames, 2);
+  assert.equal(sampled.metrics.unexpected, undefined);
   await assert.rejects(renderer.captureRgba({ width: 16, height: 4, motionId: 'Base:wave', time: 0.5 }), { code: 'INVALID_RENDER_CAPTURE' });
 });
 
@@ -429,6 +440,7 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     assert.equal(capture.rgba[0], 4, 'WebGL screen rows are flipped to top-down image coordinates');
     assert.equal(capture.rgba.at(-1), 1);
     assert.equal(capture.time, 0.5);
+    for (const key of ['nativeBoundsPreparationMs', 'nativeRenderMs', 'nativeReadbackMs']) assert.ok(Number.isFinite(capture.metrics?.[key]) && capture.metrics[key] >= 0, key);
     assert.ok(updates.includes('reset'), 'seeking backwards resets the active motion');
     assert.equal(captureObservedTicker, false);
     assert.ok(captureObservedPhysicsVelocity < 0.001, 'capture restart must settle physics left by bounds sampling before extracting its first frame');
@@ -512,6 +524,7 @@ test('Spine serialized preview keeps inactive and manual playback stopped and re
     dispose() { this.stopRendering(); }
   }
   const browser = {
+    performance,
     window: { spine: { SpinePlayer: Player, Vector2: class {} }, setTimeout, clearTimeout, setInterval, clearInterval },
     document: { body: { innerHTML: '' }, getElementById: () => ({ style: {} }) },
   };
@@ -556,7 +569,8 @@ test('Spine serialized preview keeps inactive and manual playback stopped and re
   await manual.playMotion('idle', { loop: true });
   await manual.setActive(true);
   assert.equal(player.stopRequestAnimationFrame, true, 'manual capture never owns an automatic render loop');
-  await manual.captureRgba({ width: 2, height: 2, time: 0.2 });
+  const capture = await manual.captureRgba({ width: 2, height: 2, time: 0.2 });
+  for (const key of ['nativeBoundsPreparationMs', 'nativeRenderMs', 'nativeReadbackMs']) assert.ok(Number.isFinite(capture.metrics?.[key]) && capture.metrics[key] >= 0, key);
   assert.equal(player.stopRequestAnimationFrame, true);
   await manual.unload();
 });

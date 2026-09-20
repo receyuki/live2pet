@@ -123,7 +123,8 @@ function createBuildReport({ build, projectId, source } = {}) {
       totalMs: Number.isInteger(build.timings.totalMs) && build.timings.totalMs >= 0 ? build.timings.totalMs : 0,
       stages: Object.fromEntries(Object.entries(build.timings.stages || {}).filter(([, value]) => Number.isInteger(value) && value >= 0)),
       ...Object.fromEntries(['capturePreparationMs', 'rawCacheReadMs', 'rawCacheDecodeMs', 'rawCacheWriteMs', 'capturedRgbaBytes'].filter(key => Number.isFinite(build.timings[key]) && build.timings[key] >= 0).map(key => [key, build.timings[key]])),
-      ...(build.timings.encodeMotions ? { encodeMotions: Object.fromEntries(['completed', 'encoded', 'cacheHits', 'operationTotalMs', 'operationMaxMs'].map(key => [key, Number.isFinite(build.timings.encodeMotions[key]) && build.timings.encodeMotions[key] >= 0 ? build.timings.encodeMotions[key] : 0])) } : {}),
+      ...(build.timings.encodeMotions ? { encodeMotions: Object.fromEntries(['completed', 'encoded', 'cacheHits', 'operationTotalMs', 'operationMaxMs', 'peakPending', 'peakActive'].map(key => [key, Number.isFinite(build.timings.encodeMotions[key]) && build.timings.encodeMotions[key] >= 0 ? build.timings.encodeMotions[key] : 0])) } : {}),
+      ...(build.timings.capture ? { capture: Object.fromEntries(Object.entries(build.timings.capture).filter(([key, value]) => ['captureRoundtripMs', 'alphaBoundsMs', 'candidateAnalysisMs', 'rgbaBytes', 'nativeBoundsPreparationMs', 'nativeRenderMs', 'nativeReadbackMs', 'nativeMeasuredFrames'].includes(key) && Number.isFinite(value) && value >= 0)) } : {}),
     } : null,
     warnings: Array.isArray(build.warnings) ? build.warnings.map((warning) => ({ ...warning })) : [],
   };
@@ -482,7 +483,10 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
     const result = await sampleMotionCandidates(renderer, { motionId, duration, samples, width, height, includeEndpoint: target !== 'clawd', expressionId, signal, onFrame: ({ completed, total }) => progress(onProgress, 'render', 'frame-completed', { target, motionId, completed, total, fraction: (motionIndex + completed / total) / motionIds.length }) });
     checkCancelled(signal);
     // Newly captured RGBA payload only, not transport/IPC serialization bytes.
-    if (captureTimings) captureTimings.capturedRgbaBytes += result.candidates.reduce((bytes, frame) => bytes + frame.rgba.byteLength, 0);
+    if (captureTimings) {
+      captureTimings.capturedRgbaBytes += result.metrics.rgbaBytes;
+      for (const [key, value] of Object.entries(result.metrics)) captureTimings.capture[key] = (captureTimings.capture[key] || 0) + value;
+    }
     framesByMotion[motionId] = {
       frames: result.candidates,
       fps: target === 'clawd' && !configuredSamples && duration > 0 ? samples / duration : Number.isFinite(render.fps) ? render.fps : (render.preset ? (preset.fps || (duration > 0 ? samples / duration : 10)) : (duration > 0 ? samples / duration : 10)),
@@ -1240,12 +1244,12 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
     // Preparation excludes applying Visual Settings. Cache write includes frame
     // envelope encoding; decode measures frame envelope decoding only.
     // These boundaries can overlap render walltime and are not additive stages.
-    const captureTimings = { capturePreparationMs: 0, rawCacheReadMs: 0, rawCacheDecodeMs: 0, rawCacheWriteMs: 0, capturedRgbaBytes: 0 };
+    const captureTimings = { capturePreparationMs: 0, rawCacheReadMs: 0, rawCacheDecodeMs: 0, rawCacheWriteMs: 0, capturedRgbaBytes: 0, capture: { captureRoundtripMs: 0, alphaBoundsMs: 0, candidateAnalysisMs: 0, rgbaBytes: 0 } };
     const motionStartedAt = new Map();
     // Motion operations overlap when encoding concurrently. Their sum is work
     // duration, not walltime; stages.encode measures the enclosing walltime.
     // Operations include cache lookup/write and the encoded-asset callback.
-    const encodeMotions = { completed: 0, encoded: 0, cacheHits: 0, operationTotalMs: 0, operationMaxMs: 0 };
+    const encodeMotions = { completed: 0, encoded: 0, cacheHits: 0, operationTotalMs: 0, operationMaxMs: 0, peakPending: 0, peakActive: 0 };
     checkCancelled(signal);
     const targetInput = inputsByTarget[targetId] || {};
     const targetProject = normalizedProject.targets[targetId];
@@ -1257,7 +1261,11 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
         stageDurations[event.stage] = (stageDurations[event.stage] || 0) + Math.max(0, now - stageStartedAt.get(event.stage));
         stageStartedAt.delete(event.stage);
       }
-      if (event.stage === 'encode' && event.status === 'motion-started') motionStartedAt.set(event.motionId, now);
+      if (targetId === 'clawd' && event.stage === 'encode' && event.status === 'started') encodeMotions.peakPending = event.total;
+      if (event.stage === 'encode' && event.status === 'motion-started') {
+        motionStartedAt.set(event.motionId, now);
+        encodeMotions.peakActive = Math.max(encodeMotions.peakActive, motionStartedAt.size);
+      }
       if (event.stage === 'encode' && event.status === 'motion-completed' && motionStartedAt.has(event.motionId)) {
         const duration = Math.max(0, now - motionStartedAt.get(event.motionId));
         motionStartedAt.delete(event.motionId);

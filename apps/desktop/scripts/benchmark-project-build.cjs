@@ -92,6 +92,9 @@ async function run() {
   const { _electron } = require('playwright');
   const inputPath = process.env.LIVE2PET_BENCH_PROJECT;
   const runtime = process.env.LIVE2PET_BENCH_RUNTIME;
+  const spinePackRoot = process.env.LIVE2PET_BENCH_SPINE_PACK_ROOT;
+  const spineRuntimeLine = process.env.LIVE2PET_BENCH_SPINE_RUNTIME_LINE;
+  assert.equal(Boolean(spinePackRoot), Boolean(spineRuntimeLine), 'Provide both Spine pack root and runtime line.');
   const motions = JSON.parse(process.env.LIVE2PET_BENCH_MOTIONS || '[]');
   const repetitions = Number(process.env.LIVE2PET_BENCH_REPETITIONS || 3);
   const allScenarios = ['cold', 'warm', 'metadata-only', 'one-motion-changed', 'sequential-target', 'cancel-retry'];
@@ -117,6 +120,13 @@ async function run() {
   const writeReport = () => fs.writeFileSync(path.join(output, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
   console.log(`Benchmark output: ${output}`);
   try {
+    if (spinePackRoot) {
+      const { resolveSpinePack } = require('../../../packages/spine-pack/src/index.cjs');
+      const installed = resolveSpinePack(spinePackRoot, spineRuntimeLine);
+      const stagedRoot = path.join(profile, 'renderer-packs');
+      fs.cpSync(installed.directory, path.join(stagedRoot, path.basename(installed.directory)), { recursive: true });
+      resolveSpinePack(stagedRoot, spineRuntimeLine);
+    }
     const packaged = process.env.LIVE2PET_APP_EXECUTABLE;
     app = await _electron.launch({ executablePath: packaged || require('electron'), args: [...(packaged ? [] : [desktop]), `--user-data-dir=${profile}`], timeout: 30000 });
     app.process().once('exit', (code, signal) => console.log(`Benchmark App exited: ${code ?? signal}`));
@@ -134,6 +144,11 @@ async function run() {
     let project = (await invoke('openProject', { inputPath })).project;
     const linked = await invoke('relinkSource', { project, inputPath: project.source.path });
     project = linked.project;
+    if (spinePackRoot) {
+      const preview = await invoke('openPreview', { projectId: project.projectId, sourceFingerprint: project.source.fingerprint, bounds: { x: 0, y: 0, width: 768, height: 768 }, visible: false });
+      for (const id of motions) assert.ok(preview.catalog.motions.some(motion => motion.id === id), 'Benchmark Motion is absent from the hydrated catalog.');
+      await invoke('closePreview');
+    }
     // This modifies only the in-memory test snapshot, never the input file.
     project.name = 'Benchmark';
     project.recipes = [];

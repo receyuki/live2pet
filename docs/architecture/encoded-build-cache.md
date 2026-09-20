@@ -92,8 +92,14 @@ Warm and renamed builds must retain identical WebP bytes, dimensions, frame
 delays and alpha. The report also records decoded RGBA digests and visible-pixel
 counts at the first, middle and last encoded frames. CI uses public synthetic
 models and checks behavior, never machine-dependent timing thresholds. Full
-native bounds-analysis and lower-level IPC instrumentation remain part of #19;
-this harness does not claim to measure uninstrumented subphases.
+native timing fields are described below; the harness does not claim to measure
+unobserved serialization overhead or every renderer preparation subphase.
+
+For a local Spine fixture, set both `LIVE2PET_BENCH_SPINE_PACK_ROOT` (an existing
+installed renderer-packs directory) and `LIVE2PET_BENCH_SPINE_RUNTIME_LINE`
+(for example `4.1`). The harness verifies and copies only that pack into its
+isolated profile, verifies it again, and hydrates the binary Motion catalog before
+building. It does not download runtimes or modify the normal App profile.
 
 ### Timing fields and overlap
 
@@ -106,6 +112,7 @@ now measured with a monotonic clock. Additional numeric fields have these scopes
 | `timings.rawCacheReadMs` / `rawCacheDecodeMs` | Raw-cache lookup and frame-envelope decoding |
 | `timings.rawCacheWriteMs` | Frame-envelope encoding and raw-cache persistence |
 | `timings.capturedRgbaBytes` | Newly captured pixel payload, not IPC serialization overhead |
+| `timings.capture` | Capture roundtrip, alpha-bound scanning, candidate analysis and validated RGBA bytes; native draws/readback/bounds when measured |
 | `timings.encodeMotions` | Completed Clawd operations, actual encodes, hits, sum and maximum operation durations |
 | `desktopTimings.requestMs` | Entire successful Desktop planned build request, shared across its targets |
 | `desktopTimings.identityChecksMs` | All freshness checks, including the separately recorded source inspection and runtime verification |
@@ -114,6 +121,17 @@ now measured with a monotonic clock. Additional numeric fields have these scopes
 | `desktopTimings.queuedRequestsAhead` | Number of outstanding host requests ahead when submitted, not encoder-worker queue depth |
 
 Encoding operations overlap under concurrency and include cache/callback work.
+`encodeMotions.peakPending` counts the initially queued Clawd asset operations;
+`peakActive` counts simultaneously started asset operations, including cache hits.
+Neither is a count of native codec threads. `capture.captureRoundtripMs` encloses
+the awaited renderer call; native timings are nested inside it, not additive.
+`nativeBoundsPreparationMs` covers bounds work inside capture only (not earlier
+model loading), `nativeRenderMs` the capture draw (not pose/reset/cleanup draws),
+and `nativeReadbackMs` pixel readback including row normalization.
+`nativeMeasuredFrames` counts complete native timing triples; all native fields
+are absent when unavailable. `alphaBoundsMs` measures the separate RGBA alpha
+scan; `candidateAnalysisMs` measures difference scoring and retained pixel copies.
+Capture metrics count new captures only, not decoded raw-cache frames.
 Their summed duration is not encoding wall time; `stages.encode` is the enclosing
 elapsed duration. Codex atlas encoding uses that stage and has no per-Motion
 encoding operations. Raw-cache writes overlap the enclosing render stage; identity
