@@ -27,6 +27,8 @@ GitHub Releases.
 
 ### Fixes
 
+- Keep newer native preview status when an older open or polling response arrives
+  late, so a reported renderer failure is not replaced by stale ready state.
 - Keep preview commands attached to their owning page during rapid model
   switches and Settings navigation; hidden previews no longer restart their
   render loop when a playback or inspection command arrives.

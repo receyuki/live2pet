@@ -23,20 +23,25 @@ export function createPreviewSession({ input, onStatus }: {
   owner = token;
   let disposed = false;
   let opened = false;
+  let statusRevision = 0;
   const current = () => !disposed && owner === token;
   function publish(value: unknown) {
     if (current() && value && typeof value === 'object' && 'schemaVersion' in value && 'state' in value) onStatus(value as PreviewStatus);
   }
   const unsubscribe = onLive2DPreviewStatus(status => {
-    if (opened && status.projectId === input.projectId && status.sourceFingerprint === input.sourceFingerprint) publish(status);
+    if (nativeOwner === token && current() && status.projectId === input.projectId && status.sourceFingerprint === input.sourceFingerprint) {
+      statusRevision += 1;
+      publish(status);
+    }
   });
   async function run<T>(operation: () => Promise<T>): Promise<T | undefined> {
     return enqueue(async () => {
       if (!current()) return undefined;
+      const startedRevision = statusRevision;
       try {
         const result = await operation();
         if (!current()) return undefined;
-        publish(result);
+        if (startedRevision === statusRevision) publish(result);
         return result;
       } catch (error) {
         if (current()) throw error;

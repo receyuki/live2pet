@@ -3,7 +3,7 @@ import { createPreviewSession } from './preview-session';
 
 const { open, close, layout, read, subscribe } = {
   open: vi.fn(), close: vi.fn(async () => ({})), layout: vi.fn(),
-  read: vi.fn(async () => null), subscribe: vi.fn(() => () => {}),
+  read: vi.fn<() => Promise<unknown>>(async () => null), subscribe: vi.fn((_listener: unknown) => () => {}),
 };
 const response = (result: unknown) => ({ protocolVersion: 1, ok: true, result });
 beforeEach(() => {
@@ -21,6 +21,60 @@ afterEach(() => { vi.clearAllMocks(); delete window.live2pet; });
 const bounds = { x: 0, y: 0, width: 400, height: 400 };
 const input = { projectId: 'fixture', sourceFingerprint: 'a'.repeat(64) };
 const ready = { schemaVersion: 1, ...input, state: 'ready', visible: true, bounds };
+
+it('does not let a delayed ready poll overwrite a newer failure from the same session', async () => {
+  open.mockResolvedValue(ready);
+  const statuses = vi.fn();
+  const session = createPreviewSession({ input, onStatus: statuses });
+  await session.layout(bounds);
+  let finish!: (value: unknown) => void;
+  read.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const pending = session.poll();
+  await Promise.resolve();
+  const failed = { ...ready, state: 'failed', error: { code: 'PREVIEW_PROCESS_GONE', message: 'crashed' } };
+  const listener = subscribe.mock.calls.at(-1)?.[0] as unknown as (status: unknown) => void;
+  listener(failed);
+  finish(ready);
+  await pending;
+  expect(statuses.mock.calls.at(-1)?.[0]).toEqual(failed);
+  const recovered = { ...ready, playback: { time: 0 } };
+  await session.run(async () => recovered);
+  expect(statuses.mock.calls.at(-1)?.[0]).toEqual(recovered);
+  await session.dispose();
+});
+
+it('preserves a matching failure delivered before the initial open response', async () => {
+  let finish!: (value: unknown) => void;
+  open.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const statuses = vi.fn();
+  const session = createPreviewSession({ input, onStatus: statuses });
+  const opening = session.layout(bounds);
+  await Promise.resolve();
+  const failed = { ...ready, state: 'failed', error: { code: 'PREVIEW_PROCESS_GONE', message: 'crashed during open' } };
+  const listener = subscribe.mock.calls.at(-1)?.[0] as (status: unknown) => void;
+  listener(failed);
+  finish(ready);
+  await opening;
+  expect(statuses.mock.calls.at(-1)?.[0]).toEqual(failed);
+  await session.dispose();
+});
+
+it('ignores another project event without suppressing the current command response', async () => {
+  open.mockResolvedValue(ready);
+  const statuses = vi.fn();
+  const session = createPreviewSession({ input, onStatus: statuses });
+  await session.layout(bounds);
+  let finish!: (value: unknown) => void;
+  const command = session.run(() => new Promise(resolve => { finish = resolve; }));
+  await Promise.resolve();
+  const listener = subscribe.mock.calls.at(-1)?.[0] as (status: unknown) => void;
+  listener({ ...ready, projectId: 'another-project', state: 'failed' });
+  const updated = { ...ready, playback: { time: 0.75 } };
+  finish(updated);
+  await command;
+  expect(statuses.mock.calls.at(-1)?.[0]).toEqual(updated);
+  await session.dispose();
+});
 
 it('an interrupted open cannot hide, close, or publish into its replacement preview', async () => {
   let finish!: (value: unknown) => void;

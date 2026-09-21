@@ -276,7 +276,7 @@ let app;
     await page.waitForFunction(() => Boolean(localStorage.getItem('live2pet.desktop.project-draft')));
     await page.reload();
     await page.getByRole('button', { name: 'Recover', exact: true }).click();
-    await page.getByRole('heading', { name: 'Source Package', exact: true }).waitFor();
+    await previewReady();
     await page.getByRole('button', { name: 'Save project', exact: true }).click();
     await page.getByText('Saved', { exact: true }).waitFor();
     log(`${generation}: reopen, Settings return, review persistence, and recovery passed`);
