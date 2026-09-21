@@ -126,7 +126,7 @@ function createBuildReport({ build, projectId, source } = {}) {
       ...Object.fromEntries(['capturePreparationMs', 'rawCacheReadMs', 'rawCacheDecodeMs', 'rawCacheWriteMs', 'capturedRgbaBytes'].filter(key => Number.isFinite(build.timings[key]) && build.timings[key] >= 0).map(key => [key, build.timings[key]])),
       ...(build.timings.encodeMotions ? { encodeMotions: Object.fromEntries(['completed', 'encoded', 'cacheHits', 'operationTotalMs', 'operationMaxMs', 'peakPending', 'peakActive'].map(key => [key, Number.isFinite(build.timings.encodeMotions[key]) && build.timings.encodeMotions[key] >= 0 ? build.timings.encodeMotions[key] : 0])) } : {}),
       ...(build.timings.pipeline ? { pipeline: Object.fromEntries(Object.entries(build.timings.pipeline).filter(([key, value]) => ['budgetBytes', 'peakReservedBytes', 'peakResidentMotions', 'maxMotionReservationBytes', 'oversizedMotions', 'waitMs', 'reservedBytes'].includes(key) && Number.isFinite(value) && value >= 0)) } : {}),
-      ...(build.timings.capture ? { capture: Object.fromEntries(Object.entries(build.timings.capture).filter(([key, value]) => ['captureRoundtripMs', 'alphaBoundsMs', 'candidateAnalysisMs', 'rgbaBytes', 'nativeBoundsPreparationMs', 'nativeRenderMs', 'nativeReadbackMs', 'nativeMeasuredFrames'].includes(key) && Number.isFinite(value) && value >= 0)) } : {}),
+      ...(build.timings.capture ? { capture: Object.fromEntries(Object.entries(build.timings.capture).filter(([key, value]) => ['captureRoundtripMs', 'captureRequests', 'captureBatchCalls', 'alphaBoundsMs', 'candidateAnalysisMs', 'rgbaBytes', 'nativeBoundsPreparationMs', 'nativeRenderMs', 'nativeReadbackMs', 'nativeMeasuredFrames'].includes(key) && Number.isFinite(value) && value >= 0)) } : {}),
     } : null,
     warnings: Array.isArray(build.warnings) ? build.warnings.map((warning) => ({ ...warning })) : [],
   };
@@ -424,7 +424,7 @@ function motionCaptureSampling(renderer, motionId, render, target, preset) {
   return { duration, samples, configuredSamples };
 }
 
-async function renderMappedMotions({ renderer, motionIds, render = {}, signal, onProgress, target, cache, cacheContext, expressionByMotion = {}, visualSettings, captureTimings } = {}) {
+async function renderMappedMotions({ renderer, motionIds, render = {}, captureBatch, signal, onProgress, target, cache, cacheContext, expressionByMotion = {}, visualSettings, captureTimings } = {}) {
   if (!renderer || typeof renderer.captureRgba !== 'function') fail('RENDERER_REQUIRED', 'A renderer implementing captureRgba is required when build inputs do not include captured frames.');
   if (!Array.isArray(motionIds) || !motionIds.length) fail('MOTION_MAPPING_REQUIRED', `No ${target || 'target'} Motion mappings are available for renderer capture.`);
   const visualSettingsIdentity = resolveVisualSettings(visualSettings, cacheContext);
@@ -487,7 +487,7 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, signal, o
       checkCancelled(signal);
     }
     progress(onProgress, 'render', 'started', { target, motionId, width, height, samples, duration, fraction: motionIndex / motionIds.length });
-    const result = await sampleMotionCandidates(renderer, { motionId, duration, samples, width, height, includeEndpoint: target !== 'clawd', expressionId, signal, onFrame: ({ completed, total }) => progress(onProgress, 'render', 'frame-completed', { target, motionId, completed, total, fraction: (motionIndex + completed / total) / motionIds.length }) });
+    const result = await sampleMotionCandidates(renderer, { motionId, duration, samples, width, height, captureBatch, candidateScoring: target !== 'clawd', includeEndpoint: target !== 'clawd', expressionId, signal, onFrame: ({ completed, total }) => progress(onProgress, 'render', 'frame-completed', { target, motionId, completed, total, fraction: (motionIndex + completed / total) / motionIds.length }) });
     checkCancelled(signal);
     // Newly captured RGBA payload only, not transport/IPC serialization bytes.
     if (captureTimings) {
@@ -1338,7 +1338,7 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
         };
         const capture = async (renderer, captureCacheOptions = {}) => {
           await prepare(renderer, captureCacheOptions);
-          const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, visualSettings: projectVisualSettings, render: configuredRender, signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext, captureTimings });
+          const framesByMotion = await renderMappedMotions({ renderer, motionIds: ids, expressionByMotion, visualSettings: projectVisualSettings, render: configuredRender, captureBatch: targetOptions.captureBatch, signal, onProgress: targetOptions.onProgress, target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext, captureTimings });
           targetOptions.selection = { ...targetOptions.selection, preserveTiming: true };
           const candidatesByRow = Object.fromEntries(Object.entries(targetProject.mappings).map(([row, value]) => [row, framesByMotion[value.slice(7)]?.frames || []]));
           return { ...targetInput, candidatesByRow };
@@ -1357,7 +1357,7 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
               return width * height * 4 * samples * 4 + 64 * 1024 * 1024;
             },
             async capture(renderer, motionId, index, captureSignal) {
-              const framesByMotion = await renderMappedMotions({ renderer, motionIds: [motionId], expressionByMotion, visualSettings: projectVisualSettings, render: configuredRender, signal: captureSignal, onProgress: event => targetOptions.onProgress({ ...event, ...(Number.isFinite(event.fraction) ? { fraction: (index + event.fraction) / ids.length } : {}) }), target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext, captureTimings });
+              const framesByMotion = await renderMappedMotions({ renderer, motionIds: [motionId], expressionByMotion, visualSettings: projectVisualSettings, render: configuredRender, captureBatch: targetOptions.captureBatch, signal: captureSignal, onProgress: event => targetOptions.onProgress({ ...event, ...(Number.isFinite(event.fraction) ? { fraction: (index + event.fraction) / ids.length } : {}) }), target: targetId, cache: targetOptions.cache, cacheContext: targetOptions.cacheContext, captureTimings });
               return framesByMotion[motionId];
             },
             signal,

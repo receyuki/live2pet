@@ -1,4 +1,5 @@
 const { RendererContractError } = require('./errors.cjs');
+const { captureBatchSize, CAPTURE_BATCH_TIME_MS } = require('./capture-batch.cjs');
 const { normalizeVisualSettings, pageInitializeVisualElements, pageSetVisualSettings, pageVisualElementThumbnail, pageScanVisualElements } = require('./visual-settings.cjs');
 
 const DEFAULT_OPTIONS = Object.freeze({
@@ -441,7 +442,16 @@ function pageBounds(motionId) {
   };
 }
 
-function pageCapture(motionId, time, width, height, priority, binary = false) {
+function pageCapture(motionId, time, width, height, priority, binary = false, batchTimeMs = 32) {
+  if (Array.isArray(time)) return (async () => {
+    const captures = [];
+    const started = performance.now();
+    for (const timestamp of time) {
+      captures.push(await pageCapture(motionId, timestamp, width, height, priority, binary));
+      if (performance.now() - started >= batchTimeMs) break;
+    }
+    return captures;
+  })();
   return (async () => {
     const runtime = window.__live2petPixiLive2D;
     if (!runtime) throw new Error('Renderer is not loaded.');
@@ -707,10 +717,29 @@ class PixiLive2dAdapter {
     const motion = this.motion(motionId);
     const captureTime = finiteNumber(time, 'Capture time', { min: 0, max: Math.max(0, motion.duration) });
     const capture = await this.evaluate(pageCapture, motionId, captureTime, targetWidth, targetHeight, this.options.motionPriority, this.page.supportsBinaryResults === true);
+    return this.normalizeCapture(capture, targetWidth, targetHeight, motion, captureTime);
+  }
+
+  get supportsCaptureBatch() { return this.page.supportsBinaryResults === true; }
+
+  async captureRgbaBatch({ width = this.options.width, height = this.options.height, motionId = this.state.motionId, times } = {}) {
+    this.requireLoaded();
+    const targetWidth = positiveInteger(width, 'Capture width');
+    const targetHeight = positiveInteger(height, 'Capture height');
+    const motion = this.motion(motionId);
+    if (!Array.isArray(times) || !times.length || times.length > captureBatchSize(targetWidth, targetHeight)) fail('INVALID_RENDERER_ARGUMENT', 'Capture batch exceeds the bounded frame budget.');
+    const timestamps = times.map(time => finiteNumber(time, 'Capture time', { min: 0, max: Math.max(0, motion.duration) }));
+    if (!this.supportsCaptureBatch) return [await this.captureRgba({ width: targetWidth, height: targetHeight, motionId, time: timestamps[0] })];
+    const captures = await this.evaluate(pageCapture, motionId, timestamps, targetWidth, targetHeight, this.options.motionPriority, true, CAPTURE_BATCH_TIME_MS);
+    if (!Array.isArray(captures) || !captures.length || captures.length > timestamps.length) fail('INVALID_RENDER_CAPTURE', 'Pixi renderer returned an invalid capture batch.');
+    return captures.map((capture, index) => this.normalizeCapture(capture, targetWidth, targetHeight, motion, timestamps[index]));
+  }
+
+  normalizeCapture(capture, targetWidth, targetHeight, motion, captureTime) {
     const rgba = ArrayBuffer.isView(capture?.rgba)
       ? new Uint8Array(capture.rgba.buffer, capture.rgba.byteOffset, capture.rgba.byteLength)
       : Array.isArray(capture?.rgba) ? Uint8Array.from(capture.rgba) : null;
-    if (!capture || capture.width !== targetWidth || capture.height !== targetHeight || !rgba || rgba.byteLength !== targetWidth * targetHeight * 4) fail('INVALID_RENDER_CAPTURE', `Pixi renderer returned an invalid RGBA capture for ${motionId}.`);
+    if (!capture || capture.width !== targetWidth || capture.height !== targetHeight || !rgba || rgba.byteLength !== targetWidth * targetHeight * 4) fail('INVALID_RENDER_CAPTURE', `Pixi renderer returned an invalid RGBA capture for ${motion.id}.`);
     this.state.motionId = motion.id;
     this.state.time = captureTime;
     this.state.playing = capture.playing == null ? this.state.playing : Boolean(capture.playing);

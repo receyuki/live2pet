@@ -38,3 +38,57 @@ Public Package Build tests verify compression methods, entry paths and exact
 media readback, alongside existing real-codec target validators, cancellation,
 archive-failure and oversized-output checks. Native whole-App measurements are
 recorded separately from this isolated archive comparison.
+
+With stored media and the initial 32 ms batch experiment, the same large fixture
+completed a native Desktop cold build in 76.08 s and a warm rebuild in 2.54 s,
+versus the #20 default-policy 126.00–129.06 s cold and 51.07–52.53 s warm runs.
+All image records matched the pre-pipeline reference, including full encoded
+SHA, frame delays, alpha and decoded sample SHA. The cold run still captured
+512 frames; the warm run captured none. Only 11 capture round trips were avoided
+in that experiment, so the whole-build improvement must not be attributed to
+batching. The independent archive comparison above identifies the major saving.
+
+## Rejected rendering shortcut
+
+An isolated Spine experiment moved canvas-size restoration and its final draw
+from each frame to each batch. It reduced capture round-trip time on the
+12-Motion fixture from about 22 s to 13 s, but one of twelve animated assets no
+longer matched the baseline pixel hashes. Matching dimensions, byte lengths,
+visible-pixel counts and frame delays did **not** establish pixel parity.
+The change and its synthetic-only tests were removed; per-frame restoration and
+draws remain. Synthetic runtime doubles had passed, which is why native output
+comparison is required before accepting this shortcut.
+
+Live2D dimension setup already has an equality guard, and bounds are cached.
+Hoisting focus neutralization would change a state boundary inside physics
+integration without a demonstrated material benefit. That speculative change is
+not retained either. Per-Motion reloads, physics settling, neutral pointer input,
+and modern Cubism integration steps no larger than 1/60 second are preserved.
+
+## Bounded small-frame capture
+
+The optional binary adapter batch path is capped at four frames and 1 MiB, with
+a 64 ms soft page-execution budget. One frame may exceed either bound and then
+runs alone through the existing single-frame path. The timer is checked between
+frames, not inside a native draw/readback; it is not a hard cancellation deadline.
+Adapters without the capability and nonbinary hosts also use single captures.
+Cancelled batches are discarded before candidate analysis; frame-level progress
+is emitted only for consumed frames. Expression restoration remains in `finally`.
+
+The initial 8 MiB / 32 ms experiment barely reduced large-frame requests
+(344 requests for 345 Spine frames; 501 for 512 large Live2D frames). Increasing
+the time budget to 64 ms reduced the Spine requests to 190, but did not establish
+a capture-time improvement. Admission was therefore narrowed to small frames:
+the current Clawd presets retain single captures, while Codex's 192 × 208
+candidate frames can use four-frame batches. No high-resolution speedup is
+claimed for batching itself.
+
+## Skip unused Clawd candidate scoring
+
+Clawd consumes full animations rather than selecting representative candidates.
+Its fresh captures omit `visualChange` and `boundsDelta`, avoiding a full RGBA
+difference scan. Alpha bounds, owned pixel copies, timestamps, Expressions and
+frame validation remain unchanged. Codex still computes and consumes selection
+metrics. The existing frame cache already permits absent scores and separates
+targets; old scored Clawd cache entries remain valid. This is not a source,
+project-schema or pixel-input identity change.

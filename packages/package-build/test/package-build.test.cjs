@@ -938,6 +938,19 @@ test('reuses verified render candidates only with a complete cache identity', as
   assert.equal(decoded.frames[0].rgba.byteLength, first.idle.frames[0].rgba.byteLength);
 });
 
+test('Clawd captures omit unused scores while Codex retains selection metrics and frame caches round-trip', async () => {
+  const renderer = new SyntheticRenderer();
+  await renderer.load({ motions: [{ id: 'idle', duration: 1 }] });
+  const input = { renderer, motionIds: ['idle'], render: { width: 16, height: 16, samples: 5 } };
+  const clawd = (await renderMappedMotions({ ...input, target: 'clawd' })).idle;
+  assert.ok(clawd.frames.every(frame => !Object.hasOwn(frame, 'visualChange') && !Object.hasOwn(frame, 'boundsDelta')));
+  const decoded = decodeFrameSet(encodeFrameSet({ motionId: 'idle', ...clawd }));
+  assert.deepEqual(decoded.frames, clawd.frames);
+  const codex = (await renderMappedMotions({ ...input, target: 'codex-pet' })).idle;
+  assert.ok(codex.frames.some(frame => frame.visualChange > 0));
+  assert.ok(codex.frames.every(frame => Number.isFinite(frame.boundsDelta)));
+});
+
 test('builds a Clawd package even when its assets exceed the cache budget', async () => {
   const cache = new CacheStore({ rootDir: require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'live2pet-small-clawd-cache-')), maxBytes: 1 });
   const cacheContext = { projectId: 'small-clawd-cache', sourceFingerprint: 'source-sha256', runtimeVersion: 'core-5', rendererVersion: 'renderer-1', encoderVersion: 'sharp-0.34.5' };
@@ -1126,6 +1139,8 @@ test('project builds distinguish capture preparation and raw cache work on cold 
   assert.equal(cold.timings.capturedRgbaBytes, 2048);
   assert.equal(cold.timings.capture.rgbaBytes, 2048);
   assert.ok(cold.timings.capture.captureRoundtripMs >= 0);
+  assert.equal(cold.timings.capture.captureRequests, 2);
+  assert.equal(cold.timings.capture.captureBatchCalls, 0);
   assert.ok(cold.timings.capture.alphaBoundsMs >= 0);
   assert.ok(cold.timings.capture.candidateAnalysisMs >= 0);
   assert.equal(cold.timings.capture.nativeMeasuredFrames, undefined);

@@ -78,6 +78,13 @@ generation, so a model/runtime failure does not take down the main Mapper
 window. `createElectronWebContentsPage` is the narrow fixed-function bridge
 used by the desktop host.
 
+Offline sampling can use the optional `captureRgbaBatch` adapter capability when
+the host supports binary results. It sends consecutive timestamps in a bounded
+request (at most four frames / 1 MiB, with a soft elapsed-time cutoff); a single
+oversized frame runs alone. Returned frames keep their individual timing and
+progress. Single-frame adapters and nonbinary hosts retain the fallback path.
+This is an internal host capability, not a new renderer-preload IPC command.
+
 ## Optional integration tests
 
 ### Project visibility

@@ -285,7 +285,12 @@ test('Pixi binary capture preserves exact bytes and native measurements through 
   const pixels = new Uint8Array(8 * 4 * 4 + 16).map((_, index) => index % 256).subarray(8, -8);
   page.evaluate = async (fn, ...args) => {
     const result = await evaluate(fn, ...args);
-    if (fn.name === 'pageCapture') { assert.equal(args[5], true); result.rgba = pixels; result.metrics = { nativeBoundsPreparationMs: 2, nativeRenderMs: 3, nativeReadbackMs: 4, motionId: 'private', unexpected: 99 }; }
+    if (fn.name === 'pageCapture') {
+      assert.equal(args[5], true);
+      result.rgba = pixels;
+      result.metrics = { nativeBoundsPreparationMs: 2, nativeRenderMs: 3, nativeReadbackMs: 4, motionId: 'private', unexpected: 99 };
+      if (Array.isArray(args[1])) return args[1].map(time => ({ ...result, time }));
+    }
     return result;
   };
   const renderer = new PixiLive2dAdapter({ page });
@@ -300,6 +305,26 @@ test('Pixi binary capture preserves exact bytes and native measurements through 
   assert.equal(sampled.metrics.nativeMeasuredFrames, 2);
   assert.equal(sampled.metrics.unexpected, undefined);
   await assert.rejects(renderer.captureRgba({ width: 16, height: 4, motionId: 'Base:wave', time: 0.5 }), { code: 'INVALID_RENDER_CAPTURE' });
+});
+
+test('binary Pixi adapters batch consecutive frames in one page call and preserve capture state', async () => {
+  const page = new FakePixiPage();
+  page.supportsBinaryResults = true;
+  const evaluate = page.evaluate.bind(page);
+  page.evaluate = async (fn, ...args) => {
+    const result = await evaluate(fn, ...args);
+    if (fn.name === 'pageCapture' && Array.isArray(args[1])) return args[1].map(time => ({ ...result, time, rgba: new Uint8Array(args[2] * args[3] * 4) }));
+    return result;
+  };
+  for (const Adapter of [PixiLive2dAdapter, LegacyPixiLive2dAdapter]) {
+    const renderer = new Adapter({ page });
+    await renderer.load({ ...pixiSource(), cubismVersion: Adapter === LegacyPixiLive2dAdapter ? 2 : 4 });
+    const before = page.calls.length;
+    const captures = await renderer.captureRgbaBatch({ motionId: 'Base:wave', width: 8, height: 4, times: [0, 0.1, 0.2] });
+    assert.equal(page.calls.length - before, 1);
+    assert.deepEqual(captures.map(frame => frame.time), [0, 0.1, 0.2]);
+    assert.equal(renderer.getState().time, 0.2);
+  }
 });
 
 test('Pixi realtime playback owns the ticker while manual stepping and capture stay deterministic', async () => {
@@ -486,6 +511,12 @@ test('Pixi realtime playback owns the ticker while manual stepping and capture s
     assert.equal(legacyTimes.at(-1), 1250, 'legacy motion clock follows explicit model time, not wall time');
     await pageCapture('Base:wave', 0, 8, 4, 3);
     assert.equal(physicsSteps, 120, 'Cubism 2 must not call modern physics APIs');
+    const serializedCapture = vm.runInThisContext(`(${pageCapture.toString()})`);
+    const batch = await serializedCapture('Base:wave', [0.1, 0.2, 0.3], 8, 4, 3, true);
+    assert.deepEqual(batch.map(frame => frame.time), [0.1, 0.2, 0.3]);
+    assert.ok(batch.every(frame => ArrayBuffer.isView(frame.rgba)));
+    const timeLimited = await serializedCapture('Base:wave', [0.4, 0.5], 8, 4, 3, true, 0);
+    assert.equal(timeLimited.length, 1, 'time budget returns completed frames before starting another');
     await pageUnload();
   } finally {
     global.window = previousWindow;
@@ -528,7 +559,7 @@ test('Spine serialized preview keeps inactive and manual playback stopped and re
     window: { spine: { SpinePlayer: Player, Vector2: class {} }, setTimeout, clearTimeout, setInterval, clearInterval },
     document: { body: { innerHTML: '' }, getElementById: () => ({ style: {} }) },
   };
-  const page = { async evaluate(fn, ...args) { return vm.runInNewContext(`(${fn.toString()})`, browser)(...args); } };
+  const page = { supportsBinaryResults: true, async evaluate(fn, ...args) { return vm.runInNewContext(`(${fn.toString()})`, browser)(...args); } };
   const input = { format: 'spine', runtimeLine: '4.1', skeletonUrl: '/hero.json', atlasUrl: '/hero.atlas', motions: [{ id: 'idle', name: 'Idle', duration: 1 }], slots: [] };
   const renderer = new SpinePlayerAdapter({ page, playbackMode: 'realtime' });
   await renderer.load(input);
@@ -571,6 +602,14 @@ test('Spine serialized preview keeps inactive and manual playback stopped and re
   assert.equal(player.stopRequestAnimationFrame, true, 'manual capture never owns an automatic render loop');
   const capture = await manual.captureRgba({ width: 2, height: 2, time: 0.2 });
   for (const key of ['nativeBoundsPreparationMs', 'nativeRenderMs', 'nativeReadbackMs']) assert.ok(Number.isFinite(capture.metrics?.[key]) && capture.metrics[key] >= 0, key);
+  assert.equal(player.stopRequestAnimationFrame, true);
+  const batch = await manual.captureRgbaBatch({ width: 2, height: 2, times: [0.3, 0.4, 0.5] });
+  assert.deepEqual(Array.from(batch, frame => frame.time), [0.3, 0.4, 0.5]);
+  assert.ok(batch.every(frame => Buffer.from(frame.rgba).equals(Buffer.from(capture.rgba))));
+  let elapsed = 0;
+  browser.performance = { now: () => (elapsed += 10) };
+  const timeLimited = await manual.captureRgbaBatch({ width: 2, height: 2, times: [0.6, 0.7, 0.8] });
+  assert.equal(timeLimited.length, 2);
   assert.equal(player.stopRequestAnimationFrame, true);
   await manual.unload();
 });
@@ -639,7 +678,10 @@ test('Spine manifest conversion and adapter reuse the shared renderer contract',
     if (fn.name === 'pagePlay') return { ...state, motionId: args[0], playing: true, loop: args[1], speed: args[2], time: args[3] };
     if (fn.name === 'pageState') return state;
     if (fn.name === 'pageVisualSettings') return args[0];
-    if (fn.name === 'pageCapture') return { width: args[2], height: args[3], motionId: args[0], time: args[1], rgba: new Uint8Array(args[2] * args[3] * 4) };
+    if (fn.name === 'pageCapture') {
+      const capture = time => ({ width: args[2], height: args[3], motionId: args[0], time, rgba: new Uint8Array(args[2] * args[3] * 4) });
+      return Array.isArray(args[1]) ? args[1].map(capture) : capture(args[1]);
+    }
     if (fn.name === 'pageUnload') return { loaded: false };
     return { ...state };
   } };
@@ -652,6 +694,9 @@ test('Spine manifest conversion and adapter reuse the shared renderer contract',
   await renderer.setActive(true);
   assert.deepEqual(pageCalls.filter((call) => call.name === 'pageSetActive').map((call) => call.args[0]), [false, true]);
   assert.equal((await renderer.captureRgba({ width: 16, height: 16, motionId: 'idle', time: 0.5 })).rgba.byteLength, 1024);
+  const batches = await renderer.captureRgbaBatch({ width: 16, height: 16, motionId: 'idle', times: [0, 0.25, 0.5] });
+  assert.deepEqual(batches.map(frame => frame.time), [0, 0.25, 0.5]);
+  assert.equal(renderer.getState().time, 0.5);
   await renderer.setVisualSettings({ hiddenElementIds: ['slot:body'] });
   await renderer.unload();
 });

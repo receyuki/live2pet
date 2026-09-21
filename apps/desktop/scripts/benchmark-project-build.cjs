@@ -108,6 +108,7 @@ async function run() {
   const captureBudgetBytes = process.env.LIVE2PET_BENCH_CAPTURE_BUDGET_MIB === undefined ? undefined
     : Number(process.env.LIVE2PET_BENCH_CAPTURE_BUDGET_MIB) * 1024 * 1024;
   assert.ok(captureBudgetBytes === undefined || (Number.isSafeInteger(captureBudgetBytes) && captureBudgetBytes > 0), 'Provide a positive capture budget in MiB.');
+  const captureBatch = process.env.LIVE2PET_BENCH_CAPTURE_BATCH !== '0';
   const allScenarios = ['cold', 'warm', 'metadata-only', 'one-motion-changed', 'sequential-target', 'cancel-retry'];
   const requestedScenarios = process.env.LIVE2PET_BENCH_SCENARIOS?.split(',') || allScenarios;
   assert.ok(requestedScenarios.length && requestedScenarios.every(scenario => allScenarios.includes(scenario)), 'Unknown benchmark scenario.');
@@ -125,6 +126,7 @@ async function run() {
     schemaVersion: 1, revision: process.env.LIVE2PET_BENCH_REVISION || 'working-tree',
     completed: false, expectedRuns: repetitions * scenarios.length,
     platform: process.platform, arch: process.arch, preset: 'balanced', motionCount,
+    captureBatch,
     ...(captureBudgetBytes === undefined ? {} : { captureBudgetBytes }),
     method: 'Monotonic wall time around public Desktop build IPC. Electron process-group working sets sampled every 500 ms (KiB); sampled peak, not a guaranteed absolute peak. Artifact download/decoding is outside the timed interval. Stage intervals overlap and are not additive. No model names, Motion ids, or input paths in this report.',
     runs,
@@ -186,7 +188,7 @@ async function run() {
         if (scenario === 'metadata-only') current.name = 'Renamed benchmark';
         if (scenario === 'one-motion-changed') current.targets.clawd.mappings.thinking = `motion:${motions[3]}`;
         const target = scenario === 'sequential-target' ? 'codex-pet' : 'clawd';
-        const buildInput = { project: current, requestId: crypto.randomUUID(), projectId: current.projectId, snapshotFingerprint: crypto.createHash('sha256').update(JSON.stringify(current)).digest('hex'), targets: [target], optionsByTarget: { [target]: { package: true, ...(captureBudgetBytes === undefined ? {} : { captureBudgetBytes }), ...(target === 'codex-pet' ? { spriteVersionNumber: 2 } : {}) } } };
+        const buildInput = { project: current, requestId: crypto.randomUUID(), projectId: current.projectId, snapshotFingerprint: crypto.createHash('sha256').update(JSON.stringify(current)).digest('hex'), targets: [target], optionsByTarget: { [target]: { package: true, captureBatch, ...(captureBudgetBytes === undefined ? {} : { captureBudgetBytes }), ...(target === 'codex-pet' ? { spriteVersionNumber: 2 } : {}) } } };
         let cancellation;
         if (scenario === 'cancel-retry') cancellation = await page.evaluate(cancelDuringCapture, { ...buildInput, requestId: crypto.randomUUID() });
         await page.evaluate(() => {

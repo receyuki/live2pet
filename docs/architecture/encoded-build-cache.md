@@ -112,6 +112,12 @@ changes only the in-memory test snapshot and records the count, not Motion names
 for a controlled baseline bootstrap; report the exact substituted module/revision
 and do not describe such a comparison as an unchanged historical whole App.
 
+`LIVE2PET_BENCH_CAPTURE_BATCH=0` selects the single-frame fallback for an isolated
+capture comparison. Omit it for the production bounded-batch path. It changes
+neither saved projects nor cache identity; compare fresh cold profiles when
+measuring capture. Reports retain `captureRequests` and `captureBatchCalls` so
+actual round-trip reductions are visible separately from elapsed time.
+
 ### Timing fields and overlap
 
 The local build report preserves integer `timings.totalMs` and `timings.stages`,
