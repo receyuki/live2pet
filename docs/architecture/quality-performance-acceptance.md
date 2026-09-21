@@ -13,8 +13,8 @@ platform evidence and is not an all-model compatibility guarantee.
 | macOS x64 packaged startup | Local rebuilt App: Sharp/libvips, ASAR service loading, HeroUI mount, Spine/cache IPC passed | Real target-host installation |
 | Packaged transactions | Local ASAR: synthetic upgrade rollback, project replacement/cancel, save snapshot isolation, reversed concurrent saves and Portable Project reopen/rejection passed | UI stale-response handling, rendered-pet visuals or every filesystem failure |
 | Native output/performance | Modern Cubism, Cubism 2 and Spine 4.1, both targets; exact image records checked | Windows/Apple Silicon performance, Spine 4.0/4.2 compatibility |
-| Full interactive packaged workflow | Revalidation in progress; not yet accepted | Cannot be inferred from startup or service tests |
-| Windows x64 and macOS arm64 CI | Workflow 35609840814 at `d6bac06`: both native package/startup/service jobs passed | Real-model/manual acceptance or later revisions |
+| Interactive packaged checkpoints | Local modern Cubism and Cubism 2: playback/mapping, three crash recoveries each, both exports and generated previews, save/reopen, Settings return, source-review persistence and draft recovery passed; restart/runtime reuse separately passed | A single uninterrupted all-in-one harness pass, target-host/manual acceptance |
+| Windows x64 and macOS arm64 CI | Workflow 35610945992 at `cccdfb2`: both native package/startup/service jobs passed | Real-model/manual acceptance or later product revisions |
 | Maintainer Windows testing | Previously reported as passed | OS version, device, build identity and latest-change coverage were not supplied |
 
 ## Repeatable checks
@@ -24,12 +24,30 @@ UI tests, plus syntax/TypeScript checks and the source asset scan. One initial
 UI run timed out on a thumbnail test at the existing five-second limit; the full
 UI suite passed on rerun with two workers, without changing assertions or timeouts.
 
-[Artifact workflow 35609840814](https://github.com/receyuki/live2pet/actions/runs/35609840814)
-completed successfully at `d6bac06`: source verification, Windows x64, macOS
+[Artifact workflow 35610945992](https://github.com/receyuki/live2pet/actions/runs/35610945992)
+completed successfully at `cccdfb2`: source verification, Windows x64, macOS
 arm64 and macOS x64 jobs each passed. Both DMGs and the Windows ZIP are workflow
 artifacts. **Publish GitHub Release was skipped**, as intended for a manual
 branch run. Native dependency, ASAR transaction and HeroUI startup checks passed
 on each runner. No private model or runtime was supplied to CI.
+The final Linux source job passed 436 Node tests and 194 UI tests. Its four
+skips were the macOS-only ImageIO icon check and three opt-in real-runtime/model
+tests; native package jobs and local model evidence are recorded independently.
+
+Native workflow revalidation found a same-session status-ordering race: a late
+open/poll response could overwrite a newer pushed status. `cccdfb2` fixes this
+with owner-scoped event revisions; three new regressions cover delayed poll,
+opening failure and unrelated-project events. This is a verified ordering fix,
+not proof that every possible renderer freeze has the same cause.
+
+The all-in-one native harness initially stopped on outdated navigation locators,
+system-language/tutorial assumptions and a Playwright dialog-handling exception
+at restart. Those test boundaries were updated without changing App navigation
+or language behavior. Both model workflows passed through recovery in the rebuilt
+App; restart checks were then completed in a separate process against the same
+temporary profile. No moved-PCK scenario was run in this final folder-based check.
+The pre-existing local harness navigation edits were preserved but not included
+in these commits. Private models, runtimes, captures and diagnostics remain local.
 
 - `pnpm test`, `pnpm typecheck`, `pnpm release:check`.
 - On each native platform: `package:mac` / `smoke:mac`, or `package:win` /
@@ -58,5 +76,5 @@ project replacement is guarded. Import the generated package in the installed
 target host and inspect playback, framing and interaction. Report any failure
 with its model/runtime version and operation, without uploading unlicensed assets.
 
-Until those results and the pending automated checks are recorded, #22 stays
+Until those manual results are recorded, #22 stays
 open. Do not treat prior unspecified Windows testing as acceptance of this build.

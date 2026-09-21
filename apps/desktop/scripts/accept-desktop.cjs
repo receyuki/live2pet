@@ -297,7 +297,9 @@ let app;
   }
   await app.evaluate(({ app }) => app.exit(0)).catch(() => undefined);
   app = await electron.launch({ executablePath: packagedExecutable || require(path.join(desktop, 'node_modules/electron')), args: [...(packagedExecutable ? [] : [desktop]), `--user-data-dir=${profile}`], timeout: 30000 });
+  await app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 1; });
   const reopened = await app.firstWindow();
+  reopened.on('dialog', (dialog) => { void dialog.accept().catch(() => undefined); });
   await reopened.getByRole('button', { name: 'Open project', exact: true }).waitFor();
   assert.equal(await reopened.locator('.setup-view').count(), 0);
   const runtimes = await reopened.evaluate(() => window.live2pet.getRuntimeSettings());
