@@ -559,7 +559,7 @@ test('Spine serialized preview keeps inactive and manual playback stopped and re
     window: { spine: { SpinePlayer: Player, Vector2: class {} }, setTimeout, clearTimeout, setInterval, clearInterval },
     document: { body: { innerHTML: '' }, getElementById: () => ({ style: {} }) },
   };
-  const page = { supportsBinaryResults: true, async evaluate(fn, ...args) { return vm.runInNewContext(`(${fn.toString()})`, browser)(...args); } };
+  const page = { async evaluate(fn, ...args) { return vm.runInNewContext(`(${fn.toString()})`, browser)(...args); } };
   const input = { format: 'spine', runtimeLine: '4.1', skeletonUrl: '/hero.json', atlasUrl: '/hero.atlas', motions: [{ id: 'idle', name: 'Idle', duration: 1 }], slots: [] };
   const renderer = new SpinePlayerAdapter({ page, playbackMode: 'realtime' });
   await renderer.load(input);
@@ -602,14 +602,6 @@ test('Spine serialized preview keeps inactive and manual playback stopped and re
   assert.equal(player.stopRequestAnimationFrame, true, 'manual capture never owns an automatic render loop');
   const capture = await manual.captureRgba({ width: 2, height: 2, time: 0.2 });
   for (const key of ['nativeBoundsPreparationMs', 'nativeRenderMs', 'nativeReadbackMs']) assert.ok(Number.isFinite(capture.metrics?.[key]) && capture.metrics[key] >= 0, key);
-  assert.equal(player.stopRequestAnimationFrame, true);
-  const batch = await manual.captureRgbaBatch({ width: 2, height: 2, times: [0.3, 0.4, 0.5] });
-  assert.deepEqual(Array.from(batch, frame => frame.time), [0.3, 0.4, 0.5]);
-  assert.ok(batch.every(frame => Buffer.from(frame.rgba).equals(Buffer.from(capture.rgba))));
-  let elapsed = 0;
-  browser.performance = { now: () => (elapsed += 10) };
-  const timeLimited = await manual.captureRgbaBatch({ width: 2, height: 2, times: [0.6, 0.7, 0.8] });
-  assert.equal(timeLimited.length, 2);
   assert.equal(player.stopRequestAnimationFrame, true);
   await manual.unload();
 });
@@ -678,10 +670,7 @@ test('Spine manifest conversion and adapter reuse the shared renderer contract',
     if (fn.name === 'pagePlay') return { ...state, motionId: args[0], playing: true, loop: args[1], speed: args[2], time: args[3] };
     if (fn.name === 'pageState') return state;
     if (fn.name === 'pageVisualSettings') return args[0];
-    if (fn.name === 'pageCapture') {
-      const capture = time => ({ width: args[2], height: args[3], motionId: args[0], time, rgba: new Uint8Array(args[2] * args[3] * 4) });
-      return Array.isArray(args[1]) ? args[1].map(capture) : capture(args[1]);
-    }
+    if (fn.name === 'pageCapture') return { width: args[2], height: args[3], motionId: args[0], time: args[1], rgba: new Uint8Array(args[2] * args[3] * 4) };
     if (fn.name === 'pageUnload') return { loaded: false };
     return { ...state };
   } };
@@ -694,9 +683,6 @@ test('Spine manifest conversion and adapter reuse the shared renderer contract',
   await renderer.setActive(true);
   assert.deepEqual(pageCalls.filter((call) => call.name === 'pageSetActive').map((call) => call.args[0]), [false, true]);
   assert.equal((await renderer.captureRgba({ width: 16, height: 16, motionId: 'idle', time: 0.5 })).rgba.byteLength, 1024);
-  const batches = await renderer.captureRgbaBatch({ width: 16, height: 16, motionId: 'idle', times: [0, 0.25, 0.5] });
-  assert.deepEqual(batches.map(frame => frame.time), [0, 0.25, 0.5]);
-  assert.equal(renderer.getState().time, 0.5);
   await renderer.setVisualSettings({ hiddenElementIds: ['slot:body'] });
   await renderer.unload();
 });

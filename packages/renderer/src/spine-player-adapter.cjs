@@ -1,5 +1,4 @@
 const { RendererContractError } = require('./errors.cjs');
-const { captureBatchSize, CAPTURE_BATCH_TIME_MS } = require('./capture-batch.cjs');
 const { normalizeVisualSettings } = require('./visual-settings.cjs');
 
 const DEFAULT_OPTIONS = Object.freeze({ width: 512, height: 512, padding: 0.08, playbackMode: 'manual', loadTimeoutMs: 15000 });
@@ -202,16 +201,7 @@ function pageVisualElements() { const runtime = window.__live2petSpine; return r
 function pageVisualSettings(settings) { const runtime = window.__live2petSpine; runtime.hidden = [...settings.hiddenElementIds]; runtime.pose(runtime.state.time); const bounds = runtime.readBounds(); if (bounds) runtime.fit(runtime.state.motionId); runtime.draw(); return { hiddenElementIds: [...runtime.hidden] }; }
 function pageThumbnail(id) { const runtime = window.__live2petSpine; const saved = [...runtime.hidden]; runtime.hidden = runtime.player.skeleton.slots.filter((slot) => `slot:${slot.data.name}` !== id).map((slot) => `slot:${slot.data.name}`); runtime.pose(runtime.state.time); try { if (!runtime.readBounds()) return { id, dataUrl: null }; runtime.fit(runtime.state.motionId); runtime.draw(); return { id, dataUrl: runtime.player.canvas.toDataURL('image/png') }; } finally { runtime.hidden = saved; runtime.pose(runtime.state.time); if (runtime.readBounds()) runtime.fit(runtime.state.motionId); runtime.draw(); } }
 function pageScan(id) { const runtime = window.__live2petSpine; const saved = [...runtime.hidden]; if (runtime.state.motionId !== id) { runtime.player.setAnimation(id, runtime.state.loop); runtime.state.motionId = id; runtime.state.time = 0; } runtime.pose(runtime.state.time); const full = runtime.readBounds(); const fullArea = Math.max(1, (full?.width || 0) * (full?.height || 0)); const elements = runtime.player.skeleton.slots.map((slot) => ({ id: `slot:${slot.data.name}` })); const candidates = elements.map((element) => { const bounds = runtime.slotBounds(element.id); return { id: element.id, dataUrl: null, time: runtime.state.time, areaRatio: bounds ? Math.min(1, bounds.width * bounds.height / fullArea) : 0 }; }).filter((item) => item.areaRatio >= 0.15).sort((a, b) => b.areaRatio - a.areaRatio).slice(0, 8); runtime.hidden = saved; runtime.pose(runtime.state.time); runtime.draw(); return { motionId: id, candidates }; }
-function pageCapture(id, time, width, height, binary, batchTimeMs = 64) {
-  if (Array.isArray(time)) {
-    const captures = [];
-    const started = performance.now();
-    for (const timestamp of time) {
-      captures.push(pageCapture(id, timestamp, width, height, binary));
-      if (performance.now() - started >= batchTimeMs) break;
-    }
-    return captures;
-  }
+function pageCapture(id, time, width, height, binary) {
   const runtime = window.__live2petSpine;
   const canvas = runtime.player.canvas;
   const previousWidth = canvas.style.width, previousHeight = canvas.style.height;
@@ -290,30 +280,7 @@ class SpinePlayerAdapter {
   async readState() { this.requireLoaded(); this.state = await this.evaluate(pageState); return this.getState(); }
   async seek(time) { const state = await this.readState(); this.state = await this.evaluate(pageSeek, finite(time, 'Animation seek time', 0, this.motion(state.motionId).duration)); return this.getState(); }
   async getBounds({ motionId = this.state.motionId } = {}) { this.motion(motionId); return this.evaluate(pageBounds, motionId); }
-  async captureRgba({ width = this.options.width, height = this.options.height, motionId = this.state.motionId, time = this.state.time } = {}) {
-    const motion = this.motion(motionId);
-    const targetWidth = integer(width, 'Capture width'), targetHeight = integer(height, 'Capture height'), captureTime = finite(time, 'Capture time', 0, Math.max(0, motion.duration));
-    const capture = await this.evaluate(pageCapture, motionId, captureTime, targetWidth, targetHeight, this.page.supportsBinaryResults === true);
-    return this.normalizeCapture(capture, targetWidth, targetHeight, motionId, captureTime);
-  }
-  get supportsCaptureBatch() { return this.page.supportsBinaryResults === true; }
-  async captureRgbaBatch({ width = this.options.width, height = this.options.height, motionId = this.state.motionId, times } = {}) {
-    const motion = this.motion(motionId);
-    const targetWidth = integer(width, 'Capture width'), targetHeight = integer(height, 'Capture height');
-    if (!Array.isArray(times) || !times.length || times.length > captureBatchSize(targetWidth, targetHeight)) fail('INVALID_RENDERER_ARGUMENT', 'Capture batch exceeds the bounded frame budget.');
-    const timestamps = times.map(time => finite(time, 'Capture time', 0, Math.max(0, motion.duration)));
-    if (!this.supportsCaptureBatch) return [await this.captureRgba({ width: targetWidth, height: targetHeight, motionId, time: timestamps[0] })];
-    const captures = await this.evaluate(pageCapture, motionId, timestamps, targetWidth, targetHeight, true, CAPTURE_BATCH_TIME_MS);
-    if (!Array.isArray(captures) || !captures.length || captures.length > timestamps.length) fail('INVALID_RENDER_CAPTURE', 'Spine renderer returned an invalid capture batch.');
-    return captures.map((capture, index) => this.normalizeCapture(capture, targetWidth, targetHeight, motionId, timestamps[index]));
-  }
-  normalizeCapture(capture, targetWidth, targetHeight, motionId, captureTime) {
-    const rgba = ArrayBuffer.isView(capture?.rgba) ? new Uint8Array(capture.rgba.buffer, capture.rgba.byteOffset, capture.rgba.byteLength) : Array.isArray(capture?.rgba) ? Uint8Array.from(capture.rgba) : null;
-    if (!capture || capture.width !== targetWidth || capture.height !== targetHeight || !rgba || rgba.byteLength !== targetWidth * targetHeight * 4) fail('INVALID_RENDER_CAPTURE', 'Spine renderer returned an invalid RGBA capture.');
-    this.state.motionId = motionId; this.state.time = captureTime;
-    const metrics = Object.fromEntries(['nativeBoundsPreparationMs', 'nativeRenderMs', 'nativeReadbackMs'].filter((key) => Number.isFinite(capture.metrics?.[key]) && capture.metrics[key] >= 0).map((key) => [key, capture.metrics[key]]));
-    return { contractVersion: 1, width: targetWidth, height: targetHeight, motionId, time: captureTime, rgba, ...(Object.keys(metrics).length ? { metrics } : {}) };
-  }
+  async captureRgba({ width = this.options.width, height = this.options.height, motionId = this.state.motionId, time = this.state.time } = {}) { const motion = this.motion(motionId); const targetWidth = integer(width, 'Capture width'), targetHeight = integer(height, 'Capture height'), captureTime = finite(time, 'Capture time', 0, Math.max(0, motion.duration)); const capture = await this.evaluate(pageCapture, motionId, captureTime, targetWidth, targetHeight, this.page.supportsBinaryResults === true); const rgba = ArrayBuffer.isView(capture?.rgba) ? new Uint8Array(capture.rgba.buffer, capture.rgba.byteOffset, capture.rgba.byteLength) : Array.isArray(capture?.rgba) ? Uint8Array.from(capture.rgba) : null; if (!rgba || rgba.byteLength !== targetWidth * targetHeight * 4) fail('INVALID_RENDER_CAPTURE', 'Spine renderer returned an invalid RGBA capture.'); this.state.motionId = motionId; this.state.time = captureTime; const metrics = Object.fromEntries(['nativeBoundsPreparationMs', 'nativeRenderMs', 'nativeReadbackMs'].filter((key) => Number.isFinite(capture.metrics?.[key]) && capture.metrics[key] >= 0).map((key) => [key, capture.metrics[key]])); return { contractVersion: 1, width: targetWidth, height: targetHeight, motionId, time: captureTime, rgba, ...(Object.keys(metrics).length ? { metrics } : {}) }; }
 }
 
 module.exports = {

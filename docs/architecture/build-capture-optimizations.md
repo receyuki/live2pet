@@ -79,9 +79,17 @@ The initial 8 MiB / 32 ms experiment barely reduced large-frame requests
 (344 requests for 345 Spine frames; 501 for 512 large Live2D frames). Increasing
 the time budget to 64 ms reduced the Spine requests to 190, but did not establish
 a capture-time improvement. Admission was therefore narrowed to small frames:
-the current Clawd presets retain single captures, while Codex's 192 × 208
-candidate frames can use four-frame batches. No high-resolution speedup is
+the current Clawd presets retain single captures, while Live2D's 192 × 208
+Codex candidate frames can use four-frame batches. No high-resolution speedup is
 claimed for batching itself.
+
+Spine also retains single captures at small dimensions. Its native Codex atlas
+failed exact baseline pixel parity even when batches retained every per-frame
+draw. The Spine batch capability was therefore removed rather than introducing
+new physics, viewport or wall-clock changes to force a speedup. Passing
+synthetic tests alone was not treated as sufficient evidence. The optional
+capability remains on modern/legacy Pixi adapters only; unsupported adapters use
+the same fallback as before.
 
 ## Skip unused Clawd candidate scoring
 
