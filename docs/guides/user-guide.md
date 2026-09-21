@@ -4,8 +4,8 @@
 
 ## First launch
 
-1. Build the macOS App using the commands in the README.
-2. If macOS blocks the unsigned App, allow it in **System Settings → Privacy & Security**.
+1. Download the matching macOS or Windows build from [GitHub Releases](https://github.com/receyuki/live2pet/releases/latest). Building from source is optional.
+2. Install the App using the [README instructions](../../README.md#get-started), including the unsigned-App guidance for your platform.
 3. Add a runtime in Setup, or skip and configure it when previewing your first model.
 
 <a id="compatibility"></a>
@@ -21,7 +21,7 @@
 | Codex output | V2 11-row atlas; nine animation mappings plus neutral look cells, without directional mouse following |
 | Clawd output | Transparent animated WebP assets, required/optional states and reactions |
 
-Spine 4.1 binary and 4.3 JSON have local integration coverage. Spine 4.0/4.2 and the complete packaged-App workflow still need real-model acceptance. Windows is planned after V1.
+macOS Intel/Apple Silicon and Windows x64 downloads are available. The maintainer has reported successful Windows testing; that report does not identify a Windows version, device or exact build, and is not evidence that every subsequent change was tested there. Spine 4.1 binary and 4.3 JSON have local integration coverage; 4.0/4.2 still need real-model acceptance. See the [acceptance record](../desktop-acceptance.md) for the scope of individual checks.
 
 <a id="runtimes"></a>
 

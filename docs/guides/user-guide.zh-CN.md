@@ -4,8 +4,8 @@
 
 ## 首次启动
 
-1. 按 README 中的命令构建 macOS App。
-2. 如果未签名 App 被拦截，在“系统设置 → 隐私与安全性”中允许打开。
+1. 从 [GitHub Releases](https://github.com/receyuki/live2pet/releases/latest) 下载对应的 macOS 或 Windows 版本，无需自行编译。
+2. 按 [README 安装说明](../../README.zh-CN.md#开始使用) 安装，并参考对应平台的未签名应用处理说明。
 3. 在首次引导中添加运行时，也可以稍后在预览模型时配置。
 
 <a id="compatibility"></a>
@@ -21,7 +21,7 @@
 | Codex 输出 | V2 11 行图集，九个动画映射与中立方向格，暂不生成方向跟随 |
 | Clawd 输出 | 透明 WebP 动画、必选及可选状态、互动反应 |
 
-Spine 4.1 二进制和 4.3 JSON 已有本地集成测试覆盖；4.0/4.2 和打包 App 完整流程仍待真实模型验收。Windows 计划在 V1 之后支持。
+现已提供 macOS Intel、Apple Silicon 和 Windows x64 下载。维护者已反馈 Windows 测试通过，但未记录系统版本、设备和具体构建号，因此不能将该反馈视为所有后续改动的验收结果。Spine 4.1 二进制和 4.3 JSON 已有本地集成测试覆盖；4.0/4.2 仍待真实模型验收。各项检查的具体范围见[验收记录](../desktop-acceptance.md)。
 
 <a id="runtimes"></a>
 

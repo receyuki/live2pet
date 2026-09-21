@@ -131,7 +131,7 @@ Spine support remains in preview. PCK support depends on its contents and packag
 ## More
 
 - **Using the App:** [User guide & FAQ](docs/guides/user-guide.md)
-- **What's next:** [Issues](https://github.com/receyuki/live2pet/issues) · [V1 plan](docs/plans/live2pet-v1-implementation-plan.md)
+- **What's next:** [Issues](https://github.com/receyuki/live2pet/issues)
 - **Building together:** [Contributing](CONTRIBUTING.md) · [Local development, verification & packaging](docs/guides/development.md)
 - **Security:** [Report a vulnerability](SECURITY.md)
 

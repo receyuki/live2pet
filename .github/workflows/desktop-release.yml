@@ -94,6 +94,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Package Windows App
         run: pnpm --filter @live2pet/desktop package:win
+      - name: Verify package layout and startup
+        run: pnpm --filter @live2pet/desktop smoke:win
       - name: Create downloadable ZIP
         shell: pwsh
         run: Compress-Archive -Path apps/desktop/out/Live2Pet-win32-x64 -DestinationPath Live2Pet-Windows-x64.zip

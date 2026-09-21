@@ -8,6 +8,12 @@ GitHub Releases.
 
 ### Performance
 
+- Avoid recompressing generated WebP media when assembling Clawd and Codex ZIPs,
+  substantially reducing large cached rebuild times. Small archives may grow slightly.
+- Skip unused Clawd frame scoring and batch small Live2D capture requests without
+  changing output frame rate, quality or authored timing. Spine retains single-frame capture.
+- Overlap capture and encoding within a memory budget, releasing completed frame
+  sets promptly and capturing oversized animations alone.
 - Reuse verified Clawd animations and Codex atlases before opening a renderer
   or decoding raw-frame caches. Metadata-only edits keep the same pixels;
   mixed Clawd builds capture only missing animations.

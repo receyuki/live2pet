@@ -2,6 +2,14 @@
 
 The default development and packaged App uses HeroUI. The legacy browser Mapper is not the production entrypoint. `start` and `package:mac` build the renderer and stage its rendering dependencies automatically.
 
+Current quality/performance acceptance is tracked in
+[#22](https://github.com/receyuki/live2pet/issues/22) and the
+[current evidence matrix](architecture/quality-performance-acceptance.md). Dated results below are
+historical checkpoints, not blanket acceptance of the latest build. macOS Intel,
+macOS Apple Silicon and Windows x64 binaries have been published; the maintainer
+reported Windows testing passed without identifying the OS version, device or
+exact build. Do not infer those details or current-change acceptance from that report.
+
 ## Automated local workflow
 
 `apps/desktop/scripts/accept-desktop.cjs` is an opt-in Electron acceptance harness, separate from synthetic public CI. It needs Playwright available in the developer's tool environment (direct module resolution or `NODE_PATH`) and permitted local models/runtimes. No browser download is required: it launches the existing Electron executable.
@@ -29,7 +37,7 @@ Checks cover:
 - unsaved-exit confirmation, local draft recovery, and moved-PCK relink;
 - process restart without repeated Setup or runtime provisioning.
 
-The temporary profile and screenshots remain local for diagnosis. They contain user-derived content and must not be committed or published.
+The temporary profile and screenshots remain local for diagnosis. They contain user-derived content and must not be committed or published. The workflow harness explicitly selects English and skips tutorial overlays in its test profile; first-launch language and tutorial behavior are covered separately by UI tests.
 
 ## Packaged startup gate
 
@@ -38,9 +46,22 @@ pnpm --filter @live2pet/desktop package:mac
 pnpm --filter @live2pet/desktop smoke:mac
 ```
 
+On Windows x64, use `package:win` and `smoke:win` instead. The same startup and
+native-dependency assertions run against `Live2Pet.exe` and its packaged ASAR.
+
 The smoke test checks the bundle resources, loads main-process services from ASAR, verifies native Sharp, scans for prohibited assets, and waits for the actual HeroUI mount in a fresh profile. Loading an HTML file alone is not a passing result.
 
-These checks do not establish real Clawd/Codex host installation acceptance, all-model compatibility, Spine/Visibility support, Windows support, or public binary distribution approval. Those remain separate V1/release gates.
+It also runs `accept-packaged-services.cjs` through the packaged Electron
+executable in Node mode. This checks installation rollback, project replacement,
+cancelled-save preservation and Portable Project reopen/rejection using synthetic
+bytes in one temporary root. Service resolution must remain inside the ASAR;
+checkout service imports do not count. The synthetic archive is transaction-test
+data, not a real rendered pet, and does not establish target-host compatibility.
+
+These checks do not establish real Clawd/Codex host installation acceptance or
+all-model compatibility. Source CI, each platform's packaged startup and each
+real-model/manual result must be recorded separately; a skipped packaging job is
+not passing platform evidence. Signing and Release publication remain separate.
 
 Do not rebuild or replace the App bundle while an acceptance process is using
 it. A reload reads its packaged resources again and can otherwise fail with

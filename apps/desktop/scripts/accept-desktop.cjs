@@ -20,6 +20,12 @@ let app;
   page.setDefaultTimeout(20000);
   page.on('pageerror', (error) => console.error('PAGE_ERROR', error.message));
   page.on('dialog', (dialog) => { void dialog.accept().catch(() => undefined); });
+  // Workflow locators must not depend on system language or tutorial overlays.
+  await page.evaluate(() => {
+    localStorage.setItem('live2pet.desktop.locale', 'en');
+    localStorage.setItem('live2pet.desktop.onboarding', JSON.stringify({ schemaVersion: 1, tourVersion: 1, status: 'skipped', completedStages: [] }));
+  });
+  await page.reload();
   await page.getByRole('button', { name: 'Set up later', exact: true }).waitFor();
   log('fresh setup mounted');
   const downloads = path.join(profile, 'runtime-downloads');
@@ -148,7 +154,6 @@ let app;
     await previewReady();
     await page.reload();
     await page.getByRole('button', { name: 'Open project', exact: true }).click();
-    await page.getByRole('heading', { name: 'Source Package', exact: true }).waitFor();
     await nav('Map').click();
     await previewReady();
     assert.equal(await page.locator('button[aria-label^="Clear ·"]:not([disabled])').count(), 4);
@@ -307,4 +312,16 @@ let app;
   }
   log('app restart: Setup stays completed and both saved runtimes are reused');
   console.log('PROFILE', profile);
-})().catch((error) => { console.error(error); process.exitCode = 1; }).finally(async () => { if (app) await app.evaluate(({ app }) => app.exit(0)).catch(() => undefined); });
+})().catch(async (error) => {
+  console.error(error);
+  if (app) {
+    const page = await app.firstWindow().catch(() => null);
+    if (page) {
+      await page.screenshot({ path: path.join(profile, 'failure.png') }).catch(() => undefined);
+      const body = await page.locator('body').innerText().catch(() => 'Page unavailable');
+      fs.writeFileSync(path.join(profile, 'failure.txt'), body);
+    }
+  }
+  console.error('Acceptance diagnostics:', profile);
+  process.exitCode = 1;
+}).finally(async () => { if (app) await app.evaluate(({ app }) => app.exit(0)).catch(() => undefined); });

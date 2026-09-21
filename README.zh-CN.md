@@ -131,7 +131,7 @@ Spine 支持仍在预览阶段。PCK 是否可用取决于其内容和封装方�
 ## 了解更多
 
 - **使用帮助：** [使用指南与常见问题](docs/guides/user-guide.zh-CN.md)
-- **接下来的计划：** [Issues](https://github.com/receyuki/live2pet/issues) · [V1 计划](docs/plans/live2pet-v1-implementation-plan.md)
+- **接下来的计划：** [Issues](https://github.com/receyuki/live2pet/issues)
 - **参与开发：** [贡献指南](CONTRIBUTING.md) · [本地开发、验证与打包](docs/guides/development.md)
 - **安全问题：** [漏洞报告](SECURITY.md)
 

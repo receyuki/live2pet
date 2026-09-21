@@ -47,9 +47,10 @@ Windows x64 must be packaged on Windows:
 
 ```sh
 pnpm --filter @live2pet/desktop package:win
+pnpm --filter @live2pet/desktop smoke:win
 ```
 
-The `Desktop CI and release` GitHub Actions workflow runs verification on pushes and pull requests. A manual run builds a Windows x64 ZIP plus separate Intel and Apple Silicon macOS DMGs. Each native App is smoke-tested before `create-dmg` produces a drag-to-install image, and the mounted image is checked for both `Live2Pet.app` and its Applications shortcut. A `v*` tag that matches the version in `apps/desktop/package.json` publishes those files as the latest GitHub Release. The images remain unsigned.
+The `Desktop CI and release` GitHub Actions workflow runs verification on pushes and pull requests. A manual run builds a Windows x64 ZIP plus separate Intel and Apple Silicon macOS DMGs. Both platforms verify native dependencies and packaged interface startup before archiving. On macOS, `create-dmg` produces a drag-to-install image; the mounted image is checked for both `Live2Pet.app` and its Applications shortcut. These synthetic checks do not establish real-model or target-host acceptance. A `v*` tag that matches the version in `apps/desktop/package.json` publishes those files as the latest GitHub Release. The images remain unsigned.
 
 ## Releases
 

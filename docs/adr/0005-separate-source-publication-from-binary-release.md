@@ -6,6 +6,18 @@ Date: 2026-08-30
 
 Accepted
 
+### Publication-history update — 2026-09-21
+
+The maintainer subsequently authorized unsigned public binaries;
+[v0.1.0](https://github.com/receyuki/live2pet/releases/tag/v0.1.0) and
+[v0.2.0](https://github.com/receyuki/live2pet/releases/tag/v0.2.0) were published
+on 2026-09-08. The publication timing below is retained as historical policy,
+not a statement that binaries are still unavailable. Those releases do not
+establish third-party licensing approval. Runtime/model exclusion, separate
+source and binary checks, and the prohibition on inferring permission to publish
+from permission to push remain in force. No licensing clearance or signing
+approval is recorded by this documentation update.
+
 ## Context
 
 Live2Pet is intended for personal use first and may later be open source. It can load an indefinite number of user-provided Live2D models, which may make the runnable application an Expandable Application under [Live2D's SDK release-license terms](https://www.live2d.com/en/sdk/license/expandable/). The open-source portions of the rendering framework and Live2Pet's own code have different distribution boundaries from the proprietary Cubism Core runtime and from a ready-to-run application release.

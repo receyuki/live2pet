@@ -3,16 +3,27 @@ const path = require('node:path');
 const os = require('node:os');
 const { execFileSync } = require('node:child_process');
 const { APP_NAME, FORBIDDEN_BUNDLE_ENTRY, currentMacArch, verifyBundleLayout } = require('./package-macos.cjs');
+const { currentWindowsArch, verifyWindowsBundleLayout } = require('./package-windows.cjs');
 
 const desktopRoot = path.resolve(__dirname, '..');
 
-function packagedAppPath(arch = currentMacArch()) {
+function packagedAppPath(arch = process.arch, platform = process.platform) {
+  if (platform === 'win32') {
+    currentWindowsArch(platform, arch);
+    return path.join(desktopRoot, 'out', `${APP_NAME}-win32-${arch}`);
+  }
+  currentMacArch(platform, arch);
   return path.join(desktopRoot, 'out', `${APP_NAME}-darwin-${arch}`, `${APP_NAME}.app`);
 }
 
-function runNodeSmoke(appPath) {
-  const executable = path.join(appPath, 'Contents', 'MacOS', APP_NAME);
-  const appAsar = path.join(appPath, 'Contents', 'Resources', 'app.asar');
+function smokePaths(appPath, platform) {
+  return platform === 'win32'
+    ? { executable: path.join(appPath, `${APP_NAME}.exe`), appAsar: path.join(appPath, 'resources', 'app.asar') }
+    : { executable: path.join(appPath, 'Contents', 'MacOS', APP_NAME), appAsar: path.join(appPath, 'Contents', 'Resources', 'app.asar') };
+}
+
+function runNodeSmoke(appPath, { platform = process.platform, execute = execFileSync } = {}) {
+  const { executable, appAsar } = smokePaths(appPath, platform);
   const source = `
     const fs = require('node:fs');
     const path = require('node:path');
@@ -36,18 +47,28 @@ function runNodeSmoke(appPath) {
     const info = { sharp: sharp.versions.sharp, libvips: sharp.versions.vips, sourceFiles: files.length, forbiddenAssetCount: 0 };
     process.stdout.write(JSON.stringify(info));
   `;
-  const output = execFileSync(executable, ['-e', source], {
+  const output = execute(executable, ['-e', source], {
     encoding: 'utf8',
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
   });
   return JSON.parse(output);
 }
 
-function runWindowSmoke(appPath) {
-  const executable = path.join(appPath, 'Contents', 'MacOS', APP_NAME);
+function runServiceSmoke(appPath, { platform = process.platform, execute = execFileSync } = {}) {
+  const { executable, appAsar } = smokePaths(appPath, platform);
+  const output = execute(executable, [path.join(__dirname, 'accept-packaged-services.cjs'), '--asar', appAsar], {
+    encoding: 'utf8',
+    timeout: 30 * 1000,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+  });
+  return JSON.parse(output);
+}
+
+function runWindowSmoke(appPath, { platform = process.platform, execute = execFileSync } = {}) {
+  const { executable } = smokePaths(appPath, platform);
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-bundle-smoke-'));
   let output;
-  try { output = execFileSync(executable, ['--live2pet-smoke-test', `--user-data-dir=${profile}`], {
+  try { output = execute(executable, ['--live2pet-smoke-test', `--user-data-dir=${profile}`], {
     encoding: 'utf8',
     timeout: 30 * 1000,
     env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== 'ELECTRON_RUN_AS_NODE')),
@@ -62,11 +83,12 @@ function runWindowSmoke(appPath) {
 
 function smokePackagedApp() {
   const appPath = packagedAppPath();
-  if (!fs.existsSync(appPath)) throw new Error('Build the current-machine macOS App before running its smoke test.');
-  const layout = verifyBundleLayout(appPath);
+  if (!fs.existsSync(appPath)) throw new Error('Build the current-machine App before running its smoke test.');
+  const layout = process.platform === 'win32' ? verifyWindowsBundleLayout(appPath) : verifyBundleLayout(appPath);
   const runtime = runNodeSmoke(appPath);
+  const servicesAcceptance = runServiceSmoke(appPath);
   const window = runWindowSmoke(appPath);
-  const report = { contractVersion: 1, appPath, layout, runtime, window };
+  const report = { contractVersion: 1, appPath, layout, runtime, servicesAcceptance, window };
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   return report;
 }
@@ -78,4 +100,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { packagedAppPath, runNodeSmoke, runWindowSmoke, smokePackagedApp };
+module.exports = { packagedAppPath, runNodeSmoke, runServiceSmoke, runWindowSmoke, smokePackagedApp };

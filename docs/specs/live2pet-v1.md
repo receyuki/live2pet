@@ -2,6 +2,12 @@
 
 Status: Expanded on 2026-09-03 — shared visual settings and optional Spine support
 
+> Historical first-milestone specification. The macOS-only/local-build boundary
+> below is not the current product support matrix. Unsigned macOS and Windows
+> binaries have since shipped; current behavior is documented in the
+> [user guide](../guides/user-guide.md). Post-release reliability/performance
+> acceptance is tracked in [#22](https://github.com/receyuki/live2pet/issues/22).
+
 ## Product outcome
 
 V1 is successful when one macOS user can complete first-run setup once, take a permitted local Live2D model or supported Spine model from import to a validated Clawd theme ZIP or Codex custom-pet ZIP, hide removable model backgrounds when needed, then explicitly install the generated package into its target host without rebuilding Live2Pet, manually running conversion commands, or repeatedly selecting the same renderer runtime.

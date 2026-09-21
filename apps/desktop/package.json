@@ -21,6 +21,7 @@
     "package:win": "pnpm prepare:renderer && pnpm build:renderer && node scripts/package-windows.cjs",
     "preview:shell": "pnpm start",
     "smoke:mac": "node scripts/smoke-packaged-app.cjs",
+    "smoke:win": "node scripts/smoke-packaged-app.cjs",
     "start": "pnpm prepare:renderer && pnpm build:renderer && electron .",
     "test:ui": "vitest run --config vite.config.mts",
     "typecheck": "node ../../scripts/workspace-checks.cjs syntax --scope desktop && pnpm typecheck:ui",

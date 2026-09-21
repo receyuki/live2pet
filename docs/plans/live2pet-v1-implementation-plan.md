@@ -2,6 +2,12 @@
 
 Status: Updated on 2026-09-08 — Live2D and Spine implementation accepted; final macOS V1 packaging acceptance remains
 
+> Historical delivery plan, preserved for decision history. References below to
+> Windows or public binaries as future work describe the original milestone, not
+> current support. Use the [user guide](../guides/user-guide.md) for the product
+> workflow and [current issues](https://github.com/receyuki/live2pet/issues) for
+> remaining work. Historical parent issues are not reopened by later acceptance.
+
 ## Outcome and boundary
 
 The only current release outcome is a dependable personal-use macOS Desktop App that browses permitted local or public GitHub model collections, converts one selected Live2D Source Package, supported Live2D PCK file, or supported Spine 4.x Source Package into a previewed, validated, downloadable Clawd or Codex ZIP, lets the user hide removable model backgrounds, and explicitly installs the generated package when the user chooses Install or Build & Install.
