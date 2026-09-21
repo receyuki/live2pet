@@ -100,3 +100,45 @@ frame validation remain unchanged. Codex still computes and consumes selection
 metrics. The existing frame cache already permits absent scores and separates
 targets; old scored Clawd cache entries remain valid. This is not a source,
 project-schema or pixel-input identity change.
+
+## Final native checks
+
+The final local macOS x64 runs used the same private fixtures and inspected the
+complete image records (encoded SHA, dimensions, frame delays, alpha and decoded
+sample SHA), not just successful archive creation. Seconds below are observations,
+not minimum performance guarantees:
+
+| Fixture | Cold Clawd | Warm | Rename only | One Motion changed | Cancel then retry |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Modern Cubism, 3 Motions / 512 frames | 84.26 | 2.63 | 2.65 | 35.96 | 80.47 |
+| Cubism 2, 3 Motions / 220 frames | 16.62 | 0.37 | 0.43 | 11.67 | 16.10 |
+| Spine 4.1, 12 Motions / 345 frames | 58.74 | 0.30 | 0.29 | 9.81 | 60.79 |
+
+Every Clawd scenario matched its reference images; cancellation request-to-settlement
+latency was 1.8–2.7 ms and the immediate retries matched cold output. Warm and rename-only
+builds captured no frames. The Spine cold result did not beat the previous
+50.87–51.29 s checkpoint: preparation and capture varied upward. No overall Spine
+cold-build speedup is claimed. Peak observed working sets were about 2.81 GiB
+(modern), 1.89 GiB (legacy), and 1.68 GiB (Spine); these are not hard process caps.
+
+Same-version Codex single-frame controls separately checked the retained Live2D
+batch path. Modern capture took 3.26 s in 63 requests versus 3.37–3.46 s in 237
+requests; legacy took 1.10 s in 60 requests versus 1.12–1.17 s in 237 requests.
+All image records matched both single-frame repetitions exactly. This is a modest
+capture-stage improvement (roughly 4–5%), not a universal whole-build speedup:
+legacy total times overlapped (2.44 s batched versus 2.37–2.59 s single).
+The restored Spine single-frame Codex build took 16.97 s and matched its original
+atlas record exactly. Spine does not use the batch path.
+
+Clawd candidate-analysis time fell from 1.73 s to 0.61 s on the 12-Motion Spine
+fixture and from about 2.63 s to 0.77 s on the modern fixture. That stage still
+includes required pixel ownership work; it is not an isolated scoring benchmark.
+The public sampler regression also compares scored/unscored pixels, timestamps
+and bounds, while target tests retain Codex scoring and decode Clawd output.
+
+These measurements are source-host native checks. Packaged platform startup and
+manual workflow acceptance are tracked separately in #22; they cannot be inferred
+from these macOS measurements.
+
+The final source regression passed 432 Node tests (three opt-in skips) and 191
+UI tests, plus syntax/TypeScript checks and the source-release asset scan.
