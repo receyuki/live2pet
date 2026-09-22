@@ -15,7 +15,7 @@ platform evidence and is not an all-model compatibility guarantee.
 | Native output/performance | Modern Cubism, Cubism 2 and Spine 4.1, both targets; exact image records checked | Windows/Apple Silicon performance, Spine 4.0/4.2 compatibility |
 | Interactive packaged checkpoints | Local modern Cubism and Cubism 2: playback/mapping, three crash recoveries each, both exports and generated previews, save/reopen, Settings return, source-review persistence and draft recovery passed; restart/runtime reuse separately passed | A single uninterrupted all-in-one harness pass, target-host/manual acceptance |
 | Windows x64 and macOS arm64 CI | Workflow 35610945992 at `cccdfb2`: both native package/startup/service jobs passed | Real-model/manual acceptance or later product revisions |
-| Maintainer Windows testing | Previously reported as passed | OS version, device, build identity and latest-change coverage were not supplied |
+| Maintainer acceptance | On 2026-09-22, confirmed runtime reuse, editing while saving, and Clawd/Codex playback, framing and interaction after confirming the Map cleanup | OS version, device and exact tested binary were not supplied; this is not separate manual acceptance on every platform |
 
 ## Repeatable checks
 
@@ -66,15 +66,17 @@ project/source identity rules remain unchanged. Memory admission is bounded, but
 an oversized Motion runs alone and native renderer/encoder memory is not a hard
 process cap. The largest final local fixture peaked at about 2.81 GiB.
 
-## Remaining manual gate
+## Maintainer acceptance — 2026-09-22
 
-Use the candidate App on Windows x64 and/or macOS Apple Silicon, recording the
-App revision and OS/architecture. Check runtime reuse after restart, model
-preview/mapping, both output targets and saving the resulting packages. During a
-save, edit the project and verify newer edits are retained; during a build, verify
-project replacement is guarded. Import the generated package in the installed
-target host and inspect playback, framing and interaction. Report any failure
-with its model/runtime version and operation, without uploading unlicensed assets.
+After confirming the Map cleanup, the maintainer explicitly confirmed that the
+remaining overall acceptance checks were normal: runtime reuse, continuing to
+edit while saving, and playback, size/framing and interaction in Clawd and Codex.
+This completes the maintainer acceptance gate for #22 together with the
+automated and native evidence above.
 
-Until those manual results are recorded, #22 stays
-open. Do not treat prior unspecified Windows testing as acceptance of this build.
+The latest offered local candidate was rebuilt with the Map cleanup committed
+as `9f18327`; the preceding cross-platform artifacts were built at `cccdfb2`.
+The maintainer did not specify which binary, OS version, device or models were
+used. Do not infer those details or claim manual acceptance on all three
+platforms. The known model/version and measurement limitations above remain.
+Release publication still requires separate authorization.
