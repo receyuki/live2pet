@@ -46,7 +46,7 @@
 
 ## How it works
 
-1. **Choose a model** — drop a folder or supported PCK, or browse a GitHub collection.
+1. **Choose a model** — drop a folder or supported PCK, or browse a GitHub collection. Review model details in Models; Map focuses on animation preview and assignments.
 2. **Make it your pet** — preview motions, hide unwanted parts, and assign pet states.
 3. **Build and enjoy** — name your pet, choose quality, then save the ZIP or install it.
 

@@ -159,6 +159,22 @@ function setSystemDarkMode(matches: boolean) {
   });
 }
 
+it('keeps Map focused on animation tools without duplicating model metadata', async () => {
+  localStorage.setItem('live2pet.desktop.setup-completed', 'true');
+  installDesktopApi();
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: 'Open project' }));
+  const map = await screen.findByRole('main', { name: 'Map' });
+  expect(map.querySelector('details')).toBeNull();
+  expect(within(map).queryByText(/Cubism/)).not.toBeInTheDocument();
+  for (const name of ['Animations', 'Model Preview', 'Assignment']) {
+    expect(within(map).getByRole('heading', { name })).toBeVisible();
+  }
+  expect(screen.getByText(savedProject.name, { exact: true })).toBeVisible();
+  expect(within(map).getByRole('button', { name: 'Configure renderer' })).toBeVisible();
+});
+
 it.each(['direct', 'full'])('labels mapping requirements for %s sleep mode', async (sleepMode) => {
   localStorage.setItem('live2pet.desktop.setup-completed', 'true');
   installDesktopApi({ openedProject: { ...savedProject, targets: { ...savedProject.targets, clawd: { ...savedProject.targets.clawd, options: { sleepMode } } } } });
