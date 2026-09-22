@@ -6,6 +6,22 @@ GitHub Releases.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-22
+
+### New features
+
+- Search and sort model libraries without downloading the entire collection.
+- Follow a short contextual first-run tutorial, with skip and replay controls.
+- Match supported system languages on first launch, falling back to English.
+
+### Improvements
+
+- Install on macOS with a drag-to-Applications DMG layout.
+- Keep Map focused on animation preview and assignments; model details remain
+  in Models instead of a duplicate information row.
+- Suspend inactive previews to reduce background CPU and memory work while
+  keeping active Live2D preview at 60 FPS.
+
 ### Performance
 
 - Avoid recompressing generated WebP media when assembling Clawd and Codex ZIPs,
@@ -51,8 +67,17 @@ GitHub Releases.
 
 ### Compatibility
 
-- Windows x64 packaging and the supported desktop workflow have completed CI
-  and real-device acceptance, so Windows is no longer labelled as preview.
+- Windows x64 is no longer labelled as preview. Native packaging and startup
+  checks pass in CI, alongside maintainer-reported workflow acceptance.
+- Open legacy `.live2pet` projects without incorrectly treating a fingerprint
+  algorithm update as a changed model. `.l2p` and `.l2pack` remain supported.
+
+### Known limitations
+
+- Desktop builds remain unsigned; macOS Gatekeeper and Windows SmartScreen
+  may require the steps documented in the README.
+- User models and separately licensed Live2D runtimes are not bundled. Spine
+  support remains version-matched; this release does not add new runtime lines.
 
 ## [0.2.0] - 2026-09-08
 
