@@ -12,9 +12,11 @@ const { createUpdateService } = require('./update-service.cjs');
 const {
   APP_COMMAND_CHANNEL,
   APP_BUILD_PROGRESS_CHANNEL,
+  APP_ANIMATION_EXPORT_PROGRESS_CHANNEL,
   APP_LIBRARY_DOWNLOAD_PROGRESS_CHANNEL,
   APP_IPC_CHANNEL,
   createAppIpcRouter,
+  createAnimationOutputService,
   createAppWindowOptions,
 } = require('@live2pet/app-host');
 const {
@@ -32,6 +34,7 @@ const { createCaptureCacheService } = require('./capture-cache-service.cjs');
 const { createCaptureCacheBuildService } = require('./capture-cache-build.cjs');
 const { createHostedBuildService } = require('./hosted-build-service.cjs');
 const { createPlannedBuildService } = require('./planned-build-service.cjs');
+const { createAnimationExportService } = require('./animation-export-service.cjs');
 const { RUNTIME_PROTOCOL_SCHEME, createRuntimeProtocolHandler } = require('./runtime-protocol.cjs');
 const {
   clearRuntimeSettings,
@@ -228,10 +231,7 @@ const buildProjectWithHostedRenderer = createHostedBuildService({
   buildProject: buildProjectWithCaptureCache,
 });
 
-const buildProjectWithPlan = createPlannedBuildService({
-  getCache: getCaptureCacheStore,
-  buildProject: buildProjectWithHostedRenderer,
-  resolveContext: async (project, recordTiming) => {
+const resolveBuildContext = async (project, recordTiming = () => {}) => {
     const record = sourceRegistry.get(project.projectId);
     if (!record) throw Object.assign(new Error('The project Source Package is no longer available.'), { code: 'PREVIEW_SOURCE_NOT_FOUND' });
     // Re-inspect the selected files even for a complete encoded-cache hit.
@@ -244,7 +244,24 @@ const buildProjectWithPlan = createPlannedBuildService({
     const context = await resolveRendererCacheContext({ format: manifest.model.format, runtimeLine: manifest.model.runtimeLine, cubismVersion: manifest.model.cubism });
     recordTiming('runtimeVerificationMs', performance.now() - runtimeStarted);
     return context;
+  };
+const buildProjectWithPlan = createPlannedBuildService({
+  getCache: getCaptureCacheStore,
+  buildProject: buildProjectWithHostedRenderer,
+  resolveContext: resolveBuildContext,
+});
+const exportAnimations = createAnimationExportService({
+  getCache: getCaptureCacheStore,
+  resolveContext: resolveBuildContext,
+  withRenderer: (...args) => buildProjectWithHostedRenderer.withRenderer(...args),
+});
+const animationOutputService = createAnimationOutputService({
+  getSettings: () => getPackageOutputService().get(),
+  pickFolder: async (defaultPath) => {
+    const result = await dialog.showOpenDialog(mainWindow, { title: 'Choose animation output folder', defaultPath, properties: ['openDirectory', 'createDirectory'] });
+    return result.canceled ? null : result.filePaths?.[0];
   },
+  openPath: (folder) => shell.openPath(folder),
 });
 
 let targetInstallationService;
@@ -373,6 +390,12 @@ function installApplicationMenu() {
 
 function registerIpc() {
   route = createAppIpcRouter({
+    animationExportService: exportAnimations,
+    animationOutputService,
+    onAnimationExportProgress: (event) => {
+      if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+      try { mainWindow.webContents.send(APP_ANIMATION_EXPORT_PROGRESS_CHANNEL, event); } catch {}
+    },
     projectWorkspaceService: getProjectWorkspaceService(),
     projectSourceService: getProjectSourceService(),
     sourceInspectionService,
@@ -380,7 +403,16 @@ function registerIpc() {
     runtimeSettingsService,
     spinePackService,
     captureCacheService: getCaptureCacheService(),
-    buildProjectService: buildProjectWithPlan,
+    buildProjectService: async (input) => {
+      // Resolve the default before queueing; a later Settings change must not
+      // change the format of an already submitted build snapshot.
+      const optionsByTarget = { ...input.optionsByTarget };
+      if ((!input.targets || input.targets.includes('clawd')) && optionsByTarget.clawd?.format === undefined) {
+        const settings = await getPackageOutputService().get();
+        optionsByTarget.clawd = { ...optionsByTarget.clawd, format: settings.animationFormat };
+      }
+      return buildProjectWithPlan({ ...input, optionsByTarget });
+    },
     installPackageService: installPackage,
     installRootPickerService: chooseInstallRoot,
     targetInstallationService: getTargetInstallationService(),

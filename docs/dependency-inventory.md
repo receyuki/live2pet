@@ -12,6 +12,8 @@ the corresponding notices when a release dependency changes.
 | `@electron/packager` | 20.3.0 | Current-machine local unsigned `.app` assembly | Build-time only; excluded from the packaged App |
 | `create-dmg/create-dmg` | 1.3.0 | Conventional App-to-Applications macOS disk images | Homebrew-installed CI tool; excluded from the packaged App |
 | `sharp` | 0.34.5 | Transparent WebP encoding and image composition | Package Build; uses platform-specific optional `@img/*` libvips packages |
+| `upng-js` | 2.1.0 | Lossless APNG encoding in a cancellable worker | Package Build production dependency; MIT |
+| `pako` | 1.0.11 | PNG compression used by UPNG.js | Transitive production dependency; MIT / Zlib |
 | `@zip.js/zip.js` | 2.7.57 | ZIP reading, validation, export, and installation | CLI, Package Build, and staged Mapper bundle |
 | `pixi.js` | 6.5.10 | Browser Live2D preview and capture | Staged Mapper browser asset; MIT notice required |
 | `@pixi/unsafe-eval` | 6.5.10 | Pixi compatibility uploader required by the preview bridge | Staged Mapper browser asset; MIT notice required |

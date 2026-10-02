@@ -53,6 +53,17 @@ beforeEach(() => {
 });
 
 describe("generated package preview", () => {
+  it('opens APNG assets with PNG MIME and theme state labels', async () => {
+    const bytes = await archive({ 'pet/theme.json': JSON.stringify({ states: { idle: ['idle.apng'] } }), 'pet/assets/idle.apng': Uint8Array.from([137, 80, 78, 71]) });
+    const parsed = await parseGeneratedPreview(bytes, 'clawd');
+    if (parsed.target !== 'clawd') throw new Error('Wrong target');
+    expect(parsed.assets[0]).toMatchObject({ id: 'idle.apng', label: 'idle' });
+    await expect(readGeneratedPreviewAsset(bytes, parsed.assets[0].path)).resolves.toEqual(Uint8Array.from([137, 80, 78, 71]));
+    vi.mocked(readCompleteBuildArtifact).mockResolvedValue(bytes);
+    render(<GeneratedPreview artifact={{ artifactId: 'apng-preview', target: 'clawd', filename: 'pet.zip', byteLength: bytes.byteLength }} locale="en" />);
+    expect(await screen.findByRole('img', { name: 'idle' })).toBeVisible();
+    expect(vi.mocked(URL.createObjectURL).mock.calls.at(-1)?.[0]).toHaveProperty('type', 'image/png');
+  });
   it("opens generated Clawd WebP assets and labels them from the theme contract", async () => {
     const bytes = await archive({
       "pet/theme.json": JSON.stringify({ states: { idle: ["idle.webp"], thinking: ["thinking.webp"] }, reactions: {} }),
@@ -83,7 +94,7 @@ describe("generated package preview", () => {
     expect(isSafeArchivePath("../escape.webp")).toBe(false);
     expect(isSafeArchivePath("pet/assets/idle.webp")).toBe(true);
     const bytes = await archive({ "pet/theme.json": "{}", "pet/README.md": "missing generated assets" });
-    await expect(parseGeneratedPreview(bytes, "clawd")).rejects.toThrow(/does not contain generated WebP assets/i);
+    await expect(parseGeneratedPreview(bytes, "clawd")).rejects.toThrow(/does not contain generated animation assets/i);
   });
 
   it("revokes generated image URLs when the preview leaves the page", async () => {

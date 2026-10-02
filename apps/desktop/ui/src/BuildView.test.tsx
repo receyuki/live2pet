@@ -2,12 +2,12 @@ import { cleanup, render, screen, within, fireEvent } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BuildView, targetReadiness } from "./BuildView";
-import { chooseInstallRoot, DesktopApiError, installArtifact, getTargetInstallations, hasTargetInstallationApi } from "./app-host";
+import { chooseInstallRoot, DesktopApiError, installArtifact, getTargetInstallations, hasTargetInstallationApi, getOutputSettings } from "./app-host";
 import { downloadBuildArtifact } from "./build-artifact";
 import { initialBuildState } from "./build-state";
 import type { Live2PetProject, SourceInspection } from "./app-host";
 
-vi.mock("./app-host", async (importOriginal) => ({ ...(await importOriginal<typeof import("./app-host")>()), hasBuildApi: () => true, hasTargetInstallationApi: vi.fn(() => false), getTargetInstallations: vi.fn(), chooseInstallRoot: vi.fn(), installArtifact: vi.fn() }));
+vi.mock("./app-host", async (importOriginal) => ({ ...(await importOriginal<typeof import("./app-host")>()), getOutputSettings: vi.fn(), hasBuildApi: () => true, hasTargetInstallationApi: vi.fn(() => false), getTargetInstallations: vi.fn(), chooseInstallRoot: vi.fn(), installArtifact: vi.fn() }));
 vi.mock("./build-artifact", () => ({ downloadBuildArtifact: vi.fn() }));
 vi.mock("./generated-preview", () => ({ GeneratedPreview: () => <div>generated preview</div> }));
 
@@ -22,6 +22,7 @@ const project = {
 
 afterEach(cleanup);
 beforeEach(() => {
+  vi.mocked(getOutputSettings).mockReset().mockResolvedValue({ schemaVersion: 1, mode: 'ask', animationFormat: 'webp' });
   vi.mocked(hasTargetInstallationApi).mockReturnValue(false);
   vi.mocked(getTargetInstallations).mockReset();
   vi.mocked(downloadBuildArtifact).mockReset().mockResolvedValue({ cancelled: false, path: '/output/pet.zip', filename: 'pet.zip', byteLength: 100 });
@@ -54,6 +55,14 @@ it('confirms the detected saved destination and installs through its opaque hand
 });
 
 describe("BuildView", () => {
+  it('shows the APNG default and disables the irrelevant WebP quality control', async () => {
+    vi.mocked(getOutputSettings).mockResolvedValue({ schemaVersion: 1, mode: 'ask', animationFormat: 'apng' });
+    const document = { ...project, targets: { ...project.targets, clawd: { ...project.targets.clawd, options: { renderOverrides: { width: 512, height: 512, fps: 30, quality: 80 } } } } };
+    render(<BuildView locale="en" project={document} inspection={inspection} runtimeReady state={initialBuildState()} onBuild={vi.fn()} onCancel={vi.fn()} onPreset={vi.fn()} onCustomRender={vi.fn()} />);
+    expect(await screen.findByText(/512 × 512 px · 30 FPS · APNG/)).toBeVisible();
+    expect(screen.getByRole('slider', { name: /WebP quality/i })).toBeDisabled();
+    expect(screen.getByRole('slider', { name: /frame rate/i })).toBeEnabled();
+  });
   it('retains all three presets and starts custom controls from the selected preset', async () => {
     const onCustomRender = vi.fn(), onPreset = vi.fn();
     const document = { ...project, targets: { ...project.targets, clawd: { ...project.targets.clawd, renderPreset: 'compact' as const } } };

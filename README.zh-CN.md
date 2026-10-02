@@ -54,6 +54,8 @@
 替换已安装宠物需要明确确认；升级失败时会保护原有包。[安装恢复说明 →](docs/guides/user-guide.zh-CN.md#installation-recovery)
 鼠标跟随仅用于预览；导出 Live2D 帧时会使用稳定居中的视线，并始终以 60 Hz 推进物理效果，不受输出帧率影响。
 
+只想保存动画？在映射页「模型预览」标题旁选择 **导出动画**，可单独或批量保存透明 WebP 或 APNG，设置分辨率与帧率，无需完成宠物状态映射。在设置中选择默认格式，同时用于 Clawd 构建；Codex 保持 WebP。兼容的导出与 Clawd 构建共用有容量限制的缓存。[动画导出说明 →](docs/guides/user-guide.md#export-individual-animations)
+
 ## 桌面效果
 
 <p align="center"><img src="docs/assets/live2pet-desktop-pet-preview.gif" alt="通过 Live2Pet 生成的初音未来桌面宠物在 Clawd on Desk 旁运行" width="250"></p>
@@ -103,7 +105,7 @@ open apps/desktop/out/Live2Pet-darwin-*/Live2Pet.app
 
 **支持导出** — 受支持的模型均可选择以下任一目标：
 
-- **[Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk)** — 包含透明 WebP 动画的主题
+- **[Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk)** — 包含透明 WebP 或 APNG 动画的主题
 - **Codex 自定义宠物** — V2 动画图集
 
 可以保存轻量的 **.l2p** 本地项目，也可以将所选模型一起保存为便携的 **.l2pack** 项目；旧 `.live2pet` 项目仍可继续打开。

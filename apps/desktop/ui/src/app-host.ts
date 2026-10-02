@@ -136,8 +136,9 @@ export type BuildProgressEvent = {
 };
 
 export type BuildArtifact = { artifactId: string; target: BuildTarget; filename: string; byteLength: number };
-export type OutputSettings = { schemaVersion: 1; mode: 'ask' | 'folder'; folder?: string; folderState?: 'ready' | 'will-create' | 'not-directory' | 'unavailable' };
-export type OutputSettingsAction = 'choose-folder' | 'ask-every-time';
+export type AnimationFormat = 'webp' | 'apng';
+export type OutputSettings = { schemaVersion: 1; mode: 'ask' | 'folder'; folder?: string; folderState?: 'ready' | 'will-create' | 'not-directory' | 'unavailable'; animationFormat?: AnimationFormat };
+export type OutputSettingsAction = 'choose-folder' | 'ask-every-time' | { action: 'set-animation-format'; format: AnimationFormat };
 export type SaveArtifactResult = { cancelled: true } | { cancelled: false; path: string; filename: string; byteLength: number };
 export type BuildSummary = {
   target: BuildTarget;
@@ -190,6 +191,55 @@ type AppResponse<T> = {
   error?: { code: string; message: string };
 };
 
+export type AnimationExportRender = {
+  format?: AnimationFormat;
+  preset: RenderPreset;
+  width: number; height: number; fps: number; quality: number;
+  lossless: boolean; loop: boolean;
+};
+export type AnimationExportRequest = {
+  requestId: string; project: Live2PetProject; motionIds: string[];
+  expressionId: string | null; render: AnimationExportRender; directoryId?: string;
+};
+export type AnimationExportDirectory = { cancelled: boolean; directoryId?: string; directoryPath?: string };
+export type AnimationExportResult = AnimationExportDirectory & {
+  requestId: string;
+  files: Array<{ motionId: string; filename: string; byteLength: number }>;
+  failures: Array<{ motionId: string; message: string }>;
+};
+export type AnimationExportProgress = {
+  requestId: string; sequence: number; stage: string; status: string;
+  motionId?: string; total?: number; completed?: number; percent?: number; fraction?: number; cache?: string;
+};
+
+export function hasAnimationExportApi(): boolean {
+  const api = desktopApi();
+  return Boolean(api?.exportAnimations && api.cancelAnimationExport && api.onAnimationExportProgress);
+}
+export function exportAnimations(input: AnimationExportRequest): Promise<AnimationExportResult> {
+  const api = desktopApi();
+  if (!api?.exportAnimations) throw new DesktopApiError('APP_EXPORT_UNAVAILABLE', 'Animation export requires the current Desktop App.');
+  return unwrap(api.exportAnimations(input));
+}
+export function cancelAnimationExport(requestId: string) {
+  const api = desktopApi();
+  if (!api?.cancelAnimationExport) throw new DesktopApiError('APP_EXPORT_UNAVAILABLE', 'Animation export requires the current Desktop App.');
+  return unwrap(api.cancelAnimationExport(requestId));
+}
+export function chooseAnimationExportDirectory(): Promise<AnimationExportDirectory> {
+  const api = desktopApi();
+  if (!api?.chooseAnimationExportDirectory) throw new DesktopApiError('APP_EXPORT_UNAVAILABLE', 'Animation export requires the current Desktop App.');
+  return unwrap(api.chooseAnimationExportDirectory());
+}
+export function openAnimationExportDirectory(directoryId: string) {
+  const api = desktopApi();
+  if (!api?.openAnimationExportDirectory) throw new DesktopApiError('APP_EXPORT_UNAVAILABLE', 'Animation export requires the current Desktop App.');
+  return unwrap(api.openAnimationExportDirectory(directoryId));
+}
+export function onAnimationExportProgress(listener: (event: AnimationExportProgress) => void): () => void {
+  return desktopApi()?.onAnimationExportProgress?.(listener) ?? (() => undefined);
+}
+
 export type UpdateStatus = {
   schemaVersion: 1;
   state: 'available' | 'up-to-date' | 'no-release';
@@ -199,6 +249,11 @@ export type UpdateStatus = {
 };
 
 type Live2PetApi = {
+  exportAnimations?(input: AnimationExportRequest): Promise<AppResponse<AnimationExportResult>>;
+  cancelAnimationExport?(requestId: string): Promise<AppResponse<{ cancelled: boolean }>>;
+  chooseAnimationExportDirectory?(): Promise<AppResponse<AnimationExportDirectory>>;
+  openAnimationExportDirectory?(directoryId: string): Promise<AppResponse<unknown>>;
+  onAnimationExportProgress?(listener: (event: AnimationExportProgress) => void): () => void;
   getVersion(): Promise<
     AppResponse<{
       appVersion: string;
@@ -238,7 +293,7 @@ type Live2PetApi = {
   onBuildProgress?(listener: (event: BuildProgressEvent) => void): () => void;
   getBuildArtifact?(artifactId: string, offset?: number): Promise<AppResponse<BuildArtifactChunk>>;
   getOutputSettings?(): Promise<AppResponse<OutputSettings>>;
-  configureOutputSettings?(input: { action: OutputSettingsAction }): Promise<AppResponse<{ cancelled: boolean }>>;
+  configureOutputSettings?(input: { action: 'choose-folder' | 'ask-every-time' } | { action: 'set-animation-format'; format: AnimationFormat }): Promise<AppResponse<{ cancelled: boolean }>>;
   saveBuildArtifact?(artifactId: string): Promise<AppResponse<SaveArtifactResult>>;
   chooseInstallRoot?(target: BuildTarget): Promise<AppResponse<InstallRootResult>>;
   getTargetInstallations?(): Promise<AppResponse<TargetInstallations>>;
@@ -515,7 +570,7 @@ export function getOutputSettings(): Promise<OutputSettings> {
 export function configureOutputSettings(action: OutputSettingsAction): Promise<{ cancelled: boolean }> {
   const api = desktopApi();
   if (!api?.configureOutputSettings) return Promise.reject(new DesktopApiError('APP_OUTPUT_UNAVAILABLE', 'Package output settings require the Desktop App.'));
-  return unwrap(api.configureOutputSettings({ action }));
+  return unwrap(api.configureOutputSettings(typeof action === 'string' ? { action } : action));
 }
 
 export function saveBuildArtifact(artifactId: string): Promise<SaveArtifactResult> {

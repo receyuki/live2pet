@@ -58,7 +58,16 @@ function createHostedBuildService({ previewSession, buildProject, captureBounds 
     });
   };
 
-  return async function hostedBuild(input = {}) {
+  const withRenderer = (input, operation) => {
+    const identity = normalizeIdentity(input.project);
+    return runCaptured(async () => previewSession.withRenderer({ ...identity, bounds: captureBounds, fresh: true, ...(input.verifyBuildContext ? { verifyBuildContext: input.verifyBuildContext } : {}) }, async renderer => {
+      await input.verifyBuildContext?.();
+      if (input.signal?.aborted) fail('BUILD_CANCELLED', 'Animation export was cancelled before capture.');
+      return operation(renderer);
+    }), { signal: input.signal, onProgress: input.onProgress, targets: ['animation'] });
+  };
+
+  const hostedBuild = async function hostedBuild(input = {}) {
     const targets = Array.isArray(input.targets) && input.targets.length ? [...new Set(input.targets)] : ['clawd', 'codex-pet'];
     const inputsByTarget = { ...(input.inputsByTarget || {}) };
     const missingRendererTargets = targets.filter((target) => !hasCapturedInput(target, inputsByTarget[target]));
@@ -82,6 +91,8 @@ function createHostedBuildService({ previewSession, buildProject, captureBounds 
       throw new HostedBuildError(error?.code || 'HOSTED_BUILD_FAILED', error?.message || error);
     }
   };
+  hostedBuild.withRenderer = withRenderer;
+  return hostedBuild;
 }
 
 module.exports = { HostedBuildError, createHostedBuildService, hasCapturedInput };

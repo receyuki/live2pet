@@ -121,8 +121,8 @@ async function parseClawd(files: Map<string, Entry>, archive: Uint8Array): Promi
   const manifest = parseJson(await readEntry(files.get(manifestPath)!, "theme.json", MAX_MANIFEST_BYTES), "theme.json");
   const labels = collectAssetLabels(manifest);
   const assetPrefix = `${root}assets/`;
-  const assetEntries = [...files.entries()].filter(([name]) => name.startsWith(assetPrefix) && name.toLowerCase().endsWith(".webp") && !name.slice(assetPrefix.length).includes("/"));
-  if (!assetEntries.length) fail("The Clawd package does not contain generated WebP assets.");
+  const assetEntries = [...files.entries()].filter(([name]) => name.startsWith(assetPrefix) && /\.(webp|apng)$/i.test(name) && !name.slice(assetPrefix.length).includes("/"));
+  if (!assetEntries.length) fail("The Clawd package does not contain generated animation assets.");
   let expandedBytes = 0;
   const assets: PreviewAsset[] = [];
   for (const [path, entry] of assetEntries) {
@@ -130,7 +130,7 @@ async function parseClawd(files: Map<string, Entry>, archive: Uint8Array): Promi
     if (expandedBytes > MAX_EXPANDED_PREVIEW_BYTES) fail("The generated preview assets are too large to open safely.");
     const file = path.slice(assetPrefix.length);
     const referencedBy = labels.get(file);
-    assets.push({ id: file, label: referencedBy?.length ? referencedBy.join(" · ") : file.replace(/\.webp$/i, ""), path });
+    assets.push({ id: file, label: referencedBy?.length ? referencedBy.join(" · ") : file.replace(/\.(webp|apng)$/i, ""), path });
   }
   return { target: "clawd", archive, assets };
 }
@@ -176,7 +176,7 @@ export async function loadGeneratedPreview(artifact: BuildArtifact): Promise<Gen
 }
 
 export async function readGeneratedPreviewAsset(archive: Uint8Array, path: string): Promise<Uint8Array> {
-  if (!isSafeArchivePath(path) || !path.toLowerCase().endsWith(".webp")) fail("The selected generated asset path is invalid.");
+  if (!isSafeArchivePath(path) || !/\.(webp|apng)$/i.test(path)) fail("The selected generated asset path is invalid.");
   const { Uint8ArrayReader, ZipReader } = await zipApi();
   const reader = new ZipReader(new Uint8ArrayReader(archive));
   try {
@@ -233,10 +233,11 @@ export function GeneratedPreview({ artifact, locale }: Props) {
 
   useEffect(() => {
     if (!imageBytes) { setImageUrl(null); return; }
-    const url = URL.createObjectURL(new Blob([Uint8Array.from(imageBytes).buffer], { type: "image/webp" }));
+    const type = preview?.target === 'clawd' && /\.apng$/i.test(preview.assets[selected]?.path ?? '') ? 'image/png' : 'image/webp';
+    const url = URL.createObjectURL(new Blob([Uint8Array.from(imageBytes).buffer], { type }));
     setImageUrl(url);
     return () => URL.revokeObjectURL(url);
-  }, [imageBytes]);
+  }, [imageBytes, preview, selected]);
 
   const codexRow = preview?.target === "codex-pet" ? preview.rows[selected] : null;
   useEffect(() => {

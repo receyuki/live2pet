@@ -14,7 +14,10 @@ test('desktop shell pins the HeroUI entrypoint and keeps navigation and IPC narr
   assert.match(main, /protocol\.registerSchemesAsPrivileged/);
   assert.match(main, /defaultSession\.protocol\.handle\(RUNTIME_PROTOCOL_SCHEME/);
   assert.match(main, /createRuntimeProtocolHandler/);
-  assert.match(main, /buildProjectService: buildProjectWithPlan/);
+  assert.match(main, /buildProjectService: async \(input\) => \{/);
+  assert.match(main, /optionsByTarget\.clawd\?\.format === undefined/);
+  assert.match(main, /const settings = await getPackageOutputService\(\)\.get\(\);[\s\S]*optionsByTarget\.clawd = \{ \.\.\.optionsByTarget\.clawd, format: settings\.animationFormat \};/);
+  assert.match(main, /return buildProjectWithPlan\(\{ \.\.\.input, optionsByTarget \}\);/);
   assert.match(main, /buildProject: buildProjectWithHostedRenderer/);
   assert.match(main, /createHostedBuildService/);
   assert.match(main, /buildProject: buildProjectWithCaptureCache/);

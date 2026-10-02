@@ -19,7 +19,7 @@
 | Live2D PCK | Supported uncompressed, unencrypted layouts; PCK is a container, not one game's format |
 | Spine 4.0–4.3 | JSON or binary skeleton, matching atlas and texture pages; default skin and Slot visibility |
 | Codex output | V2 11-row atlas; nine animation mappings plus neutral look cells, without directional mouse following |
-| Clawd output | Transparent animated WebP assets, required/optional states and reactions |
+| Clawd output | Transparent WebP or APNG animations, required/optional states and reactions |
 
 macOS Intel/Apple Silicon and Windows x64 downloads are available. The maintainer has reported successful Windows testing; that report does not identify a Windows version, device or exact build, and is not evidence that every subsequent change was tested there. Spine 4.1 binary and 4.3 JSON have local integration coverage; 4.0/4.2 still need real-model acceptance. See the [acceptance record](../desktop-acceptance.md) for the scope of individual checks.
 
@@ -66,6 +66,50 @@ The three panels are **Animations**, **Model Preview**, and **Assignment**. Drag
 | Reset preview | Recreate the model preview |
 
 Map Clawd and Codex independently. Required states must be filled; optional states may remain empty. When Clawd Drag or double-click reactions are not mapped, generated themes reuse Idle so the pet remains interactive. Explicit reaction mappings always take precedence. Background and character pixels in the same mesh cannot be separated here.
+
+## Export individual animations
+
+For Live2D, choose **Export animation** in Map's **Model Preview** header.
+This does not require any Clawd or Codex assignments.
+
+Choose **WebP** (default) or **APNG** under Settings' output preferences.
+The format applies to standalone exports and Clawd themes; Codex remains WebP.
+APNG is lossless and usually larger, so WebP is recommended for compact themes.
+APNG does not use the WebP quality setting.
+
+1. Export the current Motion, select several, or choose all Motions.
+2. Choose Compact, Balanced, High, or Custom. Custom supports a 1–2048 px
+   canvas, 1–60 FPS, and WebP quality 1–100. Aspect-ratio locking, lossless
+   encoding, and looping are available. **Use current Clawd specifications**
+   copies the project's Clawd settings without changing them.
+3. Use the output folder configured in Settings, or select a folder for this
+   export. Each Motion is saved as a transparent `.webp` or `.apng`. Batch exports
+   create a model-named folder; existing files are never overwritten.
+
+Exports use the complete Motion at its original speed, with the project's saved
+Visual Settings. The current Expression is used for a single Motion; batch
+selection starts with the base Expression and can apply one Expression to all.
+Preview speed, playhead, mouse tracking, and temporary Solo inspection are not
+exported. Framing uses the same fixed-per-Motion policy as Clawd; it does not
+introduce frame-by-frame auto-zoom.
+
+The dialog may be closed during export. Progress remains in the status bar;
+click it to reopen details or cancel. Completed files remain available after
+cancellation, and failed Motions are listed separately. A running export uses
+its starting configuration, even if you edit the project afterward.
+
+Exports and Pet Package builds share the renderer queue, memory budget, and
+bounded cache. Matching Clawd specifications reuse encoded animations; changes
+to format, encoding quality, or looping can reuse retained capture frames. Encoded
+outputs are cached separately by format. Changes to
+resolution, FPS, runtime, source, Expression, or Visual Settings invalidate the
+relevant cache. Codex uses different sampling/atlas rules and does not directly
+reuse these full-length animations. Oversized raw-frame entries may be skipped;
+saved output files are not cache entries and are never automatically evicted.
+
+Standalone export currently supports Live2D with WebP and APNG. Very long
+or high-resolution animations may exceed the existing capture memory budget;
+reduce resolution or FPS if asked.
 
 ## Build, save, install
 

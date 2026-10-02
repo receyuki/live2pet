@@ -6,6 +6,17 @@ GitHub Releases.
 
 ## [Unreleased]
 
+### Added
+
+- Choose WebP or lossless APNG in output settings for animation exports and
+  Clawd themes. Codex output remains WebP.
+- Export individual or multiple Live2D Motions as transparent WebP or APNG
+  from Map, without assigning pet states. Choose presets or custom resolution,
+  FPS, quality, lossless encoding, and looping; save files with safe numbered names.
+- Animation exports share compatible Clawd animation/capture caches and the
+  bounded renderer queue. Progress, cancellation, and per-Motion failures stay
+  available from the status bar.
+
 ## [0.3.0] - 2026-09-22
 
 ### New features

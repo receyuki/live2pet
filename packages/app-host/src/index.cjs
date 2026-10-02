@@ -6,6 +6,7 @@ const { installPackage } = require('@live2pet/installation');
 const APP_IPC_PROTOCOL_VERSION = 1;
 const APP_IPC_CHANNEL = 'live2pet:app';
 const APP_BUILD_PROGRESS_CHANNEL = 'live2pet:build-progress';
+const APP_ANIMATION_EXPORT_PROGRESS_CHANNEL = 'live2pet:animation-export-progress';
 const APP_LIBRARY_DOWNLOAD_PROGRESS_CHANNEL = 'live2pet:library-download-progress';
 const APP_COMMAND_CHANNEL = 'live2pet:command';
 const { createAppPreloadApi, APP_COMMANDS } = require('./preload-api.cjs');
@@ -82,6 +83,10 @@ const APP_IPC_METHODS = Object.freeze([
   'getBuildCacheStatus',
   'clearBuildCache',
   'buildProject',
+  'exportAnimations',
+  'cancelAnimationExport',
+  'chooseAnimationExportDirectory',
+  'openAnimationExportDirectory',
   'cancelBuild',
   'getBuildArtifact',
   'getOutputSettings',
@@ -714,7 +719,8 @@ function typedError(error) {
   };
 }
 
-function createAppIpcRouter({ projectWorkspaceService = null, projectSourceService = null, sourceInspectionService = null, sourceLibraryService = null, runtimeSettingsService = null, spinePackService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, targetInstallationService = null, packageOutputService = null, updateService = null, onBuildProgress = null, onLibraryDownloadProgress = null, appVersion = '0.1.0' } = {}) {
+function createAppIpcRouter({ animationExportService = null, animationOutputService = null, onAnimationExportProgress = null, projectWorkspaceService = null, projectSourceService = null, sourceInspectionService = null, sourceLibraryService = null, runtimeSettingsService = null, spinePackService = null, captureCacheService = null, buildProjectService = null, installPackageService = null, installRootPickerService = null, targetInstallationService = null, packageOutputService = null, updateService = null, onBuildProgress = null, onLibraryDownloadProgress = null, appVersion = '0.1.0' } = {}) {
+  const activeExports = new Map();
   if (projectWorkspaceService !== null && (!isRecord(projectWorkspaceService) || typeof projectWorkspaceService.getRecentProjects !== 'function' || typeof projectWorkspaceService.clearRecentProjects !== 'function' || typeof projectWorkspaceService.openProject !== 'function' || typeof projectWorkspaceService.saveProject !== 'function')) fail('INVALID_APP_ROUTER', 'projectWorkspaceService must expose getRecentProjects, clearRecentProjects, openProject, and saveProject functions when provided.');
   if (projectSourceService !== null && (!isRecord(projectSourceService) || typeof projectSourceService.relink !== 'function' || typeof projectSourceService.acknowledgeReview !== 'function')) fail('INVALID_APP_ROUTER', 'projectSourceService must expose relink and acknowledgeReview functions when provided.');
   if (sourceInspectionService !== null && typeof sourceInspectionService !== 'function') fail('INVALID_APP_ROUTER', 'sourceInspectionService must be a function when provided.');
@@ -736,6 +742,8 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
   let installLocations = new Map();
 
   const close = async () => {
+    for (const controller of activeExports.values()) controller.abort();
+    activeExports.clear();
     for (const { controller } of activeBuilds.values()) controller.abort();
     activeBuilds = new Map();
     buildArtifacts = new Map();
@@ -746,6 +754,61 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
   const route = async (request) => {
     try {
       const normalized = normalizeRequest(request);
+      if (normalized.method === 'chooseAnimationExportDirectory') {
+        if (!animationOutputService) fail('APP_OUTPUT_UNAVAILABLE', 'Animation output requires the Desktop App.');
+        if (normalized.args.length) fail('INVALID_ANIMATION_EXPORT_REQUEST', 'Folder selection does not accept arguments.');
+        return { protocolVersion: 1, ok: true, result: await animationOutputService.choose() };
+      }
+      if (normalized.method === 'openAnimationExportDirectory') {
+        if (!animationOutputService) fail('APP_OUTPUT_UNAVAILABLE', 'Animation output requires the Desktop App.');
+        const input = normalized.args[0];
+        if (!isRecord(input) || Object.keys(input).length !== 1 || typeof input.directoryId !== 'string') fail('INVALID_ANIMATION_EXPORT_REQUEST', 'A selected directory identifier is required.');
+        return { protocolVersion: 1, ok: true, result: await animationOutputService.open(input.directoryId) };
+      }
+      if (normalized.method === 'cancelAnimationExport') {
+        const input = normalized.args[0];
+        if (!isRecord(input) || Object.keys(input).length !== 1 || typeof input.requestId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(input.requestId)) fail('INVALID_ANIMATION_EXPORT_REQUEST', 'A valid request identifier is required.');
+        const controller = activeExports.get(input.requestId);
+        controller?.abort();
+        return { protocolVersion: 1, ok: true, result: { requestId: input.requestId, cancelled: Boolean(controller) } };
+      }
+      if (normalized.method === 'exportAnimations') {
+        if (!animationExportService || !animationOutputService) fail('APP_EXPORT_UNAVAILABLE', 'Animation export requires the Desktop App.');
+        const input = normalized.args[0];
+        const allowed = ['requestId', 'project', 'motionIds', 'expressionId', 'render', 'directoryId'];
+        if (!isRecord(input) || Object.keys(input).some(key => !allowed.includes(key)) || !isRecord(input.project) || !isRecord(input.render)
+          || typeof input.requestId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(input.requestId)
+          || !Array.isArray(input.motionIds) || !input.motionIds.length || input.motionIds.length > 4096 || input.motionIds.some(id => typeof id !== 'string' || !id || id.length > 512)
+          || (input.directoryId !== undefined && typeof input.directoryId !== 'string')) fail('INVALID_ANIMATION_EXPORT_REQUEST', 'A project snapshot, request identifier, selected motions and render settings are required.');
+        if (activeExports.has(input.requestId)) fail('ANIMATION_EXPORT_ACTIVE', 'This animation export is already active.');
+        const snapshot = structuredClone(input);
+        const controller = new AbortController();
+        activeExports.set(input.requestId, controller);
+        const files = [];
+        let sequence = 0;
+        let destination;
+        try {
+          if (snapshot.render.format === undefined && packageOutputService) snapshot.render.format = (await packageOutputService.get()).animationFormat || 'webp';
+          destination = await animationOutputService.prepare(snapshot);
+          if (destination.cancelled || controller.signal.aborted) return { protocolVersion: 1, ok: true, result: { requestId: input.requestId, cancelled: true, files, failures: [] } };
+          const result = await animationExportService({ ...snapshot, signal: controller.signal,
+            onAnimation: async (animation) => {
+              if (controller.signal.aborted) fail('BUILD_CANCELLED', 'Animation export was cancelled.');
+              const file = await animationOutputService.write(destination.directoryId, animation);
+              files.push(file);
+              return file;
+            },
+            onProgress: (event) => {
+              const safe = normalizeBuildProgressEvent(event);
+              if (safe && onAnimationExportProgress) try { onAnimationExportProgress({ ...safe, protocolVersion: 1, requestId: input.requestId, sequence: ++sequence }); } catch {}
+            },
+          });
+          return { protocolVersion: 1, ok: true, result: { ...result, ...destination, requestId: input.requestId, cancelled: controller.signal.aborted, files } };
+        } catch (error) {
+          if (controller.signal.aborted || error.code === 'BUILD_CANCELLED') return { protocolVersion: 1, ok: true, result: { ...destination, requestId: input.requestId, cancelled: true, files, failures: [] } };
+          throw error;
+        } finally { activeExports.delete(input.requestId); }
+      }
       if (normalized.method === 'getVersion') return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: { appVersion, protocolVersion: APP_IPC_PROTOCOL_VERSION, methods: [...APP_IPC_METHODS] } };
       if (normalized.method === 'checkForUpdates') {
         if (normalized.args.length) fail('INVALID_UPDATE_REQUEST', 'Update checks do not accept arguments.');
@@ -991,7 +1054,8 @@ function createAppIpcRouter({ projectWorkspaceService = null, projectSourceServi
       }
       if (normalized.method === 'configureOutputSettings') {
         const input = normalized.args[0];
-        if (normalized.args.length !== 1 || !isRecord(input) || Object.keys(input).some(key => key !== 'action') || !['choose-folder', 'ask-every-time'].includes(input.action)) fail('INVALID_OUTPUT_SETTINGS_REQUEST', 'Choose a supported native output configuration action.');
+        if (normalized.args.length !== 1 || !isRecord(input) || Object.keys(input).some(key => !['action', 'format'].includes(key)) || !['choose-folder', 'ask-every-time', 'set-animation-format'].includes(input.action)
+          || (input.action === 'set-animation-format' ? !['webp', 'apng'].includes(input.format) : input.format !== undefined)) fail('INVALID_OUTPUT_SETTINGS_REQUEST', 'Choose a supported native output configuration action.');
         if (!packageOutputService) fail('APP_OUTPUT_UNAVAILABLE', 'Package output requires the Desktop App.');
         return { protocolVersion: APP_IPC_PROTOCOL_VERSION, ok: true, result: await packageOutputService.configure(input) };
       }
@@ -1088,6 +1152,8 @@ function createAppWindowOptions({ preload, width = 1280, height = 860, show = fa
 }
 
 module.exports = {
+  createAnimationOutputService: require('./animation-output.cjs').createAnimationOutputService,
+  APP_ANIMATION_EXPORT_PROGRESS_CHANNEL,
   APP_COMMAND_CHANNEL,
   APP_COMMANDS,
   APP_BUILD_ARTIFACT_CHUNK_BYTES,

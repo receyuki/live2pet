@@ -13,9 +13,21 @@ async function fixture(t, options = {}) {
 }
 const artifact = { filename: 'pet.zip', bytes: Uint8Array.from([80, 75, 3, 4, 7]) };
 
+test('legacy settings default to WebP and format changes preserve output location without prompting', async t => {
+  const { service, root, settingsPath } = await fixture(t, { pickFolder: () => { throw new Error('Unexpected folder prompt'); } });
+  await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+  await fs.writeFile(settingsPath, JSON.stringify({ schemaVersion: 1, mode: 'folder', folder: root }));
+  assert.equal((await service.get()).animationFormat, 'webp');
+  await service.configure({ action: 'set-animation-format', format: 'apng' });
+  assert.deepEqual(await service.get(), { schemaVersion: 1, mode: 'folder', folder: root, folderState: 'ready', animationFormat: 'apng' });
+  assert.equal(JSON.parse(await fs.readFile(settingsPath, 'utf8')).animationFormat, 'apng');
+  assert.throws(() => service.configure({ action: 'set-animation-format', format: 'gif' }), { code: 'INVALID_OUTPUT_SETTINGS_REQUEST' });
+  assert.throws(() => service.configure({ action: 'ask-every-time', format: 'apng' }), { code: 'INVALID_OUTPUT_SETTINGS_REQUEST' });
+});
+
 test('defaults to asking, respects cancellation, and saves the exact complete bytes', async t => {
   const { service, root } = await fixture(t, { pickSavePath: async ({ defaultPath }) => { assert.equal(defaultPath, 'pet.zip'); return null; } });
-  assert.deepEqual(await service.get(), { schemaVersion: 1, mode: 'ask' });
+  assert.deepEqual(await service.get(), { schemaVersion: 1, mode: 'ask', animationFormat: 'webp' });
   assert.deepEqual(await service.save(artifact), { cancelled: true });
   assert.deepEqual(await fs.readdir(root), []);
   const saved = await fixture(t);
@@ -31,7 +43,7 @@ test('defaults to asking, respects cancellation, and saves the exact complete by
 test('persists the selected output folder and never overwrites colliding packages', async t => {
   const { service, root, settingsPath } = await fixture(t);
   assert.deepEqual(await service.configure({ action: 'choose-folder' }), { cancelled: false });
-  assert.deepEqual(await service.get(), { schemaVersion: 1, mode: 'folder', folder: root, folderState: 'ready' });
+  assert.deepEqual(await service.get(), { schemaVersion: 1, mode: 'folder', folder: root, folderState: 'ready', animationFormat: 'webp' });
   await fs.writeFile(path.join(root, 'pet.zip'), 'existing');
   const [first, second] = await Promise.all([service.save(artifact), service.save(artifact)]);
   assert.deepEqual([first.filename, second.filename].sort(), ['pet (1).zip', 'pet (2).zip']);

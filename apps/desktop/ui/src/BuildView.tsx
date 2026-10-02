@@ -2,7 +2,7 @@ import { Button, ButtonGroup, Card, Chip, ProgressBar, Input, Label, TextField }
 import { CircleCheck, Download, FolderOpen, PackageCheck, Square, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { BuildArtifact, BuildTarget, InstallResult, InstallRootResult, Live2PetProject, RenderPreset, SourceInspection, TargetInstallations, ClawdRenderSettings } from "./app-host";
-import { chooseInstallRoot, DesktopApiError, hasBuildApi, installArtifact, getTargetInstallations, hasTargetInstallationApi } from "./app-host";
+import { chooseInstallRoot, DesktopApiError, hasBuildApi, installArtifact, getTargetInstallations, hasTargetInstallationApi, getOutputSettings } from "./app-host";
 import { downloadBuildArtifact } from "./build-artifact";
 import type { BuildState } from "./build-state";
 import { GeneratedPreview } from "./generated-preview";
@@ -62,6 +62,12 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
   const [feedback, setFeedback] = useState<Partial<Record<BuildTarget, string>>>({});
   const [installations, setInstallations] = useState<TargetInstallations | null>(null);
   const [showCodexDetails, setShowCodexDetails] = useState(false);
+  const [animationFormat, setAnimationFormat] = useState<'webp' | 'apng'>('webp');
+  useEffect(() => {
+    let active = true;
+    void getOutputSettings().then(value => { if (active) setAnimationFormat(value.animationFormat ?? 'webp'); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
   const hostReady = hasBuildApi();
   useEffect(() => {
     if (!hasTargetInstallationApi()) return;
@@ -154,11 +160,11 @@ export function BuildView({ locale, project, inspection, runtimeReady, state, on
                 {!readiness.ready && <p>{t("targetMissing", { value: readiness.missing.map(readinessLabel).join(locale === 'zh-CN' ? '、' : ', ') })}</p>}
                 {target === 'clawd' && readiness.ready && <p>{t('targetReadyBody')}</p>}
                 <div className="preset-row"><strong>{t("renderPreset")}</strong><ButtonGroup aria-label={`${title} ${t("renderPreset")}`}>{presets.map((value) => <Button size="sm" key={value} isDisabled={current.status === 'building'} variant={!custom && preset === value ? "primary" : "secondary"} onPress={() => onPreset(target, value)}>{t(value)}</Button>)}{target === 'clawd' && onCustomRender && <Button size="sm" variant={custom ? 'primary' : 'secondary'} isDisabled={!project || current.status === 'building'} onPress={() => onCustomRender(settings)}>{t('customRender')}</Button>}</ButtonGroup></div>
-                {target === 'clawd' && <small>{settings.width} × {settings.height} px · {settings.fps} FPS · {t('webpQuality')} {settings.quality}</small>}
+                {target === 'clawd' && <small>{settings.width} × {settings.height} px · {settings.fps} FPS · {animationFormat === 'apng' ? 'APNG' : `${t('webpQuality')} ${settings.quality}`}</small>}
                 {custom && onCustomRender && <fieldset className="custom-render-settings" disabled={current.status === 'building'}><legend>{t('customRender')}</legend>
                   <label>{t('renderResolution')} <output>{settings.width} × {settings.height} px</output><input type="range" aria-label={t('renderResolution')} min={128} max={2048} step={64} value={settings.width} onChange={event => { const size = Number(event.target.value); onCustomRender({ ...settings, width: size, height: size }); }} /></label>
                   <label>{t('renderFps')} <output>{settings.fps} FPS</output><input type="range" aria-label={t('renderFps')} min={1} max={60} step={1} value={settings.fps} onChange={event => onCustomRender({ ...settings, fps: Number(event.target.value) })} /></label>
-                  <label>{t('webpQuality')} <output>{settings.quality}</output><input type="range" aria-label={t('webpQuality')} min={1} max={100} step={1} value={settings.quality} onChange={event => onCustomRender({ ...settings, quality: Number(event.target.value) })} /></label>
+                  <label>{t('webpQuality')} <output>{settings.quality}</output><input type="range" disabled={animationFormat === 'apng'} aria-label={t('webpQuality')} min={1} max={100} step={1} value={settings.quality} onChange={event => onCustomRender({ ...settings, quality: Number(event.target.value) })} /></label>
                   <small>{t('customRenderHint')}</small>
                 </fieldset>}
                 <div className={`build-result build-result-${current.status}`} role="status" aria-live="polite">

@@ -130,8 +130,8 @@ function validateAssetName(name, errors, context) {
     errors.push({ code: 'INVALID_CLAWD_ASSET', asset: String(name), message: `${context} must use a safe basename.` });
     return false;
   }
-  if (!name.toLowerCase().endsWith('.webp')) {
-    errors.push({ code: 'INVALID_CLAWD_ASSET', asset: name, message: `${context} must reference a .webp asset.` });
+  if (!/\.(webp|apng|png)$/i.test(name)) {
+    errors.push({ code: 'INVALID_CLAWD_ASSET', asset: name, message: `${context} must reference a WebP or APNG asset.` });
     return false;
   }
   return true;
@@ -318,10 +318,10 @@ function validateClawdThemePackage(input = {}) {
       errors.push({ code: 'INVALID_CLAWD_METADATA', field: 'hitBoxes.default', message: 'theme.json requires a finite default hit box with positive width and height for pointer interaction.' });
     }
     if (!isRecord(manifest.eyeTracking) || manifest.eyeTracking.enabled !== false || (Array.isArray(manifest.eyeTracking.states) && manifest.eyeTracking.states.length > 0)) {
-      errors.push({ code: 'EYE_TRACKING_UNSUPPORTED', field: 'eyeTracking', message: 'Clawd WebP output must disable eyeTracking and provide no eye-tracking states.' });
+      errors.push({ code: 'EYE_TRACKING_UNSUPPORTED', field: 'eyeTracking', message: 'Clawd animation output must disable eyeTracking and provide no eye-tracking states.' });
     }
     if (!isRecord(manifest.miniMode) || manifest.miniMode.supported !== false) {
-      errors.push({ code: 'MINI_MODE_UNSUPPORTED', field: 'miniMode', message: 'Clawd WebP output must mark miniMode.supported as false.' });
+      errors.push({ code: 'MINI_MODE_UNSUPPORTED', field: 'miniMode', message: 'Clawd animation output must mark miniMode.supported as false.' });
     }
     sleepMode = manifest.sleepSequence && manifest.sleepSequence.mode ? manifest.sleepSequence.mode : 'direct';
     if (!PROFILE.sleepModes.includes(sleepMode)) errors.push({ code: 'INVALID_SLEEP_MODE', message: 'sleepSequence.mode must be direct or full.' });
@@ -372,9 +372,9 @@ function validateClawdThemePackage(input = {}) {
     }
   }
 
-  for (const slot of PROFILE.states.requiredDirect) if (stateKinds[slot] !== 'assets') errors.push({ code: 'REQUIRED_STATE_UNMAPPED', slot, message: `${slot} must bind to one or more WebP assets.` });
-  if (stateKinds.sleeping !== 'assets' && stateKinds.sleeping !== 'fallback') errors.push({ code: 'REQUIRED_STATE_UNMAPPED', slot: 'sleeping', message: 'sleeping must bind to one or more WebP assets or fallbackTo.' });
-  if (sleepMode === 'full') for (const slot of FULL_SLEEP_STATES) if (stateKinds[slot] !== 'assets') errors.push({ code: 'FULL_SLEEP_STATE_UNMAPPED', slot, message: `full sleep requires one or more WebP assets for ${slot}.` });
+  for (const slot of PROFILE.states.requiredDirect) if (stateKinds[slot] !== 'assets') errors.push({ code: 'REQUIRED_STATE_UNMAPPED', slot, message: `${slot} must bind to one or more animation assets.` });
+  if (stateKinds.sleeping !== 'assets' && stateKinds.sleeping !== 'fallback') errors.push({ code: 'REQUIRED_STATE_UNMAPPED', slot: 'sleeping', message: 'sleeping must bind to one or more animation assets or fallbackTo.' });
+  if (sleepMode === 'full') for (const slot of FULL_SLEEP_STATES) if (stateKinds[slot] !== 'assets') errors.push({ code: 'FULL_SLEEP_STATE_UNMAPPED', slot, message: `full sleep requires one or more animation assets for ${slot}.` });
   validateThemeFallbacks(normalizedStates, stateKinds, errors);
 
   const assets = normalizeThemeAssets(input.assets, errors);

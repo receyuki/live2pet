@@ -5,6 +5,16 @@ const path = require('node:path');
 const { createRequire } = require('node:module');
 
 async function runServiceScenarios({ installation, packageBuild, project, workspace }, root) {
+  // Exercise the real worker from its packaged module location; simply requiring
+  // the encoder does not prove Worker can load its entrypoint inside ASAR.
+  const apng = await packageBuild.encodeAnimatedApng({ frames: [
+    { rgba: Buffer.from([255, 0, 0, 255]), width: 1, height: 1 },
+    { rgba: Buffer.from([0, 255, 0, 255]), width: 1, height: 1 },
+  ], width: 1, height: 1, delay: [17, 33], loop: 0 });
+  assert.equal(apng.format, 'apng');
+  assert.equal(apng.frameCount, 2);
+  assert.equal(apng.buffer.subarray(1, 4).toString(), 'PNG');
+  assert.ok(apng.buffer.includes(Buffer.from('acTL')));
   const installRoot = path.join(root, 'installed');
   const archive = await packageBuild.createCodexPetZip({ manifest: { id: 'synthetic-pet', displayName: 'Synthetic Pet', description: 'Acceptance fixture', spritesheetPath: 'spritesheet.webp' }, spritesheet: Uint8Array.from([1, 2, 3, 4]) });
   await installation.installPackage({ target: 'codex-pet', packageBytes: archive.buffer, targetRoot: installRoot });
@@ -83,7 +93,7 @@ async function runServiceScenarios({ installation, packageBuild, project, worksp
   await assert.rejects(service.openProject({ inputPath: corruptPath }));
   assert.deepEqual(await service.getRecentProjects(), recentBeforeReject);
   assert.deepEqual(fs.readFileSync(projectPath), replacementBytes);
-  return { installRollback: true, projectReplacement: true, cancelledSavePreserved: true, saveSnapshotPreserved: true, concurrentSavesIsolated: true, portableReopen: true, portableReject: true };
+  return { apngWorker: true, installRollback: true, projectReplacement: true, cancelledSavePreserved: true, saveSnapshotPreserved: true, concurrentSavesIsolated: true, portableReopen: true, portableReject: true };
 }
 
 async function acceptPackagedServices(asarPath) {

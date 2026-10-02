@@ -59,6 +59,7 @@ function normalizeAssetReports(assets) {
     const file = safeAssetName(asset.file || asset.name);
     return {
       file: assetPath(file),
+      ...(asset.format === 'webp' || asset.format === 'apng' ? { format: asset.format } : {}),
       ...(Number.isInteger(asset.frameCount) ? { frameCount: asset.frameCount } : {}),
       ...(Number.isInteger(asset.width) ? { width: asset.width } : {}),
       ...(Number.isInteger(asset.height) ? { height: asset.height } : {}),

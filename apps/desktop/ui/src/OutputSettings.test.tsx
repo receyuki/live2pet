@@ -25,6 +25,15 @@ it.each(['en', 'zh-CN'] as const)('can select an output folder and restore askin
   expect(configureOutputSettings).toHaveBeenLastCalledWith('ask-every-time');
 });
 
+it('changes animation format without opening the folder picker', async () => {
+  render(<OutputSettings locale="en" />);
+  expect(await screen.findByRole('button', { name: 'WebP' })).toHaveAttribute('aria-pressed', 'true');
+  vi.mocked(getOutputSettings).mockResolvedValue({ schemaVersion: 1, mode: 'ask', animationFormat: 'apng' });
+  await userEvent.setup().click(screen.getByRole('button', { name: 'APNG' }));
+  expect(configureOutputSettings).toHaveBeenCalledWith({ action: 'set-animation-format', format: 'apng' });
+  expect(await screen.findByRole('button', { name: 'APNG' })).toHaveAttribute('aria-pressed', 'true');
+});
+
 it('reports inaccessible configured folders without inventing a replacement', async () => {
   vi.mocked(getOutputSettings).mockResolvedValue({ schemaVersion: 1, mode: 'folder', folder: '/gone', folderState: 'unavailable' });
   render(<OutputSettings locale="en" />);

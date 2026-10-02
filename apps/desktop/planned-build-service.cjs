@@ -1,10 +1,10 @@
-const { createCacheKey, createCodexPreview, decodeAsset, encodeAsset, planTargetRecipes } = require('@live2pet/package-build');
+const { createCacheKey, createCodexPreview, decodeAsset, encodeAsset, planTargetRecipes, normalizeAnimationFormat } = require('@live2pet/package-build');
 const CODEX_PROFILE = require('@live2pet/codex-target/profile');
 const { performance } = require('node:perf_hooks');
 
 // Independent from Project/Source Package versions: algorithm changes only
 // invalidate generated assets, never the user's source or saved mappings.
-const PLAN_VERSION = 'encoded-before-render-v2-isolated-motions';
+const { animationCacheKey, PLAN_VERSION } = require('./animation-cache-key.cjs');
 
 function encodeAtlas(value) {
   const { encoded, ...metadata } = value;
@@ -84,7 +84,7 @@ function createPlannedBuildService({ getCache, resolveContext, buildProject }) {
       const store = (key, bytes) => {
         const started = performance.now();
         try {
-          const written = cache.put(key, bytes, { projectId: input.project.projectId, sourceFingerprint: input.project.source.fingerprint, artifact: 'planned-encoded-webp' });
+          const written = cache.put(key, bytes, { projectId: input.project.projectId, sourceFingerprint: input.project.source.fingerprint, artifact: target === 'clawd' && options.format === 'apng' ? 'planned-encoded-apng' : 'planned-encoded-webp' });
           if (written.stored) desktopTimings.encodedCacheWriteBytes += bytes.byteLength;
           return written;
         } finally { desktopTimings.encodedCacheWriteMs += performance.now() - started; }
@@ -109,14 +109,15 @@ function createPlannedBuildService({ getCache, resolveContext, buildProject }) {
         } };
         continue;
       }
-      const keys = new Map(plan.motions.map(recipe => [recipe.motionId, keyFor(recipe)]));
+      const format = normalizeAnimationFormat(options.format);
+      const keys = new Map(plan.motions.map(recipe => [recipe.motionId, animationCacheKey({ project: input.project, context, recipe, render: { ...plan.render, format }, visualSettings: plan.visualSettings })]));
       const encodedByMotion = {};
       for (const [motionId, key] of keys) {
         const cached = read(key);
         if (!cached) continue;
         try {
           const decoded = decodeAsset(cached.data);
-          if (decoded.format !== 'webp' || decoded.width !== plan.render.width || decoded.height !== plan.render.height) continue;
+          if (decoded.format !== format || decoded.width !== plan.render.width || decoded.height !== plan.render.height) continue;
           encodedByMotion[motionId] = { ...decoded, buffer: decoded.bytes };
         } catch { cache.removeFiles?.(key.digest); }
       }

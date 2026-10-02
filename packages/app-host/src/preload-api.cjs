@@ -65,6 +65,16 @@ function createAppPreloadApi({ ipcRenderer, channel = 'live2pet:app', getFilePat
       ipcRenderer.removeListener(APP_BUILD_PROGRESS_CHANNEL, handler);
     };
   };
+  const onAnimationExportProgress = (listener) => {
+    if (typeof listener !== 'function') throw new TypeError('onAnimationExportProgress requires a function listener.');
+    const handler = (_event, payload) => {
+      if (typeof payload?.requestId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(payload.requestId)) return;
+      const normalized = normalizeBuildProgressPayload({ ...payload, buildId: payload.requestId });
+      if (normalized) { delete normalized.buildId; listener(Object.freeze(normalized)); }
+    };
+    ipcRenderer.on('live2pet:animation-export-progress', handler);
+    return () => ipcRenderer.removeListener('live2pet:animation-export-progress', handler);
+  };
   const normalizeLibraryDownloadProgressPayload = (payload) => {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload) || payload.protocolVersion !== APP_IPC_PROTOCOL_VERSION) return null;
     if (typeof payload.downloadId !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(payload.downloadId) || !Number.isInteger(payload.sequence) || payload.sequence < 1) return null;
@@ -158,6 +168,11 @@ function createAppPreloadApi({ ipcRenderer, channel = 'live2pet:app', getFilePat
     clearBuildCache: (input) => invoke('clearBuildCache', input),
     getFilePath,
     buildProject: (input) => invoke('buildProject', input),
+    exportAnimations: (input) => invoke('exportAnimations', input),
+    cancelAnimationExport: (requestId) => invoke('cancelAnimationExport', { requestId }),
+    chooseAnimationExportDirectory: () => invoke('chooseAnimationExportDirectory'),
+    openAnimationExportDirectory: (directoryId) => invoke('openAnimationExportDirectory', { directoryId }),
+    onAnimationExportProgress,
     cancelBuild: (buildId) => invoke('cancelBuild', { buildId }),
     onBuildProgress,
     getBuildArtifact: (artifactId, offset = 0) => invoke('getBuildArtifact', { artifactId, offset }),

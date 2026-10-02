@@ -91,8 +91,10 @@ import type { ProjectDraft } from "./project-draft";
 import { SettingsView, SetupView } from "./SettingsView";
 import { ModelsView } from "./ModelsView";
 import { projectFromSource } from './project-from-source';
-import { usePreviewSession } from './usePreviewSession';
+import { PreviewSuspensionContext, usePreviewSession } from './usePreviewSession';
 import { getPreviewVisualElementThumbnail } from './app-host';
+import { hasAnimationExportApi } from './app-host';
+import { useAnimationExport } from './AnimationExport';
 
 const SETUP_KEY = "live2pet.desktop.setup-completed";
 const LOCALE_KEY = "live2pet.desktop.locale";
@@ -210,7 +212,7 @@ function PanelHeading({ icon, title, body }: { icon: ReactNode; title: string; b
   return <header className="panel-heading"><span className="square-icon">{icon}</span><div><h2>{title}</h2><p>{body}</p></div></header>;
 }
 
-function MapView({ locale, projectId, projectDocument, inspection, runtimeReady, selectedMotionId, selectedExpressionId, onConfigureRuntime, onSelectMotion, onSelectExpression, onAssign, onClear, onVisualSettings }: { locale: Locale; projectId: string; projectDocument: Live2PetProject | null; inspection?: SourceInspection; runtimeReady: boolean; selectedMotionId: string | null; selectedExpressionId: string | null; onConfigureRuntime: () => void; onSelectMotion: (id: string) => void; onSelectExpression: (id: string | null) => void; onAssign: (destination: MappingDestination) => void; onClear: (destination: MappingDestination) => void; onVisualSettings: (settings: VisualSettings) => void }) {
+function MapView({ locale, projectId, projectDocument, inspection, runtimeReady, selectedMotionId, selectedExpressionId, onConfigureRuntime, onSelectMotion, onSelectExpression, onAssign, onClear, onVisualSettings, onExport, exportOpen }: { locale: Locale; projectId: string; projectDocument: Live2PetProject | null; inspection?: SourceInspection; runtimeReady: boolean; selectedMotionId: string | null; selectedExpressionId: string | null; onConfigureRuntime: () => void; onSelectMotion: (id: string) => void; onSelectExpression: (id: string | null) => void; onAssign: (destination: MappingDestination) => void; onClear: (destination: MappingDestination) => void; onVisualSettings: (settings: VisualSettings) => void; onExport: () => void; exportOpen: boolean }) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   const sourceKey = `${projectId}\u0000${inspection?.source.fingerprint ?? ''}`;
   const sourceKeyRef = useRef(sourceKey);
@@ -219,7 +221,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   const [previewRetry, setPreviewRetry] = useState(0);
   const nativePreview = Boolean(inspection && runtimeReady && hasPreviewApi());
   const { status: previewStatus, setStatus: setPreviewStatus, run: runPreview } = usePreviewSession({
-    surface: previewSurface, enabled: nativePreview, projectId,
+    surface: previewSurface, enabled: nativePreview && !exportOpen, projectId,
     sourceFingerprint: inspection?.source.fingerprint, visualSettings: projectDocument?.visualSettings, retry: previewRetry,
   });
   const [playbackError, setPlaybackError] = useState<string | null>(null);
@@ -443,7 +445,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
       </Tabs>
       {splitter('left')}
       <section className="workspace-panel map-preview-panel" data-tour-id="map-preview">
-        <PanelHeading icon={<Sparkles size={16} />} title={t("preview")} body={t("previewHint")} />
+        <div className="preview-heading-with-export"><PanelHeading icon={<Sparkles size={16} />} title={t("preview")} body={t("previewHint")} /><span title={t('exportUnavailable')}><Button size="sm" variant="secondary" isDisabled={!projectDocument || !inspection || inspection.model.format === 'spine' || !runtimeReady || !selectedMotionId || !hasAnimationExportApi() || scanningParts || visibilityBusy || Boolean(projectDocument.sourceReview?.required)} onPress={onExport}><Download size={14} />{t('exportAnimation')}</Button></span></div>
         <div className="preview-caption"><Chip variant="soft">{selectedName} · {selectedExpression?.name ?? t("baseExpression")}</Chip><Button size="sm" variant="ghost" aria-label={t('resetPreview')} isDisabled={!nativePreview || previewStatus?.state === 'opening' || visibilityBusy || scanningParts} onPress={resetPreview}><RefreshCcw size={15} />{t('resetPreview')}</Button></div>
         <div className="preview-stage"><i className="stage-grid" />{!runtimeReady ? <div className="preview-runtime-required"><Gauge size={28} /><strong>{t("runtimeRequired")}</strong><p>{t("runtimeRequiredBody")}</p><Button size="sm" variant="primary" onPress={onConfigureRuntime}>{t(inspection?.model.format === 'spine' ? "installSpinePack" : "configureRuntime")}</Button></div> : nativePreview ? <><div ref={previewSurface} className="preview-native-surface" />{previewStatus?.state === 'opening' && <div className="preview-message">{t('previewLoading')}</div>}{previewStatus?.state === 'failed' && <div className="preview-runtime-required"><strong>{t('previewFailed')}</strong><p>{previewStatus.error?.message}</p><Button size="sm" variant="primary" onPress={() => setPreviewRetry((value) => value + 1)}>{t('retry')}</Button></div>}</> : <div className="preview-runtime-required"><Box size={28} aria-hidden="true" /><strong>{t('previewEmptyTitle')}</strong><p>{t(projectDocument ? 'previewDesktopRequired' : 'previewImportHint')}</p></div>}</div>
         <div className="playback"><Button isIconOnly aria-label={previewStatus?.playback?.playing ? t('pause') : t('play')} variant="primary" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={togglePlayback}>{previewStatus?.playback?.playing ? <Pause size={15} /> : <Play size={15} />}</Button><Button isIconOnly aria-label={t('restart')} variant="ghost" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={() => void runPlayback(() => controlLive2DPreview('restart'))}><RotateCcw size={15} /></Button><input className="timeline" type="range" aria-label={t('seekMotion')} min={0} max={selectedDuration} step={0.01} value={seekTime ?? previewStatus?.playback?.time ?? 0} disabled={previewStatus?.state !== 'ready' || !selectedDuration} onInput={(event) => setSeekTime(Number(event.currentTarget.value))} /><small>{(previewStatus?.playback?.time ?? 0).toFixed(1)} / {selected?.seconds ?? '—'} s</small></div>
@@ -532,6 +534,7 @@ export function App() {
   const [projectDraft, setProjectDraft] = useState<ProjectDraft | null>(() => readProjectDraft());
   const [onboarding, setOnboarding] = useState(() => readOnboardingState(localStorage));
   const locale = state.settings.language;
+  const animationExport = useAnimationExport(locale);
   const appearance = state.settings.appearance;
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
 
@@ -638,6 +641,7 @@ export function App() {
   }
   function beginProjectReplacement(): boolean {
     if (projectTransition.current || importBusy) return false;
+    if (animationExport.activeRequest.current) { setActionFeedback(t('exportBusyProject')); return false; }
     if (activeBuilds.current.size) { setActionFeedback(t('projectReplacementBuildBusy')); return false; }
     const project = latestState.current.project;
     if (project?.dirty) {
@@ -651,6 +655,7 @@ export function App() {
     if (!projectTransition.current) dispatch(action);
   }
   async function startNewProject() {
+    if (animationExport.activeRequest.current) { setActionFeedback(t('exportBusyProject')); return; }
     if (Object.values(buildState).some(build => build.status === 'building')) { setActionFeedback(t('newProjectBuildBusy')); return; }
     if (!beginProjectReplacement()) return;
     try { if (hasPreviewApi()) await closeLive2DPreview(); } catch { /* Closing an unavailable preview must not trap the current project. */ }
@@ -863,6 +868,7 @@ export function App() {
     const project = state.project?.document;
     if (!project) return;
     if (projectTransition.current || importBusy) return;
+    if (animationExport.activeRequest.current) { setActionFeedback(t('exportBusyProject')); return; }
     if (activeBuilds.current.size) { setActionFeedback(t('projectReplacementBuildBusy')); return; }
     projectTransition.current = true;
     setImportBusy(true);
@@ -995,8 +1001,9 @@ export function App() {
         </Button>
         {current.status === 'building' && <ProgressBar size="sm" aria-label={`${name} ${t('buildProgress')}`} value={current.progress}><ProgressBar.Track><ProgressBar.Fill /></ProgressBar.Track></ProgressBar>}
       </div>;
-    })}</div>
+    })}{animationExport.status}</div>
     <span className="status-file" title={state.project?.fileName}>{state.project?.fileName ?? `Live2Pet ${appVersion}`}</span>
+    {animationExport.dialog}
   </footer>;
 
   if (state.destination === "setup") return <SetupView locale={locale} returning={state.setupReturnDestination !== null} onComplete={completeSetup} onRuntimeSettingsChange={setRuntimeSettings} />;
@@ -1005,6 +1012,7 @@ export function App() {
   const projectOpen = state.project !== null;
   const sourceReviewRequired = Boolean(state.project?.document?.sourceReview?.required);
   return (
+    <PreviewSuspensionContext value={animationExport.isOpen}>
     <div className="app-shell">
       <header className="app-toolbar" inert={importBusy && projectTransition.current}>
         <div className="toolbar-brand">{projectOpen ? <><span>Live2Pet</span><i /><strong title={state.project?.name}>{state.project?.name}</strong></> : <strong>Live2Pet</strong>}</div>
@@ -1015,11 +1023,12 @@ export function App() {
         {actionFeedback && <div className="action-feedback" role="alert">{actionFeedback}{projectSaveBusy && <ProgressBar aria-label={actionFeedback} isIndeterminate />}</div>}
         {state.destination === "welcome" && <ModelsView selectedLibraryModel={selectedLibraryModel} onSelectLibraryModel={setSelectedLibraryModel} pendingSource={pendingSource} onConfirmSource={confirmPendingSource} onDismissSource={() => setPendingSource(null)} onConfigureRuntime={() => dispatch({ type: "OPEN_SETTINGS", section: "runtimes" })} library={modelLibrary} setLibrary={library => { setModelLibrary(library); setSelectedLibraryModel(null); setPendingSource(null); }} locale={locale} busy={importBusy} error={importError} recentProjects={recentProjects} draft={projectDraft} onImport={(files, directDrop) => void importSourceFiles(files, directDrop)} onLibrarySelection={openLibrarySource} onOpenProject={() => void openProjectDocument()} onOpenRecent={(project) => project.available ? void openProjectDocument(project.documentId) : setImportError(t("recentUnavailable"))} onClearRecent={() => void clearRecentProjectHistory()} onRecoverDraft={() => void recoverProjectDraft()} onDiscardDraft={discardProjectDraft} />}
         {state.destination === "source" && state.project && <SourceView locale={locale} project={state.project.document} inspection={state.project.inspection} inspectionRequired={Boolean(state.project.document)} runtimeReady={runtimeReady} busy={importBusy} onConfigureRuntime={configureRequiredRuntime} onRelink={relinkCurrentSource} onAcknowledgeReview={acknowledgeCurrentSourceReview} onMap={() => dispatch({ type: "NAVIGATE", destination: "map" })} />}
-        {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={configureRequiredRuntime} onSelectMotion={(motionId) => editProject({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => editProject({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => editProject({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => editProject({ type: "CLEAR_ASSIGNMENT", destination })} onVisualSettings={(settings) => editProject({ type: "SET_VISUAL_SETTINGS", settings })} />}
+        {state.destination === "map" && state.project && <MapView locale={locale} projectId={state.project.id} projectDocument={state.project.document} inspection={state.project.inspection} runtimeReady={runtimeReady} selectedMotionId={state.project.selectedMotionId} selectedExpressionId={state.project.selectedExpressionId} onConfigureRuntime={configureRequiredRuntime} onSelectMotion={(motionId) => editProject({ type: "SELECT_MOTION", motionId })} onSelectExpression={(expressionId) => editProject({ type: "SELECT_EXPRESSION", expressionId })} onAssign={(destination) => editProject({ type: "ASSIGN_SELECTED_RECIPE", destination })} onClear={(destination) => editProject({ type: "CLEAR_ASSIGNMENT", destination })} onVisualSettings={(settings) => editProject({ type: "SET_VISUAL_SETTINGS", settings })} exportOpen={animationExport.isOpen} onExport={() => { const project = state.project; if (project?.document && project.inspection && project.selectedMotionId) animationExport.open({ project: project.document, inspection: project.inspection, motionId: project.selectedMotionId, expressionId: project.selectedExpressionId }); }} />}
         {state.destination === "build" && <BuildView locale={locale} project={state.project?.document ?? null} inspection={state.project?.inspection} runtimeReady={runtimeReady} state={buildState} onName={(name) => editProject({ type: "RENAME_PROJECT", name })} onPreset={(target, preset) => editProject({ type: "SET_RENDER_PRESET", target, preset })} onCustomRender={(settings) => editProject({ type: 'SET_CLAWD_RENDER', settings })} onBuild={buildProjectTarget} onCancel={(target) => void cancelProjectBuild(target)} />}
       </div>
       {statusBar}
       {onboardingStage && <OnboardingTour locale={locale} stage={onboardingStage} onComplete={(stage) => setOnboarding((current) => completeOnboardingStage(current, stage))} onSkip={() => setOnboarding((current) => skipOnboarding(current))} />}
     </div>
+    </PreviewSuspensionContext>
   );
 }

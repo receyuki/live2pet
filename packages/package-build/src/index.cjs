@@ -37,9 +37,11 @@ const {
 const { decodeAsset, encodeAsset, ASSET_CACHE_SCHEMA_VERSION, AssetCacheError } = require('./asset-cache.cjs');
 const { createInflate } = require('node:zlib');
 const { createCapturePipeline } = require('./capture-pipeline.cjs');
+const { encodeApngStack } = require('./apng-encoder.cjs');
 
 const BUILD_CONTRACT_VERSION = 1;
 const SHARP_ENCODER_VERSION = 'sharp-0.34.5';
+const APNG_ENCODER_VERSION = 'upng-js-2.1.0-lossless-v1';
 const STAGES = Object.freeze(['select', 'layout', 'compose', 'encode', 'manifest', 'preview', 'package', 'report']);
 const CLAWD_STAGES = Object.freeze(['validate', 'encode', 'manifest', 'preview', 'package', 'report']);
 const MAX_ENCODE_FRAMES = 4096;
@@ -78,7 +80,7 @@ function resolveTargetRenderPreset(target, render = {}) {
   return { name: presetName, settings: { ...preset, ...overrides } };
 }
 
-function buildProvenance(target, targetContractVersion, render = {}, encoderVersion) {
+function buildProvenance(target, targetContractVersion, render = {}, encoderVersion, format = 'webp') {
   const selection = resolveTargetRenderPreset(target, render);
   const provenance = {
     schemaVersion: 1,
@@ -87,10 +89,15 @@ function buildProvenance(target, targetContractVersion, render = {}, encoderVers
     targetContractVersion,
     renderPreset: selection.name,
     render: selection.settings,
-    encoder: { name: 'sharp', format: 'webp' },
+    encoder: { name: format === 'apng' ? 'upng-js' : 'sharp', format },
   };
   if (typeof encoderVersion === 'string' && encoderVersion.trim()) provenance.encoder.version = encoderVersion.trim();
   return provenance;
+}
+
+function normalizeAnimationFormat(format = 'webp') {
+  if (!['webp', 'apng'].includes(format)) fail('INVALID_ANIMATION_FORMAT', 'Animation format must be webp or apng.');
+  return format;
 }
 
 function createArtifactFilename({ packageId, target } = {}) {
@@ -344,7 +351,7 @@ function encodedAssetCacheKey({ cacheContext, target, targetVersion, renderPrese
     targetProfile: target,
     targetVersion: String(targetVersion),
     renderPreset,
-    artifact: 'encoded-webp',
+    artifact: recipe.format === 'apng' ? 'encoded-apng' : 'encoded-webp',
   });
 }
 
@@ -448,11 +455,11 @@ async function renderMappedMotions({ renderer, motionIds, render = {}, captureBa
       recipe: visualSettingsRecipe({
         motionId,
         expressionId,
-        render: { captureTimingVersion: 3, width, height, samples, duration, fps: Number.isFinite(render.fps) ? render.fps : null },
+        render: { captureTimingVersion: 3, width, height, samples, duration, fps: Number.isFinite(render.fps) ? render.fps : target === 'clawd' ? preset.fps : null },
       }, visualSettingsIdentity.digest),
       targetProfile: target,
       targetVersion: cacheContext.targetVersion,
-      renderPreset: presetName,
+      renderPreset: target === 'clawd' ? 'full-motion-v1' : presetName,
       artifact: 'render-candidates',
     }) : null;
     if (cacheKey) {
@@ -615,6 +622,22 @@ async function encodeAnimatedWebp({ frames, rgbaChunks, width, height, delay = 1
     if (error instanceof PackageBuildError) throw error;
     fail('WEBP_ENCODER_FAILED', `The WebP encoder failed: ${error && error.message ? error.message : error}`);
   }
+}
+
+async function encodeAnimatedApng({ frames, rgbaChunks, width, height, delay = 100, loop = 0 } = {}, { signal } = {}) {
+  checkCancelled(signal);
+  if (!Number.isInteger(loop) || loop < 0 || loop > 65535) fail('INVALID_APNG_INPUT', 'APNG loop count must be an integer between 0 and 65535.');
+  const delays = Array.isArray(delay) ? delay : Array(frames?.length || 0).fill(delay);
+  if (!Array.isArray(frames) || delays.length !== frames.length || delays.some(value => !Number.isInteger(value) || value < 1 || value > 60000)) fail('INVALID_APNG_INPUT', 'APNG delays must contain one integer millisecond value per frame between 1 and 60000.');
+  const stacked = await normalizeEncodeFrames(frames, width, height, { signal, rgbaChunks });
+  const buffer = await encodeApngStack({ stacked, width, height, frameCount: frames.length, delays, loop }, { signal });
+  checkCancelled(signal);
+  if (!buffer.length) fail('APNG_ENCODER_INVALID_OUTPUT', 'The APNG encoder returned an empty buffer.');
+  return { format: 'apng', buffer, frameCount: frames.length, width, height, delays, info: null };
+}
+
+function encodeAnimatedImage(input = {}, options = {}) {
+  return normalizeAnimationFormat(input.format) === 'apng' ? encodeAnimatedApng(input, options) : encodeAnimatedWebp(input, options);
 }
 
 function normalizeZipBytes(value, label) {
@@ -850,7 +873,7 @@ async function createClawdThemeZip({ themeId, manifest, assets, readme, zipModul
   for (const entry of entries) {
     if (names.has(entry.name)) fail('DUPLICATE_CLAWD_ASSET', `Clawd asset is declared more than once: ${entry.name}`);
     names.add(entry.name);
-    if (!entry.name.toLowerCase().endsWith('.webp')) fail('INVALID_CLAWD_ASSET', `Clawd asset must be WebP output: ${entry.name}`);
+    if (!/\.(webp|apng|png)$/i.test(entry.name)) fail('INVALID_CLAWD_ASSET', `Clawd asset must be WebP or APNG output: ${entry.name}`);
     if (!entry.bytes.length) fail('INVALID_CLAWD_ASSET', `Clawd asset cannot be empty: ${entry.name}`);
   }
   const zip = resolveZip(zipModule);
@@ -879,6 +902,7 @@ async function createClawdThemeZip({ themeId, manifest, assets, readme, zipModul
 }
 
 async function buildClawdTheme(input = {}, options = {}) {
+  const format = normalizeAnimationFormat(options.format);
   const mapping = input.mapping || input;
   const withFrameSet = typeof input.withFrameSet === 'function' ? input.withFrameSet : null;
   const framesByMotion = input.framesByMotion || input.frames || (input.encodedByMotion || withFrameSet ? {} : null);
@@ -928,8 +952,9 @@ async function buildClawdTheme(input = {}, options = {}) {
         motionId,
         expressionId: frameSet.expressionId || null,
         frameIds: frameSet.frames.map((frame, index) => typeof frame.id === 'string' && frame.id ? frame.id : `frame-${index}`),
-        render: { width: firstFrame && firstFrame.width, height: firstFrame && firstFrame.height, delays, quality: frameSet.quality, alphaQuality: frameSet.alphaQuality, lossless: frameSet.lossless },
-        encoderVersion: cacheContext.encoderVersion,
+        render: { width: firstFrame && firstFrame.width, height: firstFrame && firstFrame.height, delays, ...(format === 'webp' ? { quality: frameSet.quality, alphaQuality: frameSet.alphaQuality, lossless: frameSet.lossless } : {}), ...(frameSet.loop ? { loop: frameSet.loop } : {}) },
+        encoderVersion: format === 'apng' ? APNG_ENCODER_VERSION : cacheContext.encoderVersion,
+        ...(format === 'apng' ? { format } : {}),
       },
       visualSettingsDigest: visualSettingsIdentity.digest,
     }) : null;
@@ -939,7 +964,7 @@ async function buildClawdTheme(input = {}, options = {}) {
     checkCancelled(signal);
     const ready = encodedByMotion[motionId];
     if (ready) {
-      if (ready.format !== 'webp' || !Buffer.isBuffer(ready.buffer) || !ready.buffer.length
+      if (ready.format !== format || !Buffer.isBuffer(ready.buffer) || !ready.buffer.length
         || !Number.isInteger(ready.width) || ready.width < 1 || ready.width > MAX_RGBA_FRAME_DIMENSION
         || !Number.isInteger(ready.height) || ready.height < 1 || ready.height > MAX_RGBA_FRAME_DIMENSION
         || !Number.isInteger(ready.frameCount) || ready.frameCount < 1 || ready.frameCount > MAX_ENCODE_FRAMES
@@ -969,7 +994,7 @@ async function buildClawdTheme(input = {}, options = {}) {
         if (cached) {
           try {
             const decoded = decodeAsset(cached.data);
-            if (firstFrame && decoded.format === 'webp' && decoded.width === firstFrame.width && decoded.height === firstFrame.height && decoded.frameCount === frameSet.frames.length && decoded.delays.length === delays.length) {
+            if (firstFrame && decoded.format === format && decoded.width === firstFrame.width && decoded.height === firstFrame.height && decoded.frameCount === frameSet.frames.length && decoded.delays.length === delays.length) {
               encoded = { format: decoded.format, buffer: decoded.bytes, frameCount: decoded.frameCount, width: decoded.width, height: decoded.height, delays: decoded.delays, info: null };
               cacheStats.hits += 1;
               cacheStatus = 'hit';
@@ -982,9 +1007,9 @@ async function buildClawdTheme(input = {}, options = {}) {
       if (!encoded) {
         checkCancelled(signal);
         if (cacheStats.enabled) cacheStats.misses += 1;
-        encoded = await encodeAnimatedWebp({ ...frameSet, width: firstFrame && firstFrame.width, height: firstFrame && firstFrame.height }, { sharpFactory: options.sharpFactory, signal });
+        encoded = await encodeAnimatedImage({ ...frameSet, format, width: firstFrame && firstFrame.width, height: firstFrame && firstFrame.height }, { sharpFactory: options.sharpFactory, signal });
         checkCancelled(signal);
-        if (cacheKey) cache.put(cacheKey, encodeAsset({ format: encoded.format, width: encoded.width, height: encoded.height, frameCount: encoded.frameCount, delays: encoded.delays, bytes: encoded.buffer }), { projectId: cacheContext.projectId, sourceFingerprint: cacheContext.sourceFingerprint, artifact: 'encoded-webp' });
+        if (cacheKey) cache.put(cacheKey, encodeAsset({ format: encoded.format, width: encoded.width, height: encoded.height, frameCount: encoded.frameCount, delays: encoded.delays, bytes: encoded.buffer }), { projectId: cacheContext.projectId, sourceFingerprint: cacheContext.sourceFingerprint, artifact: `encoded-${format}` });
       }
       checkCancelled(signal);
       if (!job.ready) await options.onEncodedAsset?.(motionId, encoded);
@@ -998,10 +1023,10 @@ async function buildClawdTheme(input = {}, options = {}) {
     return { motionId, encoded };
   }, signal);
   for (const { motionId, encoded } of encodedResults) {
-    const assetName = `${themeId}-${clawdAssetSlug(motionId, usedSlugs)}.webp`;
+    const assetName = `${themeId}-${clawdAssetSlug(motionId, usedSlugs)}.${format}`;
     assetsByMotion[motionId] = assetName;
     assets[assetName] = encoded.buffer;
-    assetReports.push({ motionId, file: assetName, frameCount: encoded.frameCount, width: encoded.width, height: encoded.height, byteLength: encoded.buffer.byteLength, delays: encoded.delays });
+    assetReports.push({ motionId, file: assetName, format, frameCount: encoded.frameCount, width: encoded.width, height: encoded.height, byteLength: encoded.buffer.byteLength, delays: encoded.delays });
   }
   progress(onProgress, CLAWD_STAGES[1], 'completed', { assets: assetReports.length, cacheHits: cacheStats.hits, cacheMisses: cacheStats.misses, concurrency: encodingConcurrency });
   checkCancelled(signal);
@@ -1044,8 +1069,8 @@ async function buildClawdTheme(input = {}, options = {}) {
     assets: assetReports,
     warnings: [...(target.warnings || []), ...validation.warnings],
     validation,
-    encoding: { required: 'webp', status: 'completed', assetCount: assetReports.length },
-    provenance: buildProvenance('clawd', target.contractVersion, render, cacheContext && cacheContext.encoderVersion),
+    encoding: { required: format, format, status: 'completed', assetCount: assetReports.length },
+    provenance: buildProvenance('clawd', target.contractVersion, render, format === 'apng' ? APNG_ENCODER_VERSION : cacheContext && cacheContext.encoderVersion, format),
     package: packaged,
     preview,
     cache: cacheStats,
@@ -1419,6 +1444,7 @@ async function buildProjectTargets({ project, inputsByTarget = {}, targets = ['c
 module.exports = {
   BUILD_CONTRACT_VERSION,
   SHARP_ENCODER_VERSION,
+  APNG_ENCODER_VERSION,
   BUILD_REPORT_SCHEMA_VERSION,
   ASSET_CACHE_SCHEMA_VERSION,
   AssetCacheError,
@@ -1469,6 +1495,9 @@ module.exports = {
   createCacheKey,
   encodeAsset,
   encodeAnimatedWebp,
+  encodeAnimatedApng,
+  encodeAnimatedImage,
+  normalizeAnimationFormat,
   encodeCaptureSet,
   renderMappedMotions,
   planTargetRecipes,
@@ -1476,4 +1505,6 @@ module.exports = {
   decodeFrameSet,
   encodeFrameSet,
   normalizeCodexMetadata,
+  normalizeClawdFrameSet,
+  createCapturePipeline,
 };

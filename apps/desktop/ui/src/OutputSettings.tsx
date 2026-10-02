@@ -1,4 +1,4 @@
-import { Button, Card, Chip } from '@heroui/react';
+import { Button, ButtonGroup, Card, Chip } from '@heroui/react';
 import { FolderOpen, RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { configureOutputSettings, getOutputSettings, type OutputSettings as OutputSettingsData, type OutputSettingsAction } from './app-host';
@@ -29,6 +29,9 @@ export function OutputSettings({ locale }: { locale: Locale }) {
       <h2>{t('outputSettingsTitle')}</h2>
       <p className="muted">{t('outputSettingsHint')}</p>
       {data && <>
+        <h3>{t('animationFormatSetting')}</h3>
+        <ButtonGroup aria-label={t('animationFormatSetting')}>{(['webp', 'apng'] as const).map(format => <Button key={format} size="sm" isDisabled={busy} aria-pressed={(data.animationFormat ?? 'webp') === format} variant={(data.animationFormat ?? 'webp') === format ? 'primary' : 'secondary'} onPress={() => void configure({ action: 'set-animation-format', format })}>{format === 'webp' ? 'WebP' : 'APNG'}</Button>)}</ButtonGroup>
+        <p className="muted">{t('animationFormatHint')}</p>
         <Chip size="sm" variant="soft">{t(data.mode === 'ask' ? 'outputAskEveryTime' : 'outputUseFolder')}</Chip>
         {data.mode === 'folder' && <p className="target-path">{data.folder}</p>}
         {data.mode === 'folder' && data.folderState !== 'ready' && <p className="inline-error" role="alert">{t('outputFolderUnavailable')}</p>}

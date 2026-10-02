@@ -13,9 +13,10 @@ function createPackageOutputService({ settingsPath, pickFolder, pickSavePath } =
     try {
       const value = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
       if (!value || value.schemaVersion !== 1 || !['ask', 'folder'].includes(value.mode) || (value.folder !== undefined && !validPath(value.folder)) || (value.mode === 'folder' && !value.folder)) throw new Error('Invalid settings');
-      return value;
+      if (value.animationFormat !== undefined && !['webp', 'apng'].includes(value.animationFormat)) throw new Error('Invalid animation format');
+      return { ...value, animationFormat: value.animationFormat || 'webp' };
     } catch (error) {
-      if (error.code === 'ENOENT') return { schemaVersion: 1, mode: 'ask' };
+      if (error.code === 'ENOENT') return { schemaVersion: 1, mode: 'ask', animationFormat: 'webp' };
       fail('OUTPUT_SETTINGS_INVALID', 'Saved output settings could not be read. They have not been overwritten.');
     }
   }
@@ -24,8 +25,8 @@ function createPackageOutputService({ settingsPath, pickFolder, pickSavePath } =
     const settings = await load();
     return { ...settings, ...(settings.folder ? { folderState: await inspectRoot(settings.folder) } : {}) };
   }
-  function configure({ action }) {
-    if (!['choose-folder', 'ask-every-time'].includes(action)) fail('INVALID_OUTPUT_SETTINGS_REQUEST', 'Choose a supported output setting.');
+  function configure({ action, format }) {
+    if (!['choose-folder', 'ask-every-time', 'set-animation-format'].includes(action) || (action === 'set-animation-format' && !['webp', 'apng'].includes(format)) || (action !== 'set-animation-format' && format !== undefined)) fail('INVALID_OUTPUT_SETTINGS_REQUEST', 'Choose a supported output setting.');
     const operation = updates.then(async () => {
       const settings = await load();
       if (action === 'choose-folder') {
@@ -34,7 +35,8 @@ function createPackageOutputService({ settingsPath, pickFolder, pickSavePath } =
         if (!validPath(selected) || await inspectRoot(selected) !== 'ready') fail('OUTPUT_FOLDER_UNAVAILABLE', 'Choose an existing writable output folder.');
         settings.folder = selected;
         settings.mode = 'folder';
-      } else settings.mode = 'ask';
+      } else if (action === 'set-animation-format') settings.animationFormat = format;
+      else settings.mode = 'ask';
       await fs.mkdir(path.dirname(settingsPath), { recursive: true, mode: 0o700 });
       const temporary = `${settingsPath}.${randomUUID()}.tmp`;
       try {

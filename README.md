@@ -37,6 +37,7 @@
 | --- | --- |
 | **Find your character** | Drop anywhere to browse, search, and sort local collections, or open a GitHub folder and download one model or all of them. |
 | **See every motion** | Play, pause, scrub, and compare animations live; previews stop rendering when you leave their page. |
+| **Keep an animation** | Export one or several Live2D motions as transparent WebP or APNG, with your choice of resolution and frame rate. No pet-state mapping required. Choose the format in Settings. |
 | **Keep the character, hide the clutter** | Identify parts with thumbnails and hide separable backgrounds or effects. |
 | **One project, two destinations** | Assign animations to Clawd or Codex states, then build ready-to-import packages. |
 | **Interactive by default** | Unmapped Clawd drag and double-click reactions safely reuse Idle. |
@@ -51,6 +52,7 @@
 3. **Build and enjoy** — name your pet, choose quality, then save the ZIP or install it.
 
 Your models stay local. Original source files stay unchanged.
+Only need an animation? Choose **Export animation** in Map's Model Preview header. Compatible exports and Clawd builds share the same bounded cache. [Animation export →](docs/guides/user-guide.md#export-individual-animations)
 Replacing an installed pet requires confirmation and protects the previous package if the upgrade fails. [Installation recovery →](docs/guides/user-guide.md#installation-recovery)
 Pointer tracking is preview-only; exported Live2D frames use a stable neutral focus and 60 Hz physics integration regardless of output frame rate.
 
@@ -103,7 +105,7 @@ On first launch, add your runtime and follow the optional guided tutorial. You c
 
 **Export destinations** — choose either target for a supported model:
 
-- **[Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk)** — themes with transparent animated WebP
+- **[Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk)** — themes with transparent WebP or APNG animations
 - **Codex custom pets** — V2 sprite atlases
 
 Save a lightweight **.l2p** project for local work, or a portable **.l2pack** project that includes a copy of the selected model. Legacy `.live2pet` projects remain supported.

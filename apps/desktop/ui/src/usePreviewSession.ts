@@ -1,11 +1,17 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { createContext, useContext, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { createPreviewSession, type OwnedPreviewSession } from './preview-session';
 import type { PreviewStatus, VisualSettings } from './app-host';
+
+// Native WebContentsViews sit above DOM overlays. Suspend every preview owner
+// while a modal is visible, including library previews reopened from the footer.
+export const PreviewSuspensionContext = createContext(false);
 
 export function usePreviewSession({ surface, enabled, projectId, sourceFingerprint, visualSettings, retry = 0, allowMinimumBounds = false }: {
   surface: RefObject<HTMLDivElement | null>; enabled: boolean; projectId: string;
   sourceFingerprint?: string; visualSettings?: VisualSettings; retry?: number; allowMinimumBounds?: boolean;
 }) {
+  const suspended = useContext(PreviewSuspensionContext);
+  enabled = enabled && !suspended;
   const [status, setStatus] = useState<PreviewStatus | null>(null);
   const scope = JSON.stringify([projectId, sourceFingerprint, retry, enabled]);
   const sessionRef = useRef<{ scope: string; session: OwnedPreviewSession } | null>(null);
