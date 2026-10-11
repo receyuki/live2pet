@@ -183,14 +183,14 @@ test('inspects a Cubism 2 Source Package and derives motion duration', () => {
   assert.equal(manifest.expressions[0].sourceFile, 'smile.exp.json');
 });
 
-test('inspects a Spine 4.3 folder without requiring a renderer pack', () => {
-  const fixture = spineFixture();
+for (const version of ['3.8.95', '4.3.12']) test(`inspects a Spine ${version} folder without requiring a renderer pack`, () => {
+  const fixture = spineFixture({ version });
   const manifest = inspectSourcePackage(fixture.root);
 
   assert.equal(manifest.source.kind, 'spine-directory');
   assert.equal(manifest.model.format, 'spine');
-  assert.equal(manifest.model.spineVersion, '4.3.12');
-  assert.equal(manifest.model.runtimeLine, '4.3');
+  assert.equal(manifest.model.spineVersion, version);
+  assert.equal(manifest.model.runtimeLine, version.split('.').slice(0, 2).join('.'));
   assert.equal(manifest.model.modelFile, 'hero.json');
   assert.equal(manifest.model.atlasFile, 'hero.atlas');
   assert.deepEqual(manifest.model.textures, ['hero.png', 'effects.png']);
@@ -215,15 +215,15 @@ test('reports missing Spine atlas pages and leaves runtime-line support to the r
   assert.equal(older.model.spineVersion, '4.2.99');
 });
 
-test('identifies a Spine 4.3 binary skeleton before the renderer pack supplies its catalog', () => {
+for (const version of ['3.8.95', '4.3.75']) test(`identifies a Spine ${version} binary skeleton before the renderer pack supplies its catalog`, () => {
   const root = temporaryDirectory();
-  writeFixture(root, 'hero.skel', Buffer.concat([spineBinaryString('fixture-hash'), spineBinaryString('4.3.75')]));
+  writeFixture(root, 'hero.skel', Buffer.concat([spineBinaryString('fixture-hash'), spineBinaryString(version)]));
   writeFixture(root, 'hero.atlas', 'hero.png\nsize: 8,8\nfilter: Linear,Linear\nbody\nbounds: 0,0,8,8\n');
   writeFixture(root, 'hero.png', Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 
   const manifest = inspectSourcePackage(root);
   assert.equal(manifest.model.binary, true);
-  assert.equal(manifest.model.runtimeLine, '4.3');
+  assert.equal(manifest.model.runtimeLine, version.split('.').slice(0, 2).join('.'));
   assert.deepEqual(manifest.motions, []);
   assert.deepEqual(manifest.visualElements, []);
 });

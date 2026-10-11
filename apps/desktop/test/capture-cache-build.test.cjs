@@ -25,13 +25,13 @@ function project() {
   };
 }
 
-for (const access of ['renderer', 'lease']) test(`hosted Spine builds reuse bounded raw and encoded caches with a pinned runtime identity via ${access}`, async t => {
+for (const runtimeLine of ['3.8', '4.2']) for (const access of ['renderer', 'lease']) test(`hosted Spine ${runtimeLine} builds reuse bounded raw and encoded caches with a pinned runtime identity via ${access}`, async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-spine-cache-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const cache = new CacheStore({ rootDir: root, maxBytes: 1024 * 1024 });
   const renderer = new SyntheticRenderer();
   await renderer.load({ motions: [{ id: 'idle', duration: 0.1 }] });
-  renderer.source = { format: 'spine', runtimeLine: '4.2', motions: [{ id: 'idle', duration: 0.1 }] };
+  renderer.source = { format: 'spine', runtimeLine, motions: [{ id: 'idle', duration: 0.1 }] };
   const service = createCaptureCacheBuildService({
     buildProjectTargets,
     getCaptureCacheService: () => ({}),

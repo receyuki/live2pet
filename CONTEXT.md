@@ -5,7 +5,7 @@ Live2Pet turns user-supplied animated 2D content into portable packages for agen
 ## Language
 
 **Source Package**:
-A user-selected collection containing one supported animated 2D model and the local resources needed to inspect and render its available animations. V1 recognizes Live2D and version-matched Spine 4.x source layouts.
+A user-selected collection containing one supported animated 2D model and the local resources needed to inspect and render its available animations. V1 recognizes Live2D and version-matched Spine 3.8 and 4.x source layouts.
 _Avoid_: Resource pack, model pack, asset bundle
 
 **Source Library**:

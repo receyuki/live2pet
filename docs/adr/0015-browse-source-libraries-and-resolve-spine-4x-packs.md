@@ -16,7 +16,14 @@ Live2Pet introduces a Source Library boundary. It discovers candidate Source Pac
 
 Downloaded GitHub models live in App-private storage. The default cache limit is 1 GiB, the user may configure 256 MiB through 20 GiB in Settings, and least-recently-used entries are removed before the limit is exceeded. Batch download preflights the detected set so entries downloaded earlier in the same operation are not immediately evicted, reports determinate model-count progress, and continues past individual failures. Model-card thumbnails remain viewport-lazy. A single model is additionally limited to 4 GiB and 10,000 files. Clearing the cache requires an explicit user action.
 
-Spine inspection accepts detected version lines independently of renderer availability. The optional pack resolver is the support gate. V1 provides pinned, integrity-checked official Spine Player packs for 4.0, 4.1, 4.2, and 4.3. Each pack is installed only after an explicit click and runs in the existing isolated renderer realm. Other lines remain recognizable but produce an actionable unsupported-runtime result until a reproducible official pack is added.
+Spine inspection accepts detected version lines independently of renderer availability. The optional pack resolver is the support gate. V1 provides pinned, integrity-checked official Spine Player packs for 3.8, 4.0, 4.1, 4.2, and 4.3. Each pack is installed only after an explicit click and runs in the existing isolated renderer realm. Other lines remain recognizable but produce an actionable unsupported-runtime result until a reproducible official pack is added.
+
+The 3.8 pack uses an immutable official GitHub commit rather than an npm release.
+Its legacy Player uses `skelUrl` for binary input and lacks the newer frame
+callbacks and disposal API. The adapter drives a paused Player with one active
+animation-frame loop, using the same pose/Slot visibility path as capture, and
+explicitly releases its assets, renderer, and WebGL context on unload. This does
+not change the Source Package fingerprint or project format.
 
 ## Consequences
 
@@ -29,7 +36,7 @@ Successfully reopened projects enter Map directly; missing or changed sources re
 - Users can browse large local collections without repeatedly opening individual folders.
 - A GitHub repository is never cloned; unselected model assets are downloaded only after the explicit **Download all** action.
 - Cache growth is bounded and controlled by the user.
-- Valid Spine 4.0–4.3 exports can select their matching renderer without cross-version loading.
+- Valid Spine 3.8 and 4.0–4.3 exports can select their matching renderer without cross-version loading.
 - GitHub API rate limits and repository tree truncation can still require a more specific folder URL.
 
 ## Alternatives considered

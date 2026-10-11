@@ -31,7 +31,7 @@ function runElectron(environment) {
 test('opt-in official Spine Player renders, hides a Slot, and builds both target packages', { skip: skipReason }, async () => {
   const manifest = inspectSourcePackage(sourceRoot, { modelConfig: process.env.LIVE2PET_SPINE_MODEL_CONFIG || null });
   assert.equal(manifest.model.format, 'spine');
-  assert.ok(['4.0', '4.1', '4.2', '4.3'].includes(manifest.model.runtimeLine));
+  assert.ok(['3.8', '4.0', '4.1', '4.2', '4.3'].includes(manifest.model.runtimeLine));
   const server = await createRendererAssetServer({ sourceRoot, spineAssets: { script, style } });
   try {
     const source = spineSourceFromManifest(manifest, { baseUrl: `${server.baseUrl}/model` });
@@ -45,6 +45,7 @@ test('opt-in official Spine Player renders, hides a Slot, and builds both target
     assert.ok(result.transparentPixels > 0, JSON.stringify(result));
     assert.ok(result.hiddenId);
     assert.ok(result.changedBytes > 0);
+    if (manifest.model.runtimeLine === '3.8') assert.deepEqual(result.realtime, { playing: true, pause: true, resume: true, hiddenSlotPreserved: true });
     assert.deepEqual(Object.keys(result.builds).sort(), ['clawd', 'codex-pet']);
     assert.equal(result.builds.clawd.valid, true);
     assert.equal(result.builds.clawd.preview, true);

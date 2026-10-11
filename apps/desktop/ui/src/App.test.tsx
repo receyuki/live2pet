@@ -993,16 +993,19 @@ describe('Live2Pet desktop shell', () => {
     expect(inspectSource).toHaveBeenCalledWith({ inputPath: '/Users/test/Vicious Khepri.pck', projectId: 'library-preview' });
   });
 
-  it('recognizes a Spine 4.3 source and installs its optional renderer inline', async () => {
+  it.each(['3.8', '4.3'])('recognizes a Spine %s source and installs its optional renderer inline', async runtimeLine => {
     localStorage.setItem('live2pet.desktop.setup-completed', 'true');
     const api = installDesktopApi({ preview: false });
+    const pack = { schemaVersion: 2 as const, id: `spine-player-${runtimeLine}`, runtimeLine, version: `${runtimeLine}-fixture`, downloadable: true, installed: false };
+    api.getSpinePackStatus.mockResolvedValue({ protocolVersion: 1, ok: true, result: { schemaVersion: 2, packs: [pack] } });
+    api.installSpinePack.mockResolvedValue({ protocolVersion: 1, ok: true, result: { schemaVersion: 2, packs: [{ ...pack, installed: true }] } });
     api.inspectSource.mockResolvedValue({
       protocolVersion: 1,
       ok: true,
       result: {
         schemaVersion: 1,
         source: { kind: 'spine-directory', name: 'Spine Hero', fingerprint: 'spine-fixture', modelConfig: 'hero.json' },
-        model: { format: 'spine', configFile: 'hero.json', modelFile: 'hero.json', textures: ['hero.png'], atlasFile: 'hero.atlas', spineVersion: '4.3.75', runtimeLine: '4.3', binary: false },
+        model: { format: 'spine', configFile: 'hero.json', modelFile: 'hero.json', textures: ['hero.png'], atlasFile: 'hero.atlas', spineVersion: `${runtimeLine}.75`, runtimeLine, binary: false },
         motions: [{ id: 'idle', group: 'animation', index: 0, name: 'idle', sourceFile: 'hero.json', duration: 1.5 }],
         expressions: [],
         resources: [],
@@ -1013,9 +1016,9 @@ describe('Live2Pet desktop shell', () => {
     const { container } = render(<App />);
     await user.upload(container.querySelector('input[accept=".pck"]') as HTMLInputElement, new File(['fixture'], 'Spine Hero.pck'));
 
-    expect(await screen.findByText(/Spine 4\.3/)).toBeVisible();
+    expect(await screen.findByText(new RegExp(`Spine ${runtimeLine.replace('.', '\\.')}`))).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Install' }));
-    expect(api.installSpinePack).toHaveBeenCalledWith('4.3');
+    expect(api.installSpinePack).toHaveBeenCalledWith(runtimeLine);
     expect(screen.getByRole('button', { name: 'Use and start mapping' })).toBeDisabled();
   });
 

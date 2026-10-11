@@ -2,7 +2,7 @@ const { RendererContractError } = require('./errors.cjs');
 const { normalizeVisualSettings } = require('./visual-settings.cjs');
 
 const DEFAULT_OPTIONS = Object.freeze({ width: 512, height: 512, padding: 0.08, playbackMode: 'manual', loadTimeoutMs: 15000 });
-const SUPPORTED_SPINE_RUNTIME_LINES = Object.freeze(['4.0', '4.1', '4.2', '4.3']);
+const SUPPORTED_SPINE_RUNTIME_LINES = Object.freeze(['3.8', '4.0', '4.1', '4.2', '4.3']);
 
 function fail(code, message, details = {}) { throw new RendererContractError(code, message, details); }
 function finite(value, label, minimum, maximum) {
@@ -19,7 +19,7 @@ function encodeRelativeUrl(value) { return String(value).split('/').map(encodeUR
 function supportsSpineRuntime(value) { return SUPPORTED_SPINE_RUNTIME_LINES.includes(String(value)); }
 
 function spineSourceFromManifest(manifest, { baseUrl = '' } = {}) {
-  if (!manifest || manifest.model?.format !== 'spine' || !supportsSpineRuntime(manifest.model?.runtimeLine)) fail('INVALID_RENDER_SOURCE', 'A supported Spine 4.x manifest is required.');
+  if (!manifest || manifest.model?.format !== 'spine' || !supportsSpineRuntime(manifest.model?.runtimeLine)) fail('INVALID_RENDER_SOURCE', 'A supported Spine manifest is required.');
   const prefix = String(baseUrl).replace(/\/+$/, '');
   return {
     format: 'spine',
@@ -36,13 +36,22 @@ function pageLoad(source, options) {
   return new Promise((resolve, reject) => {
     if (!window.spine?.SpinePlayer) return reject(new Error('The optional Spine Player runtime is not loaded.'));
     const previous = window.__live2petSpine;
-    if (previous?.player) previous.player.dispose();
+    if (previous?.player) previous.dispose();
     document.body.innerHTML = '<div id="live2pet-spine-stage"></div>';
     const container = document.getElementById('live2pet-spine-stage');
     Object.assign(container.style, { width: `${options.width}px`, height: `${options.height}px`, overflow: 'hidden', background: 'transparent' });
     const state = { contractVersion: 1, loaded: false, motionId: source.motions[0]?.id || null, expressionId: null, time: 0, playing: false, loop: true, speed: 1 };
     const runtime = {
-      player: null, source, state, hidden: [], options, container, active: options.playbackMode === 'realtime',
+      player: null, source, state, hidden: [], options, container, active: options.playbackMode === 'realtime', legacyFrame: null,
+      dispose() {
+        if (this.legacyFrame !== null) window.cancelAnimationFrame(this.legacyFrame);
+        this.player.stopRendering();
+        if (source.runtimeLine === '3.8') {
+          this.player.assetManager.dispose();
+          this.player.sceneRenderer.dispose();
+          this.player.context.gl.getExtension('WEBGL_lose_context')?.loseContext();
+        } else this.player.dispose();
+      },
       applyHidden() {
         const hidden = new Set(this.hidden);
         for (const slot of this.player.skeleton.slots) if (hidden.has(`slot:${slot.data.name}`)) {
@@ -108,6 +117,32 @@ function pageLoad(source, options) {
         else { this.player.stopRequestAnimationFrame = false; this.player.drawFrame(); }
       },
       syncPlayback() {
+        if (source.runtimeLine === '3.8') {
+          // 3.8 has no frame/update callbacks. Drive its paused player ourselves
+          // so the playhead, hidden Slots, and capture share the same pose path.
+          this.player.pause();
+          this.player.stopRendering();
+          if (this.legacyFrame !== null) window.cancelAnimationFrame(this.legacyFrame);
+          this.legacyFrame = null;
+          if (!this.active || this.options.playbackMode !== 'realtime' || !this.state.playing) return;
+          let previousTime = performance.now();
+          const tick = now => {
+            this.legacyFrame = null;
+            const delta = (now - previousTime) / 1000 * this.state.speed;
+            previousTime = now;
+            const motion = this.motion();
+            this.state.time += delta;
+            if (motion?.duration > 0 && this.state.time >= motion.duration) {
+              if (this.state.loop) this.state.time %= motion.duration;
+              else { this.state.time = motion.duration; this.state.playing = false; }
+            }
+            this.pose(this.state.time);
+            this.draw();
+            if (this.state.playing) this.legacyFrame = window.requestAnimationFrame(tick);
+          };
+          this.legacyFrame = window.requestAnimationFrame(tick);
+          return;
+        }
         if (this.active && this.options.playbackMode === 'realtime' && this.state.playing) {
           this.player.play();
           this.startRendering();
@@ -133,7 +168,7 @@ function pageLoad(source, options) {
     runtime.player = new window.spine.SpinePlayer(container, {
       ...(source.runtimeLine === '4.3'
         ? { skeleton: source.skeletonUrl, atlas: source.atlasUrl }
-        : { [source.binary ? 'binaryUrl' : 'jsonUrl']: source.skeletonUrl, atlasUrl: source.atlasUrl }),
+        : { [source.binary ? (source.runtimeLine === '3.8' ? 'skelUrl' : 'binaryUrl') : 'jsonUrl']: source.skeletonUrl, atlasUrl: source.atlasUrl }),
       animation: source.motions[0]?.id,
       showControls: false,
       showLoading: false,
@@ -185,7 +220,7 @@ function pageLoad(source, options) {
   });
 }
 
-function pageUnload() { const runtime = window.__live2petSpine; runtime?.player?.dispose(); delete window.__live2petSpine; document.body.innerHTML = ''; return { loaded: false }; }
+function pageUnload() { const runtime = window.__live2petSpine; if (runtime?.player) runtime.dispose(); delete window.__live2petSpine; document.body.innerHTML = ''; return { loaded: false }; }
 function pageState() { const runtime = window.__live2petSpine; if (!runtime) throw new Error('Renderer is not loaded.'); return { ...runtime.state }; }
 function pagePlay(id, loop, speed, start) { const runtime = window.__live2petSpine; const motion = runtime.source.motions.find((item) => item.id === id); if (!motion) throw new Error(`Animation is not available: ${id}`); runtime.player.setAnimation(id, loop); const entry = runtime.track(); if (entry) entry.trackTime = start; runtime.state = { ...runtime.state, motionId: id, loop, speed, time: start, playing: true }; runtime.player.speed = speed; runtime.pose(start); runtime.fit(id); runtime.draw(); runtime.syncPlayback(); return { ...runtime.state }; }
 function pagePause() { const runtime = window.__live2petSpine; runtime.state.playing = false; runtime.syncPlayback(); return { ...runtime.state }; }
@@ -252,7 +287,7 @@ class SpinePlayerAdapter {
   async evaluate(fn, ...args) { try { return await this.page.evaluate(fn, ...args); } catch (error) { if (error instanceof RendererContractError) throw error; fail('RENDERER_PAGE_ERROR', error?.message || String(error)); } }
   requireLoaded() { if (!this.source || !this.state.loaded) fail('RENDERER_NOT_LOADED', 'Load a Spine Source Package before using the renderer.'); }
   motion(id) { const motion = this.source?.motions.find((item) => item.id === id); if (!motion) fail('MOTION_NOT_FOUND', `Animation is not available: ${id}`); return motion; }
-  async load(source) { if (source?.format !== 'spine' || !supportsSpineRuntime(source.runtimeLine) || !Array.isArray(source.motions)) fail('INVALID_RENDER_SOURCE', 'A supported Spine 4.x renderer source is required.'); const loaded = await this.evaluate(pageLoad, source, this.options); this.state = loaded.state; this.source = { ...source, motions: loaded.motions }; this.visualElements = loaded.slots; return { contractVersion: 1, motionCount: this.source.motions.length, expressionCount: 0 }; }
+  async load(source) { if (source?.format !== 'spine' || !supportsSpineRuntime(source.runtimeLine) || !Array.isArray(source.motions)) fail('INVALID_RENDER_SOURCE', 'A supported Spine renderer source is required.'); const loaded = await this.evaluate(pageLoad, source, this.options); this.state = loaded.state; this.source = { ...source, motions: loaded.motions }; this.visualElements = loaded.slots; return { contractVersion: 1, motionCount: this.source.motions.length, expressionCount: 0 }; }
   async unload() { if (this.source) await this.evaluate(pageUnload); this.source = null; this.visualElements = []; this.state = { loaded: false, motionId: null, expressionId: null, time: 0, playing: false, loop: true, speed: 1 }; }
   async setActive(active) { this.requireLoaded(); this.state = await this.evaluate(pageSetActive, Boolean(active)); return this.getState(); }
   async prepareCapture() {

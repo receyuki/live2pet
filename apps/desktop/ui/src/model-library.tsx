@@ -23,7 +23,7 @@ function ModelCard({ library, candidate, selected, onSelect, locale, thumbnailRe
   const thumbnailKey = `${library.libraryId}:${candidate.id}`;
   const [cover, setCover] = useState<string | null>(() => thumbnailMemory.get(thumbnailKey));
   const [failed, setFailed] = useState(false);
-  const unsupportedSpine = candidate.format === 'spine' && Boolean(candidate.runtimeLine) && !['4.0', '4.1', '4.2', '4.3'].includes(candidate.runtimeLine!);
+  const unsupportedSpine = candidate.format === 'spine' && Boolean(candidate.runtimeLine) && !['3.8', '4.0', '4.1', '4.2', '4.3'].includes(candidate.runtimeLine!);
   useEffect(() => {
     let active = true, requested = false;
     const unsubscribe = thumbnailMemory.subscribe((evictedKey) => { if (active && evictedKey === thumbnailKey) setCover(null); });
@@ -96,7 +96,7 @@ export function ModelPreview({ library, candidate, locale, onUse, onClose, direc
     <div className="library-live-surface" ref={surface} />
     {!ready && !error && <ProgressBar aria-label={translate(locale, 'loading')} isIndeterminate />}
     {error && <p className="inline-error" role="alert">{error}</p>}
-    {error && inspection?.model.format === 'spine' && ['4.0', '4.1', '4.2', '4.3'].includes(inspection.model.runtimeLine ?? '') && <Button isDisabled={busy} variant="secondary" onPress={() => { setBusy(true); void installSpinePack(inspection.model.runtimeLine!).then(() => setRetry(value => value + 1)).catch(cause => setError(String(cause))).finally(() => setBusy(false)); }}>{translate(locale, 'installSpinePack')}</Button>}
+    {error && inspection?.model.format === 'spine' && ['3.8', '4.0', '4.1', '4.2', '4.3'].includes(inspection.model.runtimeLine ?? '') && <Button isDisabled={busy} variant="secondary" onPress={() => { setBusy(true); void installSpinePack(inspection.model.runtimeLine!).then(() => setRetry(value => value + 1)).catch(cause => setError(String(cause))).finally(() => setBusy(false)); }}>{translate(locale, 'installSpinePack')}</Button>}
     {error && <div className="source-actions"><Button variant="secondary" onPress={onConfigureRuntime}>{translate(locale, 'configureRuntime')}</Button><Button variant="ghost" onPress={() => setRetry(value => value + 1)}>{translate(locale, 'retry')}</Button></div>}
     {inspection?.resources.filter(resource => resource.required && !resource.exists).map(resource => <p className="inline-error" key={resource.path}>{resource.path}</p>)}
     {inspection?.warnings.map((warning, index) => <p key={index}>{warning.code}{warning.resource ? ` · ${warning.resource}` : ''}</p>)}

@@ -42,9 +42,9 @@ test('rejects integrity failures without leaving an installed pack', async () =>
   assert.equal(getSpinePackStatus(destination, '4.3').installed, false);
 });
 
-test('publishes independently installable official Spine 4.x runtime lines', async () => {
+test('publishes independently installable official Spine 3.8 and 4.x runtime lines', async () => {
   const destination = root();
-  assert.deepEqual(SPINE_PACKS.map((pack) => pack.runtimeLine), ['4.3', '4.2', '4.1', '4.0']);
+  assert.deepEqual(SPINE_PACKS.map((pack) => pack.runtimeLine), ['4.3', '4.2', '4.1', '4.0', '3.8']);
   const status = getSpinePackStatus(destination);
   assert.equal(status.schemaVersion, 2);
   assert.deepEqual(status.packs.map((pack) => ({ line: pack.runtimeLine, installed: pack.installed })), [
@@ -52,6 +52,8 @@ test('publishes independently installable official Spine 4.x runtime lines', asy
     { line: '4.2', installed: false },
     { line: '4.1', installed: false },
     { line: '4.0', installed: false },
+    { line: '3.8', installed: false },
   ]);
-  assert.throws(() => resolveSpinePack(destination, '3.8'), (error) => error.code === 'UNSUPPORTED_SPINE_VERSION' && error.details.supported.includes('4.1'));
+  assert.throws(() => resolveSpinePack(destination, '3.8'), { code: 'SPINE_PACK_REQUIRED' });
+  assert.throws(() => resolveSpinePack(destination, '3.7'), (error) => error.code === 'UNSUPPORTED_SPINE_VERSION' && error.details.supported.includes('3.8'));
 });

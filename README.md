@@ -101,7 +101,7 @@ On first launch, add your runtime and follow the optional guided tutorial. You c
 
 - Live2D Cubism 2–5 model folders
 - Supported Live2D PCK files
-- Spine 4.0–4.3 folders, with an optional renderer
+- Spine 3.8 and 4.0–4.3 folders, with a matching optional renderer
 
 **Export destinations** — choose either target for a supported model:
 
@@ -126,7 +126,7 @@ Spine support remains in preview. PCK support depends on its contents and packag
 | --- | --- |
 | Cubism 3–5 | [Official Cubism SDK for Web](https://www.live2d.com/en/sdk/download/web/) → `Core/live2dcubismcore.min.js` |
 | Cubism 2 | `live2d.min.js` from the [third-party legacy archive](https://github.com/dylanNew/live2d/tree/master/webgl/Live2D/lib) |
-| Spine 4.0–4.3 | Click **Install** for the matching renderer in the App |
+| Spine 3.8 / 4.0–4.3 | Click **Install** for the matching renderer in the App |
 
 [Why a separate runtime? Setup details and licensing →](docs/guides/user-guide.md#runtimes)
 

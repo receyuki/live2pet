@@ -10,6 +10,20 @@ macOS Apple Silicon and Windows x64 binaries have been published; the maintainer
 reported Windows testing passed without identifying the OS version, device or
 exact build. Do not infer those details or current-change acceptance from that report.
 
+## Spine 3.8 renderer check — 2026-10-11
+
+On macOS x64, the opt-in `packages/renderer/test/spine-runtime.integration.test.cjs`
+passed with a permitted local Spine 3.8.95 binary model and the verified official
+3.8 Player pack. It checked nonempty transparent rendering, discovered animations
+and Slots, realtime play/pause/seek/resume, hidden Slots remaining hidden during
+playback, and valid Clawd/Codex packages with generated previews. The same test
+passed for the existing 4.1 binary renderer. These were checkout Electron tests,
+not packaged-App or target-host acceptance; no model/runtime bytes were published.
+
+The 3.8 runtime is installed only after the user's explicit Install action. Its
+immutable upstream files and hashes are recorded in `packages/spine-pack/src/index.cjs`.
+Other 3.x lines are not enabled by this change.
+
 ## Automated local workflow
 
 `apps/desktop/scripts/accept-desktop.cjs` is an opt-in Electron acceptance harness, separate from synthetic public CI. It needs Playwright available in the developer's tool environment (direct module resolution or `NODE_PATH`) and permitted local models/runtimes. No browser download is required: it launches the existing Electron executable.

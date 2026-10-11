@@ -20,6 +20,14 @@ const SPINE_PACKS = Object.freeze([
   pack('4.2', '4.2.119', { js: 'd70f07ff2ec1d5fa392f97576f4b951c8af838702d46066dede4be98b1c99324', css: 'e911ac88f6a8525d87f85d6301fecdd0f5e2b52834e3bfa594b6df407af9679a', license: '435774fb793b0f67892899fc934f98009e64fd90ad3ab964117274e279a0f50e' }),
   pack('4.1', '4.1.56', { js: '24cce070d92269584899187c3bf5d48a47e92e6f8501696855f0683c71bf2e0b', css: '6748233312b7dcf30bcf72016e058d713b85673724b0ffd780491e98067eca9e', license: '6142ee6cc2c03d3a918793e4750ae772bd3755c534d4a35e559e301acf51ec39' }),
   pack('4.0', '4.0.31', { js: 'e9ce520a15946a3e8d345670d78262d7aa71b9b164135a5424fe99ba191ab671', css: '2ce8e4f63557164fa77205aa4469c74950cf834f1ac91c222d794e6e66ae7e0c', license: '6142ee6cc2c03d3a918793e4750ae772bd3755c534d4a35e559e301acf51ec39' }, 'spine-player.css'),
+  Object.freeze({
+    id: 'spine-player-3.8', runtimeLine: '3.8', version: '3.8-8b4844bd', downloadable: true,
+    files: Object.freeze([
+      Object.freeze({ name: 'spine-player.min.js', url: 'https://raw.githubusercontent.com/EsotericSoftware/spine-runtimes/8b4844bd4b193ba9e54487ed397a777993cbad56/spine-ts/build/spine-player.js', sha256: '3f335337a8fa9c51c6502a7557ea44cd2bcb4f22483adae275e4ecf5ec69faec' }),
+      Object.freeze({ name: 'spine-player.min.css', url: 'https://raw.githubusercontent.com/EsotericSoftware/spine-runtimes/8b4844bd4b193ba9e54487ed397a777993cbad56/spine-ts/player/css/spine-player.css', sha256: 'cdade32ebe78146a24f4215051ca8fa590d92b8407f30465a15f1f2b9bb1009a' }),
+      Object.freeze({ name: 'LICENSE', url: 'https://raw.githubusercontent.com/EsotericSoftware/spine-runtimes/8b4844bd4b193ba9e54487ed397a777993cbad56/LICENSE', sha256: '6142ee6cc2c03d3a918793e4750ae772bd3755c534d4a35e559e301acf51ec39' }),
+    ]),
+  }),
 ]);
 const SPINE_PACK = SPINE_PACKS[0];
 

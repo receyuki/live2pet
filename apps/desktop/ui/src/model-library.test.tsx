@@ -93,10 +93,19 @@ describe('ModelLibrary thumbnails', () => {
   });
 
   it('labels unsupported Spine versions without trying to render them', async () => {
-    const unsupported: SourceLibrary = { ...library, candidates: [{ id: 'legacy', name: 'legacy', relativePath: 'legacy/legacy.skel', format: 'spine', version: '3.8.95', runtimeLine: '3.8', binary: true }] };
+    const unsupported: SourceLibrary = { ...library, candidates: [{ id: 'legacy', name: 'legacy', relativePath: 'legacy/legacy.skel', format: 'spine', version: '3.7.95', runtimeLine: '3.7', binary: true }] };
     render(<ModelLibrary library={unsupported} locale="zh-CN" onUse={async () => {}} />);
-    expect(screen.getByText('暂不支持 Spine 3.8 预览')).toBeTruthy();
+    expect(screen.getByText('暂不支持 Spine 3.7 预览')).toBeTruthy();
     expect(getLibraryThumbnail).not.toHaveBeenCalled();
+  });
+
+  it('requests Spine 3.8 thumbnails lazily instead of labelling them unsupported', async () => {
+    const legacy: SourceLibrary = { ...library, libraryId: 'spine38-library', candidates: [{ id: 'legacy38', name: 'legacy38', relativePath: 'hero/hero.skel', format: 'spine', version: '3.8.95', runtimeLine: '3.8', binary: true }] };
+    render(<ModelLibrary library={legacy} locale="zh-CN" onUse={async () => {}} />);
+    expect(getLibraryThumbnail).not.toHaveBeenCalled();
+    expect(screen.queryByText('暂不支持 Spine 3.8 预览')).toBeNull();
+    await act(async () => { intersections[0]([{ isIntersecting: true }]); });
+    expect(getLibraryThumbnail).toHaveBeenCalledWith('spine38-library', 'legacy38');
   });
 
   it('groups model and Source Package guidance in the selected preview sidebar', () => {

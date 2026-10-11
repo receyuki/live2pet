@@ -20,7 +20,7 @@ async function run() {
   await window.loadURL(previewUrl);
   const runtimeReady = await window.webContents.executeJavaScript(`({ spine: typeof window.spine, player: typeof window.spine?.SpinePlayer })`, true);
   if (runtimeReady.player !== 'function') throw new Error(`Spine Player did not load: ${JSON.stringify(runtimeReady)}`);
-  const renderer = new SpinePlayerAdapter({ page: createElectronWebContentsPage({ webContents: window.webContents }), width: 256, height: 256, padding: 0.08 });
+  const renderer = new SpinePlayerAdapter({ page: createElectronWebContentsPage({ webContents: window.webContents }), width: 256, height: 256, padding: 0.08, playbackMode: 'realtime' });
   const loaded = await renderer.load(source);
   const motions = renderer.getMotions();
   const motion = motions.filter((entry) => entry.duration > 0).sort((a, b) => a.duration - b.duration)[0] || motions[0];
@@ -29,6 +29,27 @@ async function run() {
   const scan = await renderer.scanVisualElements(motion.id);
   const hiddenId = scan.candidates[0]?.id || renderer.getVisualElements()[0]?.id;
   if (hiddenId) await renderer.setVisualSettings({ hiddenElementIds: [hiddenId] });
+  let realtime = null;
+  if (source.runtimeLine === '3.8') {
+    await renderer.playMotion(motion.id, { loop: true, start: 0 });
+    await renderer.setActive(true);
+    await window.webContents.executeJavaScript('new Promise(resolve => setTimeout(resolve, 200))');
+    const playing = await renderer.readState();
+    if (!(playing.time > 0)) throw new Error('Spine 3.8 realtime playhead did not advance.');
+    const stillHidden = await window.webContents.executeJavaScript(`window.__live2petSpine.player.skeleton.slots.find(slot => 'slot:' + slot.data.name === ${JSON.stringify(hiddenId)}).getAttachment() === null`);
+    if (!stillHidden) throw new Error('Spine 3.8 playback restored a hidden Slot.');
+    await renderer.pause();
+    const paused = await renderer.readState();
+    await window.webContents.executeJavaScript('new Promise(resolve => setTimeout(resolve, 100))');
+    if ((await renderer.readState()).time !== paused.time) throw new Error('Spine 3.8 pause did not freeze the playhead.');
+    await renderer.seek(Math.min(.1, motion.duration));
+    await renderer.resume();
+    await window.webContents.executeJavaScript('new Promise(resolve => setTimeout(resolve, 100))');
+    const resumed = await renderer.readState();
+    if (!(resumed.time > Math.min(.1, motion.duration))) throw new Error('Spine 3.8 resume did not advance the playhead.');
+    await renderer.setActive(false);
+    realtime = { playing: true, pause: true, resume: true, hiddenSlotPreserved: true };
+  } else await renderer.setActive(false);
   const after = await renderer.captureRgba({ width: 128, height: 128, motionId: motion.id, time: Math.min(0.25, motion.duration) });
   const alpha = (bytes) => bytes.filter((_, index) => index % 4 === 3);
   const beforeAlpha = alpha(before.rgba);
@@ -59,6 +80,7 @@ async function run() {
     opaquePixels: beforeAlpha.filter((value) => value > 0).length,
     transparentPixels: beforeAlpha.filter((value) => value === 0).length,
     hiddenId: hiddenId || null,
+    realtime,
     changedBytes: before.rgba.reduce((count, value, index) => count + Number(value !== after.rgba[index]), 0),
     builds: Object.fromEntries(Object.entries(built.builds).map(([target, build]) => [target, { valid: build.validation?.ok, bytes: build.package?.byteLength, preview: build.preview?.ready }])),
   };
