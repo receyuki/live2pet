@@ -46,7 +46,8 @@ and can be removed individually in Settings. They are governed by the Spine Runt
 relicensed by Live2Pet's Apache-2.0 license.
 
 Additional local compatibility packs use Pixi 6.5.10 with a reviewed 2.1
-decoder, `pixi-spine-runtime-3.6@3.1.3`, or
+decoder, `pixi-spine-runtime-3.6@3.1.3` (including JSON-only 3.5 compatibility),
+`@pixi-spine/runtime-3.7@3.1.2`, or
 `@pixi-spine/runtime-3.8@3.1.2` for the exact deprecated 3.8.75 export. All
 pack files are pinned by SHA-256 and imported explicitly from the maintainer's
 local RYutility checkout. They are neither downloaded automatically nor

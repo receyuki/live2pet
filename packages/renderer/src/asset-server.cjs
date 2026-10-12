@@ -131,7 +131,7 @@ self.postMessage=function(message){
   const json=message&&message.json;
   if(json){
     if(!Array.isArray(json.bones)||json.bones.length>2000||!Array.isArray(json.slots)||json.slots.length>2000||Object.keys(json.skins||{}).length>256||Object.keys(json.animations||{}).length>200){send({error:'spine_controls_too_large'});return;}
-    let count=0;const visit=function(value,depth){if(++count>100000||depth>48)throw new Error('limit');if(typeof value==='string'&&value.length>1048576)throw new Error('limit');if(value&&typeof value==='object')for(const child of Object.values(value))visit(child,depth+1);};
+    let count=0;const visit=function(value,depth){if(++count>262144||depth>48)throw new Error('limit');if(typeof value==='string'&&value.length>1048576)throw new Error('limit');if(value&&typeof value==='object')for(const child of Object.values(value))visit(child,depth+1);};
     try{visit(json,0);}catch(error){send({error:'spine_controls_too_large'});return;}
   }
   send(message);
@@ -143,7 +143,7 @@ function normalizeSpineAssets(spineAssets) {
   if (spineAssets == null) return null;
   if (!spineAssets || typeof spineAssets !== 'object' || Array.isArray(spineAssets)) fail('INVALID_ASSET_SERVER', 'spineAssets must be an object.');
   if (spineAssets.adapter === 'legacy') {
-    if (!['2.1', '3.6', '3.8'].includes(spineAssets.runtimeLine)) fail('INVALID_ASSET_SERVER', 'Unsupported legacy Spine asset line.');
+    if (!['2.1', '3.5', '3.6', '3.7', '3.8'].includes(spineAssets.runtimeLine)) fail('INVALID_ASSET_SERVER', 'Unsupported legacy Spine asset line.');
     const legacy = { adapter: 'legacy', runtimeLine: spineAssets.runtimeLine, script: existingFile(spineAssets.script, 'spineAssets.script'), pixi: existingFile(spineAssets.pixi, 'spineAssets.pixi'), unsafeEval: existingFile(spineAssets.unsafeEval, 'spineAssets.unsafeEval') };
     if (spineAssets.runtimeLine === '2.1') legacy.decoder = existingFile(spineAssets.decoder, 'spineAssets.decoder');
     else legacy.base = existingFile(spineAssets.base, 'spineAssets.base');
@@ -250,7 +250,7 @@ function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, pre
         buffer = Buffer.from('window.PIXI.spine.base = window.PIXI.spine;');
         modelPath = 'bridge.js';
       } else if (spinePreview?.base && routePath === '/vendor/spine-runtime-bridge.js') {
-        buffer = Buffer.from(`window.live2petLegacySpine = {base:window.PIXI.spine,runtime:window.PIXI.${spinePreview.runtimeLine === '3.6' ? 'spine37' : 'spine38'}};`);
+        buffer = Buffer.from(`window.live2petLegacySpine = {base:window.PIXI.spine,runtime:window.PIXI.${spinePreview.runtimeLine === '3.8' ? 'spine38' : 'spine37'}};`);
         modelPath = 'bridge.js';
       } else if (spinePreview?.decoder && routePath === '/vendor/spine-decoder.js') {
         buffer = legacyDecoderDocument();

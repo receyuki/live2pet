@@ -3,14 +3,14 @@ const test = require('node:test');
 const { LegacySpineAdapter, SpinePlayerAdapter, selectRendererAdapter, spineSourceFromManifest } = require('../src/index.cjs');
 
 function realm() {
-  const calls = { destroy: 0, workers: [], frames: new Map(), updateTimes: [], skins: [] };
+  const calls = { destroy: 0, workers: [], frames: new Map(), updateTimes: [], skins: [], textures: [], loadTextures: false };
   let frameId = 0;
   const bones = [{ name: 'root' }];
   const data = { animations: [{ name: 'idle', duration: 2 }], bones };
   class Scene {
     constructor() {
-      const slots = ['body', 'background'].map(name => ({ data: { name }, attachment: {}, setAttachment(value) { this.attachment = value; } }));
-      this.skeleton = { data, slots, setToSetupPose() { for (const slot of slots) slot.attachment = {}; }, setSkinByName(name) { calls.skins.push(name); }, setSlotsToSetupPose() {}, updateWorldTransform() {} };
+      const slots = ['body', 'background'].map(name => ({ data: { name }, attachment: {}, currentMesh: {}, blendMode: 2, r: .2, g: .4, b: .8, setAttachment(value) { this.attachment = value; } }));
+      this.skeleton = { data, slots, setToSetupPose() { for (const slot of slots) slot.attachment = { r: .5, g: .5, b: .25, a: .75 }; }, setSkinByName(name) { calls.skins.push(name); }, setSlotsToSetupPose() {}, updateWorldTransform() {} };
       this.state = { tracks: [], clearTracks() { this.tracks = []; }, setAnimation(_track, name, loop) { this.tracks[0] = { animation: name, loop }; }, setAnimationByName(track, name, loop) { this.setAnimation(track, name, loop); }, getCurrent() { return this.tracks[0]; } };
       this.scale = this.position = { set() {} };
     }
@@ -18,7 +18,7 @@ function realm() {
     getLocalBounds() { return this.skeleton.slots.some(slot => slot.attachment) ? { x: 0, y: 0, width: 50, height: 100 } : { x: 0, y: 0, width: 0, height: 0 }; }
   }
   class TextureAtlas {
-    constructor(_text, _load, ready) { queueMicrotask(() => ready(this)); }
+    constructor(_text, load, ready) { if (calls.loadTextures) load('page.png', () => ready(this)); else queueMicrotask(() => ready(this)); }
     findRegion(path) { return path !== 'missing-background'; }
   }
   class Loader {
@@ -43,7 +43,7 @@ function realm() {
     PIXI: { Application: class {
       constructor(options) { this.stage = { addChild() {} }; this.renderer = { gl: { RGBA: 1, UNSIGNED_BYTE: 2, readPixels(_x, _y, width, height, _type, _format, bytes) { bytes.fill(255); } }, render() {}, resize(w, h) { options.view.width = w; options.view.height = h; } }; }
       destroy() { calls.destroy++; }
-    }, BaseTexture: { from() { return { valid: true, width: 50, height: 100, destroy() { this.destroyed = true; } }; } }, SimpleMesh: class {}, DRAW_MODES: {} },
+    }, BaseTexture: { from(_image, options) { const texture = { options, valid: true, width: 50, height: 100, resource: { source: { width: 50, height: 100 } }, setSize(width, height) { this.width = width; this.height = height; }, destroy() { this.destroyed = true; } }; calls.textures.push(texture); return texture; } }, SimpleMesh: class {}, DRAW_MODES: {}, BLEND_MODES: { NORMAL: 0 }, MIPMAP_MODES: { OFF: 0, POW2: 1 }, SCALE_MODES: { LINEAR: 1, NEAREST: 0 }, utils: { rgb2hex(rgb) { assert.deepEqual(rgb, [.1, .2, .2]); return 0x193333; } } },
     live2petLegacySpine: { base: { TextureAtlas, BinaryInput }, runtime: { AtlasAttachmentLoader: Loader, SkeletonBinary: Reader, SkeletonJson: Reader, Spine: Scene } },
     ryLegacySpineFactory() { return { SpineRuntime: { Atlas: TextureAtlas, AtlasAttachmentParser: Loader, SkeletonJsonParser: Reader }, Spine: Scene }; },
   };
@@ -71,10 +71,56 @@ test('renderer selection preserves explicit version boundaries and 3.8.75 compat
   for (const line of ['2.1', '3.6']) assert.equal(selectRendererAdapter(source(line)).Adapter, LegacySpineAdapter);
   assert.equal(selectRendererAdapter(source('3.8', '3.8.75')).Adapter, LegacySpineAdapter);
   assert.equal(selectRendererAdapter(source('3.8', '3.8.84')).Adapter, SpinePlayerAdapter);
-  assert.throws(() => selectRendererAdapter(source('3.7')), { code: 'UNSUPPORTED_SPINE_VERSION' });
+  assert.throws(() => selectRendererAdapter(source('3.4')), { code: 'UNSUPPORTED_SPINE_VERSION' });
   const converted = spineSourceFromManifest({ model: { format: 'spine', runtimeLine: '3.8', spineVersion: '3.8.75', modelFile: 'hero.skel', atlasFile: 'hero.atlas' }, motions: [] });
   assert.equal(converted.spineVersion, '3.8.75');
 });
+
+test('supports 3.5 JSON and 3.7 without pretending 3.5 binary is readable', async () => withRealm(async () => {
+  for (const line of ['3.5', '3.7']) {
+    assert.equal(selectRendererAdapter(source(line)).Adapter, LegacySpineAdapter);
+    const adapter = renderer();
+    await adapter.load(source(line));
+    assert.equal(adapter.getMotions()[0].id, 'idle');
+    await adapter.unload();
+  }
+  assert.throws(() => selectRendererAdapter({ ...source('3.5'), binary: true }), { code: 'UNSUPPORTED_SPINE_FORMAT' });
+  await assert.rejects(renderer().load({ ...source('3.5'), binary: true }), { code: 'UNSUPPORTED_SPINE_FORMAT' });
+}));
+
+test('2.1 capture synchronizes Mesh blend mode, tint and attachment alpha for every pose', async () => withRealm(async context => {
+  const adapter = renderer();
+  await adapter.load(source('2.1'));
+  await adapter.captureRgba({ width: 8, height: 8, time: .5 });
+  const slot = context.window.__live2petSpine.player.skeleton.slots[0];
+  assert.equal(slot.currentMesh.blendMode, 2);
+  assert.equal(slot.currentMesh.tint, 0x193333);
+  assert.equal(slot.currentMesh.alpha, .75);
+  slot.blendMode = 3;
+  await adapter.seek(.3);
+  assert.equal(slot.currentMesh.blendMode, 3);
+  await adapter.unload();
+}));
+
+test('3.7 keeps authored atlas coordinates without enlarging downscaled image pixels', async () => withRealm(async context => {
+  context.calls.loadTextures = true;
+  global.fetch = async () => ({ ok: true, async text() { return 'page.png\nsize: 200, 400\n\n'; }, async json() { return { bones: [], slots: [], animations: {} }; } });
+  const adapter = renderer();
+  await adapter.load(source('3.7'));
+  const texture = context.calls.textures[0];
+  assert.deepEqual([texture.width, texture.height], [200, 400]);
+  assert.deepEqual(texture.resource.source, { width: 50, height: 100 });
+  await adapter.unload();
+}));
+
+test('2.1 respects atlas filtering instead of generating unwanted mipmaps', async () => withRealm(async context => {
+  context.calls.loadTextures = true;
+  global.fetch = async () => ({ ok: true, async text() { return 'page.png\nsize: 50, 100\nfilter: Linear,Linear\n\n'; }, async json() { return { bones: [], slots: [], animations: {} }; } });
+  const adapter = renderer();
+  await adapter.load(source('2.1'));
+  assert.deepEqual(context.calls.textures[0].options, { mipmap: 0, scaleMode: 1 });
+  await adapter.unload();
+}));
 
 test('legacy renderer reuses playback, seeking, visibility, capture and cleanup contract', async () => withRealm(async context => {
   const ref = context.BinaryInput.prototype.readStringRef;

@@ -26,7 +26,7 @@ test('local compatibility variants do not replace the official 3.8 pack or dupli
   assert.equal(getSpinePackStatus(destination, '3.8', { spineVersion: '3.8.75' }).id, 'spine-compat-3.8.75');
   assert.equal(getSpinePackStatus(destination, '3.8', { spineVersion: '3.8.84' }).id, 'spine-player-3.8');
   assert.equal(getSpinePackStatus(destination, '3.6').downloadable, false);
-  assert.deepEqual(all.compatibilityPacks.map((pack) => pack.id), ['spine-compat-2.1', 'spine-compat-3.6', 'spine-compat-3.8.75']);
+  assert.deepEqual(all.compatibilityPacks.map((pack) => pack.id), ['spine-compat-2.1', 'spine-compat-3.5', 'spine-compat-3.6', 'spine-compat-3.7', 'spine-compat-3.8.75']);
   await assert.rejects(installSpinePack(destination, { runtimeLine: '3.6', confirmInstall: true, fetchImpl() { throw new Error('Must never download'); } }), { code: 'SPINE_PACK_LOCAL_IMPORT_REQUIRED' });
 });
 
@@ -94,5 +94,5 @@ test('publishes independently installable official Spine 3.8 and 4.x runtime lin
     { line: '3.8', installed: false },
   ]);
   assert.throws(() => resolveSpinePack(destination, '3.8'), { code: 'SPINE_PACK_REQUIRED' });
-  assert.throws(() => resolveSpinePack(destination, '3.7'), (error) => error.code === 'UNSUPPORTED_SPINE_VERSION' && error.details.supported.includes('3.8'));
+  assert.throws(() => resolveSpinePack(destination, '3.4'), (error) => error.code === 'UNSUPPORTED_SPINE_VERSION' && error.details.supported.includes('3.8'));
 });

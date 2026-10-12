@@ -8,7 +8,7 @@ GitHub Releases.
 
 ### Added
 
-- Support Spine 2.1, 3.6 and exact deprecated 3.8.75 exports through verified
+- Support Spine 2.1, 3.5 JSON, 3.6–3.7 and exact deprecated 3.8.75 exports through verified
   local compatibility packs, including playback, Slot visibility and package
   capture. Runtime files remain outside the App bundle and repository.
 - Open an isolated on-demand Visibility editor from other desktop apps, reusing
@@ -27,6 +27,10 @@ GitHub Releases.
 
 ### Fixed
 
+- Synchronize Spine 2.1 Mesh blend modes, tint and attachment alpha on every
+  pose. Retain authored atlas coordinates for downscaled legacy textures
+  without enlarging the uploaded image pixels, and honor atlas filtering to
+  avoid unwanted mipmap color bleed.
 - Identify Spine skeletons named `model.json` by their contents rather than
   misclassifying them as Cubism 2 in inspection and local library discovery.
 - Preserve official Spine 3.8 atlas dimensions for Mesh UVs and correct alpha

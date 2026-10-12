@@ -331,7 +331,7 @@ function summarizeSpinePackStatus(result) {
   if (compatibilityPacks !== undefined && (!Array.isArray(compatibilityPacks) || compatibilityPacks.length > 8)) fail('INVALID_SPINE_PACK_RESULT', 'Invalid local compatibility catalog.');
   const ids = new Set();
   const local = compatibilityPacks?.map(pack => {
-    if (!isRecord(pack) || pack.schemaVersion !== 2 || typeof pack.id !== 'string' || ids.has(pack.id) || !['2.1', '3.6', '3.8'].includes(pack.runtimeLine) || pack.adapter !== 'legacy' || pack.downloadable !== false || typeof pack.installed !== 'boolean' || typeof pack.version !== 'string' || (pack.spineVersion != null && !/^\d+\.\d+\.\d+$/.test(pack.spineVersion))) fail('INVALID_SPINE_PACK_RESULT', 'Invalid local compatibility entry.');
+    if (!isRecord(pack) || pack.schemaVersion !== 2 || typeof pack.id !== 'string' || ids.has(pack.id) || !['2.1', '3.5', '3.6', '3.7', '3.8'].includes(pack.runtimeLine) || pack.adapter !== 'legacy' || pack.downloadable !== false || typeof pack.installed !== 'boolean' || typeof pack.version !== 'string' || (pack.spineVersion != null && !/^\d+\.\d+\.\d+$/.test(pack.spineVersion))) fail('INVALID_SPINE_PACK_RESULT', 'Invalid local compatibility entry.');
     ids.add(pack.id);
     return { schemaVersion: 2, id: pack.id, runtimeLine: pack.runtimeLine, version: pack.version, downloadable: false, installed: pack.installed, adapter: 'legacy', spineVersion: pack.spineVersion ?? null };
   });

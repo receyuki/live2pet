@@ -16,7 +16,7 @@ function files(line) {
   return { root, assets: result };
 }
 
-for (const line of ['2.1', '3.6', '3.8']) test(`strict legacy Spine ${line} routes and self-only CSP`, async () => {
+for (const line of ['2.1', '3.5', '3.6', '3.7', '3.8']) test(`strict legacy Spine ${line} routes and self-only CSP`, async () => {
   const fixture = files(line);
   const server = await createRendererAssetServer({ sourceBuffers: { 'model.json': Buffer.from('{}'), 'evil.js': Buffer.from('alert(1)'), 'image.png': Buffer.from([1]) }, spineAssets: fixture.assets });
   try {
@@ -36,7 +36,7 @@ for (const line of ['2.1', '3.6', '3.8']) test(`strict legacy Spine ${line} rout
     } else {
       assert.equal(server.legacyDecoderUrl, null);
       const bridge = await (await fetch(`${server.baseUrl}/vendor/spine-runtime-bridge.js`)).text();
-      assert.match(bridge, new RegExp(line === '3.6' ? 'spine37' : 'spine38'));
+      assert.match(bridge, new RegExp(line === '3.8' ? 'spine38' : 'spine37'));
     }
   } finally { await server.close(); fs.rmSync(fixture.root, { recursive: true }); }
 });
@@ -54,6 +54,10 @@ test('2.1 worker bounds decoded controls before structured cloning', () => {
   vm.runInNewContext(legacyDecoderDocument().toString(), context);
   context.self.onmessage({ data: new ArrayBuffer(8) });
   assert.equal(messages.pop().json.bones.length, 0);
+  context.self.postMessage({ json: { bones: [], slots: [], timeline: new Array(110000).fill(0) } });
+  assert.equal(messages.pop().json.timeline.length, 110000);
+  context.self.postMessage({ json: { bones: [], slots: [], timeline: new Array(262144).fill(0) } });
+  assert.equal(messages.pop().error, 'spine_controls_too_large');
   context.self.postMessage({ json: { bones: new Array(2001), slots: [] } });
   assert.equal(messages.pop().error, 'spine_controls_too_large');
   context.self.postMessage({ json: { bones: [], slots: [], animations: Object.fromEntries(new Array(201).fill(0).map((_, index) => [index, {}])) } });

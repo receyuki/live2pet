@@ -93,9 +93,9 @@ describe('ModelLibrary thumbnails', () => {
   });
 
   it('labels unsupported Spine versions without trying to render them', async () => {
-    const unsupported: SourceLibrary = { ...library, candidates: [{ id: 'legacy', name: 'legacy', relativePath: 'legacy/legacy.skel', format: 'spine', version: '3.7.95', runtimeLine: '3.7', binary: true }] };
+    const unsupported: SourceLibrary = { ...library, candidates: [{ id: 'legacy', name: 'legacy', relativePath: 'legacy/legacy.skel', format: 'spine', version: '3.4.95', runtimeLine: '3.4', binary: true }] };
     render(<ModelLibrary library={unsupported} locale="zh-CN" onUse={async () => {}} />);
-    expect(screen.getByText('暂不支持 Spine 3.7 预览')).toBeTruthy();
+    expect(screen.getByText('暂不支持 Spine 3.4 预览')).toBeTruthy();
     expect(getLibraryThumbnail).not.toHaveBeenCalled();
   });
 

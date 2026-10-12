@@ -5,7 +5,7 @@ const { LOCAL_SPINE_PACKS, importLocalSpinePack } = require('../../../packages/s
 
 function importFromRyutility(destination, checkout) {
   const modules = path.join(checkout, 'node_modules');
-  const pinned = { 'pixi.js': '6.5.10', '@pixi-spine/base': '3.1.2', '@pixi-spine/runtime-3.8': '3.1.2', 'pixi-spine-runtime-3.6': '3.1.3' };
+  const pinned = { 'pixi.js': '6.5.10', '@pixi-spine/base': '3.1.2', '@pixi-spine/runtime-3.7': '3.1.2', '@pixi-spine/runtime-3.8': '3.1.2', 'pixi-spine-runtime-3.6': '3.1.3' };
   for (const [name, version] of Object.entries(pinned)) {
     if (JSON.parse(fs.readFileSync(path.join(modules, name, 'package.json'), 'utf8')).version !== version) throw new Error(`Unexpected ${name} version; expected ${version}.`);
   }
@@ -21,7 +21,8 @@ function importFromRyutility(destination, checkout) {
     packId: pack.id, confirmInstall: true,
     files: { ...common, 'spine-player.min.js': pack.runtimeLine === '2.1'
       ? path.join(checkout, 'resources/spine/runtimes/2.1/spine-player.min.js')
-      : pack.runtimeLine === '3.6' ? path.join(modules, 'pixi-spine-runtime-3.6/dist/runtime-3.6.js')
+      : ['3.5', '3.6'].includes(pack.runtimeLine) ? path.join(modules, 'pixi-spine-runtime-3.6/dist/runtime-3.6.js')
+        : pack.runtimeLine === '3.7' ? path.join(modules, '@pixi-spine/runtime-3.7/dist/runtime-3.7.js')
         : path.join(modules, '@pixi-spine/runtime-3.8/dist/runtime-3.8.js') },
   }));
 }

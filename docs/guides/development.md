@@ -63,8 +63,10 @@ node apps/desktop/scripts/install-local-spine-compat.cjs \
   "/absolute/Live2Pet/user-data/renderer-packs" "/absolute/RYutility"
 ```
 
-Spine 2.1 uses a bounded same-origin worker for binary decoding. Spine 3.6 uses
-its version-matched Pixi reader. Exact 3.8.75 exports select the separate
+Spine 2.1 uses a bounded same-origin worker for binary decoding. Spine 3.6 and
+3.7 use version-matched Pixi readers. Spine 3.5 supports JSON only through the
+reviewed old JSON compatibility reader, without changing source versions.
+Exact 3.8.75 exports select the separate
 compatibility pack; other 3.8 models keep the official Player. Both ordinary
 preview and Visibility edit sessions select by the inspected export version.
 Model headers, Source Package fingerprints and project formats are unchanged.

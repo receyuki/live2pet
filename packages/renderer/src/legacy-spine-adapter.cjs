@@ -2,7 +2,7 @@ const { SpinePlayerAdapter } = require('./spine-player-adapter.cjs');
 const { RendererContractError } = require('./errors.cjs');
 
 function usesLegacySpine(source) {
-  return source?.format === 'spine' && (['2.1', '3.6'].includes(source.runtimeLine) || source.runtimeLine === '3.8' && source.spineVersion === '3.8.75');
+  return source?.format === 'spine' && (['2.1', '3.5', '3.6', '3.7'].includes(source.runtimeLine) || source.runtimeLine === '3.8' && source.spineVersion === '3.8.75');
 }
 
 /** Serialized into a dedicated renderer realm; all executable assets come from the verified pack. */
@@ -18,6 +18,7 @@ async function pageLegacySpineLoad(source, options) {
   container.appendChild(canvas);
   const app = new PIXI.Application({ view: canvas, width: options.width, height: options.height, resolution: 1, backgroundAlpha: 0, antialias: true, preserveDrawingBuffer: true, autoStart: false });
   const textures = new Set(), warnings = [], declaredSizes = new Map();
+  const filters = new Map();
   const controller = new AbortController();
   const loadTimer = window.setTimeout(() => controller.abort(), options.loadTimeoutMs);
   let scene, disposed = false;
@@ -114,7 +115,7 @@ async function pageLegacySpineLoad(source, options) {
   };
   window.__live2petSpine = runtime;
   const image = async name => {
-    const texture = PIXI.BaseTexture.from(new URL(name, source.atlasUrl).href);
+    const texture = PIXI.BaseTexture.from(new URL(name, source.atlasUrl).href, filters.get(name));
     textures.add(texture);
     if (!texture.valid) await new Promise((resolve, reject) => {
       const timer = window.setTimeout(() => reject(new Error('Spine texture did not finish loading.')), options.loadTimeoutMs);
@@ -127,7 +128,11 @@ async function pageLegacySpineLoad(source, options) {
       const padded = document.createElement('canvas'); padded.width = size.width; padded.height = size.height;
       padded.getContext('2d').drawImage(texture.resource.source, 0, 0);
       texture.destroy();
-      const replacement = PIXI.BaseTexture.from(padded); textures.add(replacement); return replacement;
+      const replacement = PIXI.BaseTexture.from(padded, filters.get(name)); textures.add(replacement); return replacement;
+    }
+    if (size && size.width > 0 && size.height > 0 && size.width <= 32768 && size.height <= 32768 && (size.width !== texture.width || size.height !== texture.height)) {
+      // Logical atlas coordinates change; the GPU keeps the original downscaled pixels.
+      texture.setSize(size.width, size.height);
     }
     return texture;
   };
@@ -143,6 +148,8 @@ async function pageLegacySpineLoad(source, options) {
       if (!value.includes(':')) { header = false; continue; }
       const size = header && /^size:\s*(\d+)\s*,\s*(\d+)$/.exec(value);
       if (size && +size[1] > 0 && +size[2] > 0 && +size[1] <= 32768 && +size[2] <= 32768) declaredSizes.set(page, { width: +size[1], height: +size[2] });
+      const filter = header && /^filter:\s*(\w+)\s*,\s*(\w+)$/.exec(value);
+      if (filter) filters.set(page, { mipmap: filter[1].startsWith('MipMap') ? PIXI.MIPMAP_MODES.POW2 : PIXI.MIPMAP_MODES.OFF, scaleMode: filter[2] === 'Nearest' ? PIXI.SCALE_MODES.NEAREST : PIXI.SCALE_MODES.LINEAR });
     }
     const bytes = source.binary ? await skeletonResponse.arrayBuffer() : null;
     if (bytes?.byteLength > (source.runtimeLine === '2.1' ? 8 : 64) * 1024 * 1024) throw new Error('Spine skeleton exceeds the decoder resource limit.');
@@ -173,12 +180,22 @@ async function pageLegacySpineLoad(source, options) {
       if (!json || !Array.isArray(json.bones) || json.bones.length > 2000 || !Array.isArray(json.slots) || json.slots.length > 2000 || Object.keys(json.skins || {}).length > 256 || Object.keys(json.animations || {}).length > 200) throw new Error('Spine 2.1 decoded model exceeds the supported limits.');
       const data = new api.SpineRuntime.SkeletonJsonParser(new api.SpineRuntime.AtlasAttachmentParser(atlas)).readSkeletonData(json);
       scene = new api.Spine(data);
+      const update = scene.update.bind(scene);
+      scene.update = delta => {
+        update(delta);
+        for (const slot of scene.skeleton.slots) if (slot.currentMesh && slot.attachment) {
+          slot.currentMesh.blendMode = slot.blendMode ?? PIXI.BLEND_MODES.NORMAL;
+          slot.currentMesh.tint = PIXI.utils.rgb2hex([(slot.r ?? 1) * (slot.attachment.r ?? 1), (slot.g ?? 1) * (slot.attachment.g ?? 1), (slot.b ?? 1) * (slot.attachment.b ?? 1)]);
+          slot.currentMesh.alpha = slot.attachment.a ?? 1;
+        }
+      };
     } else {
       const { base, runtime: api } = window.live2petLegacySpine || {};
       if (!base?.TextureAtlas || !api?.Spine) throw new Error('The optional legacy Spine runtime is not loaded.');
       const atlas = await new Promise((resolve, reject) => new base.TextureAtlas(atlasText, (name, callback) => { image(name).then(callback, reject); }, resolve));
       const loader = new api.AtlasAttachmentLoader(atlas);
       const deprecated = source.spineVersion === '3.8.75';
+      if (source.runtimeLine === '3.5') warnings.push({ code: 'SPINE_JSON_COMPAT', message: 'Spine 3.5 JSON uses a verified compatibility reader; original version and resources are unchanged.' });
       if (deprecated) {
         warnings.push({ code: 'SPINE_LEGACY_EXPORT', message: 'Spine 3.8.75 uses a compatibility reader for this deprecated export.' });
         const missing = new Set();
@@ -223,6 +240,7 @@ async function pageLegacySpineLoad(source, options) {
 
 class LegacySpineAdapter extends SpinePlayerAdapter {
   async load(source) {
+    if (source?.runtimeLine === '3.5' && source.binary) throw new RendererContractError('UNSUPPORTED_SPINE_FORMAT', 'Spine 3.5 compatibility supports JSON skeletons only.');
     if (!usesLegacySpine(source) || !Array.isArray(source.motions)) throw new RendererContractError('INVALID_RENDER_SOURCE', 'A supported legacy Spine renderer source is required.');
     const loaded = await this.evaluate(pageLegacySpineLoad, source, this.options);
     this.state = loaded.state; this.source = { ...source, motions: loaded.motions }; this.visualElements = loaded.slots; this.warnings = loaded.warnings;

@@ -47,7 +47,9 @@ const localPack = (runtimeLine, version, runtimeHash, { base = false, spineVersi
 });
 const LOCAL_SPINE_PACKS = Object.freeze([
   localPack('2.1', '2.1-c2e63d62-ik-fix', '7371774177d345d94efcb37920c1f2f19cb82211f52e338faf820fdf3a36b43c'),
+  localPack('3.5', 'pixi-spine-runtime-3.6@3.1.3-json-compat', 'c5572718ec72acb64b7e0a7c308eea4de25c3b1987daa0d203add9b174670ea1', { base: true }),
   localPack('3.6', 'pixi-spine-runtime-3.6@3.1.3', 'c5572718ec72acb64b7e0a7c308eea4de25c3b1987daa0d203add9b174670ea1', { base: true }),
+  localPack('3.7', '@pixi-spine/runtime-3.7@3.1.2', '22d012328420b572a59fb8e5502ad945d2c6dc7d4a6bd1bdbd02f90c2cd94037', { base: true }),
   localPack('3.8', '@pixi-spine/runtime-3.8@3.1.2', 'e6e38e283aaae8442b3f9052d8155c5d5f4259a9afaa575252f1d01ee84ba1a7', { base: true, spineVersion: '3.8.75' }),
 ]);
 

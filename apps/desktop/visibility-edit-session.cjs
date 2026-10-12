@@ -100,7 +100,8 @@ function createVisibilityEditSession(requestPath) {
       if (![2, 3].includes(model.generation) || model.runtimeLine !== undefined || model.initialSkin !== undefined
         || !/\.json$/i.test(model.entry)) throw invalidRequest();
     } else if (model.format === 'spine') {
-      if (model.generation !== undefined || !['2.1', '3.6', '3.8', '4.0', '4.1', '4.2', '4.3'].includes(model.runtimeLine)
+      if (model.generation !== undefined || !['2.1', '3.5', '3.6', '3.7', '3.8', '4.0', '4.1', '4.2', '4.3'].includes(model.runtimeLine)
+        || model.runtimeLine === '3.5' && !/\.json$/i.test(model.entry)
         || (model.initialSkin !== undefined && !isText(model.initialSkin)) || !/\.(?:json|skel)$/i.test(model.entry)
         || request.runtime !== null) throw invalidRequest();
     } else throw invalidRequest();

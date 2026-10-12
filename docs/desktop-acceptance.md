@@ -699,3 +699,29 @@ Apply/reopen preserved hidden IDs; cancel, close and renderer crash did not
 publish applied settings. Original model files and ordinary-profile sentinels
 were unchanged, and no windows were shown. These automated checks do not
 establish Windows acceptance or exhaustive model-version compatibility.
+
+### Additional legacy JSON versions and atlas fidelity — 2026-10-12
+
+Spine 3.5.51 JSON and 3.7.91 JSON passed real hidden rendering, transparent
+capture, playback, Slot hiding, pause/resume and both pet package builds using
+temporary copies. The 3.7 model's zero-duration `00_daiji` remains a valid
+static pose; animation checks deliberately selected a nonzero-duration Motion.
+The 3.7 runtime is pinned to `@pixi-spine/runtime-3.7@3.1.2` with base 3.1.2.
+Spine 3.5 uses the reviewed old JSON reader without header changes; binary 3.5
+is explicitly rejected by renderer selection and the edit-session protocol.
+
+Project QT Spine 2.1.27 passed the same native checks plus actual Mesh
+blend-mode/tint/attachment-alpha and `Linear,Linear` filtering assertions.
+Logical atlas dimensions are retained without resampling image resource pixels.
+The bounded binary decoder allows 262144 data nodes (previously 100000), while
+retaining its 8 MiB input cap, depth/control limits and ten-second timeout.
+This model had 101737 nodes in a 908408-byte decoded JSON document.
+
+The packaged macOS x64 App passed eight hidden Apply/reopen, Cancel, close and
+crash scenarios for these three models. Source files and ordinary-profile
+sentinels stayed unchanged. Local packs remain separate from the App; no LPK
+import, public runtime redistribution or ordinary-App restart was added.
+
+507 Node tests passed (four opt-in checks skipped), and all 206 UI tests passed
+in a separate single-worker run after updating the earlier unsupported-3.7
+expectation. Syntax, UI types, source-release checks and packaged smoke passed.

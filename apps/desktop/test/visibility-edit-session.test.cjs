@@ -85,12 +85,13 @@ test('only fixed matching trusted runtime is accepted', t => {
 });
 
 test('supported Spine lines preserve optional skin without a Cubism runtime', t => {
-  for (const runtimeLine of ['2.1', '3.6', '3.8', '4.0', '4.1', '4.2', '4.3']) {
-    const { root, requestPath } = fixture(t, { model: { id: '2'.repeat(32), revision: '3'.repeat(64), name: 'Spine', format: 'spine', runtimeLine, initialSkin: 'default', entry: 'source/character.skel' }, runtime: null });
-    fs.writeFileSync(path.join(root, 'source/character.skel'), 'binary placeholder');
+  for (const runtimeLine of ['2.1', '3.5', '3.6', '3.7', '3.8', '4.0', '4.1', '4.2', '4.3']) {
+    const entry = runtimeLine === '3.5' ? 'character.json' : 'character.skel';
+    const { root, requestPath } = fixture(t, { model: { id: '2'.repeat(32), revision: '3'.repeat(64), name: 'Spine', format: 'spine', runtimeLine, initialSkin: 'default', entry: `source/${entry}` }, runtime: null });
+    fs.writeFileSync(path.join(root, 'source', entry), 'placeholder');
     const session = createVisibilityEditSession(requestPath);
     assert.equal(session.request.model.initialSkin, 'default');
-    assert.equal(session.modelConfig, 'character.skel');
+    assert.equal(session.modelConfig, entry);
   }
 });
 

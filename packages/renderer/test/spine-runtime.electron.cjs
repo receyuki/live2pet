@@ -22,9 +22,19 @@ async function run() {
   if (usesLegacySpine(source) ? runtimeReady.legacy !== 'function' && runtimeReady.factory !== 'function' : runtimeReady.player !== 'function') throw new Error(`Spine runtime did not load: ${JSON.stringify(runtimeReady)}`);
   const renderer = createRendererAdapter({ source, page: createElectronWebContentsPage({ webContents: window.webContents }), width: 256, height: 256, padding: 0.08, playbackMode: 'realtime' });
   const loaded = await renderer.load(source);
+  if (source.runtimeLine === '3.7') {
+    const hasScaledAtlas = await window.webContents.executeJavaScript(`Object.values(PIXI.utils.BaseTextureCache).some(texture => texture.resource?.source && (texture.width > (texture.resource.source.naturalWidth || texture.resource.source.width) || texture.height > (texture.resource.source.naturalHeight || texture.resource.source.height)))`);
+    if (process.env.LIVE2PET_SPINE_EXPECT_SCALED_ATLAS === '1' && !hasScaledAtlas) throw new Error('Declared atlas dimensions were not retained for the downscaled texture.');
+  }
   const motions = renderer.getMotions();
   const motion = motions.filter((entry) => entry.duration >= .5).sort((a, b) => a.duration - b.duration)[0] || motions.find(entry => entry.duration > 0) || motions[0];
   await renderer.playMotion(motion.id, { loop: true, speed: 1 });
+  if (source.runtimeLine === '2.1' && process.env.LIVE2PET_SPINE_EXPECT_MESH === '1') {
+    const result = await window.webContents.executeJavaScript(`(() => { const slots=window.__live2petSpine.player.skeleton.slots.filter(slot=>slot.currentMesh&&slot.attachment);return {count:slots.length,valid:slots.every(slot=>slot.currentMesh.blendMode===(slot.blendMode??PIXI.BLEND_MODES.NORMAL)&&slot.currentMesh.tint===PIXI.utils.rgb2hex([(slot.r??1)*(slot.attachment.r??1),(slot.g??1)*(slot.attachment.g??1),(slot.b??1)*(slot.attachment.b??1)])&&slot.currentMesh.alpha===(slot.attachment.a??1))};})()`);
+    if (!result.count || !result.valid) throw new Error('Live Mesh blend/tint/alpha does not match authored Slot data.');
+    const filtersMatch = await window.webContents.executeJavaScript(`Object.values(PIXI.utils.BaseTextureCache).filter(texture=>texture.resource?.source).every(texture=>texture.mipmap===PIXI.MIPMAP_MODES.OFF&&texture.scaleMode===PIXI.SCALE_MODES.LINEAR)`);
+    if (!filtersMatch) throw new Error('The Linear,Linear atlas unexpectedly enabled mipmaps or nearest filtering.');
+  }
   const before = await renderer.captureRgba({ width: 128, height: 128, motionId: motion.id, time: Math.min(0.25, motion.duration) });
   const scan = await renderer.scanVisualElements(motion.id);
   // Slots can belong to other animation levels or have authored alpha zero.

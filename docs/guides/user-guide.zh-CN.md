@@ -18,7 +18,7 @@
 | Cubism 2 | `.model.json`、`.moc` 及引用的纹理和动作 |
 | Live2D PCK | 受支持的未压缩、未加密结构；PCK 是容器，不专属于某个游戏 |
 | Spine 3.8 / 4.0–4.3 | JSON 或二进制骨骼、匹配的图集和纹理；支持默认皮肤及 Slot 隐藏 |
-| Spine 2.1 / 3.6 / 3.8.75 | 需匹配并经过校验的本地兼容包；支持播放、Slot 隐藏及主题捕获 |
+| Spine 2.1 / 3.5 JSON / 3.6–3.7 / 3.8.75 | 需匹配并经过校验的本地兼容包；支持播放、Slot 隐藏及主题捕获；不支持 Spine 3.5 二进制 |
 | Codex 输出 | V2 11 行图集，九个动画映射与中立方向格，暂不生成方向跟随 |
 | Clawd 输出 | 透明 WebP 动画、必选及可选状态、互动反应 |
 
@@ -35,7 +35,7 @@
 | Cubism 3–5 | [官方 Web SDK](https://www.live2d.com/en/sdk/download/web/) → `Core/live2dcubismcore.min.js` |
 | Cubism 2 | [第三方存档](https://github.com/dylanNew/live2d/tree/master/webgl/Live2D/lib) → `live2d.min.js` |
 | Spine 3.8 / 4.0–4.3 | 在 App 内安装匹配的可选渲染器 |
-| Spine 2.1 / 3.6 / 3.8.75 | 单独进行本地配置；Live2Pet 不分发运行时文件 |
+| Spine 2.1 / 3.5 JSON / 3.6–3.7 / 3.8.75 | 单独进行本地配置；Live2Pet 不分发运行时文件 |
 
 - 下载 **Web SDK**，不要选择 Editor、Unity 或 Native SDK。
 - Cubism 2 需要 JavaScript 文件，而不是 GitHub 网页。该存档由第三方提供；[Live2D 已停止提供新的 Cubism 2.1 SDK 下载](https://help.live2d.com/en/other/other_20/)。

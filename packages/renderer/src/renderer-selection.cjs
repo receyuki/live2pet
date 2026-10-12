@@ -11,6 +11,7 @@ const { LegacySpineAdapter, usesLegacySpine } = require('./legacy-spine-adapter.
  */
 function selectRendererAdapter(input) {
   if (input && typeof input === 'object' && input.format === 'spine') {
+    if (input.runtimeLine === '3.5' && input.binary) throw Object.assign(new Error('Spine 3.5 compatibility supports JSON skeletons only.'), { code: 'UNSUPPORTED_SPINE_FORMAT' });
     if (!supportsSpineRuntime(input.runtimeLine)) throw Object.assign(new Error(`No Spine adapter is registered for runtime line ${String(input.runtimeLine)}.`), { code: 'UNSUPPORTED_SPINE_VERSION' });
     return { kind: `spine-${usesLegacySpine(input) ? 'legacy' : 'player'}-${input.runtimeLine}`, Adapter: usesLegacySpine(input) ? LegacySpineAdapter : SpinePlayerAdapter };
   }

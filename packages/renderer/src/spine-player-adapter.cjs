@@ -2,7 +2,7 @@ const { RendererContractError } = require('./errors.cjs');
 const { normalizeVisualSettings } = require('./visual-settings.cjs');
 
 const DEFAULT_OPTIONS = Object.freeze({ width: 512, height: 512, padding: 0.08, playbackMode: 'manual', loadTimeoutMs: 15000 });
-const SUPPORTED_SPINE_RUNTIME_LINES = Object.freeze(['2.1', '3.6', '3.8', '4.0', '4.1', '4.2', '4.3']);
+const SUPPORTED_SPINE_RUNTIME_LINES = Object.freeze(['2.1', '3.5', '3.6', '3.7', '3.8', '4.0', '4.1', '4.2', '4.3']);
 
 function fail(code, message, details = {}) { throw new RendererContractError(code, message, details); }
 function finite(value, label, minimum, maximum) {

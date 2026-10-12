@@ -18,7 +18,7 @@
 | Cubism 2 | `.model.json`, `.moc`, referenced textures and motions |
 | Live2D PCK | Supported uncompressed, unencrypted layouts; PCK is a container, not one game's format |
 | Spine 3.8 / 4.0–4.3 | JSON or binary skeleton, matching atlas and texture pages; default skin and Slot visibility |
-| Spine 2.1 / 3.6 / 3.8.75 | Matching verified local compatibility pack; playback, Slot visibility and package capture |
+| Spine 2.1 / 3.5 JSON / 3.6–3.7 / 3.8.75 | Matching verified local compatibility pack; playback, Slot visibility and package capture. No Spine 3.5 binary support |
 | Codex output | V2 11-row atlas; nine animation mappings plus neutral look cells, without directional mouse following |
 | Clawd output | Transparent WebP or APNG animations, required/optional states and reactions |
 
@@ -35,7 +35,7 @@ A model contains character data; its runtime makes it move. Live2D's proprietary
 | Cubism 3–5 | [Official Web SDK](https://www.live2d.com/en/sdk/download/web/) → `Core/live2dcubismcore.min.js` |
 | Cubism 2 | [Third-party archive](https://github.com/dylanNew/live2d/tree/master/webgl/Live2D/lib) → `live2d.min.js` |
 | Spine 3.8 / 4.0–4.3 | Install the matching optional renderer inside Live2Pet |
-| Spine 2.1 / 3.6 / 3.8.75 | Explicit local setup; runtime bytes are not distributed with Live2Pet |
+| Spine 2.1 / 3.5 JSON / 3.6–3.7 / 3.8.75 | Explicit local setup; runtime bytes are not distributed with Live2Pet |
 
 - Download the **Web SDK**, not the Editor, Unity SDK, or Native SDK.
 - For Cubism 2, save the JavaScript file, not the GitHub page. The archive is third-party; [new Cubism 2.1 SDK downloads are no longer offered by Live2D](https://help.live2d.com/en/other/other_20/).

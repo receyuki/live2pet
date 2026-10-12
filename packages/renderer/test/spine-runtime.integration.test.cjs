@@ -33,7 +33,7 @@ function runElectron(environment) {
 test('opt-in version-matched Spine renderer plays, hides a Slot, and builds both target packages', { skip: skipReason }, async () => {
   const manifest = inspectSourcePackage(sourceRoot, { modelConfig: process.env.LIVE2PET_SPINE_MODEL_CONFIG || null });
   assert.equal(manifest.model.format, 'spine');
-  assert.ok(['2.1', '3.6', '3.8', '4.0', '4.1', '4.2', '4.3'].includes(manifest.model.runtimeLine));
+  assert.ok(['2.1', '3.5', '3.6', '3.7', '3.8', '4.0', '4.1', '4.2', '4.3'].includes(manifest.model.runtimeLine));
   const server = await createRendererAssetServer({ sourceRoot, spineAssets: suppliedAssets || { script, style } });
   try {
     const source = spineSourceFromManifest(manifest, { baseUrl: `${server.baseUrl}/model` });

@@ -23,7 +23,7 @@ function ModelCard({ library, candidate, selected, onSelect, locale, thumbnailRe
   const thumbnailKey = `${library.libraryId}:${candidate.id}`;
   const [cover, setCover] = useState<string | null>(() => thumbnailMemory.get(thumbnailKey));
   const [failed, setFailed] = useState(false);
-  const unsupportedSpine = candidate.format === 'spine' && Boolean(candidate.runtimeLine) && !['2.1', '3.6', '3.8', '4.0', '4.1', '4.2', '4.3'].includes(candidate.runtimeLine!);
+  const unsupportedSpine = candidate.format === 'spine' && Boolean(candidate.runtimeLine) && (!['2.1', '3.5', '3.6', '3.7', '3.8', '4.0', '4.1', '4.2', '4.3'].includes(candidate.runtimeLine!) || candidate.runtimeLine === '3.5' && candidate.binary);
   useEffect(() => {
     let active = true, requested = false;
     const unsubscribe = thumbnailMemory.subscribe((evictedKey) => { if (active && evictedKey === thumbnailKey) setCover(null); });
