@@ -71,7 +71,7 @@ function manifest(overrides = {}) {
   };
 }
 
-function fixture({ source = null, runtime = { runtimePath: '/private/runtime/Live2DCubismCore.js' }, loadError = null, spine = false } = {}) {
+function fixture({ source = null, runtime = { runtimePath: '/private/runtime/Live2DCubismCore.js' }, loadError = null, spine = false, spinePack = null } = {}) {
   const calls = [];
   const statuses = [];
   const webContents = new EventEmitter();
@@ -126,7 +126,7 @@ function fixture({ source = null, runtime = { runtimePath: '/private/runtime/Liv
     createView: async (input) => { calls.push(['createView', input]); return view; },
     resolveSource: async (input) => { calls.push(['resolveSource', input]); return resolvedSource; },
     resolveRuntime: async (generation) => { calls.push(['resolveRuntime', generation]); return runtime; },
-    resolveSpinePack: async (line) => { calls.push(['resolveSpinePack', line]); return { scriptPath: '/private/spine/spine-player.js', stylePath: '/private/spine/spine-player.css' }; },
+    resolveSpinePack: async (line, options) => { calls.push(['resolveSpinePack', line, options]); return spinePack || { scriptPath: '/private/spine/spine-player.js', stylePath: '/private/spine/spine-player.css' }; },
     parsePck: async (...args) => { calls.push(['parsePck', ...args]); return { buffers: new Map([['model.json', Buffer.from('{}')]]) }; },
     createAssetServer: async (input) => { calls.push(['server', input]); return server; },
     createPage: async (input) => { calls.push(['page', input]); return { evaluate() {} }; },
@@ -153,10 +153,26 @@ test('opens Spine in its isolated renderer pack without resolving a Cubism runti
   assert.equal(result.state, 'ready');
   assert.deepEqual(result.catalog.motions.map((motion) => motion.id), ['idle']);
   assert.equal(calls.some(([name]) => name === 'resolveRuntime'), false);
-  assert.deepEqual(calls.find(([name]) => name === 'resolveSpinePack'), ['resolveSpinePack', '4.3']);
+  assert.deepEqual(calls.find(([name]) => name === 'resolveSpinePack'), ['resolveSpinePack', '4.3', { spineVersion: undefined }]);
   assert.deepEqual(calls.find(([name]) => name === 'server')[1].spineAssets, { script: '/private/spine/spine-player.js', style: '/private/spine/spine-player.css' });
   assert.equal(calls.some(([name]) => name === 'spineAdapter'), true);
   assert.equal(calls.some(([name]) => name === 'spineRendererSource'), true);
+  await service.close();
+});
+
+test('legacy previews receive their decoder and expose actionable attachment warnings', async () => {
+  const source = { inputPath: '/private/models/spine', sourceFingerprint: FINGERPRINT, manifest: manifest({
+    source: { kind: 'spine-directory', fingerprint: FINGERPRINT },
+    model: { format: 'spine', runtimeLine: '2.1', spineVersion: '2.1.27', modelFile: 'model.skel', atlasFile: 'model.atlas', textures: ['model.png'] },
+  }) };
+  const pack = { adapter: 'legacy', runtimeLine: '2.1', scriptPath: '/private/spine/runtime.js', pixiPath: '/private/spine/pixi.js', unsafeEvalPath: '/private/spine/unsafe.js', decoderPath: '/private/spine/runtime.js' };
+  const { service, calls, adapter } = fixture({ source, spine: true, spinePack: pack });
+  adapter.getWarnings = () => [{ code: 'SPINE_ATTACHMENT_MISSING', message: 'Attachment missing: background' }];
+  const result = await service.open({ projectId: 'project-1', sourceFingerprint: FINGERPRINT, bounds: { x: 0, y: 0, width: 512, height: 512 } });
+  assert.equal(result.warnings[0].code, 'SPINE_ATTACHMENT_MISSING');
+  assert.equal(calls.find(([name]) => name === 'resolveSpinePack')[2].spineVersion, '2.1.27');
+  assert.equal(calls.find(([name]) => name === 'server')[1].spineAssets.adapter, 'legacy');
+  assert.equal(calls.find(([name]) => name === 'spineAdapter')[1].source.spineVersion, '2.1.27');
   await service.close();
 });
 

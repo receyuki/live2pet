@@ -18,10 +18,11 @@
 | Cubism 2 | `.model.json`, `.moc`, referenced textures and motions |
 | Live2D PCK | Supported uncompressed, unencrypted layouts; PCK is a container, not one game's format |
 | Spine 3.8 / 4.0–4.3 | JSON or binary skeleton, matching atlas and texture pages; default skin and Slot visibility |
+| Spine 2.1 / 3.6 / 3.8.75 | Matching verified local compatibility pack; playback, Slot visibility and package capture |
 | Codex output | V2 11-row atlas; nine animation mappings plus neutral look cells, without directional mouse following |
 | Clawd output | Transparent WebP or APNG animations, required/optional states and reactions |
 
-macOS Intel/Apple Silicon and Windows x64 downloads are available. The maintainer has reported successful Windows testing; that report does not identify a Windows version, device or exact build, and is not evidence that every subsequent change was tested there. Spine 3.8/4.1 binary and 4.3 JSON have local integration coverage; 4.0/4.2 still need real-model acceptance. See the [acceptance record](../desktop-acceptance.md) for the scope of individual checks.
+macOS Intel/Apple Silicon and Windows x64 downloads are available. The maintainer has reported successful Windows testing; that report does not identify a Windows version, device or exact build, and is not evidence that every subsequent change was tested there. Local real-model checks cover Spine 2.1, 3.6, 3.8, 4.0 and 4.1; 4.3 JSON has earlier integration coverage. Spine 4.2 still needs real-model acceptance. See the [acceptance record](../desktop-acceptance.md) for the scope of individual checks.
 
 <a id="runtimes"></a>
 
@@ -34,6 +35,7 @@ A model contains character data; its runtime makes it move. Live2D's proprietary
 | Cubism 3–5 | [Official Web SDK](https://www.live2d.com/en/sdk/download/web/) → `Core/live2dcubismcore.min.js` |
 | Cubism 2 | [Third-party archive](https://github.com/dylanNew/live2d/tree/master/webgl/Live2D/lib) → `live2d.min.js` |
 | Spine 3.8 / 4.0–4.3 | Install the matching optional renderer inside Live2Pet |
+| Spine 2.1 / 3.6 / 3.8.75 | Explicit local setup; runtime bytes are not distributed with Live2Pet |
 
 - Download the **Web SDK**, not the Editor, Unity SDK, or Native SDK.
 - For Cubism 2, save the JavaScript file, not the GitHub page. The archive is third-party; [new Cubism 2.1 SDK downloads are no longer offered by Live2D](https://help.live2d.com/en/other/other_20/).
@@ -41,6 +43,13 @@ A model contains character data; its runtime makes it move. Live2D's proprietary
 - Live2Pet keeps a local copy and selects the matching version automatically. Removing that copy leaves your original file untouched.
 - Spine packs download only when you choose Install. Their use is subject to the [Spine Runtime License](https://github.com/EsotericSoftware/spine-runtimes/blob/4.3/LICENSE).
 - Resource inspection works without a renderer; playback and capture need one.
+
+The maintainer's local compatibility setup reuses verified RYutility runtime
+files. It is not a general runtime downloader: see the
+[development guide](development.md#local-spine-compatibility-packs). Exact
+3.8.75 exports use a separate compatibility reader, without rewriting model
+versions. Deprecated exports and missing atlas attachments remain visible as
+warnings; missing authored artwork cannot be recovered by a runtime.
 
 ## Browse and choose
 

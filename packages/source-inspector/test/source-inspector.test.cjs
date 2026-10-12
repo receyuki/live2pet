@@ -40,6 +40,20 @@ function modernFixture() {
   return { root, model: path.join(root, 'hero/hero.model3.json') };
 }
 
+test('recognizes Spine model.json by its contents in inspection and Source Library discovery', () => {
+  const { root } = spineFixture({ version: '3.8.99' });
+  fs.renameSync(path.join(root, 'hero.json'), path.join(root, 'model.json'));
+  fs.renameSync(path.join(root, 'hero.atlas'), path.join(root, 'model.atlas'));
+  const manifest = inspectSourcePackage(root);
+  assert.equal(manifest.model.format, 'spine');
+  assert.equal(manifest.model.spineVersion, '3.8.99');
+  assert.equal(inspectSourcePackage(root, { modelConfig: 'model.json' }).source.packageFingerprint, manifest.source.fingerprint);
+  const library = discoverSourcePackages(root);
+  assert.equal(library.candidates.length, 1);
+  assert.equal(library.candidates[0].format, 'spine');
+  assert.equal(library.candidates[0].modelConfig, 'model.json');
+});
+
 function legacyFixture() {
   const root = temporaryDirectory();
   writeFixture(root, 'model.json', JSON.stringify({

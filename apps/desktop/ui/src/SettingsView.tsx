@@ -210,6 +210,11 @@ function RuntimePanel({ locale, compact = false, spinePack = null, onSettingsCha
           <Chip color={pack.installed ? 'success' : 'default'} size="sm" variant="soft">{t(pack.installed ? 'runtimeAvailable' : 'runtimeMissing')}</Chip>
           <Button variant="secondary" size="sm" isDisabled={busy || !pack.downloadable} onPress={() => void changeSpinePack(pack.runtimeLine, pack.installed ? 'remove' : 'install')}>{t(pack.installed ? 'removeSpinePack' : 'installSpinePack')}</Button>
         </div>)}
+        {(spinePack?.compatibilityPacks ?? []).map(pack => <div className="runtime-item spine-pack-item" key={pack.id}>
+          <span className="large-icon"><WandSparkles size={19} /></span>
+          <span className="grow-copy"><strong>{t('spinePackLine', { value: pack.spineVersion || pack.runtimeLine })}</strong><small>{t('spineLocalPackHint')}</small></span>
+          <Chip color={pack.installed ? 'success' : 'default'} size="sm" variant="soft">{t(pack.installed ? 'runtimeAvailable' : 'runtimeMissing')}</Chip>
+        </div>)}
         <p className="drop-hint">{t('spinePackHint')}</p></>}
       </Card.Content>
     </Card>

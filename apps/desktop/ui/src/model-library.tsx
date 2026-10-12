@@ -23,7 +23,7 @@ function ModelCard({ library, candidate, selected, onSelect, locale, thumbnailRe
   const thumbnailKey = `${library.libraryId}:${candidate.id}`;
   const [cover, setCover] = useState<string | null>(() => thumbnailMemory.get(thumbnailKey));
   const [failed, setFailed] = useState(false);
-  const unsupportedSpine = candidate.format === 'spine' && Boolean(candidate.runtimeLine) && !['3.8', '4.0', '4.1', '4.2', '4.3'].includes(candidate.runtimeLine!);
+  const unsupportedSpine = candidate.format === 'spine' && Boolean(candidate.runtimeLine) && !['2.1', '3.6', '3.8', '4.0', '4.1', '4.2', '4.3'].includes(candidate.runtimeLine!);
   useEffect(() => {
     let active = true, requested = false;
     const unsubscribe = thumbnailMemory.subscribe((evictedKey) => { if (active && evictedKey === thumbnailKey) setCover(null); });
@@ -96,10 +96,11 @@ export function ModelPreview({ library, candidate, locale, onUse, onClose, direc
     <div className="library-live-surface" ref={surface} />
     {!ready && !error && <ProgressBar aria-label={translate(locale, 'loading')} isIndeterminate />}
     {error && <p className="inline-error" role="alert">{error}</p>}
-    {error && inspection?.model.format === 'spine' && ['3.8', '4.0', '4.1', '4.2', '4.3'].includes(inspection.model.runtimeLine ?? '') && <Button isDisabled={busy} variant="secondary" onPress={() => { setBusy(true); void installSpinePack(inspection.model.runtimeLine!).then(() => setRetry(value => value + 1)).catch(cause => setError(String(cause))).finally(() => setBusy(false)); }}>{translate(locale, 'installSpinePack')}</Button>}
+    {error && inspection?.model.format === 'spine' && inspection.model.spineVersion !== '3.8.75' && ['3.8', '4.0', '4.1', '4.2', '4.3'].includes(inspection.model.runtimeLine ?? '') && <Button isDisabled={busy} variant="secondary" onPress={() => { setBusy(true); void installSpinePack(inspection.model.runtimeLine!).then(() => setRetry(value => value + 1)).catch(cause => setError(String(cause))).finally(() => setBusy(false)); }}>{translate(locale, 'installSpinePack')}</Button>}
     {error && <div className="source-actions"><Button variant="secondary" onPress={onConfigureRuntime}>{translate(locale, 'configureRuntime')}</Button><Button variant="ghost" onPress={() => setRetry(value => value + 1)}>{translate(locale, 'retry')}</Button></div>}
     {inspection?.resources.filter(resource => resource.required && !resource.exists).map(resource => <p className="inline-error" key={resource.path}>{resource.path}</p>)}
     {inspection?.warnings.map((warning, index) => <p key={index}>{warning.code}{warning.resource ? ` · ${warning.resource}` : ''}</p>)}
+    {status?.warnings?.map((warning, index) => <p key={`${warning.code}:${index}`}>{warning.message}</p>)}
     {ready && <label>{translate(locale, 'sourceMotions')}<select aria-label={translate(locale, 'sourceMotions')} value={motion} onChange={event => { setMotion(event.target.value); }}>{motions.map(item => <option key={item.id} value={item.id}>{item.name || item.id}</option>)}</select></label>}
     {ready && !!inspection?.expressions.length && <label>{translate(locale, 'sourceExpressions')}<select aria-label={translate(locale, 'sourceExpressions')} value={expression} onChange={event => { const value = event.target.value; setExpression(value); void runPreview(() => setLive2DPreviewExpression(value || null)).catch(cause => setError(String(cause))); }}><option value="">—</option>{inspection.expressions.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
     <footer className="library-detail-actions"><Button variant="primary" isDisabled={!ready || !!error || busy || inspection?.resources.some(resource => resource.required && !resource.exists)} onPress={() => { setBusy(true); void onUse(motion).catch(cause => setError(String(cause))).finally(() => setBusy(false)); }}>{translate(locale, 'libraryUseModel')}</Button><small>{translate(locale, 'libraryPreviewOnly')}</small></footer>

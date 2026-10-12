@@ -52,6 +52,24 @@ pnpm --filter @live2pet/desktop smoke:win
 
 The `Desktop CI and release` GitHub Actions workflow runs verification on pushes and pull requests. A manual run builds a Windows x64 ZIP plus separate Intel and Apple Silicon macOS DMGs. Both platforms verify native dependencies and packaged interface startup before archiving. On macOS, `create-dmg` produces a drag-to-install image; the mounted image is checked for both `Live2Pet.app` and its Applications shortcut. These synthetic checks do not establish real-model or target-host acceptance. A `v*` tag that matches the version in `apps/desktop/package.json` publishes those files as the latest GitHub Release. The images remain unsigned.
 
+## Local Spine compatibility packs
+
+This personal offline setup imports reviewed files from the maintainer's local
+RYutility checkout. It does not bundle runtimes or imply permission to publish
+them. The importer verifies pinned package versions, file hashes and notices.
+
+```sh
+node apps/desktop/scripts/install-local-spine-compat.cjs \
+  "/absolute/Live2Pet/user-data/renderer-packs" "/absolute/RYutility"
+```
+
+Spine 2.1 uses a bounded same-origin worker for binary decoding. Spine 3.6 uses
+its version-matched Pixi reader. Exact 3.8.75 exports select the separate
+compatibility pack; other 3.8 models keep the official Player. Both ordinary
+preview and Visibility edit sessions select by the inspected export version.
+Model headers, Source Package fingerprints and project formats are unchanged.
+LPK unpacking remains outside Live2Pet.
+
 ## Releases
 
 `apps/desktop/package.json` is the single source of truth for the Live2Pet

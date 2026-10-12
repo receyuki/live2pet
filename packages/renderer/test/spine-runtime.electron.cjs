@@ -1,5 +1,5 @@
 const { app, BrowserWindow } = require('electron');
-const { SpinePlayerAdapter, createElectronWebContentsPage } = require('../src/index.cjs');
+const { createRendererAdapter, createElectronWebContentsPage, usesLegacySpine } = require('../src/index.cjs');
 const { createProject } = require('../../project/src/index.cjs');
 const { buildProjectTargets } = require('../../package-build/src/index.cjs');
 
@@ -18,25 +18,33 @@ async function run() {
     if (details?.message) process.stderr.write(`[renderer] ${details.message}\n`);
   });
   await window.loadURL(previewUrl);
-  const runtimeReady = await window.webContents.executeJavaScript(`({ spine: typeof window.spine, player: typeof window.spine?.SpinePlayer })`, true);
-  if (runtimeReady.player !== 'function') throw new Error(`Spine Player did not load: ${JSON.stringify(runtimeReady)}`);
-  const renderer = new SpinePlayerAdapter({ page: createElectronWebContentsPage({ webContents: window.webContents }), width: 256, height: 256, padding: 0.08, playbackMode: 'realtime' });
+  const runtimeReady = await window.webContents.executeJavaScript(`({ spine: typeof window.spine, player: typeof window.spine?.SpinePlayer, legacy: typeof window.live2petLegacySpine?.runtime?.Spine, factory: typeof window.ryLegacySpineFactory })`, true);
+  if (usesLegacySpine(source) ? runtimeReady.legacy !== 'function' && runtimeReady.factory !== 'function' : runtimeReady.player !== 'function') throw new Error(`Spine runtime did not load: ${JSON.stringify(runtimeReady)}`);
+  const renderer = createRendererAdapter({ source, page: createElectronWebContentsPage({ webContents: window.webContents }), width: 256, height: 256, padding: 0.08, playbackMode: 'realtime' });
   const loaded = await renderer.load(source);
   const motions = renderer.getMotions();
-  const motion = motions.filter((entry) => entry.duration > 0).sort((a, b) => a.duration - b.duration)[0] || motions[0];
+  const motion = motions.filter((entry) => entry.duration >= .5).sort((a, b) => a.duration - b.duration)[0] || motions.find(entry => entry.duration > 0) || motions[0];
   await renderer.playMotion(motion.id, { loop: true, speed: 1 });
   const before = await renderer.captureRgba({ width: 128, height: 128, motionId: motion.id, time: Math.min(0.25, motion.duration) });
   const scan = await renderer.scanVisualElements(motion.id);
-  const hiddenId = scan.candidates[0]?.id || renderer.getVisualElements()[0]?.id;
-  if (hiddenId) await renderer.setVisualSettings({ hiddenElementIds: [hiddenId] });
+  // Slots can belong to other animation levels or have authored alpha zero.
+  // Select one that actually changes this pose instead of assuming the largest bounds is visible.
+  let hiddenId = null;
+  const candidates = [...new Set([...scan.candidates.map(candidate => candidate.id), ...renderer.getVisualElements().map(slot => slot.id)])];
+  for (const candidate of candidates.slice(0, 64)) {
+    await renderer.setVisualSettings({ hiddenElementIds: [candidate] });
+    const hiddenCapture = await renderer.captureRgba({ width: 128, height: 128, motionId: motion.id, time: Math.min(0.25, motion.duration) });
+    if (hiddenCapture.rgba.some((value, index) => value !== before.rgba[index])) { hiddenId = candidate; break; }
+  }
+  if (!hiddenId) throw new Error('No visible Slot was available to verify hiding in this fixture pose.');
   let realtime = null;
-  if (source.runtimeLine === '3.8') {
+  if (usesLegacySpine(source) || source.runtimeLine === '3.8') {
     await renderer.playMotion(motion.id, { loop: true, start: 0 });
     await renderer.setActive(true);
     await window.webContents.executeJavaScript('new Promise(resolve => setTimeout(resolve, 200))');
     const playing = await renderer.readState();
     if (!(playing.time > 0)) throw new Error('Spine 3.8 realtime playhead did not advance.');
-    const stillHidden = await window.webContents.executeJavaScript(`window.__live2petSpine.player.skeleton.slots.find(slot => 'slot:' + slot.data.name === ${JSON.stringify(hiddenId)}).getAttachment() === null`);
+    const stillHidden = await window.webContents.executeJavaScript(`(() => {const slot = window.__live2petSpine.player.skeleton.slots.find(slot => 'slot:' + slot.data.name === ${JSON.stringify(hiddenId)}); return (slot.getAttachment ? slot.getAttachment() : slot.attachment) === null;})()`);
     if (!stillHidden) throw new Error('Spine 3.8 playback restored a hidden Slot.');
     await renderer.pause();
     const paused = await renderer.readState();
@@ -75,6 +83,7 @@ async function run() {
   });
   const result = {
     loaded,
+    warnings: renderer.getWarnings?.() || [],
     motionCount: motions.length,
     slotCount: renderer.getVisualElements().length,
     opaquePixels: beforeAlpha.filter((value) => value > 0).length,

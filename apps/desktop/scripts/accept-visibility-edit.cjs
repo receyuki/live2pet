@@ -8,6 +8,7 @@ const crypto = require('node:crypto');
 const { _electron } = require('playwright');
 const { inspectSourcePackage } = require('@live2pet/source-inspector');
 const { loadRuntimeForGeneration } = require('@live2pet/runtime');
+const { resolveSpinePack } = require('@live2pet/spine-pack');
 
 const desktop = path.resolve(__dirname, '..');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'live2pet-visibility-accept-'));
@@ -44,7 +45,8 @@ async function scenario(fixture, action, hiddenElementIds = [], suppliedRuntime 
     }
   } else {
     fs.mkdirSync(path.join(ordinary, 'renderer-packs'));
-    fs.cpSync(path.join(process.env.LIVE2PET_SPINE_PACKS, `spine-player-${manifest.model.runtimeLine}`), path.join(ordinary, 'renderer-packs', `spine-player-${manifest.model.runtimeLine}`), { recursive: true });
+    const pack = resolveSpinePack(process.env.LIVE2PET_SPINE_PACKS, manifest.model.runtimeLine, { spineVersion: manifest.model.spineVersion });
+    fs.cpSync(pack.directory, path.join(ordinary, 'renderer-packs', pack.id), { recursive: true });
   }
   const before = snapshot(ordinary), sourceBefore = snapshot(path.join(session, 'source'));
   const requestPath = path.join(session, 'request.json');
@@ -69,7 +71,9 @@ async function scenario(fixture, action, hiddenElementIds = [], suppliedRuntime 
     assert.equal(await page.locator('.assignment-panel').count(), 0);
     const denied = await page.evaluate(() => window.live2pet.saveProject({ project: {} }));
     assert.equal(denied.error.code, 'VISIBILITY_EDIT_READ_ONLY');
-    const elements = (await page.evaluate(() => window.live2pet.getPreviewVisualElements())).result;
+    const elementResponse = await page.evaluate(() => window.live2pet.getPreviewVisualElements());
+    assert.equal(elementResponse.ok, true, JSON.stringify({ elementResponse, status: await page.evaluate(() => window.live2pet.getPreviewStatus()) }));
+    const elements = elementResponse.result;
     assert.ok(elements.length > 0);
     if (!hiddenElementIds.length) {
       const painted = await application.evaluate(async ({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children[0].webContents.executeJavaScript(`(() => {
@@ -122,7 +126,7 @@ async function scenario(fixture, action, hiddenElementIds = [], suppliedRuntime 
 }
 
 (async () => {
-  const fixtures = [
+  const fixtures = process.env.LIVE2PET_VISIBILITY_FIXTURES ? JSON.parse(process.env.LIVE2PET_VISIBILITY_FIXTURES) : [
     { source: process.env.LIVE2PET_MODERN_SOURCE },
     { source: process.env.LIVE2PET_CUBISM2_SOURCE },
     { source: process.env.LIVE2PET_SPINE_SOURCE, modelConfig: process.env.LIVE2PET_SPINE_MODEL_CONFIG, spine: true },

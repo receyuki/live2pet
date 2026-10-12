@@ -8,6 +8,9 @@ GitHub Releases.
 
 ### Added
 
+- Support Spine 2.1, 3.6 and exact deprecated 3.8.75 exports through verified
+  local compatibility packs, including playback, Slot visibility and package
+  capture. Runtime files remain outside the App bundle and repository.
 - Open an isolated on-demand Visibility editor from other desktop apps, reusing
   real model preview, element trees, Solo and lazy thumbnails. Only Apply and
   return publishes changes; ordinary projects and runtime settings stay intact.
@@ -21,6 +24,14 @@ GitHub Releases.
 - Animation exports share compatible Clawd animation/capture caches and the
   bounded renderer queue. Progress, cancellation, and per-Motion failures stay
   available from the status bar.
+
+### Fixed
+
+- Identify Spine skeletons named `model.json` by their contents rather than
+  misclassifying them as Cubism 2 in inspection and local library discovery.
+- Preserve official Spine 3.8 atlas dimensions for Mesh UVs and correct alpha
+  blending for straight-alpha Multiply/Screen textures. Old capture caches are
+  invalidated without changing project or Source Package identities.
 
 ## [0.3.0] - 2026-09-22
 

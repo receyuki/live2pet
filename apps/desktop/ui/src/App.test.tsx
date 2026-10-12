@@ -1005,7 +1005,7 @@ describe('Live2Pet desktop shell', () => {
       result: {
         schemaVersion: 1,
         source: { kind: 'spine-directory', name: 'Spine Hero', fingerprint: 'spine-fixture', modelConfig: 'hero.json' },
-        model: { format: 'spine', configFile: 'hero.json', modelFile: 'hero.json', textures: ['hero.png'], atlasFile: 'hero.atlas', spineVersion: `${runtimeLine}.75`, runtimeLine, binary: false },
+        model: { format: 'spine', configFile: 'hero.json', modelFile: 'hero.json', textures: ['hero.png'], atlasFile: 'hero.atlas', spineVersion: `${runtimeLine}.99`, runtimeLine, binary: false },
         motions: [{ id: 'idle', group: 'animation', index: 0, name: 'idle', sourceFile: 'hero.json', duration: 1.5 }],
         expressions: [],
         resources: [],

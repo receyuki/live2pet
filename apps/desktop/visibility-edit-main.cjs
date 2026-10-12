@@ -92,7 +92,7 @@ function launchVisibilityEditor({ app, BrowserWindow, ipcMain, Menu, createView,
       runtime = await loadRuntimeForGeneration(path.join(ordinaryRoot, 'settings', 'runtime.json'), expected.generation, { readOnly: true });
       if (!runtime) throw Object.assign(new Error(), { code: 'PREVIEW_RUNTIME_UNAVAILABLE' });
     }
-    const spinePack = expected.format === 'spine' ? resolveSpinePack(path.join(ordinaryRoot, 'renderer-packs'), expected.runtimeLine) : null;
+    const spinePack = expected.format === 'spine' ? resolveSpinePack(path.join(ordinaryRoot, 'renderer-packs'), expected.runtimeLine, { spineVersion: inspection.model.spineVersion }) : null;
     const windowOptions = createAppWindowOptions({ preload: path.join(__dirname, 'preload.cjs'), width: 1100, height: 840, show: false });
     if (headless) windowOptions.webPreferences.backgroundThrottling = false;
     window = new BrowserWindow({ ...windowOptions, minWidth: 800, minHeight: 640,

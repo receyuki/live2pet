@@ -672,3 +672,30 @@ flushes each intermediate internal update without drawing an extra GPU frame.
 An opt-in local Miku fixture produced pixel-identical 12 FPS output at matching
 points in a 60 Hz reference capture, where the previous implementation diverged
 by up to approximately 1.90% of normalized whole-frame RGBA values.
+
+### Local Spine compatibility and packaged Visibility editing — 2026-10-12
+
+Verified local optional packs add Spine 2.1, 3.6 and exact deprecated 3.8.75
+playback, Slot editing and capture. Other 3.8 models keep the official Player;
+4.0–4.3 support remains version-matched. Runtime bytes and model samples were
+not added to the repository or App bundle. LPK import remains out of scope.
+
+The Node suite passed 497 tests (four opt-in tests skipped). All 206 UI tests
+passed in a separate single-worker run; one full-suite concurrent run exceeded
+an existing UI test's five-second timeout while real-model checks were active.
+JavaScript syntax, UI types, release-source checks and packaged native/HeroUI
+smoke checks passed.
+
+Hidden native rendering checks used temporary copies of real Spine 2.1 JSON
+and binary, 3.6 binary, 3.8.75 binary, 3.8.99 JSON and 4.0 binary models. They
+checked transparency, Motion playback, pause/resume, Slot hiding and both
+Clawd/Codex package builds. A missing-attachment 3.8.75 sample retained explicit
+warnings. A regression covers the private-session decoder URL, and Spine
+`model.json` now inspects and discovers correctly without changing source hashes.
+
+The rebuilt macOS x64 App passed 20 hidden edit-session scenarios across
+Cubism 2/3 and Spine 2.1 JSON/binary, 3.6, 3.8.75, 3.8.99, 4.0 and 4.1.
+Apply/reopen preserved hidden IDs; cancel, close and renderer crash did not
+publish applied settings. Original model files and ordinary-profile sentinels
+were unchanged, and no windows were shown. These automated checks do not
+establish Windows acceptance or exhaustive model-version compatibility.

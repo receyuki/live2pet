@@ -18,10 +18,11 @@
 | Cubism 2 | `.model.json`、`.moc` 及引用的纹理和动作 |
 | Live2D PCK | 受支持的未压缩、未加密结构；PCK 是容器，不专属于某个游戏 |
 | Spine 3.8 / 4.0–4.3 | JSON 或二进制骨骼、匹配的图集和纹理；支持默认皮肤及 Slot 隐藏 |
+| Spine 2.1 / 3.6 / 3.8.75 | 需匹配并经过校验的本地兼容包；支持播放、Slot 隐藏及主题捕获 |
 | Codex 输出 | V2 11 行图集，九个动画映射与中立方向格，暂不生成方向跟随 |
 | Clawd 输出 | 透明 WebP 动画、必选及可选状态、互动反应 |
 
-现已提供 macOS Intel、Apple Silicon 和 Windows x64 下载。维护者已反馈 Windows 测试通过，但未记录系统版本、设备和具体构建号，因此不能将该反馈视为所有后续改动的验收结果。Spine 3.8/4.1 二进制和 4.3 JSON 已有本地集成测试覆盖；4.0/4.2 仍待真实模型验收。各项检查的具体范围见[验收记录](../desktop-acceptance.md)。
+现已提供 macOS Intel、Apple Silicon 和 Windows x64 下载。维护者已反馈 Windows 测试通过，但未记录系统版本、设备和具体构建号，因此不能将该反馈视为所有后续改动的验收结果。本地真实模型测试覆盖 Spine 2.1、3.6、3.8、4.0 和 4.1；4.3 JSON 已有较早的集成测试覆盖。4.2 仍待真实模型验收。各项检查的具体范围见[验收记录](../desktop-acceptance.md)。
 
 <a id="runtimes"></a>
 
@@ -34,6 +35,7 @@
 | Cubism 3–5 | [官方 Web SDK](https://www.live2d.com/en/sdk/download/web/) → `Core/live2dcubismcore.min.js` |
 | Cubism 2 | [第三方存档](https://github.com/dylanNew/live2d/tree/master/webgl/Live2D/lib) → `live2d.min.js` |
 | Spine 3.8 / 4.0–4.3 | 在 App 内安装匹配的可选渲染器 |
+| Spine 2.1 / 3.6 / 3.8.75 | 单独进行本地配置；Live2Pet 不分发运行时文件 |
 
 - 下载 **Web SDK**，不要选择 Editor、Unity 或 Native SDK。
 - Cubism 2 需要 JavaScript 文件，而不是 GitHub 网页。该存档由第三方提供；[Live2D 已停止提供新的 Cubism 2.1 SDK 下载](https://help.live2d.com/en/other/other_20/)。
@@ -41,6 +43,8 @@
 - App 保存本地副本并自动匹配版本；移除副本不会删除原始文件。
 - Spine 仅在点击“安装”后下载，使用受 [Spine Runtime License](https://github.com/EsotericSoftware/spine-runtimes/blob/4.3/LICENSE) 约束。
 - 检查资源不需要运行时，播放与捕获需要。
+
+维护者的本地兼容配置复用经过校验的 RYutility 运行时，并不是通用下载器，详见[开发说明](development.md#local-spine-compatibility-packs)。3.8.75 导出文件会自动使用单独的兼容读取器，不改写模型版本号。旧版导出与缺失的图集部件会显示警告；运行时不能恢复资源本身缺少的图像。
 
 ## 浏览与选择模型
 

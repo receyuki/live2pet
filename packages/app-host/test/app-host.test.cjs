@@ -218,6 +218,15 @@ test('Spine pack IPC requires consent and exposes status without local paths', a
   assert.equal((await request('removeSpinePack', { runtimeLine: '4.1' })).result.packs[0].installed, false);
 });
 
+test('Spine pack status preserves local compatibility availability without exposing paths', async () => {
+  const entry = { schemaVersion: 2, id: 'spine-compat-3.8.75', runtimeLine: '3.8', spineVersion: '3.8.75', version: 'legacy', adapter: 'legacy', downloadable: false, installed: true, directory: '/private/runtime' };
+  const router = createAppIpcRouter({ spinePackService: { get: async () => ({ schemaVersion: 2, packs: [{ ...entry, id: 'spine-player-3.8', downloadable: true }], compatibilityPacks: [entry] }), install: async () => {}, remove: async () => {} } });
+  const response = await router({ protocolVersion: 1, method: 'getSpinePackStatus', args: [] });
+  assert.equal(response.result.compatibilityPacks[0].spineVersion, '3.8.75');
+  assert.equal(response.result.compatibilityPacks[0].installed, true);
+  assert.equal(JSON.stringify(response).includes('/private/runtime'), false);
+});
+
 test('Spine pack preload wrappers expose only fixed actions', async () => {
   const calls = [];
   const api = createAppPreloadApi({ ipcRenderer: { invoke: async (channel, request) => { calls.push({ channel, request }); return { ok: true }; } } });

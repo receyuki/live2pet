@@ -102,6 +102,7 @@ open apps/desktop/out/Live2Pet-darwin-*/Live2Pet.app
 - Live2D Cubism 2–5 模型文件夹
 - 受支持的 Live2D PCK 文件
 - Spine 3.8 和 4.0–4.3 文件夹，需匹配版本的可选渲染器
+- Spine 2.1 / 3.6 及旧版 3.8.75 导出文件，需经过校验的本地兼容包
 
 **支持导出** — 受支持的模型均可选择以下任一目标：
 
@@ -129,6 +130,7 @@ Spine 支持仍在预览阶段。PCK 是否可用取决于其内容和封装方�
 | Cubism 3–5 | [官方 Cubism SDK for Web](https://www.live2d.com/en/sdk/download/web/) → `Core/live2dcubismcore.min.js` |
 | Cubism 2 | 从[第三方旧版存档](https://github.com/dylanNew/live2d/tree/master/webgl/Live2D/lib)获取 `live2d.min.js` |
 | Spine 3.8 / 4.0–4.3 | 在 App 中为匹配的渲染器点击“安装” |
+| Spine 2.1 / 3.6 / 3.8.75 | 本地兼容配置，详见[运行时指南](docs/guides/user-guide.zh-CN.md#runtimes) |
 
 [为什么需要单独下载？详细配置与许可说明 →](docs/guides/user-guide.zh-CN.md#runtimes)
 

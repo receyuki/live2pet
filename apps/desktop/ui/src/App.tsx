@@ -37,6 +37,7 @@ import {
   finishVisibilityEdit,
   type VisibilityEditSession,
   installSpinePack,
+  matchingSpinePack,
   inspectLibrarySource,
   getDesktopFilePath,
   hasDesktopApi,
@@ -459,6 +460,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
           <small id="preview-options-hint">{t('previewOptionsHint')}</small>
         </div>
         {playbackError && <p className="inline-error" role="alert">{playbackError}</p>}
+        {previewStatus?.warnings?.map((warning, index) => <p className="drop-hint" key={`${warning.code}:${index}`}>{warning.message}</p>)}
         {previewStatus?.state === 'failed' && visualSettings.hiddenElementIds.length > 0 && <Button size="sm" variant="secondary" onPress={() => { onVisualSettings({ hiddenElementIds: [] }); setSoloId(null); setPreviewRetry(value => value + 1); }}>{t('restoreVisibility')}</Button>}
       </section>
       {!editMode && <>{splitter('right')}
@@ -1020,14 +1022,15 @@ function ProjectApp() {
 
   const requiredCubism = state.project?.inspection?.model.cubism;
   const requiredSpine = state.project?.inspection?.model.format === 'spine';
-  const matchingSpinePack = spinePack?.packs?.find((pack) => pack.runtimeLine === state.project?.inspection?.model.runtimeLine);
+  const requiredSpinePack = matchingSpinePack(spinePack, state.project?.inspection?.model);
   const runtimeReady = requiredSpine
-    ? Boolean(matchingSpinePack?.installed)
+    ? Boolean(requiredSpinePack?.installed)
     : (!requiredCubism || Boolean(runtimeSettings?.runtimes.some((runtime) => runtime.available && runtime.cubismGenerations.includes(requiredCubism))));
   const openRuntimeSettings = () => dispatch({ type: "OPEN_SETTINGS", section: "runtimes" });
   const configureRequiredRuntime = requiredSpine ? async () => {
     const runtimeLine = state.project?.inspection?.model.runtimeLine;
     if (!runtimeLine) return;
+    if (requiredSpinePack?.downloadable === false) { openRuntimeSettings(); return; }
     try { setSpinePack(await installSpinePack(runtimeLine)); } catch (cause) { setActionFeedback(cause instanceof Error ? cause.message : t('error')); }
   } : openRuntimeSettings;
   const onboardingStage = selectOnboardingStage(onboarding, {

@@ -450,14 +450,15 @@ function inspectSpineDirectory(root, sourceFiles, skeletonCandidate, atlasCandid
 
 function inspectDirectory(root, { files = null, fingerprint = null, withResources = false, modelConfig = null } = {}) {
   const sourceFiles = files || walkSourceDirectory(root);
-  const modelCandidates = sourceFiles.filter((file) => /\.model3\.json$/i.test(file.relative) || /(^|\/)model\.json$/i.test(file.relative));
   const spineJsonCandidates = sourceFiles.filter((file) => {
-    if (!/\.json$/i.test(file.relative) || /\.(?:model3|motion3|exp3|physics3|pose3|userdata3)\.json$/i.test(file.relative) || /(^|\/)model\.json$/i.test(file.relative)) return false;
+    if (!/\.json$/i.test(file.relative) || /\.(?:model3|motion3|exp3|physics3|pose3|userdata3)\.json$/i.test(file.relative)) return false;
     try {
       const value = parseJsonBuffer(fs.readFileSync(file.absolute), file.relative);
       return Boolean(value?.skeleton?.spine && value.animations && typeof value.animations === 'object');
     } catch { return false; }
   });
+  const spineJsonPaths = new Set(spineJsonCandidates.map((file) => file.relative));
+  const modelCandidates = sourceFiles.filter((file) => !spineJsonPaths.has(file.relative) && (/\.model3\.json$/i.test(file.relative) || /(^|\/)model\.json$/i.test(file.relative)));
   const spineCandidates = [...spineJsonCandidates, ...sourceFiles.filter((file) => /\.skel$/i.test(file.relative))];
   const selectedConfig = modelConfig == null ? null : normalizeReference(modelConfig);
   const selectedLive2d = selectedConfig ? modelCandidates.filter((file) => file.relative === selectedConfig) : modelCandidates;
@@ -690,9 +691,9 @@ function discoverSourcePackages(inputPath, { maxDepth = DEFAULT_LIBRARY_SCAN_DEP
           const settings = parseJsonBuffer(fs.readFileSync(absolute), relative);
           if (settings?.model && Array.isArray(settings.textures) && settings.motions && typeof settings.motions === 'object') {
             addCandidate({ absolute: directory, relative, format: 'live2d', modelConfig: entry.name, name: path.basename(directory) });
+            continue;
           }
         } catch {}
-        continue;
       }
       if (lower.endsWith('.skel')) {
         const version = spineBinaryVersion(fs.readFileSync(absolute));

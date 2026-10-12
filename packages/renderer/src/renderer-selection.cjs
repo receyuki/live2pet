@@ -2,6 +2,7 @@ const {
   selectPixiLive2dAdapter,
 } = require('./pixi-live2d-adapter.cjs');
 const { SpinePlayerAdapter, supportsSpineRuntime } = require('./spine-player-adapter.cjs');
+const { LegacySpineAdapter, usesLegacySpine } = require('./legacy-spine-adapter.cjs');
 
 /**
  * Select the Pixi adapter deterministically from the inspected Cubism
@@ -11,7 +12,7 @@ const { SpinePlayerAdapter, supportsSpineRuntime } = require('./spine-player-ada
 function selectRendererAdapter(input) {
   if (input && typeof input === 'object' && input.format === 'spine') {
     if (!supportsSpineRuntime(input.runtimeLine)) throw Object.assign(new Error(`No Spine adapter is registered for runtime line ${String(input.runtimeLine)}.`), { code: 'UNSUPPORTED_SPINE_VERSION' });
-    return { kind: `spine-player-${input.runtimeLine}`, Adapter: SpinePlayerAdapter };
+    return { kind: `spine-${usesLegacySpine(input) ? 'legacy' : 'player'}-${input.runtimeLine}`, Adapter: usesLegacySpine(input) ? LegacySpineAdapter : SpinePlayerAdapter };
   }
   return selectPixiLive2dAdapter(input);
 }

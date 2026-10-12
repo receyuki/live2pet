@@ -20,7 +20,7 @@ function mappedMotionIds(target = {}) {
 
 function captureCacheContext(project, target, plan) {
   if (!project || !project.source || typeof project.source.fingerprint !== 'string' || !/^[a-f0-9]{64}$/i.test(project.source.fingerprint)) return null;
-  const spine = plan?.format === 'spine' && /^(?:3\.8|4\.[0-3])$/.test(plan.runtimeLine);
+  const spine = plan?.format === 'spine' && /^(?:2\.1|3\.[68]|4\.[0-3])$/.test(plan.runtimeLine);
   if (!plan || (!spine && ![2, 3, 4, 5].includes(Number(plan.cubismVersion))) || !['clawd', 'codex-pet'].includes(target)) return null;
   const visualSettings = normalizeVisualSettings(project.visualSettings);
   const visualSettingsDigest = visualSettings.hiddenElementIds.length ? digestVisualSettings(visualSettings) : null;
@@ -36,11 +36,11 @@ function captureCacheContext(project, target, plan) {
 function inferredRendererPlan(input, targetProject) {
   const renderer = input && input.renderer;
   const cubismVersion = Number(renderer && renderer.source && renderer.source.cubismVersion);
-  const spine = renderer?.source?.format === 'spine' && /^(?:3\.8|4\.[0-3])$/.test(renderer.source.runtimeLine);
+  const spine = renderer?.source?.format === 'spine' && /^(?:2\.1|3\.[68]|4\.[0-3])$/.test(renderer.source.runtimeLine);
   if (!spine && ![2, 3, 4, 5].includes(cubismVersion)) return null;
   const render = input && input.render && typeof input.render === 'object' ? input.render : {};
   const renderPreset = render.preset || input.renderPreset || targetProject?.renderPreset || targetProject?.options?.renderPreset || 'balanced';
-  return { ...(spine ? { format: 'spine', runtimeLine: renderer.source.runtimeLine } : { cubismVersion }), renderPreset, inferred: true };
+  return { ...(spine ? { format: 'spine', runtimeLine: renderer.source.runtimeLine, spineVersion: renderer.source.spineVersion } : { cubismVersion }), renderPreset, inferred: true };
 }
 
 function encodedCacheContext(project, target, plan, resolved) {

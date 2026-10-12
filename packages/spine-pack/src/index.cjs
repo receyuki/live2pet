@@ -30,6 +30,26 @@ const SPINE_PACKS = Object.freeze([
   }),
 ]);
 const SPINE_PACK = SPINE_PACKS[0];
+const LOCAL_SPINE_NOTICE = 'Optional local compatibility runtime. Imported from an explicitly selected local RYutility checkout. Spine usage remains subject to the Spine Runtimes license. The legacy 2.1 adapter has no separately verified redistribution grant and must not be bundled or published with Live2Pet.\n';
+const localFile = (name, sha256) => Object.freeze({ name, sha256 });
+const localPack = (runtimeLine, version, runtimeHash, { base = false, spineVersion = null } = {}) => Object.freeze({
+  id: `spine-compat-${spineVersion || runtimeLine}`, runtimeLine, spineVersion, version, adapter: 'legacy', downloadable: false,
+  files: Object.freeze([
+    localFile('pixi.min.js', '403f2f2ee8145fa17f60c5c89403056efe2680e5096ec2762036486914ed19c5'),
+    localFile('unsafe-eval.min.js', '94bb4bfdbd015087772ee03bc4117e253c326e8ca73a61646bd331b22f6847ad'),
+    ...(base ? [localFile('spine-base.js', '6ea7229e451b3ca8f90ab6986ce1226b4f6ec7ca5b014cc7391dd97651f3e653')] : []),
+    localFile('spine-player.min.js', runtimeHash),
+    localFile('LICENSE', '6142ee6cc2c03d3a918793e4750ae772bd3755c534d4a35e559e301acf51ec39'),
+    localFile('PIXI-LICENSE', '536a16e090f0b6c1454a7c0b47ee8414a39a2f1724a154f10ca1edc750a2dcfd'),
+    localFile('UNSAFE-EVAL-LICENSE', 'ef9ae15b5a2b39f6e1445fb1e12ade9f000ebb19c173fb1e505879ba215d9c9d'),
+    localFile('LOCAL-NOTICE', crypto.createHash('sha256').update(LOCAL_SPINE_NOTICE).digest('hex')),
+  ]),
+});
+const LOCAL_SPINE_PACKS = Object.freeze([
+  localPack('2.1', '2.1-c2e63d62-ik-fix', '7371774177d345d94efcb37920c1f2f19cb82211f52e338faf820fdf3a36b43c'),
+  localPack('3.6', 'pixi-spine-runtime-3.6@3.1.3', 'c5572718ec72acb64b7e0a7c308eea4de25c3b1987daa0d203add9b174670ea1', { base: true }),
+  localPack('3.8', '@pixi-spine/runtime-3.8@3.1.2', 'e6e38e283aaae8442b3f9052d8155c5d5f4259a9afaa575252f1d01ee84ba1a7', { base: true, spineVersion: '3.8.75' }),
+]);
 
 class SpinePackError extends Error {
   constructor(code, message, details = {}) {
@@ -50,9 +70,10 @@ function normalizeRoot(root) {
   return absolute;
 }
 
-function packForLine(runtimeLine) {
-  const match = SPINE_PACKS.find((entry) => entry.runtimeLine === runtimeLine);
-  if (!match) fail('UNSUPPORTED_SPINE_VERSION', `Spine ${runtimeLine || 'unknown'} does not have an official downloadable renderer pack in this App.`, { supported: SPINE_PACKS.map((entry) => entry.runtimeLine) });
+function packForLine(runtimeLine, { spineVersion } = {}) {
+  const compatibility = LOCAL_SPINE_PACKS.find((entry) => entry.runtimeLine === runtimeLine && (!entry.spineVersion || entry.spineVersion === spineVersion));
+  const match = compatibility || SPINE_PACKS.find((entry) => entry.runtimeLine === runtimeLine);
+  if (!match) fail('UNSUPPORTED_SPINE_VERSION', `Spine ${runtimeLine || 'unknown'} does not have a verified renderer pack in this App.`, { supported: [...new Set([...SPINE_PACKS, ...LOCAL_SPINE_PACKS].map((entry) => entry.runtimeLine))] });
   return match;
 }
 function packDirectory(root, selected = SPINE_PACK) { return path.join(normalizeRoot(root), selected.id); }
@@ -62,23 +83,26 @@ function publicStatus(root, selected = SPINE_PACK) {
   const directory = packDirectory(root, selected);
   try {
     const manifest = JSON.parse(fs.readFileSync(manifestPath(root, selected), 'utf8'));
+    let totalBytes = 0;
     const valid = manifest?.schemaVersion === PACK_SCHEMA_VERSION
       && manifest.id === selected.id
       && manifest.version === selected.version
       && selected.files.every((file) => {
         const filePath = path.join(directory, file.name);
-        return manifest.files?.[file.name] === file.sha256 && fs.statSync(filePath).isFile() && digest(fs.readFileSync(filePath)) === file.sha256;
+        const stat = fs.lstatSync(filePath);
+        totalBytes += stat.size;
+        return manifest.files?.[file.name] === file.sha256 && stat.isFile() && totalBytes <= MAX_PACK_BYTES && digest(fs.readFileSync(filePath)) === file.sha256;
       });
     if (!valid) throw new Error('invalid');
-    return { schemaVersion: PACK_SCHEMA_VERSION, id: selected.id, runtimeLine: selected.runtimeLine, version: selected.version, downloadable: true, installed: true };
+    return { schemaVersion: PACK_SCHEMA_VERSION, id: selected.id, runtimeLine: selected.runtimeLine, version: selected.version, downloadable: selected.downloadable, ...(selected.adapter ? { adapter: selected.adapter, spineVersion: selected.spineVersion } : {}), installed: true };
   } catch {
-    return { schemaVersion: PACK_SCHEMA_VERSION, id: selected.id, runtimeLine: selected.runtimeLine, version: selected.version, downloadable: true, installed: false };
+    return { schemaVersion: PACK_SCHEMA_VERSION, id: selected.id, runtimeLine: selected.runtimeLine, version: selected.version, downloadable: selected.downloadable, ...(selected.adapter ? { adapter: selected.adapter, spineVersion: selected.spineVersion } : {}), installed: false };
   }
 }
 
-function getSpinePackStatus(root, runtimeLine = null) {
-  if (runtimeLine != null) return publicStatus(root, packForLine(runtimeLine));
-  return { schemaVersion: PACK_SCHEMA_VERSION, packs: SPINE_PACKS.map((entry) => publicStatus(root, entry)) };
+function getSpinePackStatus(root, runtimeLine = null, options = {}) {
+  if (runtimeLine != null) return publicStatus(root, packForLine(runtimeLine, options));
+  return { schemaVersion: PACK_SCHEMA_VERSION, packs: SPINE_PACKS.map((entry) => publicStatus(root, entry)), compatibilityPacks: LOCAL_SPINE_PACKS.map((entry) => publicStatus(root, entry)) };
 }
 
 async function responseBytes(response, file) {
@@ -94,6 +118,7 @@ async function responseBytes(response, file) {
 async function installSpinePack(root, { runtimeLine = SPINE_PACK.runtimeLine, confirmInstall = false, fetchImpl = globalThis.fetch, onProgress, pack: packOverride = null } = {}) {
   const selected = packOverride || packForLine(runtimeLine);
   if (confirmInstall !== true) fail('SPINE_PACK_CONSENT_REQUIRED', 'Downloading Spine support requires an explicit user action.');
+  if (!selected.downloadable) fail('SPINE_PACK_LOCAL_IMPORT_REQUIRED', 'This compatibility runtime requires a verified local import; it is not downloadable by the App.');
   if (typeof fetchImpl !== 'function') fail('SPINE_PACK_DOWNLOAD_UNAVAILABLE', 'This App runtime cannot download the optional Spine renderer pack.');
   const absoluteRoot = normalizeRoot(root);
   if (publicStatus(absoluteRoot, selected).installed) return publicStatus(absoluteRoot, selected);
@@ -130,12 +155,43 @@ function removeSpinePack(root, runtimeLine = SPINE_PACK.runtimeLine, packOverrid
   return publicStatus(root, selected);
 }
 
-function resolveSpinePack(root, runtimeLine) {
-  const selected = packForLine(runtimeLine);
+function resolveSpinePack(root, runtimeLine, options = {}) {
+  const selected = packForLine(runtimeLine, options);
   const status = publicStatus(root, selected);
-  if (!status.installed) fail('SPINE_PACK_REQUIRED', `Install Spine ${selected.runtimeLine} support before previewing or building this model.`, { runtimeLine: selected.runtimeLine });
+  if (!status.installed) fail('SPINE_PACK_REQUIRED', selected.downloadable ? `Install Spine ${selected.runtimeLine} support before previewing or building this model.` : `Import the verified local Spine ${selected.spineVersion || selected.runtimeLine} compatibility runtime before previewing this model.`, { runtimeLine: selected.runtimeLine, packId: selected.id, downloadable: selected.downloadable, ...(selected.spineVersion ? { spineVersion: selected.spineVersion } : {}) });
   const directory = packDirectory(root, selected);
-  return { ...status, directory, scriptPath: path.join(directory, 'spine-player.min.js'), stylePath: path.join(directory, 'spine-player.min.css'), licensePath: path.join(directory, 'LICENSE') };
+  return { ...status, directory, scriptPath: path.join(directory, 'spine-player.min.js'), stylePath: selected.adapter ? null : path.join(directory, 'spine-player.min.css'), licensePath: path.join(directory, 'LICENSE'), ...(selected.adapter ? { pixiPath: path.join(directory, 'pixi.min.js'), unsafeEvalPath: path.join(directory, 'unsafe-eval.min.js'), basePath: selected.runtimeLine === '2.1' ? null : path.join(directory, 'spine-base.js'), decoderPath: selected.runtimeLine === '2.1' ? path.join(directory, 'spine-player.min.js') : null } : {}) };
 }
 
-module.exports = { MAX_PACK_BYTES, PACK_SCHEMA_VERSION, SPINE_PACK, SPINE_PACKS, SpinePackError, getSpinePackStatus, installSpinePack, removeSpinePack, resolveSpinePack };
+function importLocalSpinePack(root, { packId, files, confirmInstall = false } = {}) {
+  if (!confirmInstall) fail('SPINE_PACK_CONSENT_REQUIRED', 'Importing a local runtime requires explicit consent.');
+  const selected = LOCAL_SPINE_PACKS.find((entry) => entry.id === packId);
+  if (!selected) fail('UNSUPPORTED_SPINE_VERSION', 'Unknown local compatibility pack.');
+  const absoluteRoot = normalizeRoot(root);
+  const verified = new Map();
+  let total = 0;
+  for (const file of selected.files) {
+    const source = files?.[file.name];
+    const bytes = file.name === 'LOCAL-NOTICE' ? Buffer.from(LOCAL_SPINE_NOTICE) : (() => {
+      if (typeof source !== 'string' || !fs.lstatSync(source).isFile()) fail('SPINE_PACK_LOCAL_IMPORT_FAILED', `Missing regular local file ${file.name}.`);
+      if (fs.statSync(source).size > MAX_PACK_BYTES) fail('SPINE_PACK_TOO_LARGE', 'Local runtime exceeds the 8 MiB safety limit.');
+      return fs.readFileSync(source);
+    })();
+    total += bytes.length;
+    if (total > MAX_PACK_BYTES) fail('SPINE_PACK_TOO_LARGE', 'Local runtime exceeds the 8 MiB safety limit.');
+    if (digest(bytes) !== file.sha256) fail('SPINE_PACK_INTEGRITY_FAILED', `Local ${file.name} did not match its pinned integrity value.`);
+    verified.set(file.name, bytes);
+  }
+  fs.mkdirSync(absoluteRoot, { recursive: true, mode: 0o700 });
+  const staging = fs.mkdtempSync(path.join(absoluteRoot, `.${selected.id}.`));
+  try {
+    for (const [name, bytes] of verified) fs.writeFileSync(path.join(staging, name), bytes, { flag: 'wx', mode: 0o600 });
+    fs.writeFileSync(path.join(staging, 'pack.json'), JSON.stringify({ schemaVersion: PACK_SCHEMA_VERSION, id: selected.id, version: selected.version, files: Object.fromEntries(selected.files.map((file) => [file.name, file.sha256])) }), { flag: 'wx', mode: 0o600 });
+    const destination = packDirectory(absoluteRoot, selected);
+    if (fs.existsSync(destination)) { const backup = `${destination}.${crypto.randomUUID()}.old`; fs.renameSync(destination, backup); try { fs.renameSync(staging, destination); } catch (error) { fs.renameSync(backup, destination); throw error; } fs.rmSync(backup, { recursive: true }); }
+    else fs.renameSync(staging, destination);
+    return publicStatus(root, selected);
+  } finally { fs.rmSync(staging, { recursive: true, force: true }); }
+}
+
+module.exports = { MAX_PACK_BYTES, PACK_SCHEMA_VERSION, SPINE_PACK, SPINE_PACKS, LOCAL_SPINE_PACKS, SpinePackError, getSpinePackStatus, installSpinePack, importLocalSpinePack, removeSpinePack, resolveSpinePack };

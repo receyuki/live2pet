@@ -6,6 +6,7 @@ const test = require('node:test');
 
 const { inspectSourcePackage } = require('../../source-inspector/src/index.cjs');
 const { createRendererAssetServer, spineSourceFromManifest } = require('../src/index.cjs');
+const { usesLegacySpine } = require('../src/index.cjs');
 
 const sourceRoot = process.env.LIVE2PET_SPINE_SOURCE || '';
 const packRoot = process.env.LIVE2PET_SPINE_PACK || '';
@@ -13,9 +14,10 @@ const electron = path.resolve(__dirname, '../../../apps/desktop/node_modules/.bi
 const runner = path.resolve(__dirname, 'spine-runtime.electron.cjs');
 const script = path.join(packRoot, 'spine-player.min.js');
 const style = path.join(packRoot, 'spine-player.min.css');
+const suppliedAssets = process.env.LIVE2PET_SPINE_ASSETS ? JSON.parse(process.env.LIVE2PET_SPINE_ASSETS) : null;
 const skipReason = !sourceRoot || !packRoot
   ? 'Set LIVE2PET_SPINE_SOURCE and LIVE2PET_SPINE_PACK to run the opt-in Spine test.'
-  : (![electron, script, style].every((file) => fs.existsSync(file)) ? 'Electron or the local Spine renderer-pack files are unavailable.' : false);
+  : (![electron, ...(suppliedAssets ? Object.entries(suppliedAssets).filter(([key, value]) => typeof value === 'string' && !['adapter', 'runtimeLine'].includes(key)).map(([, value]) => value) : [script, style])].every((file) => fs.existsSync(file)) ? 'Electron or the local Spine renderer-pack files are unavailable.' : false);
 
 function runElectron(environment) {
   return new Promise((resolve, reject) => {
@@ -28,13 +30,15 @@ function runElectron(environment) {
   });
 }
 
-test('opt-in official Spine Player renders, hides a Slot, and builds both target packages', { skip: skipReason }, async () => {
+test('opt-in version-matched Spine renderer plays, hides a Slot, and builds both target packages', { skip: skipReason }, async () => {
   const manifest = inspectSourcePackage(sourceRoot, { modelConfig: process.env.LIVE2PET_SPINE_MODEL_CONFIG || null });
   assert.equal(manifest.model.format, 'spine');
-  assert.ok(['3.8', '4.0', '4.1', '4.2', '4.3'].includes(manifest.model.runtimeLine));
-  const server = await createRendererAssetServer({ sourceRoot, spineAssets: { script, style } });
+  assert.ok(['2.1', '3.6', '3.8', '4.0', '4.1', '4.2', '4.3'].includes(manifest.model.runtimeLine));
+  const server = await createRendererAssetServer({ sourceRoot, spineAssets: suppliedAssets || { script, style } });
   try {
     const source = spineSourceFromManifest(manifest, { baseUrl: `${server.baseUrl}/model` });
+    if (server.legacyDecoderUrl) source.legacyDecoderUrl = server.legacyDecoderUrl;
+    if (process.env.LIVE2PET_SPINE_INITIAL_SKIN) source.initialSkin = process.env.LIVE2PET_SPINE_INITIAL_SKIN;
     const { stdout } = await runElectron({ LIVE2PET_SPINE_PREVIEW_URL: server.previewUrl, LIVE2PET_SPINE_RENDER_SOURCE: JSON.stringify(source) });
     const marker = stdout.split(/\r?\n/).find((line) => line.startsWith('LIVE2PET_SPINE_RESULT='));
     assert.ok(marker, `Spine runner returned no result: ${stdout}`);
@@ -44,8 +48,9 @@ test('opt-in official Spine Player renders, hides a Slot, and builds both target
     assert.ok(result.opaquePixels > 0, JSON.stringify(result));
     assert.ok(result.transparentPixels > 0, JSON.stringify(result));
     assert.ok(result.hiddenId);
-    assert.ok(result.changedBytes > 0);
-    if (manifest.model.runtimeLine === '3.8') assert.deepEqual(result.realtime, { playing: true, pause: true, resume: true, hiddenSlotPreserved: true });
+    assert.ok(result.changedBytes > 0, JSON.stringify(result));
+    if (process.env.LIVE2PET_SPINE_EXPECT_MISSING === '1') assert.ok(result.warnings.some(warning => warning.code === 'SPINE_ATTACHMENT_MISSING'), JSON.stringify(result.warnings));
+    if (usesLegacySpine(source) || manifest.model.runtimeLine === '3.8') assert.deepEqual(result.realtime, { playing: true, pause: true, resume: true, hiddenSlotPreserved: true });
     assert.deepEqual(Object.keys(result.builds).sort(), ['clawd', 'codex-pet']);
     assert.equal(result.builds.clawd.valid, true);
     assert.equal(result.builds.clawd.preview, true);

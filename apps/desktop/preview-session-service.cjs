@@ -5,7 +5,7 @@ const {
   createPixiLive2dAdapter,
   createRendererAssetServer,
   pixiSourceFromManifest,
-  SpinePlayerAdapter,
+  createRendererAdapter,
   spineSourceFromManifest,
   normalizeVisualSettings,
 } = require('@live2pet/renderer');
@@ -111,7 +111,7 @@ function createPreviewSessionService({
   createAdapter = createPixiLive2dAdapter,
   createRendererSource = pixiSourceFromManifest,
   createSpineRendererSource = spineSourceFromManifest,
-  createSpineAdapter = (options) => new SpinePlayerAdapter(options),
+  createSpineAdapter = createRendererAdapter,
   loadPage = async ({ webContents, url }) => webContents.loadURL(url),
   vendorPaths = null,
   onStatus = null,
@@ -149,12 +149,16 @@ function createPreviewSessionService({
   function getStatus() {
     let playback = null;
     let catalog = null;
+    let warnings = [];
     if (state === SESSION_STATES.ready && adapter && typeof adapter.getState === 'function') {
       try { playback = adapter.getState(); } catch {}
       try {
         const motions = typeof adapter.getMotions === 'function' ? adapter.getMotions() : null;
         if (exposeHydratedCatalog && Array.isArray(motions)) catalog = { motions };
       } catch {}
+      if (typeof adapter.getWarnings === 'function') {
+        try { warnings = adapter.getWarnings().slice(0, 64).map(warning => ({ code: String(warning.code).slice(0, 64), message: redactMessage(warning.message).slice(0, 1024) })); } catch {}
+      }
     }
     return {
       schemaVersion: 1,
@@ -165,6 +169,7 @@ function createPreviewSessionService({
       bounds: bounds ? { ...bounds } : null,
       ...(playback ? { playback } : {}),
       ...(catalog ? { catalog } : {}),
+      ...(warnings.length ? { warnings } : {}),
       ...(error ? { error: { ...error } } : {}),
     };
   }
@@ -313,7 +318,7 @@ function createPreviewSessionService({
       const cubismVersion = Number(record.manifest.model?.cubism);
       if (!isSpine && ![2, 3, 4, 5].includes(cubismVersion)) fail('UNSUPPORTED_CUBISM_VERSION', 'The Source Package has an unsupported Cubism generation.');
       if (isSpine && typeof resolveSpinePack !== 'function') fail('SPINE_PACK_REQUIRED', 'Install matching Spine support before opening this preview.');
-      const spinePack = isSpine ? await resolveSpinePack(record.manifest.model.runtimeLine) : null;
+      const spinePack = isSpine ? await resolveSpinePack(record.manifest.model.runtimeLine, { spineVersion: record.manifest.model.spineVersion }) : null;
       const runtime = isSpine ? null : await resolveRuntime(cubismVersion);
       const runtimePath = isSpine ? null : normalizeRuntime(runtime);
       // Bind build validation to the runtime selected for this load, even if
@@ -333,7 +338,10 @@ function createPreviewSessionService({
         sourceOptions = { sourceRoot };
       }
       const previewAssets = isSpine ? null : (typeof vendorPaths === 'function' ? await vendorPaths(cubismVersion) : vendorPaths);
-      assetServer = await createAssetServer({ ...sourceOptions, runtimePath, previewAssets, ...(isSpine ? { spineAssets: { script: spinePack.scriptPath, style: spinePack.stylePath } } : {}) });
+      const spineAssets = isSpine ? { script: spinePack.scriptPath, style: spinePack.stylePath, ...(spinePack.adapter === 'legacy' ? {
+        adapter: 'legacy', runtimeLine: spinePack.runtimeLine, pixi: spinePack.pixiPath, unsafeEval: spinePack.unsafeEvalPath, base: spinePack.basePath, decoder: spinePack.decoderPath,
+      } : {}) } : null;
+      assetServer = await createAssetServer({ ...sourceOptions, runtimePath, previewAssets, ...(isSpine ? { spineAssets } : {}) });
       if (token !== generation) return getStatus();
       const previewUrl = assetServer.previewUrl || (assetServer.baseUrl ? `${assetServer.baseUrl}/preview` : null);
       if (!previewUrl) fail('INVALID_PREVIEW_SERVER', 'Preview asset server did not provide a preview URL.');
@@ -353,11 +361,12 @@ function createPreviewSessionService({
       if (token !== generation) return getStatus();
       if (state === SESSION_STATES.failed) throw new PreviewSessionError(error.code, error.message);
       const page = await createPage({ webContents, view });
+      const rendererSource = await (isSpine ? createSpineRendererSource : createRendererSource)(record.manifest, { baseUrl: `${assetServer.baseUrl}/model` });
+      if (assetServer.legacyDecoderUrl) rendererSource.legacyDecoderUrl = assetServer.legacyDecoderUrl;
       adapter = isSpine
-        ? await createSpineAdapter({ page, width: requestedBounds.width, height: requestedBounds.height, playbackMode: 'realtime' })
+        ? await createSpineAdapter({ source: { ...rendererSource, spineVersion: record.manifest.model.spineVersion }, page, width: requestedBounds.width, height: requestedBounds.height, playbackMode: 'realtime' })
         : await createAdapter({ page, cubismVersion, width: requestedBounds.width, height: requestedBounds.height, playbackMode: 'realtime' });
       if (!adapter || typeof adapter.load !== 'function') fail('INVALID_PREVIEW_ADAPTER', 'Preview adapter factory returned an invalid adapter.');
-      const rendererSource = await (isSpine ? createSpineRendererSource : createRendererSource)(record.manifest, { baseUrl: `${assetServer.baseUrl}/model` });
       await adapter.load(rendererSource);
       if (input.visualSettings) await adapter.setVisualSettings(normalizeVisualSettings(input.visualSettings));
       if (typeof adapter.setActive === 'function') await adapter.setActive(requestedVisible);

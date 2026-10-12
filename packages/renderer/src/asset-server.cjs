@@ -113,14 +113,42 @@ function previewDocument(runtimeName) {
 <html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:"><style>html,body{width:100%;height:100%;margin:0;overflow:hidden;background:transparent}canvas{width:100%;height:100%;display:block}</style></head><body><canvas id="live2pet-stage"></canvas><script src="./vendor/pixi.js"></script><script src="./vendor/unsafe-eval.js"></script><script src="${runtimeUrl}"></script><script src="./vendor/live2d-adapter.js"></script></body></html>`, 'utf8');
 }
 
-function spinePreviewDocument() {
+function spinePreviewDocument(assets = {}) {
+  if (assets.adapter === 'legacy') {
+    const scripts = ['pixi.js', 'unsafe-eval.js', ...(assets.base ? ['spine-base.js', 'spine-base-bridge.js'] : []), 'spine-player.js', ...(assets.base ? ['spine-runtime-bridge.js'] : [])];
+    return Buffer.from(`<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; worker-src 'self'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:"><style>html,body,#live2pet-spine-stage{width:100%;height:100%;margin:0;overflow:hidden;background:transparent}canvas{display:block}</style></head><body><div id="live2pet-spine-stage"></div>${scripts.map((name) => `<script src="./vendor/${name}"></script>`).join('')}</body></html>`, 'utf8');
+  }
   return Buffer.from(`<!doctype html>
 <html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' blob:"><link rel="stylesheet" href="./vendor/spine-player.css"><style>html,body,#live2pet-spine-stage{width:100%;height:100%;margin:0;overflow:hidden;background:transparent}.spine-player{background:transparent!important}</style></head><body><div id="live2pet-spine-stage"></div><script src="./vendor/spine-player.js"></script></body></html>`, 'utf8');
+}
+
+function legacyDecoderDocument() {
+  // The decoder is a pinned local script, not a model-provided URL. Cap its
+  // output before structured cloning; the caller also owns a timeout/terminate.
+  return Buffer.from(`importScripts('./spine-player.js');
+const decode=self.onmessage, send=self.postMessage.bind(self);
+self.postMessage=function(message){
+  const json=message&&message.json;
+  if(json){
+    if(!Array.isArray(json.bones)||json.bones.length>2000||!Array.isArray(json.slots)||json.slots.length>2000||Object.keys(json.skins||{}).length>256||Object.keys(json.animations||{}).length>200){send({error:'spine_controls_too_large'});return;}
+    let count=0;const visit=function(value,depth){if(++count>100000||depth>48)throw new Error('limit');if(typeof value==='string'&&value.length>1048576)throw new Error('limit');if(value&&typeof value==='object')for(const child of Object.values(value))visit(child,depth+1);};
+    try{visit(json,0);}catch(error){send({error:'spine_controls_too_large'});return;}
+  }
+  send(message);
+};
+self.onmessage=function(event){if(!(event.data instanceof ArrayBuffer)||event.data.byteLength>8388608){send({error:'spine_binary_too_large'});return;}try{decode(event);}catch(error){send({error:'spine_binary_invalid'});}};`, 'utf8');
 }
 
 function normalizeSpineAssets(spineAssets) {
   if (spineAssets == null) return null;
   if (!spineAssets || typeof spineAssets !== 'object' || Array.isArray(spineAssets)) fail('INVALID_ASSET_SERVER', 'spineAssets must be an object.');
+  if (spineAssets.adapter === 'legacy') {
+    if (!['2.1', '3.6', '3.8'].includes(spineAssets.runtimeLine)) fail('INVALID_ASSET_SERVER', 'Unsupported legacy Spine asset line.');
+    const legacy = { adapter: 'legacy', runtimeLine: spineAssets.runtimeLine, script: existingFile(spineAssets.script, 'spineAssets.script'), pixi: existingFile(spineAssets.pixi, 'spineAssets.pixi'), unsafeEval: existingFile(spineAssets.unsafeEval, 'spineAssets.unsafeEval') };
+    if (spineAssets.runtimeLine === '2.1') legacy.decoder = existingFile(spineAssets.decoder, 'spineAssets.decoder');
+    else legacy.base = existingFile(spineAssets.base, 'spineAssets.base');
+    return Object.freeze(legacy);
+  }
   return Object.freeze({ script: existingFile(spineAssets.script, 'spineAssets.script'), style: existingFile(spineAssets.style, 'spineAssets.style') });
 }
 
@@ -179,10 +207,12 @@ function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, pre
       let buffer = null;
       let modelPath = null;
       if (routePath === '/preview' && (preview || spinePreview)) {
-        buffer = spinePreview ? spinePreviewDocument() : previewDocument(path.basename(runtime));
+        buffer = spinePreview ? spinePreviewDocument(spinePreview) : previewDocument(path.basename(runtime));
         modelPath = 'preview.html';
       } else if (routePath.startsWith('/model/')) {
         const relativePath = decodeURIComponent(routePath.slice('/model/'.length));
+        // Model resources are data, never executable modules or documents.
+        if (/\.(?:js|mjs|cjs|html?|svg)$/i.test(relativePath)) { response.writeHead(404); response.end(); return; }
         if (buffers) {
           modelPath = safeBufferPath(relativePath);
           buffer = modelPath ? buffers.get(modelPath) : null;
@@ -209,6 +239,22 @@ function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, pre
         file = spinePreview.script;
       } else if (spinePreview && routePath === '/vendor/spine-player.css') {
         file = spinePreview.style;
+        if (!file) { response.writeHead(404); response.end(); return; }
+      } else if (spinePreview?.adapter === 'legacy' && routePath === '/vendor/pixi.js') {
+        file = spinePreview.pixi;
+      } else if (spinePreview?.adapter === 'legacy' && routePath === '/vendor/unsafe-eval.js') {
+        file = spinePreview.unsafeEval;
+      } else if (spinePreview?.base && routePath === '/vendor/spine-base.js') {
+        file = spinePreview.base;
+      } else if (spinePreview?.base && routePath === '/vendor/spine-base-bridge.js') {
+        buffer = Buffer.from('window.PIXI.spine.base = window.PIXI.spine;');
+        modelPath = 'bridge.js';
+      } else if (spinePreview?.base && routePath === '/vendor/spine-runtime-bridge.js') {
+        buffer = Buffer.from(`window.live2petLegacySpine = {base:window.PIXI.spine,runtime:window.PIXI.${spinePreview.runtimeLine === '3.6' ? 'spine37' : 'spine38'}};`);
+        modelPath = 'bridge.js';
+      } else if (spinePreview?.decoder && routePath === '/vendor/spine-decoder.js') {
+        buffer = legacyDecoderDocument();
+        modelPath = 'decoder.js';
       } else {
         response.writeHead(404);
         response.end();
@@ -246,6 +292,7 @@ function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, pre
         previewUrl: preview || spinePreview ? `${baseUrl}/preview` : null,
         modelUrl: (modelConfig) => `${baseUrl}/model/${encodeRelativeUrl(modelConfig)}`,
         runtimeUrl: runtime ? `${baseUrl}/runtime/${encodeURIComponent(path.basename(runtime))}` : null,
+        legacyDecoderUrl: spinePreview?.decoder ? `${baseUrl}/vendor/spine-decoder.js` : null,
         close: () => new Promise((closeResolve) => server.close(() => closeResolve())),
       });
     });
@@ -262,6 +309,7 @@ module.exports = {
   normalizeSpineAssets,
   previewDocument,
   spinePreviewDocument,
+  legacyDecoderDocument,
   safeRelativePath,
   safeBufferPath,
 };

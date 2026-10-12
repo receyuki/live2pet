@@ -371,4 +371,5 @@ module.exports = {
   ...require('./asset-server.cjs'),
   ...require('./visual-settings.cjs'),
   ...require('./spine-player-adapter.cjs'),
+  ...require('./legacy-spine-adapter.cjs'),
 };

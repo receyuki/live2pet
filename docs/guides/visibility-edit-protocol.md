@@ -47,8 +47,12 @@ the user's library. No LPK unpacking is performed by this editor.
 - Live2D generations: 2 and 3. An optional already-trusted runtime is
   `{"generation":3,"path":"runtime/core.js"}`. It is checked for the matching
   Cubism signature and used only by this session, never imported into Settings.
-- Spine: `format: "spine"`, no `generation`, `runtimeLine: "3.8"`, `"4.1"` or
-  `"4.3"`, and `runtime: null`. Optional `initialSkin` is preserved in preview.
+- Spine: `format: "spine"`, no `generation`, `runtimeLine: "2.1"`, `"3.6"`,
+  `"3.8"`, `"4.0"`, `"4.1"`, `"4.2"` or `"4.3"`, and `runtime: null`.
+  Optional `initialSkin` is preserved in preview. The exact inspected export
+  version selects the verified runtime; 3.8.75 uses its local compatibility
+  pack without changing the source header. Missing atlas attachments and
+  deprecated exports produce visible warnings, not silently altered assets.
 - Entry and runtime paths are relative and confined to `source/` and the fixed
   `runtime/core.js`. Resource symlinks and traversal are rejected. Model scripts
   are not executed, nor are arbitrary runtime URLs accepted.

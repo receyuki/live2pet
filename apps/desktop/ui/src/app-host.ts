@@ -20,9 +20,16 @@ export type SpinePackEntry = {
   version: string;
   downloadable: boolean;
   installed: boolean;
+  adapter?: 'legacy';
+  spineVersion?: string | null;
 };
 
-export type SpinePackStatus = { schemaVersion: 2; packs: SpinePackEntry[] };
+export type SpinePackStatus = { schemaVersion: 2; packs: SpinePackEntry[]; compatibilityPacks?: SpinePackEntry[] };
+
+export function matchingSpinePack(status: SpinePackStatus | null, model?: { runtimeLine?: string; spineVersion?: string }) {
+  const compatibility = status?.compatibilityPacks?.find(pack => pack.runtimeLine === model?.runtimeLine && (!pack.spineVersion || pack.spineVersion === model?.spineVersion));
+  return compatibility ?? status?.packs.find(pack => pack.runtimeLine === model?.runtimeLine);
+}
 
 export type SourceLibraryCandidate = {
   id: string;
@@ -182,6 +189,7 @@ export type PreviewStatus = {
   playback?: { motionId: string | null; expressionId: string | null; playing: boolean; loop: boolean; speed: number; time?: number };
   catalog?: { motions: Array<{ id: string; name: string; duration: number }> };
   error?: { code: string; message: string };
+  warnings?: Array<{ code: string; message: string }>;
 };
 
 type AppResponse<T> = {

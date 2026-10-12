@@ -2,7 +2,7 @@ const { RendererContractError } = require('./errors.cjs');
 const { normalizeVisualSettings } = require('./visual-settings.cjs');
 
 const DEFAULT_OPTIONS = Object.freeze({ width: 512, height: 512, padding: 0.08, playbackMode: 'manual', loadTimeoutMs: 15000 });
-const SUPPORTED_SPINE_RUNTIME_LINES = Object.freeze(['3.8', '4.0', '4.1', '4.2', '4.3']);
+const SUPPORTED_SPINE_RUNTIME_LINES = Object.freeze(['2.1', '3.6', '3.8', '4.0', '4.1', '4.2', '4.3']);
 
 function fail(code, message, details = {}) { throw new RendererContractError(code, message, details); }
 function finite(value, label, minimum, maximum) {
@@ -24,6 +24,7 @@ function spineSourceFromManifest(manifest, { baseUrl = '' } = {}) {
   return {
     format: 'spine',
     runtimeLine: manifest.model.runtimeLine,
+    spineVersion: manifest.model.spineVersion,
     binary: manifest.model.binary === true,
     skeletonUrl: `${prefix}/${encodeRelativeUrl(manifest.model.modelFile)}`,
     atlasUrl: `${prefix}/${encodeRelativeUrl(manifest.model.atlasFile)}`,
@@ -32,11 +33,55 @@ function spineSourceFromManifest(manifest, { baseUrl = '' } = {}) {
   };
 }
 
-function pageLoad(source, options) {
+async function pageLoad(source, options) {
+  const atlasSizes = new Map();
+  if (source.runtimeLine === '3.8') {
+    const response = await fetch(source.atlasUrl);
+    if (!response.ok) throw new Error('Spine atlas could not be loaded.');
+    let page = '', header = false, nextPage = true;
+    for (const line of (await response.text()).split(/\r?\n/)) {
+      const value = line.trim();
+      if (!value) { nextPage = true; continue; }
+      if (nextPage) { page = value; header = true; nextPage = false; continue; }
+      if (!value.includes(':')) { header = false; continue; }
+      if (!header) continue;
+      const size = /^size:\s*(\d+)\s*,\s*(\d+)$/.exec(value);
+      if (size && +size[1] > 0 && +size[2] > 0 && +size[1] <= 32768 && +size[2] <= 32768) atlasSizes.set(page, { width: +size[1], height: +size[2], pma: false });
+      if (/^pma:\s*true$/.test(value) && atlasSizes.has(page)) atlasSizes.get(page).pma = true;
+    }
+  }
   return new Promise((resolve, reject) => {
     if (!window.spine?.SpinePlayer) return reject(new Error('The optional Spine Player runtime is not loaded.'));
     const previous = window.__live2petSpine;
     if (previous?.player) previous.dispose();
+    const originalAtlas = window.spine.TextureAtlas;
+    const textureImages = new Map();
+    if (source.runtimeLine === '3.8') window.spine.TextureAtlas = function (text, loader) {
+      return new originalAtlas(text, name => {
+        const texture = loader(name), size = atlasSizes.get(name);
+        if (!size) return texture;
+        // Preserve atlas coordinates for downscaled textures, including later Mesh UV updates.
+        if (!textureImages.has(texture)) {
+          textureImages.set(texture, texture.getImage);
+          if (!size.pma && texture.context && texture.update) {
+            const update = texture.update.bind(texture), gl = texture.context.gl;
+            texture.update = mipMaps => {
+              const flag = window.spine.webgl.GLTexture.DISABLE_UNPACK_PREMULTIPLIED_ALPHA_WEBGL;
+              const unpack = gl.getParameter(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL);
+              window.spine.webgl.GLTexture.DISABLE_UNPACK_PREMULTIPLIED_ALPHA_WEBGL = false;
+              gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+              try { update(mipMaps); } finally {
+                window.spine.webgl.GLTexture.DISABLE_UNPACK_PREMULTIPLIED_ALPHA_WEBGL = flag;
+                gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, unpack);
+              }
+            };
+            texture.update(texture.useMipMaps || false);
+          }
+          texture.getImage = () => size;
+        }
+        return texture;
+      });
+    };
     document.body.innerHTML = '<div id="live2pet-spine-stage"></div>';
     const container = document.getElementById('live2pet-spine-stage');
     Object.assign(container.style, { width: `${options.width}px`, height: `${options.height}px`, overflow: 'hidden', background: 'transparent' });
@@ -51,6 +96,8 @@ function pageLoad(source, options) {
           this.player.sceneRenderer.dispose();
           this.player.context.gl.getExtension('WEBGL_lose_context')?.loseContext();
         } else this.player.dispose();
+        for (const [texture, getImage] of textureImages) texture.getImage = getImage;
+        textureImages.clear();
       },
       applyHidden() {
         const hidden = new Set(this.hidden);
@@ -160,6 +207,7 @@ function pageLoad(source, options) {
       settled = true;
       window.clearTimeout(loadTimer);
       if (loadPoll !== null) window.clearInterval(loadPoll);
+      if (source.runtimeLine === '3.8') window.spine.TextureAtlas = originalAtlas;
       callback(value);
     };
     const loadTimer = window.setTimeout(() => {
@@ -174,6 +222,7 @@ function pageLoad(source, options) {
       showLoading: false,
       alpha: true,
       preserveDrawingBuffer: true,
+      premultipliedAlpha: source.runtimeLine === '3.8' ? true : undefined,
       backgroundColor: '#00000000',
       viewport: { transitionTime: 0, padLeft: 0, padRight: 0, padTop: 0, padBottom: 0 },
       updateWorldTransform(player) { runtime.applyHidden(); player.skeleton.updateWorldTransform(2); },
@@ -192,26 +241,32 @@ function pageLoad(source, options) {
         }
       },
       success(player) {
-        runtime.player = player;
-        if (source.initialSkin) {
-          const skin = player.skeleton.data.findSkin(source.initialSkin);
-          if (!skin) return finish(reject, new Error('The requested Spine skin is not available.'));
-          player.skeleton.setSkin(skin);
-        }
-        if (!runtime.source.motions.length) runtime.source.motions = player.skeleton.data.animations.map((animation) => ({ id: animation.name, name: animation.name, duration: animation.duration }));
-        if (!runtime.source.motions.length) return finish(reject, new Error('Spine skeleton contains no animations.'));
-        runtime.state.motionId = runtime.source.motions[0].id;
-        player.setAnimation(runtime.state.motionId, true);
-        runtime.state.loaded = true;
-        runtime.fit(runtime.state.motionId);
-        // Loading needs requestAnimationFrame, but an idle preview does not.
-        // Playback explicitly restarts rendering after the UI selects a Motion.
-        player.pause(); player.stopRendering(); runtime.draw();
-        finish(resolve, {
-          state: { ...runtime.state },
-          motions: runtime.source.motions.map((motion) => ({ ...motion })),
-          slots: player.skeleton.slots.map((slot) => ({ id: `slot:${slot.data.name}`, name: slot.data.name, kind: 'slot' })),
-        });
+        try {
+          runtime.player = player;
+          if (source.runtimeLine === '3.8') {
+            const gl = player.context.gl;
+            gl.blendFunc = (src, dst) => gl.blendFuncSeparate(src, dst, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+          }
+          if (source.initialSkin) {
+            const skin = player.skeleton.data.findSkin(source.initialSkin);
+            if (!skin) return finish(reject, new Error('The requested Spine skin is not available.'));
+            player.skeleton.setSkin(skin);
+          }
+          if (!runtime.source.motions.length) runtime.source.motions = player.skeleton.data.animations.map((animation) => ({ id: animation.name, name: animation.name, duration: animation.duration }));
+          if (!runtime.source.motions.length) return finish(reject, new Error('Spine skeleton contains no animations.'));
+          runtime.state.motionId = runtime.source.motions[0].id;
+          player.setAnimation(runtime.state.motionId, true);
+          runtime.state.loaded = true;
+          runtime.fit(runtime.state.motionId);
+          // Loading needs requestAnimationFrame, but an idle preview does not.
+          // Playback explicitly restarts rendering after the UI selects a Motion.
+          player.pause(); player.stopRendering(); runtime.draw();
+          finish(resolve, {
+            state: { ...runtime.state },
+            motions: runtime.source.motions.map((motion) => ({ ...motion })),
+            slots: player.skeleton.slots.map((slot) => ({ id: `slot:${slot.data.name}`, name: slot.data.name, kind: 'slot' })),
+          });
+        } catch (error) { finish(reject, error); }
       },
       error(_player, message) { finish(reject, new Error(message || 'Spine Player failed to load the skeleton.')); },
     });

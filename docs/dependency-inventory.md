@@ -45,6 +45,15 @@ SHA-256 values, and store packs in private App data. Packs are reused automatica
 and can be removed individually in Settings. They are governed by the Spine Runtime License and are not
 relicensed by Live2Pet's Apache-2.0 license.
 
+Additional local compatibility packs use Pixi 6.5.10 with a reviewed 2.1
+decoder, `pixi-spine-runtime-3.6@3.1.3`, or
+`@pixi-spine/runtime-3.8@3.1.2` for the exact deprecated 3.8.75 export. All
+pack files are pinned by SHA-256 and imported explicitly from the maintainer's
+local RYutility checkout. They are neither downloaded automatically nor
+bundled with the App. The 2.1 adapter has no separately verified redistribution
+grant: its personal local import does not authorize publishing its runtime
+bytes. Original notices and licenses remain alongside the local files.
+
 ## User-provided runtime inputs
 
 Modern Cubism Core, the legacy Cubism 2 JavaScript runtime, and the optional

@@ -28,7 +28,7 @@ const {
 const { CacheStore, SHARP_ENCODER_VERSION, buildProjectTargets } = require('@live2pet/package-build');
 const { installPackage } = require('@live2pet/installation');
 const { discoverSourcePackages, inspectSourcePackage } = require('@live2pet/source-inspector');
-const { getSpinePackStatus, installSpinePack, removeSpinePack, resolveSpinePack, SPINE_PACKS } = require('@live2pet/spine-pack');
+const { getSpinePackStatus, installSpinePack, removeSpinePack, resolveSpinePack, SPINE_PACKS, LOCAL_SPINE_PACKS } = require('@live2pet/spine-pack');
 const { createPreviewSessionService } = require('./preview-session-service.cjs');
 const { createCaptureCacheService } = require('./capture-cache-service.cjs');
 const { createCaptureCacheBuildService } = require('./capture-cache-build.cjs');
@@ -128,7 +128,7 @@ const spinePackService = Object.freeze({
     removeSpinePack(spinePackRoot(), runtimeLine);
     return getSpinePackStatus(spinePackRoot());
   },
-  resolve: (runtimeLine) => resolveSpinePack(spinePackRoot(), runtimeLine),
+  resolve: (runtimeLine, options) => resolveSpinePack(spinePackRoot(), runtimeLine, options),
 });
 
 function previewVendorPaths(cubismVersion) {
@@ -202,10 +202,10 @@ async function resolveRendererCacheContext(plan) {
   let runtimeVersion;
   let rendererVersion;
   if (plan.format === 'spine') {
-    const installed = await spinePackService.resolve(plan.runtimeLine);
-    const pinned = SPINE_PACKS.find(pack => pack.runtimeLine === installed.runtimeLine);
+    const installed = await spinePackService.resolve(plan.runtimeLine, { spineVersion: plan.spineVersion });
+    const pinned = [...SPINE_PACKS, ...LOCAL_SPINE_PACKS].find(pack => pack.id === installed.id);
     runtimeVersion = createHash('sha256').update(JSON.stringify([pinned.id, pinned.version, pinned.files.map(file => file.sha256)])).digest('hex');
-    rendererVersion = 'spine-player-capture-v2';
+    rendererVersion = 'spine-player-capture-v3';
   } else {
     const runtime = await loadRuntimeForGeneration(runtimeSettingsPath(), Number(plan.cubismVersion));
     runtimeVersion = runtime.descriptor.fingerprint;
@@ -241,7 +241,7 @@ const resolveBuildContext = async (project, recordTiming = () => {}) => {
     recordTiming('sourceInspectionMs', performance.now() - inspectionStarted);
     if (manifest.source.fingerprint !== project.source.fingerprint) throw Object.assign(new Error('The Source Package changed. Reopen the project to review its mappings.'), { code: 'PREVIEW_SOURCE_MISMATCH' });
     const runtimeStarted = performance.now();
-    const context = await resolveRendererCacheContext({ format: manifest.model.format, runtimeLine: manifest.model.runtimeLine, cubismVersion: manifest.model.cubism });
+    const context = await resolveRendererCacheContext({ format: manifest.model.format, runtimeLine: manifest.model.runtimeLine, spineVersion: manifest.model.spineVersion, cubismVersion: manifest.model.cubism });
     recordTiming('runtimeVerificationMs', performance.now() - runtimeStarted);
     return context;
   };
@@ -340,7 +340,7 @@ function getSourceLibraryService() {
       renderThumbnail: (candidate) => require('./library-thumbnail-renderer.cjs').createLibraryThumbnailRenderer({
         ownerWindow: mainWindow, createView: createPreviewView,
         resolveRuntime: (version) => loadRuntimeForGeneration(runtimeSettingsPath(), version),
-        resolveSpinePack: (line) => spinePackService.resolve(line), vendorPaths: previewVendorPaths,
+        resolveSpinePack: (line, options) => spinePackService.resolve(line, options), vendorPaths: previewVendorPaths,
       })(candidate),
       getProtectedSourcePaths: () => [...sourceRegistry.values()].map((source) => source.inputPath),
       githubCacheRoot: path.join(app.getPath('userData'), 'cache', 'github-models'),
@@ -480,7 +480,7 @@ async function createMainWindow() {
       return record && record.sourceFingerprint === sourceFingerprint ? record : null;
     },
     resolveRuntime: (cubismVersion) => loadRuntimeForGeneration(runtimeSettingsPath(), cubismVersion),
-    resolveSpinePack: (runtimeLine) => spinePackService.resolve(runtimeLine),
+    resolveSpinePack: (runtimeLine, options) => spinePackService.resolve(runtimeLine, options),
     vendorPaths: previewVendorPaths,
     onStatus: (status) => {
       if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
