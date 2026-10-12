@@ -57,6 +57,7 @@ test('macOS package options remain local, unsigned, current-architecture, and Sh
   assert.equal(options.prune, false);
   assert.equal(options.overwrite, true);
   assert.equal(options.osxSign, undefined);
+  assert.equal(options.extendInfo.Live2PetVisibilityEditProtocol, 1);
   assert.deepEqual(options.extraResource, ['/tmp/mapper-dist']);
 });
 

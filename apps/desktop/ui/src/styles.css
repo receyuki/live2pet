@@ -28,6 +28,7 @@
 .app-toolbar{display:grid;grid-template-columns:minmax(260px,1fr) auto minmax(260px,1fr);align-items:center;gap:18px;padding:0 18px 0 84px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--app-bg) 76%,transparent);backdrop-filter:blur(18px);-webkit-app-region:drag;user-select:none}
 .toolbar-brand,.toolbar-actions,.app-toolbar nav{display:flex;align-items:center}.toolbar-brand{gap:10px;min-width:0}.toolbar-brand strong{min-width:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.toolbar-brand>i{width:1px;height:18px;background:var(--border)}.toolbar-brand>span{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.app-toolbar nav{justify-content:center}.toolbar-actions{justify-content:flex-end;gap:8px}.status-dot{display:inline-block;width:6px;height:6px;border-radius:99px;background:#62d69c;box-shadow:0 0 0 3px rgba(98,214,156,.12)}
 .app-content{min-height:0;overflow:hidden}.status-bar{display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-top:1px solid var(--border);color:var(--muted);background:color-mix(in srgb,var(--app-bg) 88%,transparent);font-size:11px}.status-bar span{display:flex;align-items:center;gap:8px}
+.app-toolbar.visibility-edit-toolbar{grid-template-columns:minmax(0,1fr) auto}.map-workspace.visibility-edit-workspace{min-width:0;grid-template-columns:var(--map-left-width,280px) 8px minmax(320px,1fr)}
 
 
 

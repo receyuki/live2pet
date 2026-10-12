@@ -19,6 +19,7 @@ export function resolveInitialLocale(
 
 export const messages = {
   en: {
+    visibilityEditApply: 'Apply and return', visibilityEditCancel: 'Cancel', visibilityEditHint: 'Only Apply and return saves these visibility choices. Model source files stay unchanged.',
     ...animationExportMessages.en,
     projectReplacementBuildBusy: 'Finish or cancel the active build before switching projects or replacing its source.',
     buildResultMismatch: 'The build result does not belong to this project snapshot. Please rebuild.',
@@ -90,6 +91,7 @@ export const messages = {
     cacheRefresh: 'Refresh cache state', projectNavigation: 'Project', generatedPreviewInvalidPackage: 'The generated package is invalid or incomplete. Rebuild it and try again.',
   },
   'zh-CN': {
+    visibilityEditApply: '应用并返回', visibilityEditCancel: '取消', visibilityEditHint: '仅点击“应用并返回”才保存显示与隐藏设置，不修改模型源文件。',
     ...animationExportMessages['zh-CN'],
     projectReplacementBuildBusy: '请先完成或取消正在进行的构建，再切换项目或更换资源。',
     buildResultMismatch: '构建结果与本次提交的项目不匹配，请重新构建。',

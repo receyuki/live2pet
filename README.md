@@ -112,6 +112,8 @@ Save a lightweight **.l2p** project for local work, or a portable **.l2pack** pr
 
 You can keep editing while saving. Generated packages stay with their project; older results are labelled when you make changes. Finish or cancel an active build before switching projects.
 
+Other desktop apps can open an isolated, on-demand **Visibility editor** without replacing your current project. [Integration protocol →](docs/guides/visibility-edit-protocol.md)
+
 Rebuilding reuses verified animation assets while they remain in the bounded local cache. Renaming a pet does not rerender it; changing a Clawd animation rebuilds only the missing assets.
 
 Spine support remains in preview. PCK support depends on its contents and packaging. [Detailed support and limitations →](docs/guides/user-guide.md#compatibility)

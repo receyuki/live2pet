@@ -249,6 +249,8 @@ export type UpdateStatus = {
 };
 
 type Live2PetApi = {
+  getVisibilityEditSession?(): Promise<AppResponse<VisibilityEditSession>>;
+  finishVisibilityEdit?(input: { status: 'applied' | 'cancelled'; visualSettings?: VisualSettings }): Promise<AppResponse<{ status: string }>>;
   exportAnimations?(input: AnimationExportRequest): Promise<AppResponse<AnimationExportResult>>;
   cancelAnimationExport?(requestId: string): Promise<AppResponse<{ cancelled: boolean }>>;
   chooseAnimationExportDirectory?(): Promise<AppResponse<AnimationExportDirectory>>;
@@ -313,6 +315,23 @@ type Live2PetApi = {
   closePreview?(): Promise<AppResponse<PreviewStatus>>;
   onPreviewStatus?(listener: (status: PreviewStatus) => void): () => void;
 };
+
+export type VisibilityEditSession = {
+  projectId: string; name: string; locale: 'en' | 'zh-CN';
+  visualSettings: VisualSettings; inspection: SourceInspection;
+};
+
+export async function getVisibilityEditSession() {
+  const api = desktopApi();
+  if (!api?.getVisibilityEditSession) throw new DesktopApiError('VISIBILITY_EDIT_UNAVAILABLE', 'Visibility editing requires the current Desktop App.');
+  return unwrap(api.getVisibilityEditSession());
+}
+
+export async function finishVisibilityEdit(input: { status: 'applied' | 'cancelled'; visualSettings?: VisualSettings }) {
+  const api = desktopApi();
+  if (!api?.finishVisibilityEdit) throw new DesktopApiError('VISIBILITY_EDIT_UNAVAILABLE', 'Visibility editing requires the current Desktop App.');
+  return unwrap(api.finishVisibilityEdit(input));
+}
 
 declare global {
   interface Window {

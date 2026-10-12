@@ -285,10 +285,22 @@ async function saveRuntimeSettings(settingsPath, inputPath) {
   return loadRuntimeSettings(settingsPath);
 }
 
-async function loadRuntimeSettings(settingsPath) {
+async function loadRuntimeSettings(settingsPath, { readOnly = false } = {}) {
   const stored = parseRuntimeSettings(settingsPath);
   if (!stored) return emptyRuntimeSettings();
   if (stored.schemaVersion === 1) {
+    if (readOnly) {
+      const descriptor = await inspectRuntime(stored.runtimePath);
+      if (descriptor.runtimeKind !== stored.descriptor.runtimeKind || descriptor.fingerprint !== stored.descriptor.fingerprint) {
+        fail('RUNTIME_LIBRARY_MISMATCH', 'A saved runtime no longer matches its validated App library record.');
+      }
+      return {
+        schemaVersion: RUNTIME_SETTINGS_SCHEMA_VERSION,
+        configured: true,
+        restartRequired: false,
+        runtimes: [{ runtimePath: resolveRuntimeEntrypoint(stored.runtimePath), descriptor, available: true }],
+      };
+    }
     const copied = await copyRuntimeIntoLibrary(settingsPath, stored.runtimePath, stored.descriptor);
     writeRuntimeSettings(settingsPath, {
       schemaVersion: RUNTIME_SETTINGS_SCHEMA_VERSION,
@@ -317,10 +329,10 @@ async function loadRuntimeSettings(settingsPath) {
   };
 }
 
-async function loadRuntimeForGeneration(settingsPath, cubismVersion) {
+async function loadRuntimeForGeneration(settingsPath, cubismVersion, options = {}) {
   const generation = Number(cubismVersion);
   if (![2, 3, 4, 5].includes(generation)) fail('UNSUPPORTED_CUBISM_VERSION', `Cubism generation ${String(cubismVersion)} is not supported.`);
-  const settings = await loadRuntimeSettings(settingsPath);
+  const settings = await loadRuntimeSettings(settingsPath, options);
   return settings.runtimes.find((runtime) => runtime.available === true && runtime.descriptor.cubismGenerations.includes(generation)) || null;
 }
 

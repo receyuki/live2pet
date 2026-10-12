@@ -193,6 +193,11 @@ function pageLoad(source, options) {
       },
       success(player) {
         runtime.player = player;
+        if (source.initialSkin) {
+          const skin = player.skeleton.data.findSkin(source.initialSkin);
+          if (!skin) return finish(reject, new Error('The requested Spine skin is not available.'));
+          player.skeleton.setSkin(skin);
+        }
         if (!runtime.source.motions.length) runtime.source.motions = player.skeleton.data.animations.map((animation) => ({ id: animation.name, name: animation.name, duration: animation.duration }));
         if (!runtime.source.motions.length) return finish(reject, new Error('Spine skeleton contains no animations.'));
         runtime.state.motionId = runtime.source.motions[0].id;

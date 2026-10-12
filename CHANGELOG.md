@@ -8,6 +8,9 @@ GitHub Releases.
 
 ### Added
 
+- Open an isolated on-demand Visibility editor from other desktop apps, reusing
+  real model preview, element trees, Solo and lazy thumbnails. Only Apply and
+  return publishes changes; ordinary projects and runtime settings stay intact.
 - Support Spine 3.8 models with an on-demand, integrity-checked official renderer,
   including previews, Slot hiding, animation capture and both pet package targets.
 - Choose WebP or lossless APNG in output settings for animation exports and

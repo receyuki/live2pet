@@ -33,6 +33,9 @@ import {
   clearRecentProjects,
   getRuntimeSettings,
   getSpinePackStatus,
+  getVisibilityEditSession,
+  finishVisibilityEdit,
+  type VisibilityEditSession,
   installSpinePack,
   inspectLibrarySource,
   getDesktopFilePath,
@@ -212,7 +215,7 @@ function PanelHeading({ icon, title, body }: { icon: ReactNode; title: string; b
   return <header className="panel-heading"><span className="square-icon">{icon}</span><div><h2>{title}</h2><p>{body}</p></div></header>;
 }
 
-function MapView({ locale, projectId, projectDocument, inspection, runtimeReady, selectedMotionId, selectedExpressionId, onConfigureRuntime, onSelectMotion, onSelectExpression, onAssign, onClear, onVisualSettings, onExport, exportOpen }: { locale: Locale; projectId: string; projectDocument: Live2PetProject | null; inspection?: SourceInspection; runtimeReady: boolean; selectedMotionId: string | null; selectedExpressionId: string | null; onConfigureRuntime: () => void; onSelectMotion: (id: string) => void; onSelectExpression: (id: string | null) => void; onAssign: (destination: MappingDestination) => void; onClear: (destination: MappingDestination) => void; onVisualSettings: (settings: VisualSettings) => void; onExport: () => void; exportOpen: boolean }) {
+function MapView({ locale, projectId, projectDocument, inspection, runtimeReady, selectedMotionId, selectedExpressionId, onConfigureRuntime, onSelectMotion, onSelectExpression, onAssign, onClear, onVisualSettings, onExport, exportOpen, editMode = false, onPreviewReady }: { locale: Locale; projectId: string; projectDocument: Live2PetProject | null; inspection?: SourceInspection; runtimeReady: boolean; selectedMotionId: string | null; selectedExpressionId: string | null; onConfigureRuntime: () => void; onSelectMotion: (id: string) => void; onSelectExpression: (id: string | null) => void; onAssign: (destination: MappingDestination) => void; onClear: (destination: MappingDestination) => void; onVisualSettings: (settings: VisualSettings) => void; onExport: () => void; exportOpen: boolean; editMode?: boolean; onPreviewReady?: (ready: boolean) => void }) {
   const t = (key: MessageKey, values?: Record<string, string | number>) => translate(locale, key, values);
   const sourceKey = `${projectId}\u0000${inspection?.source.fingerprint ?? ''}`;
   const sourceKeyRef = useRef(sourceKey);
@@ -228,7 +231,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   const [seekTime, setSeekTime] = useState<number | null>(null);
   const [previewLoop, setPreviewLoop] = useState(true);
   const [previewSpeed, setPreviewSpeed] = useState(1);
-  const [visibilityOpen, setVisibilityOpen] = useState(false);
+  const [visibilityOpen, setVisibilityOpen] = useState(editMode);
   const [visualElementState, setVisualElementState] = useState<{ sourceKey: string; elements: VisualElement[] }>({ sourceKey, elements: [] });
   const visualElements = visualElementState.sourceKey === sourceKey ? visualElementState.elements : [];
   const [soloSelection, setSoloSelection] = useState<{ sourceKey: string; id: string | null }>({ sourceKey, id: null });
@@ -240,6 +243,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   };
   const [visibilityBusy, setVisibilityBusy] = useState(false);
   const [scanningParts, setScanningParts] = useState(false);
+  useEffect(() => { onPreviewReady?.(previewStatus?.state === 'ready' && !visibilityBusy && !scanningParts); }, [previewStatus?.state, visibilityBusy, scanningParts, onPreviewReady]);
   const thumbnailScope = JSON.stringify([sourceKey, selectedMotionId, selectedExpressionId, previewRetry]);
   const requestThumbnail = useCallback(async (id: string) => {
     const result = await runPreview(() => getPreviewVisualElementThumbnail(id));
@@ -410,9 +414,9 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
   };
   const splitter = (side: 'left' | 'right') => <div className={`map-splitter map-splitter-${side}`} role="separator" aria-label={t(side === 'left' ? 'resizeMotionPanel' : 'resizeAssignmentPanel')} aria-orientation="vertical" tabIndex={0} onPointerDown={event => beginResize(side, event)} onKeyDown={event => { if (event.key === 'ArrowLeft') { event.preventDefault(); resizePanel(side, -16); } else if (event.key === 'ArrowRight') { event.preventDefault(); resizePanel(side, 16); } }}><i /></div>;
   return (
-    <main ref={workspaceRef} className="map-workspace" aria-label={t('map')} style={{ '--map-left-width': `${panelWidths.left}px`, '--map-right-width': `${panelWidths.right}px` } as CSSProperties}>
+    <main ref={workspaceRef} className={`map-workspace${editMode ? ' visibility-edit-workspace' : ''}`} aria-label={t('map')} style={{ '--map-left-width': `${panelWidths.left}px`, '--map-right-width': `${panelWidths.right}px` } as CSSProperties}>
       <Tabs className="workspace-panel library-tabs map-motion-panel" data-tour-id="map-animations" selectedKey={visibilityOpen ? 'visibility' : 'motions'} onSelectionChange={key => { if (key !== 'visibility') setSoloId(null); setVisibilityOpen(key === 'visibility'); }}>
-        <PanelHeading icon={<SlidersHorizontal size={16} />} title={t("animations")} body={t("motionsHint")} />
+        <PanelHeading icon={<SlidersHorizontal size={16} />} title={t(editMode ? 'visibility' : 'animations')} body={t(editMode ? 'visibilityEditHint' : 'motionsHint')} />
         <Tabs.List className={buttonGroupVariants().base({ className: 'target-switch library-switch' })} aria-label={t('modelTools')}>
           <Tabs.Tab id="motions" render={props => <div {...props as ComponentPropsWithRef<'div'>} className={buttonVariants({ size: 'sm', variant: !visibilityOpen ? 'primary' : 'secondary' })} />}>{t('motions')}</Tabs.Tab>
           <Tabs.Tab id="visibility" isDisabled={!projectDocument} render={props => <div {...props as ComponentPropsWithRef<'div'>} className={buttonVariants({ size: 'sm', variant: visibilityOpen ? 'primary' : 'secondary' })} />}>{t('visibility')}</Tabs.Tab>
@@ -445,7 +449,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
       </Tabs>
       {splitter('left')}
       <section className="workspace-panel map-preview-panel" data-tour-id="map-preview">
-        <div className="preview-heading-with-export"><PanelHeading icon={<Sparkles size={16} />} title={t("preview")} body={t("previewHint")} /><span title={t('exportUnavailable')}><Button size="sm" variant="secondary" isDisabled={!projectDocument || !inspection || inspection.model.format === 'spine' || !runtimeReady || !selectedMotionId || !hasAnimationExportApi() || scanningParts || visibilityBusy || Boolean(projectDocument.sourceReview?.required)} onPress={onExport}><Download size={14} />{t('exportAnimation')}</Button></span></div>
+        <div className="preview-heading-with-export"><PanelHeading icon={<Sparkles size={16} />} title={t("preview")} body={t("previewHint")} />{!editMode && <span title={t('exportUnavailable')}><Button size="sm" variant="secondary" isDisabled={!projectDocument || !inspection || inspection.model.format === 'spine' || !runtimeReady || !selectedMotionId || !hasAnimationExportApi() || scanningParts || visibilityBusy || Boolean(projectDocument.sourceReview?.required)} onPress={onExport}><Download size={14} />{t('exportAnimation')}</Button></span>}</div>
         <div className="preview-caption"><Chip variant="soft">{selectedName} · {selectedExpression?.name ?? t("baseExpression")}</Chip><Button size="sm" variant="ghost" aria-label={t('resetPreview')} isDisabled={!nativePreview || previewStatus?.state === 'opening' || visibilityBusy || scanningParts} onPress={resetPreview}><RefreshCcw size={15} />{t('resetPreview')}</Button></div>
         <div className="preview-stage"><i className="stage-grid" />{!runtimeReady ? <div className="preview-runtime-required"><Gauge size={28} /><strong>{t("runtimeRequired")}</strong><p>{t("runtimeRequiredBody")}</p><Button size="sm" variant="primary" onPress={onConfigureRuntime}>{t(inspection?.model.format === 'spine' ? "installSpinePack" : "configureRuntime")}</Button></div> : nativePreview ? <><div ref={previewSurface} className="preview-native-surface" />{previewStatus?.state === 'opening' && <div className="preview-message">{t('previewLoading')}</div>}{previewStatus?.state === 'failed' && <div className="preview-runtime-required"><strong>{t('previewFailed')}</strong><p>{previewStatus.error?.message}</p><Button size="sm" variant="primary" onPress={() => setPreviewRetry((value) => value + 1)}>{t('retry')}</Button></div>}</> : <div className="preview-runtime-required"><Box size={28} aria-hidden="true" /><strong>{t('previewEmptyTitle')}</strong><p>{t(projectDocument ? 'previewDesktopRequired' : 'previewImportHint')}</p></div>}</div>
         <div className="playback"><Button isIconOnly aria-label={previewStatus?.playback?.playing ? t('pause') : t('play')} variant="primary" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={togglePlayback}>{previewStatus?.playback?.playing ? <Pause size={15} /> : <Play size={15} />}</Button><Button isIconOnly aria-label={t('restart')} variant="ghost" size="sm" isDisabled={previewStatus?.state !== 'ready'} onPress={() => void runPlayback(() => controlLive2DPreview('restart'))}><RotateCcw size={15} /></Button><input className="timeline" type="range" aria-label={t('seekMotion')} min={0} max={selectedDuration} step={0.01} value={seekTime ?? previewStatus?.playback?.time ?? 0} disabled={previewStatus?.state !== 'ready' || !selectedDuration} onInput={(event) => setSeekTime(Number(event.currentTarget.value))} /><small>{(previewStatus?.playback?.time ?? 0).toFixed(1)} / {selected?.seconds ?? '—'} s</small></div>
@@ -457,7 +461,7 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
         {playbackError && <p className="inline-error" role="alert">{playbackError}</p>}
         {previewStatus?.state === 'failed' && visualSettings.hiddenElementIds.length > 0 && <Button size="sm" variant="secondary" onPress={() => { onVisualSettings({ hiddenElementIds: [] }); setSoloId(null); setPreviewRetry(value => value + 1); }}>{t('restoreVisibility')}</Button>}
       </section>
-      {splitter('right')}
+      {!editMode && <>{splitter('right')}
       <section className="workspace-panel assignment-panel map-assignment-panel" data-tour-id="map-assignment">
         <PanelHeading icon={<WandSparkles size={16} />} title={t("assignment")} body={t("assignmentHint")} />
         <ButtonGroup className="target-switch" aria-label={t("mappingTarget")}>
@@ -493,13 +497,54 @@ function MapView({ locale, projectId, projectDocument, inspection, runtimeReady,
             </section>
           ); })}
         </div>
-      </section>
+      </section></>}
     </main>
   );
 }
 
 
 export function App() {
+  return new URLSearchParams(window.location.search).get('visibilityEdit') === '1' ? <VisibilityEditView /> : <ProjectApp />;
+}
+
+function VisibilityEditView() {
+  const [session, setSession] = useState<VisibilityEditSession | null>(null);
+  const [settings, setSettings] = useState<VisualSettings>({ hiddenElementIds: [] });
+  const [motion, setMotion] = useState<string | null>(null);
+  const [expression, setExpression] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const locale = session?.locale ?? 'en';
+  const t = (key: MessageKey) => translate(locale, key);
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const update = () => { document.documentElement.dataset.theme = media.matches ? 'dark' : 'light'; };
+    update(); media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  useEffect(() => {
+    let active = true;
+    void getVisibilityEditSession().then(value => {
+      if (!active) return;
+      setSession(value); setSettings(value.visualSettings); setMotion(value.inspection.motions[0]?.id ?? null);
+    }).catch(cause => { if (active) setError(cause instanceof Error ? cause.message : t('error')); });
+    return () => { active = false; };
+  }, []);
+  const editDocument = session ? { ...projectFromSource({ projectId: session.projectId, appVersion: '0.3.0', sourcePath: '', inspection: session.inspection, motion: motion ?? '' }).document!, visualSettings: settings } : null;
+  async function finish(status: 'applied' | 'cancelled') {
+    setBusy(true); setError('');
+    try { await finishVisibilityEdit({ status, ...(status === 'applied' ? { visualSettings: settings } : {}) }); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : t('error')); setBusy(false); }
+  }
+  return <div className="app-shell visibility-edit-shell">
+    <header className="app-toolbar visibility-edit-toolbar"><div className="toolbar-brand"><span>Live2Pet</span><i /><strong>{session?.name ?? t('visibility')}</strong></div><div className="toolbar-actions"><Button variant="secondary" isDisabled={busy} onPress={() => void finish('cancelled')}>{t('visibilityEditCancel')}</Button><Button variant="primary" isDisabled={!ready || busy} onPress={() => void finish('applied')}>{t('visibilityEditApply')}</Button></div></header>
+    {session ? <div className="app-content" inert={busy}><MapView locale={locale} projectId={session.projectId} projectDocument={editDocument} inspection={session.inspection} runtimeReady={true} selectedMotionId={motion} selectedExpressionId={expression} onConfigureRuntime={() => {}} onSelectMotion={setMotion} onSelectExpression={setExpression} onAssign={() => {}} onClear={() => {}} onVisualSettings={setSettings} onExport={() => {}} exportOpen={false} editMode onPreviewReady={setReady} /></div> : <div className="empty-state">{error || t('loading')}</div>}
+    <footer className="status-bar"><span role={error ? 'alert' : 'status'}>{error || t('visibilityEditHint')}</span></footer>
+  </div>;
+}
+
+function ProjectApp() {
   const [state, dispatch] = useReducer(appReducer, undefined, () => {
     const initial = initialAppState({ setupCompleted: localStorage.getItem(SETUP_KEY) === "true" });
     return { ...initial, settings: { ...initial.settings, language: storedLocale(), appearance: storedAppearance() } };

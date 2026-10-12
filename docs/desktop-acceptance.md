@@ -26,6 +26,31 @@ Other 3.x lines are not enabled by this change.
 
 ## Automated local workflow
 
+### On-demand Visibility editor — 2026-10-12
+
+The macOS x64 package passed hidden-window acceptance through the v1 launch
+argument and real preload/IPC/UI/preview path. Private model/runtime copies
+covered Cubism 3, Cubism 2 and Spine 3.8: UI Apply (including temporary Solo),
+Cancel and reopening existing hidden IDs. Additional Cubism 3 sessions checked
+native window close and a forced renderer crash. All eight sessions returned
+the matching session/model/revision, released their previews and exited. Invalid
+IDs were rejected before touching the renderer and the session stayed editable.
+
+Acceptance verified that ordinary runtime/workspace sentinels and copied source
+bytes remained unchanged, all windows remained hidden, and normal project/build
+APIs were denied. Existing trusted runtimes and Spine packs were reused through
+private copies; a supplied trusted session core was also covered. Boundary tests
+checked legacy-runtime read-only resolution, traversal/symlinks, bounds,
+permissions and atomic one-shot results. The packaged Info.plist contains
+integer `Live2PetVisibilityEditProtocol=1`.
+
+Chromium can recreate cache files after its quit event, so the private profile
+lives beneath the caller-owned session directory. Removal is best-effort on exit;
+the caller owns final session cleanup after confirming process termination.
+This is local Live2Pet-side acceptance, not an end-to-end RYutility acceptance or
+Windows validation. Ordinary hidden-profile startup and packaged services also
+passed; the user's running App was not used for these tests.
+
 `apps/desktop/scripts/accept-desktop.cjs` is an opt-in Electron acceptance harness, separate from synthetic public CI. It needs Playwright available in the developer's tool environment (direct module resolution or `NODE_PATH`) and permitted local models/runtimes. No browser download is required: it launches the existing Electron executable.
 
 ```sh

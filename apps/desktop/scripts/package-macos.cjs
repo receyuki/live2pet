@@ -109,6 +109,7 @@ function createPackagerOptions({ stageRoot, extraResource, arch = currentMacArch
     appBundleId: 'dev.live2pet.desktop',
     appVersion: APP_VERSION,
     buildVersion: APP_VERSION,
+    extendInfo: { Live2PetVisibilityEditProtocol: 1 },
     icon: APP_ICON_PATH,
     platform: 'darwin',
     arch,

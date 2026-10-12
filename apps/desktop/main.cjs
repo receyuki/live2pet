@@ -524,7 +524,7 @@ async function createMainWindow() {
     mainWindow = null;
     if (sessionToClose) void sessionToClose.close();
   });
-  const showWindow = () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show(); };
+  const showWindow = () => { if (process.env.LIVE2PET_HEADLESS !== '1' && mainWindow && !mainWindow.isDestroyed()) mainWindow.show(); };
   mainWindow.once('ready-to-show', showWindow);
   await mainWindow.loadFile(documentPath);
   // `ready-to-show` may fire before loadFile() resolves. Keep an explicit
@@ -557,6 +557,8 @@ async function createMainWindow() {
 }
 
 app.whenReady().then(async () => {
+  if (process.argv.includes('--live2pet-visibility-edit')) return;
+  if (process.env.LIVE2PET_HEADLESS === '1' && process.platform === 'darwin') { app.setActivationPolicy('prohibited'); app.dock.hide(); }
   if (!app.isPackaged && process.platform === 'darwin' && app.dock) app.dock.setIcon(APP_DEV_ICON_PATH);
   const defaultSession = require('electron').session.defaultSession;
   defaultSession.protocol.handle(RUNTIME_PROTOCOL_SCHEME, createRuntimeProtocolHandler({
@@ -571,4 +573,5 @@ app.whenReady().then(async () => {
 });
 
 app.on('before-quit', () => { void closeActiveSession(); });
+if (process.argv.includes('--live2pet-visibility-edit')) require('./visibility-edit-main.cjs').launchVisibilityEditor({ app, BrowserWindow, ipcMain, Menu, createView: createPreviewView, vendorPaths: previewVendorPaths, documentPath: appDocumentPath() });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

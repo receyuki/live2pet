@@ -156,6 +156,40 @@ test('copies modern and legacy runtimes into App storage and selects them by gen
   fs.rmSync(settingsRoot, { recursive: true, force: true });
 });
 
+test('read-only path-based settings resolve verified runtimes without migrating or creating files', async t => {
+  const root = temporaryDirectory();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const source = path.join(root, 'live2d.min.js');
+  fs.writeFileSync(source, 'var Live2D = {}; var L2D = {};');
+  const settingsPath = path.join(root, 'runtime.json');
+  const original = `${JSON.stringify(await createRuntimeSettings(source), null, 2)}\n`;
+  fs.writeFileSync(settingsPath, original);
+  const entries = fs.readdirSync(root).sort();
+  const loaded = await loadRuntimeSettings(settingsPath, { readOnly: true });
+  assert.equal(loaded.runtimes.length, 1);
+  assert.equal(loaded.runtimes[0].available, true);
+  assert.equal(loaded.runtimes[0].runtimePath, source);
+  assert.equal((await loadRuntimeForGeneration(settingsPath, 2, { readOnly: true })).runtimePath, source);
+  assert.equal(await loadRuntimeForGeneration(settingsPath, 3, { readOnly: true }), null);
+  assert.equal(fs.readFileSync(settingsPath, 'utf8'), original);
+  assert.deepEqual(fs.readdirSync(root).sort(), entries);
+  assert.equal(fs.readFileSync(source, 'utf8'), 'var Live2D = {}; var L2D = {};');
+});
+
+test('read-only path-based settings reject changed runtime bytes without modifying settings', async t => {
+  const root = temporaryDirectory();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const source = path.join(root, 'live2d.min.js');
+  fs.writeFileSync(source, 'var Live2D = {}; var L2D = {};');
+  const settingsPath = path.join(root, 'runtime.json');
+  const original = JSON.stringify(await createRuntimeSettings(source));
+  fs.writeFileSync(settingsPath, original);
+  fs.appendFileSync(source, '\nchanged');
+  await assert.rejects(() => loadRuntimeSettings(settingsPath, { readOnly: true }), { code: 'RUNTIME_LIBRARY_MISMATCH' });
+  assert.equal(fs.readFileSync(settingsPath, 'utf8'), original);
+  assert.equal(fs.existsSync(path.join(root, 'runtimes')), false);
+});
+
 test('migrates a valid path-based setting into App-owned storage', async () => {
   const legacyRoot = temporaryDirectory();
   const legacyFile = path.join(legacyRoot, 'live2d.min.js');

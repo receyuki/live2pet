@@ -136,6 +136,8 @@ function createAppPreloadApi({ ipcRenderer, channel = 'live2pet:app', getFilePat
   };
 
   return Object.freeze({
+    getVisibilityEditSession: () => ipcRenderer.invoke('live2pet:visibility-edit', { method: 'get' }),
+    finishVisibilityEdit: (input) => ipcRenderer.invoke('live2pet:visibility-edit', { method: 'finish', input }),
     getVersion: () => invoke('getVersion'),
     checkForUpdates: () => invoke('checkForUpdates'),
     openReleasePage: (version) => invoke('openReleasePage', { version }),
