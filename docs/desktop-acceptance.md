@@ -26,6 +26,31 @@ Other 3.x lines are not enabled by this change.
 
 ## Automated local workflow
 
+### Renderer compatibility and packaged reopening — 2026-10-14
+
+On macOS x64, 19 permitted user models and official Spine 4.2/4.3 examples
+passed native capture and both validated target builds. Coverage includes
+Cubism 2/modern, Spine 2.1, 3.5 JSON, 3.6, 3.7, deprecated 3.8.75,
+official 3.8 patch versions .55/.69/.79/.84/.95/.97/.99, and 4.0/4.1.
+Three malformed modern Motions now load with their actual curve counts.
+Eight separate 4.x straight/PMA fixtures pass exact pixel checks; 1,210
+official-3.8 Mesh attachments pass logical-atlas UV recalculation checks.
+
+The final packaged App passed ten hidden on-demand Visibility sessions:
+Apply and reopen/Cancel for modern Cubism, Cubism 2, Spine 3.8 and 4.1,
+plus close and forced renderer-crash cleanup. Ordinary profile sentinels and
+copied sources were unchanged. Real 3.8/4.1 Slot-hiding integration and
+both package targets passed separately. A reproduced Chromium preconnect
+socket shutdown hang was fixed and covered by a failing-then-passing test.
+
+Final regression checks: 529 Node tests passed (four opt-in tests skipped),
+206 UI tests passed in a separate single-worker run, CommonJS syntax and UI
+TypeScript checks passed, and packaged startup/native-service smoke passed.
+A concurrent UI run hit existing five-second timeouts; it was not accepted
+as passing. No native Windows/Apple Silicon or actual target-host acceptance
+is inferred from these local checks. See the
+[detailed scope, limits and reproduction procedure](research/renderer-compatibility-2026-10-14.md).
+
 ### On-demand Visibility editor — 2026-10-12
 
 The macOS x64 package passed hidden-window acceptance through the v1 launch

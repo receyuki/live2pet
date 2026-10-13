@@ -35,34 +35,42 @@ function spineSourceFromManifest(manifest, { baseUrl = '' } = {}) {
 
 async function pageLoad(source, options) {
   const atlasSizes = new Map();
-  if (source.runtimeLine === '3.8') {
+  const warnings = [];
+  {
     const response = await fetch(source.atlasUrl);
     if (!response.ok) throw new Error('Spine atlas could not be loaded.');
     let page = '', header = false, nextPage = true;
     for (const line of (await response.text()).split(/\r?\n/)) {
       const value = line.trim();
       if (!value) { nextPage = true; continue; }
-      if (nextPage) { page = value; header = true; nextPage = false; continue; }
+      if (nextPage) { page = value; atlasSizes.set(page, { pma: false }); header = true; nextPage = false; continue; }
       if (!value.includes(':')) { header = false; continue; }
       if (!header) continue;
       const size = /^size:\s*(\d+)\s*,\s*(\d+)$/.exec(value);
-      if (size && +size[1] > 0 && +size[2] > 0 && +size[1] <= 32768 && +size[2] <= 32768) atlasSizes.set(page, { width: +size[1], height: +size[2], pma: false });
+      if (size && +size[1] > 0 && +size[2] > 0 && +size[1] <= 32768 && +size[2] <= 32768) Object.assign(atlasSizes.get(page), { width: +size[1], height: +size[2] });
       if (/^pma:\s*true$/.test(value) && atlasSizes.has(page)) atlasSizes.get(page).pma = true;
     }
   }
+  const alphaModes = new Set([...atlasSizes.values()].map(page => page.pma));
+  // Official 4.x Players expose one blend policy for the whole skeleton. Do not
+  // double-premultiply authored PMA images or guess a policy for mixed pages.
+  if (source.runtimeLine !== '3.8' && alphaModes.size > 1) throw new Error('Spine atlas has mixed straight and premultiplied-alpha pages. Re-export all atlas pages with the same premultiplied-alpha setting before loading this model.');
+  const premultipliedAlpha = source.runtimeLine === '3.8' || alphaModes.has(true);
   return new Promise((resolve, reject) => {
     if (!window.spine?.SpinePlayer) return reject(new Error('The optional Spine Player runtime is not loaded.'));
     const previous = window.__live2petSpine;
     if (previous?.player) previous.dispose();
     const originalAtlas = window.spine.TextureAtlas;
-    const textureImages = new Map();
+    const texturePatches = new Map();
+    const atlasFinders = new Map();
+    const warnedRegionNames = new Set();
     if (source.runtimeLine === '3.8') window.spine.TextureAtlas = function (text, loader) {
-      return new originalAtlas(text, name => {
+      const atlas = new originalAtlas(text, name => {
         const texture = loader(name), size = atlasSizes.get(name);
         if (!size) return texture;
         // Preserve atlas coordinates for downscaled textures, including later Mesh UV updates.
-        if (!textureImages.has(texture)) {
-          textureImages.set(texture, texture.getImage);
+        if (!texturePatches.has(texture)) {
+          texturePatches.set(texture, { getImage: texture.getImage, update: texture.update });
           if (!size.pma && texture.context && texture.update) {
             const update = texture.update.bind(texture), gl = texture.context.gl;
             texture.update = mipMaps => {
@@ -77,27 +85,52 @@ async function pageLoad(source, options) {
             };
             texture.update(texture.useMipMaps || false);
           }
-          texture.getImage = () => size;
+          if (size.width && size.height) texture.getImage = () => size;
         }
         return texture;
       });
+      if (typeof atlas.findRegion === 'function') {
+        const find = atlas.findRegion;
+        atlasFinders.set(atlas, find);
+        atlas.findRegion = name => {
+          const exact = find.call(atlas, name);
+          if (exact) return exact;
+          // Do not case-fold, pick an ambiguous match, or silently skip missing attachments.
+          const matches = atlas.regions.filter(region => region.name.trim() === name.trim());
+          if (matches.length !== 1) return null;
+          const matched = matches[0];
+          if (!warnedRegionNames.has(name)) {
+            warnedRegionNames.add(name);
+            warnings.push({ code: 'SPINE_ATLAS_REGION_TRIMMED', message: `Atlas region whitespace was matched: ${JSON.stringify(name)} → ${JSON.stringify(matched.name)}.`, details: { requested: name, matched: matched.name } });
+          }
+          return matched;
+        };
+      }
+      return atlas;
     };
     document.body.innerHTML = '<div id="live2pet-spine-stage"></div>';
     const container = document.getElementById('live2pet-spine-stage');
     Object.assign(container.style, { width: `${options.width}px`, height: `${options.height}px`, overflow: 'hidden', background: 'transparent' });
     const state = { contractVersion: 1, loaded: false, motionId: source.motions[0]?.id || null, expressionId: null, time: 0, playing: false, loop: true, speed: 1 };
     const runtime = {
-      player: null, source, state, hidden: [], options, container, active: options.playbackMode === 'realtime', legacyFrame: null,
+      player: null, source, state, hidden: [], options, container, active: options.playbackMode === 'realtime', legacyFrame: null, disposed: false,
       dispose() {
+        if (this.disposed) return;
+        this.disposed = true;
         if (this.legacyFrame !== null) window.cancelAnimationFrame(this.legacyFrame);
-        this.player.stopRendering();
-        if (source.runtimeLine === '3.8') {
-          this.player.assetManager.dispose();
-          this.player.sceneRenderer.dispose();
-          this.player.context.gl.getExtension('WEBGL_lose_context')?.loseContext();
-        } else this.player.dispose();
-        for (const [texture, getImage] of textureImages) texture.getImage = getImage;
-        textureImages.clear();
+        try {
+          this.player?.stopRendering();
+          if (source.runtimeLine === '3.8') {
+            this.player?.assetManager?.dispose();
+            this.player?.sceneRenderer?.dispose();
+            this.player?.context?.gl.getExtension('WEBGL_lose_context')?.loseContext();
+          } else this.player?.dispose();
+        } finally {
+          for (const [texture, original] of texturePatches) { texture.getImage = original.getImage; texture.update = original.update; }
+          texturePatches.clear();
+          for (const [atlas, find] of atlasFinders) atlas.findRegion = find;
+          atlasFinders.clear();
+        }
       },
       applyHidden() {
         const hidden = new Set(this.hidden);
@@ -208,12 +241,16 @@ async function pageLoad(source, options) {
       window.clearTimeout(loadTimer);
       if (loadPoll !== null) window.clearInterval(loadPoll);
       if (source.runtimeLine === '3.8') window.spine.TextureAtlas = originalAtlas;
+      if (callback === reject) {
+        runtime.dispose();
+        if (window.__live2petSpine === runtime) delete window.__live2petSpine;
+      }
       callback(value);
     };
     const loadTimer = window.setTimeout(() => {
       finish(reject, new Error(`Spine Player did not finish loading within ${options.loadTimeoutMs} ms.`));
     }, options.loadTimeoutMs);
-    runtime.player = new window.spine.SpinePlayer(container, {
+    try { runtime.player = new window.spine.SpinePlayer(container, {
       ...(source.runtimeLine === '4.3'
         ? { skeleton: source.skeletonUrl, atlas: source.atlasUrl }
         : { [source.binary ? (source.runtimeLine === '3.8' ? 'skelUrl' : 'binaryUrl') : 'jsonUrl']: source.skeletonUrl, atlasUrl: source.atlasUrl }),
@@ -222,7 +259,7 @@ async function pageLoad(source, options) {
       showLoading: false,
       alpha: true,
       preserveDrawingBuffer: true,
-      premultipliedAlpha: source.runtimeLine === '3.8' ? true : undefined,
+      premultipliedAlpha,
       backgroundColor: '#00000000',
       viewport: { transitionTime: 0, padLeft: 0, padRight: 0, padTop: 0, padBottom: 0 },
       updateWorldTransform(player) { runtime.applyHidden(); player.skeleton.updateWorldTransform(2); },
@@ -265,11 +302,12 @@ async function pageLoad(source, options) {
             state: { ...runtime.state },
             motions: runtime.source.motions.map((motion) => ({ ...motion })),
             slots: player.skeleton.slots.map((slot) => ({ id: `slot:${slot.data.name}`, name: slot.data.name, kind: 'slot' })),
+            warnings,
           });
         } catch (error) { finish(reject, error); }
       },
-      error(_player, message) { finish(reject, new Error(message || 'Spine Player failed to load the skeleton.')); },
-    });
+      error(player, message) { runtime.player = player || runtime.player; finish(reject, new Error(message || 'Spine Player failed to load the skeleton.')); },
+    }); } catch (error) { finish(reject, error); }
     // Spine Player completes asset initialization from requestAnimationFrame.
     // Electron may suspend that callback for the hidden view used by library
     // thumbnails, so explicitly advance a frame once every asset is ready.
@@ -342,13 +380,14 @@ class SpinePlayerAdapter {
     if (!page?.evaluate) fail('INVALID_RENDERER_HOST', 'SpinePlayerAdapter requires an isolated browser page.');
     this.page = page;
     this.options = { ...DEFAULT_OPTIONS, ...options, width: integer(options.width ?? DEFAULT_OPTIONS.width, 'Renderer width'), height: integer(options.height ?? DEFAULT_OPTIONS.height, 'Renderer height'), padding: finite(options.padding ?? DEFAULT_OPTIONS.padding, 'Renderer padding', 0, 0.5), loadTimeoutMs: finite(options.loadTimeoutMs ?? DEFAULT_OPTIONS.loadTimeoutMs, 'Spine load timeout', 1000, 120000) };
-    this.source = null; this.state = { loaded: false, motionId: null, expressionId: null, time: 0, playing: false, loop: true, speed: 1 }; this.visualElements = [];
+    this.source = null; this.state = { loaded: false, motionId: null, expressionId: null, time: 0, playing: false, loop: true, speed: 1 }; this.visualElements = []; this.warnings = [];
   }
   async evaluate(fn, ...args) { try { return await this.page.evaluate(fn, ...args); } catch (error) { if (error instanceof RendererContractError) throw error; fail('RENDERER_PAGE_ERROR', error?.message || String(error)); } }
   requireLoaded() { if (!this.source || !this.state.loaded) fail('RENDERER_NOT_LOADED', 'Load a Spine Source Package before using the renderer.'); }
   motion(id) { const motion = this.source?.motions.find((item) => item.id === id); if (!motion) fail('MOTION_NOT_FOUND', `Animation is not available: ${id}`); return motion; }
-  async load(source) { if (source?.format !== 'spine' || !supportsSpineRuntime(source.runtimeLine) || !Array.isArray(source.motions)) fail('INVALID_RENDER_SOURCE', 'A supported Spine renderer source is required.'); const loaded = await this.evaluate(pageLoad, source, this.options); this.state = loaded.state; this.source = { ...source, motions: loaded.motions }; this.visualElements = loaded.slots; return { contractVersion: 1, motionCount: this.source.motions.length, expressionCount: 0 }; }
-  async unload() { if (this.source) await this.evaluate(pageUnload); this.source = null; this.visualElements = []; this.state = { loaded: false, motionId: null, expressionId: null, time: 0, playing: false, loop: true, speed: 1 }; }
+  async load(source) { if (source?.format !== 'spine' || !supportsSpineRuntime(source.runtimeLine) || !Array.isArray(source.motions)) fail('INVALID_RENDER_SOURCE', 'A supported Spine renderer source is required.'); const loaded = await this.evaluate(pageLoad, source, this.options); this.state = loaded.state; this.source = { ...source, motions: loaded.motions }; this.visualElements = loaded.slots; this.warnings = loaded.warnings || []; return { contractVersion: 1, motionCount: this.source.motions.length, expressionCount: 0, ...(this.warnings.length ? { warnings: this.getWarnings() } : {}) }; }
+  getWarnings() { return this.warnings.map(warning => ({ ...warning, ...(warning.details ? { details: { ...warning.details } } : {}) })); }
+  async unload() { if (this.source) await this.evaluate(pageUnload); this.source = null; this.visualElements = []; this.warnings = []; this.state = { loaded: false, motionId: null, expressionId: null, time: 0, playing: false, loop: true, speed: 1 }; }
   async setActive(active) { this.requireLoaded(); this.state = await this.evaluate(pageSetActive, Boolean(active)); return this.getState(); }
   async prepareCapture() {
     this.requireLoaded();

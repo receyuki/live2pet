@@ -27,6 +27,17 @@ GitHub Releases.
 
 ### Fixed
 
+- Respect authored straight/PMA alpha mode in Spine 4.0–4.3 instead of relying
+  on the Player's PMA default; reject mixed-mode pages with actionable guidance.
+- Match uniquely trimmed Spine 3.8 atlas region names after exact lookup fails,
+  reporting warnings without changing source files or guessing ambiguous names.
+- Correct valid modern Live2D Motion curve-count metadata in memory, including
+  lazily loaded Motions. Restore scoped compatibility hooks and release model
+  resources when loading or Visual Element initialization fails.
+- Release speculative renderer-server connections during preview shutdown, so
+  closing or reopening a preview cannot hang on a request-free Chromium socket.
+- Invalidate earlier captured/encoded animations after rendering fixes without
+  changing Source Package fingerprints or project formats.
 - Synchronize Spine 2.1 Mesh blend modes, tint and attachment alpha on every
   pose. Retain authored atlas coordinates for downscaled legacy textures
   without enlarging the uploaded image pixels, and honor atlas filtering to

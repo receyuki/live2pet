@@ -119,6 +119,8 @@ open apps/desktop/out/Live2Pet-darwin-*/Live2Pet.app
 
 Spine 支持仍在预览阶段。PCK 是否可用取决于其内容和封装方式。[详细兼容性与限制 →](docs/guides/user-guide.zh-CN.md#compatibility)
 
+受支持的 Live2D 动作元数据和 Spine 3.8 图集名称空格问题会在内存中兼容处理，不修改模型源文件。Spine 4.x 的图集页面需使用一致的透明度模式。
+
 <a id="runtime-setup"></a>
 
 ## 运行时

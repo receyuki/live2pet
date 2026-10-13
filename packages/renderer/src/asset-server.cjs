@@ -293,7 +293,12 @@ function createRendererAssetServer({ sourceRoot, sourceBuffers, runtimePath, pre
         modelUrl: (modelConfig) => `${baseUrl}/model/${encodeRelativeUrl(modelConfig)}`,
         runtimeUrl: runtime ? `${baseUrl}/runtime/${encodeURIComponent(path.basename(runtime))}` : null,
         legacyDecoderUrl: spinePreview?.decoder ? `${baseUrl}/vendor/spine-decoder.js` : null,
-        close: () => new Promise((closeResolve) => server.close(() => closeResolve())),
+        close: () => new Promise((closeResolve) => {
+          server.close(() => closeResolve());
+          // Chromium may retain speculative sockets that never send headers.
+          // This server belongs to a closing renderer; no client remains valid.
+          server.closeAllConnections();
+        }),
       });
     });
   });

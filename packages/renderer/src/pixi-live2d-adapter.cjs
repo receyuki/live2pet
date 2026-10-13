@@ -104,7 +104,8 @@ function pixiSourceFromManifest(manifest, { baseUrl = '' } = {}) {
 }
 
 function cloneState(state) {
-  return state ? { ...state } : {
+  if (state) { const { warnings: _warnings, ...playback } = state; return playback; }
+  return {
     contractVersion: 1,
     loaded: false,
     motionId: null,
@@ -150,146 +151,173 @@ function pageLoad(source, options) {
     const legacyClock = source.cubismVersion === 2 ? window.UtSystem : null;
     if (source.cubismVersion === 2 && typeof legacyClock?.setUserTimeMSec !== 'function') throw new Error('The Cubism 2 runtime does not expose controlled motion timing.');
     legacyClock?.setUserTimeMSec(0);
-    const model = await window.PIXI.live2d.Live2DModel.from(source.modelUrl, {
-      autoUpdate: false,
-      autoHitTest: false,
-    });
-    if (legacyClock) {
-      model.elapsedTime = 0;
-      model.internalModel.on('beforeMotionUpdate', () => legacyClock.setUserTimeMSec(model.elapsedTime));
-    }
-    app.stage.addChild(model);
-
-    const fit = () => {
-      const bounds = window.__live2petPixiLive2D?.visualBounds || model.getLocalBounds();
-      if (!bounds || !Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) || bounds.width <= 0 || bounds.height <= 0) throw new Error('Loaded model has no measurable bounds.');
-      const usableWidth = Math.max(1, app.renderer.width - options.padding * 2);
-      const usableHeight = Math.max(1, app.renderer.height - options.padding * 2);
-      const scale = Math.min(usableWidth / bounds.width, usableHeight / bounds.height);
-      model.scale.set(scale);
-      model.x = (app.renderer.width - bounds.width * scale) / 2 - bounds.x * scale;
-      model.y = (app.renderer.height - bounds.height * scale) / 2 - bounds.y * scale;
-    };
-    const render = () => app.renderer.render(app.stage);
-    const readPixels = () => {
-      const extractor = app.renderer.extract || app.renderer.plugins?.extract;
-      if (!extractor || typeof extractor.pixels !== 'function') throw new Error('Pixi Extract plugin is unavailable; RGBA capture cannot proceed.');
-      // A DisplayObject target generates a bounds-shifted texture in Pixi 6.
-      // Read the already-rendered viewport so fit, inspection and export share
-      // one origin. Screen pixels are bottom-up; image coordinates are top-down.
-      const { width, height } = app.renderer;
-      const pixels = extractor.pixels(undefined, new window.PIXI.Rectangle(0, 0, width, height));
-      const stride = width * 4;
-      const row = new Uint8Array(stride);
-      for (let y = 0; y < Math.floor(height / 2); y++) {
-        const top = y * stride, bottom = (height - y - 1) * stride;
-        row.set(pixels.subarray(top, top + stride));
-        pixels.copyWithin(top, bottom, bottom + stride);
-        pixels.set(row, bottom);
-      }
-      return pixels;
-    };
-    const resetMotion = async (motion, priority, settlePhysics = false) => {
-      legacyClock?.setUserTimeMSec(model.elapsedTime);
-      model.internalModel.motionManager.stopAllMotions();
-      await model.motion(motion.group, motion.index, priority);
-      // Prime the queue entry at t=0 before advancing its clock.
-      model.update(0.001);
-      render();
-      if (settlePhysics && source.cubismVersion !== 2 && model.internalModel.physics) {
-        // Bounds sampling leaves particles moving at its final pose. Settle
-        // them at the first Motion pose without skipping animation time or
-        // carrying that velocity into the exported opening frames.
-        const { physics, coreModel } = model.internalModel;
-        physics.initialize();
-        for (let step = 0; step < 120; step++) {
-          coreModel.loadParameters();
-          physics.evaluate(coreModel, 1 / 60);
+    const warnings = [], warned = new Set();
+    let releaseMotion = () => {};
+    const prototype = source.cubismVersion !== 2 ? window.PIXI.live2d.Cubism4MotionManager?.prototype : null;
+    if (typeof prototype?.createMotion === 'function') {
+      const create = prototype.createMotion;
+      prototype.createMotion = function (data, group, definition) {
+        const valid = data?.Version === 3 && data.Meta && Number.isInteger(data.Meta.CurveCount) && data.Meta.CurveCount >= 0
+          && Array.isArray(data.Curves) && data.Curves.length <= 10000
+          && data.Curves.every(curve => curve && typeof curve.Target === 'string' && Array.isArray(curve.Segments));
+        const corrected = valid && data.Meta.CurveCount !== data.Curves.length ? { ...data, Meta: { ...data.Meta, CurveCount: data.Curves.length } } : data;
+        if (corrected !== data) {
+          const file = String(definition?.File || 'Motion').slice(0, 256);
+          if (!warned.has(file)) { warned.add(file); warnings.push({ code: 'CUBISM_MOTION_CURVE_COUNT', message: `Motion curve count corrected in memory: ${file} (${data.Meta.CurveCount} → ${data.Curves.length}).` }); }
         }
-        coreModel.loadParameters();
+        return create.call(this, corrected, group, definition);
+      };
+      releaseMotion = () => { prototype.createMotion = create; };
+    }
+    try {
+      const model = await window.PIXI.live2d.Live2DModel.from(source.modelUrl, {
+        autoUpdate: false,
+        autoHitTest: false,
+      });
+      if (legacyClock) {
+        model.elapsedTime = 0;
+        model.internalModel.on('beforeMotionUpdate', () => legacyClock.setUserTimeMSec(model.elapsedTime));
+      }
+      app.stage.addChild(model);
+
+      const fit = () => {
+        const bounds = window.__live2petPixiLive2D?.visualBounds || model.getLocalBounds();
+        if (!bounds || !Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) || bounds.width <= 0 || bounds.height <= 0) throw new Error('Loaded model has no measurable bounds.');
+        const usableWidth = Math.max(1, app.renderer.width - options.padding * 2);
+        const usableHeight = Math.max(1, app.renderer.height - options.padding * 2);
+        const scale = Math.min(usableWidth / bounds.width, usableHeight / bounds.height);
+        model.scale.set(scale);
+        model.x = (app.renderer.width - bounds.width * scale) / 2 - bounds.x * scale;
+        model.y = (app.renderer.height - bounds.height * scale) / 2 - bounds.y * scale;
+      };
+      const render = () => app.renderer.render(app.stage);
+      const readPixels = () => {
+        const extractor = app.renderer.extract || app.renderer.plugins?.extract;
+        if (!extractor || typeof extractor.pixels !== 'function') throw new Error('Pixi Extract plugin is unavailable; RGBA capture cannot proceed.');
+        // A DisplayObject target generates a bounds-shifted texture in Pixi 6.
+        // Read the already-rendered viewport so fit, inspection and export share
+        // one origin. Screen pixels are bottom-up; image coordinates are top-down.
+        const { width, height } = app.renderer;
+        const pixels = extractor.pixels(undefined, new window.PIXI.Rectangle(0, 0, width, height));
+        const stride = width * 4;
+        const row = new Uint8Array(stride);
+        for (let y = 0; y < Math.floor(height / 2); y++) {
+          const top = y * stride, bottom = (height - y - 1) * stride;
+          row.set(pixels.subarray(top, top + stride));
+          pixels.copyWithin(top, bottom, bottom + stride);
+          pixels.set(row, bottom);
+        }
+        return pixels;
+      };
+      const resetMotion = async (motion, priority, settlePhysics = false) => {
+        legacyClock?.setUserTimeMSec(model.elapsedTime);
+        model.internalModel.motionManager.stopAllMotions();
+        await model.motion(motion.group, motion.index, priority);
+        // Prime the queue entry at t=0 before advancing its clock.
         model.update(0.001);
         render();
-      }
-    };
-    const state = {
-      contractVersion: 1,
-      loaded: true,
-      motionId: source.motions[0] ? source.motions[0].id : null,
-      expressionId: null,
-      time: 0,
-      playing: false,
-      loop: true,
-      speed: 1,
-    };
-    const realtime = options.playbackMode === 'realtime';
-    const advance = (deltaSeconds) => {
-      if (!state.motionId || !state.playing) return;
-      const motion = source.motions.find((item) => item.id === state.motionId);
-      const scaledDelta = deltaSeconds * state.speed;
-      const next = state.time + scaledDelta;
-      const duration = motion.duration;
-      const motionDelta = duration > 0 && !state.loop
-        ? Math.min(scaledDelta, Math.max(0, duration - state.time))
-        : scaledDelta;
-      model.update(motionDelta * 1000);
-      if (duration === 0) {
-        state.time = 0;
-        state.playing = state.loop;
-      } else if (next < duration) {
-        state.time = next;
-      } else if (state.loop) {
-        state.time = next % duration;
-      } else {
-        state.time = duration;
-        state.playing = false;
-      }
-    };
-    const tickerUpdate = () => {
-      advance(app.ticker.deltaMS / 1000);
-      if (!state.playing) app.stop();
-    };
-    const syncTicker = () => {
-      if (realtime && runtime.active && state.playing) app.start();
-      else app.stop();
-    };
-    if (realtime) app.ticker.add(tickerUpdate);
-    fit();
-    render();
-
-    const runtime = {
-      resetMotion,
-      readPixels,
-      app,
-      canvas,
-      createdCanvas,
-      model,
-      source,
-      state,
-      options,
-      realtime,
-      // A loaded renderer starts in the foreground. The host explicitly
-      // toggles this when a preview leaves or re-enters the active surface.
-      // Keep it separate from `state.playing`: an inactive preview may retain
-      // its playback intent without owning a background ticker.
-      active: true,
-      advance,
-      tickerUpdate,
-      syncTicker,
-      fit,
-      render,
-      dispose: async () => {
-        try {
-          app.stop();
-          if (realtime) app.ticker.remove(tickerUpdate);
-          app.destroy(true, { children: true, texture: true, baseTexture: true });
-        } finally {
-          if (createdCanvas && canvas.parentNode) canvas.parentNode.removeChild(canvas);
-          if (window.__live2petPixiLive2D === runtime) delete window.__live2petPixiLive2D;
+        if (settlePhysics && source.cubismVersion !== 2 && model.internalModel.physics) {
+          // Bounds sampling leaves particles moving at its final pose. Settle
+          // them at the first Motion pose without skipping animation time or
+          // carrying that velocity into the exported opening frames.
+          const { physics, coreModel } = model.internalModel;
+          physics.initialize();
+          for (let step = 0; step < 120; step++) {
+            coreModel.loadParameters();
+            physics.evaluate(coreModel, 1 / 60);
+          }
+          coreModel.loadParameters();
+          model.update(0.001);
+          render();
         }
-      },
-    };
-    window.__live2petPixiLive2D = runtime;
-    return { state: { ...state }, width: app.renderer.width, height: app.renderer.height };
+      };
+      const state = {
+        contractVersion: 1,
+        loaded: true,
+        motionId: source.motions[0] ? source.motions[0].id : null,
+        expressionId: null,
+        time: 0,
+        playing: false,
+        loop: true,
+        speed: 1,
+      };
+      const realtime = options.playbackMode === 'realtime';
+      const advance = (deltaSeconds) => {
+        if (!state.motionId || !state.playing) return;
+        const motion = source.motions.find((item) => item.id === state.motionId);
+        const scaledDelta = deltaSeconds * state.speed;
+        const next = state.time + scaledDelta;
+        const duration = motion.duration;
+        const motionDelta = duration > 0 && !state.loop
+          ? Math.min(scaledDelta, Math.max(0, duration - state.time))
+          : scaledDelta;
+        model.update(motionDelta * 1000);
+        if (duration === 0) {
+          state.time = 0;
+          state.playing = state.loop;
+        } else if (next < duration) {
+          state.time = next;
+        } else if (state.loop) {
+          state.time = next % duration;
+        } else {
+          state.time = duration;
+          state.playing = false;
+        }
+      };
+      const tickerUpdate = () => {
+        advance(app.ticker.deltaMS / 1000);
+        if (!state.playing) app.stop();
+      };
+      const syncTicker = () => {
+        if (realtime && runtime.active && state.playing) app.start();
+        else app.stop();
+      };
+      if (realtime) app.ticker.add(tickerUpdate);
+      fit();
+      render();
+
+      const runtime = {
+        resetMotion,
+        readPixels,
+        app,
+        canvas,
+        createdCanvas,
+        model,
+        source,
+        state,
+        options,
+        warnings,
+        realtime,
+        // A loaded renderer starts in the foreground. The host explicitly
+        // toggles this when a preview leaves or re-enters the active surface.
+        // Keep it separate from `state.playing`: an inactive preview may retain
+        // its playback intent without owning a background ticker.
+        active: true,
+        advance,
+        tickerUpdate,
+        syncTicker,
+        fit,
+        render,
+        dispose: async () => {
+          try {
+            app.stop();
+            if (realtime) app.ticker.remove(tickerUpdate);
+            app.destroy(true, { children: true, texture: true, baseTexture: true });
+          } finally {
+            releaseMotion();
+            if (createdCanvas && canvas.parentNode) canvas.parentNode.removeChild(canvas);
+            if (window.__live2petPixiLive2D === runtime) delete window.__live2petPixiLive2D;
+          }
+        },
+      };
+      window.__live2petPixiLive2D = runtime;
+      return { state: { ...state }, width: app.renderer.width, height: app.renderer.height, warnings: [...warnings] };
+    } catch (error) {
+      releaseMotion();
+      app.destroy(true, { children: true, texture: true, baseTexture: true });
+      if (createdCanvas && canvas.parentNode) canvas.parentNode.removeChild(canvas);
+      throw error;
+    }
   })();
 }
 
@@ -335,7 +363,7 @@ function pagePlayMotion(motionId, loop, speed, start, priority) {
     else runtime.model.update(1);
     runtime.render();
     runtime.syncTicker();
-    return { ...runtime.state };
+    return { ...runtime.state, warnings: [...runtime.warnings] };
   })();
 }
 
@@ -374,7 +402,7 @@ function pageRestart(priority) {
     runtime.model.update(1);
     runtime.render();
     runtime.syncTicker();
-    return { ...runtime.state };
+    return { ...runtime.state, warnings: [...runtime.warnings] };
   });
 }
 
@@ -389,7 +417,7 @@ async function pageSeek(time, priority) {
   runtime.state.playing = playing;
   runtime.render();
   runtime.syncTicker();
-  return { ...runtime.state };
+  return { ...runtime.state, warnings: [...runtime.warnings] };
 }
 
 function pageSetExpression(id) {
@@ -512,7 +540,7 @@ function pageCapture(motionId, time, width, height, priority, binary = false, ba
       // millions of channels into JS numbers makes capture serialization far
       // more expensive than the render itself. Browser-only hosts retain the
       // serializable-array path unless they explicitly support binary results.
-      return { width, height, motionId: motion.id, time: captureTime, playing: previousPlaying, rgba: binary ? pixels : Array.from(pixels), metrics: { nativeBoundsPreparationMs, nativeRenderMs, nativeReadbackMs } };
+      return { width, height, motionId: motion.id, time: captureTime, playing: previousPlaying, rgba: binary ? pixels : Array.from(pixels), metrics: { nativeBoundsPreparationMs, nativeRenderMs, nativeReadbackMs }, warnings: [...runtime.warnings] };
     } finally {
       runtime.state.playing = previousPlaying;
       if (focusSnapshot) for (const [key, value] of Object.entries(focusSnapshot)) focus[key] = value;
@@ -538,11 +566,15 @@ class PixiLive2dAdapter {
     if (!['manual', 'realtime'].includes(this.options.playbackMode)) fail('INVALID_RENDERER_ARGUMENT', 'playbackMode must be manual or realtime.');
     this.source = null;
     this.state = cloneState();
+    this.warnings = [];
   }
 
   async evaluate(fn, ...args) {
     try {
-      return await this.page.evaluate(fn, ...args);
+      const result = await this.page.evaluate(fn, ...args);
+      const warnings = Array.isArray(result) ? result.at(-1)?.warnings : result?.warnings;
+      if (Array.isArray(warnings)) this.warnings = warnings.map(warning => ({ ...warning }));
+      return result;
     } catch (error) {
       if (error instanceof RendererContractError) throw error;
       throw new RendererContractError('RENDERER_PAGE_ERROR', error && error.message ? error.message : String(error));
@@ -565,15 +597,21 @@ class PixiLive2dAdapter {
     this.source = normalized;
     this.state = cloneState(result && result.state);
     this.state.loaded = true;
-    this.visualElements = await this.evaluate(pageInitializeVisualElements);
-    return { contractVersion: 1, motionCount: normalized.motions.length, expressionCount: normalized.expressions.length };
+    try { this.visualElements = await this.evaluate(pageInitializeVisualElements); }
+    catch (error) {
+      try { await this.unload(); } finally { throw error; }
+    }
+    return { contractVersion: 1, motionCount: normalized.motions.length, expressionCount: normalized.expressions.length, ...(this.warnings.length ? { warnings: this.getWarnings() } : {}) };
   }
+
+  getWarnings() { return this.warnings.map(warning => ({ ...warning })); }
 
   async unload() {
     if (this.source) await this.evaluate(pageUnload);
     this.source = null;
     this.state = cloneState();
     this.visualElements = [];
+    this.warnings = [];
   }
 
   async prepareCapture() {

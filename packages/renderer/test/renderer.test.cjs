@@ -556,6 +556,7 @@ test('Spine serialized preview keeps inactive and manual playback stopped and re
   }
   const browser = {
     performance,
+    fetch: async () => ({ ok: true, text: async () => 'page.png\nsize: 100, 100\n\n' }),
     window: { spine: { SpinePlayer: Player, Vector2: class {} }, setTimeout, clearTimeout, setInterval, clearInterval },
     document: { body: { innerHTML: '' }, getElementById: () => ({ style: {} }) },
   };
@@ -691,6 +692,7 @@ test('Spine manifest conversion and adapter reuse the shared renderer contract',
 test('Spine adapter completes loading when requestAnimationFrame is suspended in a hidden view', async () => {
   const originalWindow = global.window;
   const originalDocument = global.document;
+  const originalFetch = global.fetch;
   let drawCount = 0;
   const container = { style: {} };
   const animation = { name: 'idle', duration: 1, apply() {} };
@@ -722,6 +724,7 @@ test('Spine adapter completes loading when requestAnimationFrame is suspended in
   }
   global.window = { spine: { SpinePlayer: HiddenViewPlayer, Vector2: class { constructor() { this.x = 0; this.y = 0; } } }, setTimeout, clearTimeout, setInterval, clearInterval };
   global.document = { body: { innerHTML: '' }, getElementById: () => container };
+  global.fetch = async () => ({ ok: true, text: async () => 'page.png\nsize: 100, 100\n\n' });
   try {
     const page = { async evaluate(fn, ...args) { return fn(...args); } };
     const renderer = new SpinePlayerAdapter({ page, width: 64, height: 64, loadTimeoutMs: 1000 });
@@ -731,6 +734,7 @@ test('Spine adapter completes loading when requestAnimationFrame is suspended in
   } finally {
     global.window = originalWindow;
     global.document = originalDocument;
+    global.fetch = originalFetch;
   }
 });
 

@@ -119,6 +119,8 @@ Rebuilding reuses verified animation assets while they remain in the bounded loc
 
 Spine support remains in preview. PCK support depends on its contents and packaging. [Detailed support and limitations →](docs/guides/user-guide.md#compatibility)
 
+Compatibility fixes for supported Live2D motion metadata and Spine 3.8 atlas-name whitespace happen in memory; source files stay unchanged. Spine 4.x atlas pages must use a consistent alpha mode.
+
 <a id="runtime-setup"></a>
 
 ## Runtimes

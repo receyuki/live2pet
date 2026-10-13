@@ -22,7 +22,15 @@
 | Codex output | V2 11-row atlas; nine animation mappings plus neutral look cells, without directional mouse following |
 | Clawd output | Transparent WebP or APNG animations, required/optional states and reactions |
 
-macOS Intel/Apple Silicon and Windows x64 downloads are available. The maintainer has reported successful Windows testing; that report does not identify a Windows version, device or exact build, and is not evidence that every subsequent change was tested there. Local real-model checks cover Spine 2.1, 3.6, 3.8, 4.0 and 4.1; 4.3 JSON has earlier integration coverage. Spine 4.2 still needs real-model acceptance. See the [acceptance record](../desktop-acceptance.md) for the scope of individual checks.
+macOS Intel/Apple Silicon and Windows x64 downloads are available. The maintainer has reported successful Windows testing; that report does not identify a Windows version, device or exact build, and is not evidence that every subsequent change was tested there. Local checks cover user-supplied Spine 2.1, 3.5 JSON, 3.6–3.8, 4.0 and 4.1 models, plus official 4.2/4.3 examples. These are sample-based checks, not certification of every export or animation. See the [acceptance record](../desktop-acceptance.md) for the scope of individual checks.
+
+Live2Pet corrects supported modern Live2D Motion curve-count metadata and
+uniquely trimmed Spine 3.8 atlas region names in memory, with diagnostic warnings;
+the original files remain unchanged. Ambiguous names and truly missing regions
+are not guessed. Spine 4.x respects atlas `pma` metadata; all pages of one atlas
+must use the same alpha mode. Re-export mixed straight/PMA pages consistently
+before loading them. LPK containers are not supported; use standard unpacked
+model folders instead.
 
 <a id="runtimes"></a>
 
