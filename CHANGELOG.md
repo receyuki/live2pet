@@ -6,6 +6,11 @@ GitHub Releases.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-14
+
+Export individual animations and work with more version-matched Spine models.
+Models and separately licensed runtimes are not included in the downloads.
+
 ### Added
 
 - Support Spine 2.1, 3.5 JSON, 3.6–3.7 and exact deprecated 3.8.75 exports through verified
@@ -47,6 +52,14 @@ GitHub Releases.
 - Preserve official Spine 3.8 atlas dimensions for Mesh UVs and correct alpha
   blending for straight-alpha Multiply/Screen textures. Old capture caches are
   invalidated without changing project or Source Package identities.
+
+### Compatibility and downloads
+
+- Separate unsigned Intel/Apple Silicon macOS DMGs and a Windows x64 ZIP.
+  See the README installation help if macOS blocks an unsigned download.
+- Spine remains in preview. Older compatibility packs require explicit local
+  setup; Spine 3.5 binary files and LPK containers are not supported.
+- Local sample checks do not certify every model, Motion or target host.
 
 ## [0.3.0] - 2026-09-22
 
